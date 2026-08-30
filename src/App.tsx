@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getInitialData, getVoucherTypes } from './services/storageService';
+import { getInitialData, getVoucherTypes, saveLedger } from './services/storageService';
+import { initFirestoreSync, subscribeFirebaseStatus, seedInitialLocalDataToFirestore } from './services/firebaseSyncService';
 import { Config, Item, Unit, UnitGroup, ItemGroup, Ledger, LedgerGroup, HeldBill, BarcodeQueueItem, VoucherType } from './types';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -8,7 +9,6 @@ import { SalesInvoiceEntry } from './components/SalesInvoiceEntry';
 import { POSBilling } from './components/POSBilling';
 import { QuickLedgerModal } from './components/QuickLedgerModal';
 import { QuickItemModal } from './components/QuickItemModal';
-import { saveLedger } from './services/storageService';
 import { PurchaseEntry } from './components/PurchaseEntry';
 import { Vouchers } from './components/Vouchers';
 import { Masters } from './components/Masters';
@@ -25,6 +25,10 @@ export default function App() {
   const [currentView, setCurrentView] = useState<string>('dashboard');
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+
+  // Firebase status
+  const [firebaseStatus, setFirebaseStatus] = useState<'connected' | 'syncing' | 'offline' | 'error'>('syncing');
+  const [firebaseMessage, setFirebaseMessage] = useState<string>('');
 
   // Pre-POS Voucher Type Selection State
   const [selectedSaleVoucherType, setSelectedSaleVoucherType] = useState<VoucherType | null>(null);
@@ -169,6 +173,20 @@ export default function App() {
   useEffect(() => {
     refreshData();
     
+    // Subscribe to Firestore sync status updates
+    const unsubStatus = subscribeFirebaseStatus((status, msg) => {
+      setFirebaseStatus(status);
+      if (msg) setFirebaseMessage(msg);
+    });
+
+    // Initialize real-time Firestore synchronization
+    const unsubFirestore = initFirestoreSync(() => {
+      refreshData();
+    });
+
+    // Seed local items & ledgers to Firestore on initial load
+    seedInitialLocalDataToFirestore().catch(() => {});
+
     const handleAppNavigate = (e: any) => {
       if (e.detail?.view) {
         if (e.detail.view === 'reports') {
@@ -193,7 +211,11 @@ export default function App() {
       }
     };
     window.addEventListener('app:navigate', handleAppNavigate);
-    return () => window.removeEventListener('app:navigate', handleAppNavigate);
+    return () => {
+      unsubStatus();
+      unsubFirestore();
+      window.removeEventListener('app:navigate', handleAppNavigate);
+    };
   }, []);
 
   // Global Keyboard Shortcuts (Report Shortcuts + Main Navigation)
@@ -321,6 +343,8 @@ export default function App() {
           canNavigateBack={currentView !== 'dashboard' || viewHistory.length > 1 || !!drillModal.type}
           onNavigateBack={navigateBack}
           isPosMode={true}
+          firebaseStatus={firebaseStatus}
+          firebaseMessage={firebaseMessage}
         />
 
         <main className={`flex-1 ${currentView === 'reports' ? 'overflow-y-auto' : isHighDensityView ? 'p-1.5 sm:p-2 pb-1.5 overflow-hidden flex flex-col min-h-0' : 'p-3 sm:p-6 pb-6 lg:pb-8 overflow-y-auto'} relative`}>

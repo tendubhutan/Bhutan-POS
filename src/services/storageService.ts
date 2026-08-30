@@ -30,6 +30,17 @@ import {
   UserPermission,
   ModuleId
 } from '../types';
+import {
+  syncConfigToFirestore,
+  syncItemToFirestore,
+  deleteItemFromFirestore,
+  syncLedgerToFirestore,
+  deleteLedgerFromFirestore,
+  syncSalesInvoiceToFirestore,
+  syncPurchaseInvoiceToFirestore,
+  syncVoucherToFirestore
+} from './firebaseSyncService';
+
 
 export const STORAGE_KEYS = {
   CONFIG: 'deep_pos_config',
@@ -1058,6 +1069,7 @@ export function saveConfig(cfgObj: Partial<Config>) {
   const cur = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const updated = { ...cur, ...cfgObj };
   saveJson(STORAGE_KEYS.CONFIG, updated);
+  syncConfigToFirestore(updated).catch(() => {});
   return { ok: true, config: updated };
 }
 
@@ -1146,6 +1158,7 @@ export function saveItem(item: Item) {
   const idx = list.findIndex(i => i['Item Code'] === (item.oldCode || item['Item Code']));
   if (idx > -1) list[idx] = item; else list.push(item);
   saveJson(STORAGE_KEYS.ITEMS, list);
+  syncItemToFirestore(item).catch(() => {});
 
   if (isNew && Number(item['Opening Stock']) > 0) {
     const openingRef = item['Opening Serials'] && item['Opening Serials'].trim()
@@ -1161,6 +1174,7 @@ export function deleteItem(code: string) {
   let list = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   list = list.filter(i => i['Item Code'] !== code);
   saveJson(STORAGE_KEYS.ITEMS, list);
+  deleteItemFromFirestore(code).catch(() => {});
   return { ok: true, items: list };
 }
 
@@ -1190,6 +1204,7 @@ export function saveLedger(l: Ledger) {
   if (idx > -1) list[idx] = l; else list.push(l);
   list = sanitizeLedgers(list);
   saveJson(STORAGE_KEYS.LEDGERS, list);
+  syncLedgerToFirestore(l).catch(() => {});
   return { ok: true, ledgers: list };
 }
 
@@ -1197,6 +1212,7 @@ export function deleteLedger(name: string) {
   let list = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
   list = list.filter(x => x['Ledger Name'] !== name);
   saveJson(STORAGE_KEYS.LEDGERS, list);
+  deleteLedgerFromFirestore(name).catch(() => {});
   return { ok: true, ledgers: list };
 }
 
@@ -1270,6 +1286,7 @@ function updateItemStock(itemCode: string, qtyDelta: number): number {
   const newQty = (Number(items[idx]['Current Stock']) || 0) + qtyDelta;
   items[idx]['Current Stock'] = newQty;
   saveJson(STORAGE_KEYS.ITEMS, items);
+  syncItemToFirestore(items[idx]).catch(() => {});
   return newQty;
 }
 
@@ -1433,6 +1450,7 @@ export function saveSalesInvoice(payload: {
     sales.push(invoice);
   }
   saveJson(STORAGE_KEYS.SALES_INVOICES, sales);
+  syncSalesInvoiceToFirestore(invoice).catch(() => {});
 
   // Stock logging & ledger balance
   cart.forEach(l => {
@@ -1658,6 +1676,7 @@ export function savePurchaseInvoice(payload: {
     purchases.push(purchase);
   }
   saveJson(STORAGE_KEYS.PURCHASE_INVOICES, purchases);
+  syncPurchaseInvoiceToFirestore(purchase).catch(() => {});
 
   cart.forEach(l => {
     const nq = updateItemStock(l.itemCode, Number(l.qty));
@@ -1805,6 +1824,7 @@ export function saveMultiLineVoucher(payload: {
     vouchers.push(newVoucher);
   }
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
+  syncVoucherToFirestore(newVoucher).catch(() => {});
 
   // Post to accounting ledger for each Dr/Cr line
   payload.lines.forEach(line => {

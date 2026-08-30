@@ -1,0 +1,113 @@
+{
+  "entities": {
+    "config": {
+      "title": "Config",
+      "description": "Store settings and invoice preferences",
+      "type": "object",
+      "properties": {
+        "companyName": { "type": "string" },
+        "address": { "type": "string" },
+        "companyGSTNo": { "type": "string" },
+        "companyTPNNo": { "type": "string" },
+        "currencySymbol": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["companyName"]
+    },
+    "items": {
+      "title": "Items",
+      "description": "Inventory products and stock items",
+      "type": "object",
+      "properties": {
+        "itemCode": { "type": "string" },
+        "itemName": { "type": "string" },
+        "barcode": { "type": "string" },
+        "saleRate": { "type": "number" },
+        "purchaseRate": { "type": "number" },
+        "currentStock": { "type": "number" },
+        "group": { "type": "string" },
+        "unit": { "type": "string" }
+      },
+      "required": ["itemCode", "itemName"]
+    },
+    "ledgers": {
+      "title": "Ledgers",
+      "description": "Accounting ledgers for debtors, creditors, bank, cash and expenses",
+      "type": "object",
+      "properties": {
+        "ledgerName": { "type": "string" },
+        "group": { "type": "string" },
+        "openingBalance": { "type": "number" },
+        "currentBalance": { "type": "number" },
+        "gstNo": { "type": "string" },
+        "tpnNo": { "type": "string" }
+      },
+      "required": ["ledgerName", "group"]
+    },
+    "sales_invoices": {
+      "title": "Sales Invoices",
+      "description": "POS sales and tax invoices",
+      "type": "object",
+      "properties": {
+        "invoiceNo": { "type": "string" },
+        "date": { "type": "string" },
+        "total": { "type": "number" },
+        "status": { "type": "string" },
+        "customer": { "type": "object" },
+        "items": { "type": "array" }
+      },
+      "required": ["invoiceNo", "date", "total"]
+    },
+    "purchase_invoices": {
+      "title": "Purchase Invoices",
+      "description": "Inward vendor bills and purchase stock entries",
+      "type": "object",
+      "properties": {
+        "billNo": { "type": "string" },
+        "supplierBillNo": { "type": "string" },
+        "date": { "type": "string" },
+        "total": { "type": "number" },
+        "supplier": { "type": "object" },
+        "items": { "type": "array" }
+      },
+      "required": ["billNo", "date", "total"]
+    },
+    "vouchers": {
+      "title": "Vouchers",
+      "description": "Financial payment, receipt, journal, and contra vouchers",
+      "type": "object",
+      "properties": {
+        "voucherNo": { "type": "string" },
+        "type": { "type": "string" },
+        "date": { "type": "string" },
+        "amount": { "type": "number" },
+        "narration": { "type": "string" }
+      },
+      "required": ["voucherNo", "type", "date", "amount"]
+    },
+    "users": {
+      "title": "App Users",
+      "description": "Staff users and roles",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string" },
+        "fullName": { "type": "string" },
+        "role": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["username", "role"]
+    },
+    "employees": {
+      "title": "Employees",
+      "description": "Staff and payroll employees",
+      "type": "object",
+      "properties": {
+        "empCode": { "type": "string" },
+        "fullName": { "type": "string" },
+        "designation": { "type": "string" },
+        "basicSalary": { "type": "number" }
+      },
+      "required": ["empCode", "fullName"]
+    }
+  }
+}

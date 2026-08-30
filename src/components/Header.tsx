@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Wifi, ArrowLeft } from 'lucide-react';
+import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft } from 'lucide-react';
 import { Config } from '../types';
 import { AIAssistant } from './AIAssistant';
 
@@ -10,6 +10,8 @@ interface HeaderProps {
   canNavigateBack?: boolean;
   onNavigateBack?: () => void;
   isPosMode?: boolean;
+  firebaseStatus?: 'connected' | 'syncing' | 'offline' | 'error';
+  firebaseMessage?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,7 +20,9 @@ export const Header: React.FC<HeaderProps> = ({
   onRefresh,
   canNavigateBack,
   onNavigateBack,
-  isPosMode = false
+  isPosMode = false,
+  firebaseStatus = 'connected',
+  firebaseMessage
 }) => {
   return (
     <header className={`bg-blue-700 text-white border-b border-blue-800 px-3 sm:px-4 ${isPosMode ? 'py-1.5' : 'py-2'} flex items-center justify-between shadow-md relative z-50`}>
@@ -70,14 +74,38 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
-        <div className="hidden lg:flex items-center gap-1.5 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-[11px] font-bold px-2 py-0.5 rounded-full">
-          <Wifi className="h-3 w-3 text-emerald-300 animate-pulse" />
-          <span>ONLINE</span>
-        </div>
+        {/* Firebase Firestore Status Badge */}
+        {firebaseStatus === 'syncing' ? (
+          <div
+            className="flex items-center gap-1.5 bg-amber-500/20 border border-amber-400/40 text-amber-200 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full"
+            title={firebaseMessage || 'Syncing with Firestore...'}
+          >
+            <RefreshCw className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-amber-300 animate-spin" />
+            <span className="hidden xs:inline">Firestore Syncing...</span>
+            <span className="xs:hidden">Syncing</span>
+          </div>
+        ) : firebaseStatus === 'error' ? (
+          <div
+            className="flex items-center gap-1.5 bg-rose-500/20 border border-rose-400/40 text-rose-200 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full"
+            title={firebaseMessage || 'Firestore sync error'}
+          >
+            <Database className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-rose-300" />
+            <span className="hidden xs:inline">Firestore Error</span>
+            <span className="xs:hidden">Error</span>
+          </div>
+        ) : (
+          <div
+            className="flex items-center gap-1.5 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full"
+            title="Cloud Firestore Real-time Persistence Active"
+          >
+            <Database className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-300 animate-pulse" />
+            <span>FIRESTORE ONLINE</span>
+          </div>
+        )}
 
         <button
           onClick={onRefresh}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-800 hover:bg-blue-900 border border-blue-600 text-xs font-bold text-white shadow-xs transition"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-800 hover:bg-blue-900 border border-blue-600 text-xs font-bold text-white shadow-xs transition cursor-pointer"
         >
           <RefreshCw className="h-3.5 w-3.5 text-blue-200" />
           <span className="hidden sm:inline">Refresh</span>
@@ -89,4 +117,3 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
-
