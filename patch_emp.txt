@@ -1,0 +1,21 @@
+--- src/components/Payroll.tsx
++++ src/components/Payroll.tsx
+@@ -1849,4 +1849,13 @@
+                       <input
+                         type="text"
+                         placeholder="e.g. TPN-982341"
+                         value={employeeForm.tpnNo || ''}
+                         onChange={e => setEmployeeForm({ ...employeeForm, tpnNo: e.target.value })}
+                         className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
+                       />
+                     </div>
++                    <div>
++                      <label className="block font-semibold text-slate-700 mb-1">NPPF Account No</label>
++                      <input
++                        type="text"
++                        placeholder="e.g. 1234567"
++                        value={employeeForm.nppfNo || ''}
++                        onChange={e => setEmployeeForm({ ...employeeForm, nppfNo: e.target.value })}
++                        className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
++                      />
++                    </div>

@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+@media print {
+  /* Hide all app chrome, sidebars, headers, navigation, modals backdrop, and buttons */
+  body, html {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+  }
+
+  aside,
+  header,
+  nav,
+  button,
+  .no-print,
+  .print-hide,
+  .print-controls,
+  [data-print-hide="true"] {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Modal Backdrop Reset for Clean Report Print */
+  .print-modal-overlay {
+    position: static !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    inset: auto !important;
+    overflow: visible !important;
+  }
+
+  .print-modal-container {
+    position: static !important;
+    border: none !important;
+    box-shadow: none !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: transparent !important;
+    display: block !important;
+    border-radius: 0 !important;
+  }
+
+  .print-modal-body {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    overflow: visible !important;
+  }
+
+  .print-report-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  .print-report-sheet table {
+    width: 100% !important;
+    page-break-inside: auto;
+  }
+
+  .print-report-sheet tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  .print-report-sheet thead {
+    display: table-header-group;
+  }
+
+  .print-report-sheet tfoot {
+    display: table-footer-group;
+  }
+
+  @page {
+    size: auto;
+    margin: 10mm;
+  }
+}
+
+@layer base {
+  /* Hide number input spin buttons */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}

@@ -1,0 +1,58 @@
+--- src/components/SettingsView.tsx
++++ src/components/SettingsView.tsx
+@@ -625,2 +625,38 @@
+               </label>
++              
++              {/* Payroll Module */}
++              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
++                <div className="pt-0.5">
++                  <input
++                    type="checkbox"
++                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
++                    checked={form.EnablePayroll !== 'false'}
++                    onChange={e => setForm({ ...form, EnablePayroll: e.target.checked ? 'true' : 'false' })}
++                  />
++                </div>
++                <div>
++                  <span className="font-extrabold text-slate-900 text-xs">Enable Payroll & HR Module</span>
++                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Process salaries, manage employees, and handle provident funds.</p>
++                </div>
++              </label>
++              
++              {/* Asset Management Module */}
++              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
++                <div className="pt-0.5">
++                  <input
++                    type="checkbox"
++                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
++                    checked={form.EnableAssetManagement !== 'false'}
++                    onChange={e => setForm({ ...form, EnableAssetManagement: e.target.checked ? 'true' : 'false' })}
++                  />
++                </div>
++                <div>
++                  <span className="font-extrabold text-slate-900 text-xs">Enable Asset Management</span>
++                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Track fixed assets, depreciation, and calculate net book values.</p>
++                </div>
++              </label>
+             </div>
++
++            {form.EnablePayroll !== 'false' && (
++              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mt-3.5">
++                {/* Employee Advances & Loans */}
++                <label className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-indigo-50 transition">
++                  <div className="pt-0.5">
++                    <input
++                      type="checkbox"
++                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
++                      checked={form.EnableEmployeeAdvances !== 'false'}
++                      onChange={e => setForm({ ...form, EnableEmployeeAdvances: e.target.checked ? 'true' : 'false' })}
++                    />
++                  </div>
++                  <div>
++                    <span className="font-extrabold text-indigo-900 text-xs">Detailed Employee Advances (DSA/Imprest)</span>
++                    <p className="text-[10px] text-indigo-700/70 mt-0.5 leading-snug">Enable deep tracking of DSA and Imprest by individual employee ID.</p>
++                  </div>
++                </label>
++              </div>
++            )}
+ 

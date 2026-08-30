@@ -1,0 +1,28 @@
+--- src/components/Payroll.tsx
++++ src/components/Payroll.tsx
+@@ -23,2 +23,4 @@
+   Percent,
+-  FileSpreadsheet
++  FileSpreadsheet,
++  WalletCards,
++  Banknote
+ } from 'lucide-react';
+@@ -28,3 +30,3 @@
+   saveEmployees,
+-  saveMonthlyPayrolls
++  saveMonthlyPayrolls,
++  getEmployeeAdvances,
++  saveEmployeeAdvances
+ } from '../services/storageService';
+@@ -32,3 +34,3 @@
+   saveVoucher,
+-  nextCounter
++  nextCounter,
++  saveMultiLineVoucher
+ } from '../services/storageService';
+@@ -49,2 +51,3 @@
+     { id: 'employees', label: 'Employee Master', icon: Users },
+-    { id: 'payheads', label: 'Flexible Pay Heads', icon: TrendingUp }
++    { id: 'payheads', label: 'Flexible Pay Heads', icon: TrendingUp },
++    { id: 'advances', label: 'Advances & Loans', icon: WalletCards }
+   ] as const;

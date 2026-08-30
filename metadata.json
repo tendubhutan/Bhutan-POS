@@ -1,0 +1,8 @@
+{
+  "name": "Deep POS",
+  "description": "A modern, mobile-friendly Deep POS billing and inventory management system with Tally-style continuous loop entry, full voucher suite (Payment, Receipt, Journal, Contra, Debit/Credit Notes, Delivery Challans, Physical Stock Audits, Quotations), accounting reports, thermal receipt printing, PDF sharing, and barcode generation.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

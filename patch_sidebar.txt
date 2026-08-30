@@ -1,0 +1,23 @@
+--- src/components/Sidebar.tsx
++++ src/components/Sidebar.tsx
+@@ -14,2 +14,3 @@
+ } from 'lucide-react';
++import { Config } from '../types';
+ 
+@@ -21,2 +22,3 @@
+   hideDesktop?: boolean;
++  config: Config;
+ }
+@@ -29,3 +31,4 @@
+   onCloseMobile,
+-  hideDesktop = false
++  hideDesktop = false,
++  config
+ }) => {
+@@ -37,4 +40,4 @@
+     { id: 'barcode', label: 'Barcode Print', icon: Barcode, shortcut: 'B' },
+-    { id: 'payroll', label: 'Payroll & HR', icon: Users },
+-    { id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'A' },
++    ...(config.EnablePayroll !== 'false' ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users }] : []),
++    ...(config.EnableAssetManagement !== 'false' ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'A' }] : []),
+     { id: 'reports', label: 'Reports & Audit', icon: BarChart3, shortcut: 'R' },

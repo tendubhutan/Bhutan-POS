@@ -1,0 +1,14 @@
+--- src/components/Payroll.tsx
++++ src/components/Payroll.tsx
+@@ -25,2 +25,3 @@
+ } from 'lucide-react';
++import { EmployeeAdvances } from './payroll/EmployeeAdvances';
+ import { Config, PayHead, Employee, MonthlyPayroll, PayrollEntry, PayrollPayHeadItem, AdvanceType, EmployeeAdvance } from '../types';
+@@ -2824,2 +2825,7 @@
+       )}
++
++      {/* TAB 4: ADVANCES & LOANS */}
++      {activeTab === 'advances' && (
++        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
++      )}
+     </div>

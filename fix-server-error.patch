@@ -1,0 +1,16 @@
+--- server.ts
++++ server.ts
+@@ -145,8 +145,12 @@
+ 
+       res.json(response);
+-    } catch (error) {
++    } catch (error: any) {
+       console.error("Gemini API Error:", error);
+-      res.status(500).json({ error: error.message || error.toString() });
++      let errorMessage = error.message || error.toString();
++      if (errorMessage.includes("429") || errorMessage.includes("Quota exceeded") || errorMessage.includes("RESOURCE_EXHAUSTED")) {
++        errorMessage = "You have exceeded your Gemini API free quota. Please wait a moment and try again.";
++      }
++      res.status(500).json({ error: errorMessage });
+     }
+   });
