@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, X, ChevronRight, Send, Loader2, Trash2, Mic, MicOff } from 'lucide-react';
+import { Sparkles, X, ChevronRight, Send, Loader2, Trash2 } from 'lucide-react';
 import { processLocalQuery } from '../services/localAIService';
 
 export const AIAssistant: React.FC = () => {
@@ -7,65 +7,8 @@ export const AIAssistant: React.FC = () => {
   const [query, setQuery] = useState('');
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [speechLang, setSpeechLang] = useState('en-US'); // Default English
-  const recognitionRef = useRef<any>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-
-  const toggleListening = () => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
-    }
-    
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Voice search is not supported in this browser.");
-      return;
-    }
-    
-    const recognition = new SpeechRecognition();
-    recognition.lang = speechLang;
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    
-    const originalQuery = query; // Remember what was already typed
-    
-    recognition.onstart = () => setIsListening(true);
-    recognition.onresult = (event: any) => {
-      let finalTranscript = '';
-      let interimTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        } else {
-          interimTranscript += event.results[i][0].transcript;
-        }
-      }
-      
-      const newQuery = [originalQuery, finalTranscript, interimTranscript]
-         .filter(t => t.trim().length > 0)
-         .join(' ')
-         .trim();
-         
-      setQuery(newQuery);
-    };
-    recognition.onerror = (e: any) => {
-      console.error("Speech error", e.error);
-      setIsListening(false);
-    };
-    recognition.onend = () => setIsListening(false);
-    
-    recognitionRef.current = recognition;
-    try {
-      recognition.start();
-    } catch (e) {
-      console.error("Failed to start speech recognition", e);
-      setIsListening(false);
-    }
-  };
 
   useEffect(() => {
     if (isOpen) {
@@ -181,22 +124,12 @@ export const AIAssistant: React.FC = () => {
               What would you like to find?
             </h3>
             <div className="flex items-center gap-2">
-              <select 
-                value={speechLang} 
-                onChange={(e) => setSpeechLang(e.target.value)}
-                className="text-xs bg-white border border-slate-200 rounded px-1.5 py-1 outline-none text-slate-600 hover:border-orange-400 transition-colors cursor-pointer shadow-sm"
-                title="Select Voice Recognition Language"
-              >
-                <option value="en-US">English</option>
-                <option value="dz-BT">Dzongkha (རྫོང་ཁ)</option>
-                <option value="ne-NP">Nepali (नेपाली)</option>
-              </select>
               {history.length > 0 && (
-                <button onClick={() => setHistory([])} className="text-slate-400 hover:text-red-500 transition-colors" title="Clear Chat">
+                <button onClick={() => setHistory([])} className="text-slate-400 hover:text-red-500 transition-colors p-1" title="Clear Chat">
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}
-              <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors p-1">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -237,35 +170,28 @@ export const AIAssistant: React.FC = () => {
             {loading && (
               <div className="flex justify-start">
                 <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-none px-3 py-2 shadow-sm flex items-center gap-2 text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Thinking...
+                  <Loader2 className="h-4 w-4 animate-spin" /> Searching...
                 </div>
               </div>
             )}
           </div>
 
           <div className="p-3 border-t border-slate-200 bg-white">
-            <form onSubmit={handleQuery} className="flex items-center gap-1.5 bg-slate-100 rounded-lg p-1 border border-slate-200 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-400/20 transition-all">
+            <form onSubmit={handleQuery} className="flex items-center gap-1.5 bg-slate-100 rounded-lg p-1.5 border border-slate-200 focus-within:border-orange-400 focus-within:ring-2 focus-within:ring-orange-400/20 transition-all">
               <input
                 ref={inputRef}
                 type="text"
-                placeholder="Ask anything about the software..."
-                className="flex-1 bg-transparent border-none outline-none px-1 py-1.5 text-sm text-slate-800 min-w-0"
+                placeholder="Ask or search anything in the system..."
+                className="flex-1 bg-transparent border-none outline-none px-2 py-1 text-sm text-slate-800 min-w-0"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 disabled={loading}
               />
-              <button
-                type="button"
-                onClick={toggleListening}
-                className={`p-1.5 rounded-md transition-colors flex-shrink-0 ${isListening ? 'bg-red-100 text-red-600 animate-pulse' : 'text-slate-400 hover:bg-slate-200 hover:text-slate-600'}`}
-                title="Voice Search"
-              >
-                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-              </button>
               <button 
                 type="submit" 
                 disabled={!query.trim() || loading}
-                className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:hover:bg-orange-600 text-white p-1.5 rounded-md transition-colors flex-shrink-0"
+                className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:hover:bg-orange-600 text-white p-2 rounded-md transition-colors flex-shrink-0 cursor-pointer"
+                title="Search / Ask"
               >
                 <Send className="h-4 w-4" />
               </button>
