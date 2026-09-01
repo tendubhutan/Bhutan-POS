@@ -626,7 +626,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                   <td class="text-center">${i + 1}</td>
                   <td>
                     <b>${item['Item Name']}</b>
-                    ${(item.description || item.Description || item["Item Description"]) ? `<br><small style="color: #475569; font-style: italic;">Desc: ${item.description || item.Description || item["Item Description"]}</small>` : ''}
+                    ${(item.description || (item as any).Description || item["Item Description"]) ? `<br><small style="color: #475569; font-style: italic;">Desc: ${item.description || (item as any).Description || item["Item Description"]}</small>` : ''}
                     ${item['Serial Numbers'] ? `<br><small style="color: #64748b;">Serial/IMEI: ${item['Serial Numbers']}</small>` : ''}
                   </td>
                   <td class="text-center">${item.Qty}</td>
@@ -996,8 +996,8 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                         <tr key={idx}>
                           <td className="p-2 font-medium">
                             <div>{item['Item Name']}</div>
-                            {(item.description || item.Description || item['Item Description'] || item.lineDescription) && (
-                              <div className="text-[10px] text-slate-500 italic">{item.description || item.Description || item['Item Description'] || item.lineDescription}</div>
+                            {(item.description || (item as any).Description || item['Item Description'] || item.lineDescription) && (
+                              <div className="text-[10px] text-slate-500 italic">{item.description || (item as any).Description || item['Item Description'] || item.lineDescription}</div>
                             )}
                             {item['Serial Numbers'] && (
                               <span className="text-[9.5px] text-slate-400">SN: {item['Serial Numbers']}</span>

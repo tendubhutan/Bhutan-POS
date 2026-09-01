@@ -1170,46 +1170,75 @@ export const DrillModal: React.FC<DrillModalProps> = ({
               )}
 
               {/* Payment Settlement breakdown if present */}
-              {(voucherData.header?.cash > 0 ||
-                voucherData.header?.bank1 > 0 ||
-                voucherData.header?.bank2 > 0 ||
-                voucherData.header?.credit > 0) && (
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-                    Settlement / Payment Breakdown:
-                  </span>
-                  <div className="flex flex-wrap gap-4 text-xs">
-                    {voucherData.header.cash > 0 && (
-                      <div className="flex items-center gap-1.5 font-medium text-slate-700">
-                        <span className="text-slate-400">Cash:</span>
-                        <span className="font-mono font-bold text-emerald-700">{currency} {fmt(voucherData.header.cash)}</span>
-                      </div>
-                    )}
-                    {voucherData.header.bank1 > 0 && (
-                      <div className="flex items-center gap-1.5 font-medium text-slate-700">
-                        <span className="text-slate-400">
-                          {voucherData.header.paymentDetails?.bank1Ledger || 'Bank 1'}:
-                        </span>
-                        <span className="font-mono font-bold text-blue-700">{currency} {fmt(voucherData.header.bank1)}</span>
-                      </div>
-                    )}
-                    {voucherData.header.bank2 > 0 && (
-                      <div className="flex items-center gap-1.5 font-medium text-slate-700">
-                        <span className="text-slate-400">
-                          {voucherData.header.paymentDetails?.bank2Ledger || 'Bank 2'}:
-                        </span>
-                        <span className="font-mono font-bold text-indigo-700">{currency} {fmt(voucherData.header.bank2)}</span>
-                      </div>
-                    )}
-                    {voucherData.header.credit > 0 && (
-                      <div className="flex items-center gap-1.5 font-bold text-rose-700">
-                        <span className="text-rose-500">Credit / Balance Due:</span>
-                        <span className="font-mono">{currency} {fmt(voucherData.header.credit)}</span>
-                      </div>
-                    )}
+              {(() => {
+                const header = voucherData.header;
+                if (!header) return null;
+                const totalVal = Number(header.total || header.amount || header.netPayable || 0);
+                const partyNameStr = (header.party || header.customer?.name || header.customer?.ledger || header.customer || header.supplier?.name || header.supplier?.ledger || header.supplier || '').toString().trim().toLowerCase();
+                const isCashCustomer = ['cash', 'cash customer', 'walking cash sale', 'walking cash', 'walk-in', 'walk-in customer', 'cash sale', 'cash-in-hand', 'cash supplier'].includes(partyNameStr);
+                
+                let cashAmt = Number(header.cash) || Number(header.paymentDetails?.cash) || Number(header.paymentDetails?.cashAmount) || 0;
+                let bank1Amt = Number(header.bank1) || Number(header.paymentDetails?.bank1) || Number(header.paymentDetails?.bank1Amount) || 0;
+                let bank2Amt = Number(header.bank2) || Number(header.paymentDetails?.bank2) || Number(header.paymentDetails?.bank2Amount) || 0;
+                let dueAmt = Number(header.credit) || Number(header.paymentDetails?.credit) || Number(header.paymentDetails?.dueAmount) || 0;
+
+                if (isCashCustomer && cashAmt === 0 && bank1Amt === 0 && bank2Amt === 0) {
+                  cashAmt = totalVal;
+                  dueAmt = 0;
+                }
+
+                if (cashAmt <= 0 && bank1Amt <= 0 && bank2Amt <= 0 && dueAmt <= 0) {
+                  return null;
+                }
+
+                return (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                      Settlement / Payment Breakdown:
+                    </span>
+                    <div className="flex flex-wrap gap-4 text-xs">
+                      {cashAmt > 0 && (
+                        <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                          <span className="text-slate-400">Cash:</span>
+                          <span className="font-mono font-bold text-emerald-700">{currency} {fmt(cashAmt)}</span>
+                        </div>
+                      )}
+                      {bank1Amt > 0 && (
+                        <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                          <span className="text-slate-400">
+                            {header.paymentDetails?.bank1Ledger || config?.Bank1Ledger || 'Bank 1'}:
+                          </span>
+                          <span className="font-mono font-bold text-blue-700">{currency} {fmt(bank1Amt)}</span>
+                          {(header.bankTxnNo || header.paymentDetails?.bank1TxnId || header.bankTxnId) && (
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              (Txn: {header.bankTxnNo || header.paymentDetails?.bank1TxnId || header.bankTxnId})
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {bank2Amt > 0 && (
+                        <div className="flex items-center gap-1.5 font-medium text-slate-700">
+                          <span className="text-slate-400">
+                            {header.paymentDetails?.bank2Ledger || config?.Bank2Ledger || 'Bank 2'}:
+                          </span>
+                          <span className="font-mono font-bold text-indigo-700">{currency} {fmt(bank2Amt)}</span>
+                          {(header.bank2TxnNo || header.paymentDetails?.bank2TxnId || header.bank2TxnId) && (
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              (Txn: {header.bank2TxnNo || header.paymentDetails?.bank2TxnId || header.bank2TxnId})
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {dueAmt > 0 && (
+                        <div className="flex items-center gap-1.5 font-bold text-rose-700">
+                          <span className="text-rose-500">Credit / Balance Due:</span>
+                          <span className="font-mono">{currency} {fmt(dueAmt)}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Additional Expenses if present */}
               {voucherData.header?.additionalExpenses && voucherData.header.additionalExpenses.length > 0 && (

@@ -3,9 +3,194 @@ import {
   getAdvancedReports, 
   getGSTReport, 
   getFullLedgerStatement, 
+  getDeduplicatedSales,
+  getDeduplicatedPurchases,
   loadJson, 
   STORAGE_KEYS
 } from './storageService';
+import { Voucher, LedgerLogEntry } from '../types';
+
+export interface SearchResult {
+  refNo: string;
+  typeLabel: string;
+  date: string;
+  party: string;
+  amount: number;
+  matchedField: string;
+  matchedText: string;
+  score: number;
+}
+
+export function searchAllEntries(query: string): SearchResult[] {
+  const q = query.trim().toLowerCase();
+  if (!q || q.length < 2) return [];
+
+  // Remove common prefix tokens like "search", "find", "show", "voucher", "entry", "check", "number", "no", "#"
+  const cleanQuery = q.replace(/\b(search|find|show|voucher|entry|check|for|the|number|no|#)\b/gi, '').trim();
+  const searchTerm = cleanQuery || q;
+  const terms = searchTerm.split(/[\s,]+/).filter(t => t.length >= 2);
+
+  const resultsMap = new Map<string, SearchResult>();
+
+  const addResult = (res: SearchResult) => {
+    const existing = resultsMap.get(res.refNo);
+    if (!existing || res.score > existing.score) {
+      resultsMap.set(res.refNo, res);
+    }
+  };
+
+  // 1. Sales Invoices
+  const sales = getDeduplicatedSales();
+  for (const s of sales) {
+    if (s.status === 'Cancelled') continue;
+    const refNo = s.invoiceNo || '';
+    const dateStr = s.date ? new Date(s.date).toLocaleDateString('en-GB') : '-';
+    const party = typeof s.customer === 'object' ? (s.customer.name || s.customer.ledger || 'Cash Customer') : String(s.customer || 'Cash Customer');
+    const amount = Number(s.total) || 0;
+    const narration = (s.narration || '').toString();
+    const payDetails = s.paymentDetails as any;
+    const bankTxn1 = (s.bankTxnNo || payDetails?.bank1TxnId || payDetails?.bankTxnNo || '').toString();
+    const bankTxn2 = (s.bank2TxnNo || payDetails?.bank2TxnId || '').toString();
+    const cheque1 = (payDetails?.bank1ChequeNo || payDetails?.chequeNo || '').toString();
+    const cheque2 = (payDetails?.bank2ChequeNo || '').toString();
+
+    if (refNo.toLowerCase() === searchTerm || refNo.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel: 'Sales Invoice', date: dateStr, party, amount, matchedField: 'Invoice No', matchedText: refNo, score: 100 });
+      continue;
+    }
+    if ((bankTxn1 && bankTxn1.toLowerCase().includes(searchTerm)) || (bankTxn1 && terms.some(t => bankTxn1.toLowerCase().includes(t)))) {
+      addResult({ refNo, typeLabel: 'Sales Invoice', date: dateStr, party, amount, matchedField: 'Bank Txn ID', matchedText: bankTxn1, score: 95 });
+      continue;
+    }
+    if ((bankTxn2 && bankTxn2.toLowerCase().includes(searchTerm)) || (bankTxn2 && terms.some(t => bankTxn2.toLowerCase().includes(t)))) {
+      addResult({ refNo, typeLabel: 'Sales Invoice', date: dateStr, party, amount, matchedField: 'Bank Txn ID', matchedText: bankTxn2, score: 95 });
+      continue;
+    }
+    if ((cheque1 && cheque1.toLowerCase().includes(searchTerm)) || (cheque2 && cheque2.toLowerCase().includes(searchTerm))) {
+      addResult({ refNo, typeLabel: 'Sales Invoice', date: dateStr, party, amount, matchedField: 'Cheque No', matchedText: cheque1 || cheque2, score: 90 });
+      continue;
+    }
+    if (narration.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel: 'Sales Invoice', date: dateStr, party, amount, matchedField: 'Narration', matchedText: narration, score: 85 });
+      continue;
+    }
+    const matchedItem = (s.items || []).find(it => 
+      (it['Item Name'] || '').toLowerCase().includes(searchTerm) ||
+      (it.description || it.lineDescription || it['Item Description'] || '').toLowerCase().includes(searchTerm) ||
+      (it['Serial Numbers'] || '').toLowerCase().includes(searchTerm)
+    );
+    if (matchedItem) {
+      addResult({ refNo, typeLabel: 'Sales Invoice', date: dateStr, party, amount, matchedField: 'Item / Serial', matchedText: matchedItem['Item Name'] || matchedItem['Serial Numbers'], score: 75 });
+      continue;
+    }
+    if (terms.length > 0 && terms.every(t => narration.toLowerCase().includes(t) || party.toLowerCase().includes(t))) {
+      addResult({ refNo, typeLabel: 'Sales Invoice', date: dateStr, party, amount, matchedField: 'Narration / Party', matchedText: narration || party, score: 70 });
+    }
+  }
+
+  // 2. Purchase Invoices
+  const purchases = getDeduplicatedPurchases();
+  for (const p of purchases) {
+    if ((p.status as string) === 'Cancelled') continue;
+    const refNo = p.billNo || p.invoiceNo || '';
+    const dateStr = p.date ? new Date(p.date).toLocaleDateString('en-GB') : '-';
+    const party = typeof p.supplier === 'object' ? (p.supplier.name || p.supplier.ledger || 'Supplier') : String(p.supplier || 'Supplier');
+    const amount = Number(p.total) || 0;
+    const supplierBillNo = (p.supplierBillNo || '').toString();
+    const narration = ((p as any).narration || (p as any).notes || '').toString();
+    const payDetails = p.paymentDetails as any;
+    const bankTxn1 = (p.bankTxnNo || payDetails?.bank1TxnId || '').toString();
+    const bankTxn2 = (p.bank2TxnNo || payDetails?.bank2TxnId || '').toString();
+
+    if (refNo.toLowerCase() === searchTerm || refNo.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel: 'Purchase Bill', date: dateStr, party, amount, matchedField: 'Bill No', matchedText: refNo, score: 100 });
+      continue;
+    }
+    if (supplierBillNo.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel: 'Purchase Bill', date: dateStr, party, amount, matchedField: 'Supplier Bill No', matchedText: supplierBillNo, score: 95 });
+      continue;
+    }
+    if (bankTxn1.toLowerCase().includes(searchTerm) || bankTxn2.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel: 'Purchase Bill', date: dateStr, party, amount, matchedField: 'Bank Txn ID', matchedText: bankTxn1 || bankTxn2, score: 90 });
+      continue;
+    }
+    if (narration.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel: 'Purchase Bill', date: dateStr, party, amount, matchedField: 'Narration', matchedText: narration, score: 85 });
+      continue;
+    }
+    const matchedItem = (p.items || []).find(it => 
+      (it['Item Name'] || '').toLowerCase().includes(searchTerm) ||
+      (it['Serial Numbers'] || '').toLowerCase().includes(searchTerm)
+    );
+    if (matchedItem) {
+      addResult({ refNo, typeLabel: 'Purchase Bill', date: dateStr, party, amount, matchedField: 'Item / Serial', matchedText: matchedItem['Item Name'] || matchedItem['Serial Numbers'], score: 75 });
+    }
+  }
+
+  // 3. Financial Vouchers
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+  for (const v of vouchers) {
+    if (v.status === 'Cancelled' || (v as any).isCancelled) continue;
+    const refNo = v.voucherNo || (v as any).refNo || '';
+    const dateStr = v.date ? new Date(v.date).toLocaleDateString('en-GB') : '-';
+    const party = v.partyName || v.debitLedger || v.creditLedger || 'Voucher Entry';
+    const amount = Number(v.totalAmount || v.amount) || 0;
+    const narration = (v.narration || '').toString();
+    const txnId = (v.transactionId || v.bankTxnNo || (v as any).referenceNo || (v as any).utrNo || '').toString();
+    const chequeNo = (v.chequeNo || '').toString();
+    const typeLabel = v.type === 'P' ? 'Payment Voucher' : v.type === 'R' ? 'Receipt Voucher' : v.type === 'J' ? 'Journal Voucher' : v.type === 'C' ? 'Contra Voucher' : v.type === 'CN' ? 'Credit Note' : v.type === 'DN' ? 'Debit Note' : 'Voucher';
+
+    if (refNo.toLowerCase() === searchTerm || refNo.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel, date: dateStr, party, amount, matchedField: 'Voucher No', matchedText: refNo, score: 100 });
+      continue;
+    }
+    if (txnId && txnId.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel, date: dateStr, party, amount, matchedField: 'Txn / Ref ID', matchedText: txnId, score: 95 });
+      continue;
+    }
+    if (chequeNo && chequeNo.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel, date: dateStr, party, amount, matchedField: 'Cheque No', matchedText: chequeNo, score: 95 });
+      continue;
+    }
+    if (narration && narration.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel, date: dateStr, party, amount, matchedField: 'Narration', matchedText: narration, score: 85 });
+      continue;
+    }
+    const matchedLine = (v.lines || []).find(l => 
+      (l.narration || '').toLowerCase().includes(searchTerm) ||
+      (l.transactionId || (l as any).bankTxnId || '').toLowerCase().includes(searchTerm) ||
+      ((l as any).chequeNo || '').toLowerCase().includes(searchTerm)
+    );
+    if (matchedLine) {
+      addResult({ refNo, typeLabel, date: dateStr, party, amount, matchedField: 'Line Detail', matchedText: matchedLine.narration || matchedLine.transactionId || (matchedLine as any).chequeNo || '', score: 80 });
+      continue;
+    }
+  }
+
+  // 4. Ledger Log fallback
+  const logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  for (const l of logs) {
+    const refNo = l['Ref No'];
+    if (!refNo || resultsMap.has(refNo)) continue;
+    const narration = (l.Narration || '').toString();
+    const chequeNo = ((l as any)['Cheque No'] || '').toString();
+    const txnId = (l.transactionId || l['Transaction ID'] || (l as any)['Txn ID'] || '').toString();
+    const dateStr = l.DateIso ? new Date(l.DateIso).toLocaleDateString('en-GB') : '-';
+    const amount = Number(l.Debit) > 0 ? Number(l.Debit) : Number(l.Credit) || 0;
+
+    if (refNo.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel: l.Type || 'Entry', date: dateStr, party: l['Ledger Name'], amount, matchedField: 'Ref No', matchedText: refNo, score: 90 });
+    } else if (txnId && txnId.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel: l.Type || 'Entry', date: dateStr, party: l['Ledger Name'], amount, matchedField: 'Txn ID', matchedText: txnId, score: 85 });
+    } else if (chequeNo && chequeNo.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel: l.Type || 'Entry', date: dateStr, party: l['Ledger Name'], amount, matchedField: 'Cheque No', matchedText: chequeNo, score: 85 });
+    } else if (narration && narration.toLowerCase().includes(searchTerm)) {
+      addResult({ refNo, typeLabel: l.Type || 'Entry', date: dateStr, party: l['Ledger Name'], amount, matchedField: 'Narration', matchedText: narration, score: 75 });
+    }
+  }
+
+  return Array.from(resultsMap.values()).sort((a, b) => b.score - a.score);
+}
 
 // Basic fuzzy match / synonym checking
 const synonyms = {
@@ -183,6 +368,25 @@ export async function processLocalQuery(query: string, history: any[] = []): Pro
   // Simulate slight thinking delay for UI polish
   await new Promise(r => setTimeout(r, 600));
 
+  // 1. First search for specific entry matches (Transaction ID, Cheque No, Narration, Voucher No, Item/Serial, etc.)
+  const entryMatches = searchAllEntries(query);
+  if (entryMatches.length > 0) {
+    let msg = `🔍 **Found ${entryMatches.length} matching entry${entryMatches.length > 1 ? 'ies' : ''} for "${query}"**:\n\n`;
+    entryMatches.slice(0, 6).forEach(m => {
+      msg += `• **${m.typeLabel} ${m.refNo}** (${m.date}) - **Nu. ${m.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**\n`;
+      msg += `  Party/Account: ${m.party}\n`;
+      if (m.matchedField && m.matchedText) {
+        msg += `  Matched ${m.matchedField}: _"${m.matchedText}"_\n`;
+      }
+      msg += `  [View Voucher: ${m.refNo}]\n\n`;
+    });
+    if (entryMatches.length > 6) {
+      msg += `_Showing top 6 of ${entryMatches.length} total matches._\n`;
+    }
+    return msg;
+  }
+
+  // 2. Fall back to Report Intent Analysis
   const ledgers = loadJson<any[]>(STORAGE_KEYS.LEDGERS, []);
   const items = loadJson<any[]>(STORAGE_KEYS.ITEMS, []);
 

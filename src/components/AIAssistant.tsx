@@ -63,15 +63,19 @@ export const AIAssistant: React.FC = () => {
       parts.push(
         <button
           key={match.index}
-          className="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 mt-1 text-sm bg-blue-50 px-2 py-1 rounded-md border border-blue-200 cursor-pointer"
+          className="text-indigo-700 hover:text-indigo-900 font-bold flex items-center gap-1 my-1 text-xs bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-200 cursor-pointer transition shadow-xs"
           onClick={() => {
             setIsOpen(false);
-            window.dispatchEvent(new CustomEvent('app:navigate', { 
-              detail: { view: 'reports', report: reportName, ledgerName, fromDate, toDate } 
-            }));
+            if (reportName === 'Voucher' && ledgerName) {
+              window.dispatchEvent(new CustomEvent('app:openVoucher', { detail: { refNo: ledgerName } }));
+            } else {
+              window.dispatchEvent(new CustomEvent('app:navigate', { 
+                detail: { view: 'reports', report: reportName, ledgerName, fromDate, toDate } 
+              }));
+            }
           }}
         >
-          {match[0].replace(/\[|\]/g, '')} <ChevronRight className="h-4 w-4" />
+          {match[0].replace(/\[|\]/g, '')} <ChevronRight className="h-3.5 w-3.5" />
         </button>
       );
       lastIndex = regex.lastIndex;

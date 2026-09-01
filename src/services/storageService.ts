@@ -1680,10 +1680,16 @@ export function saveSalesInvoice(payload: {
   const effNum = rawCount < startNum ? startNum : rawCount;
   const iNo = invoiceNo || formatVoucherNumber(invPrefix, effNum, matchedVt?.zeroPadding, matchedVt?.suffix);
 
-  const cash = Number(payment.cash) || 0, b1 = Number(payment.bank1) || 0, b2 = Number(payment.bank2) || 0;
+  let cash = Number(payment.cash) || 0, b1 = Number(payment.bank1) || 0, b2 = Number(payment.bank2) || 0;
+  const sLg = customer.name?.trim() || customer.ledger?.trim() || 'Cash Customer';
+  const sLgLower = sLg.toLowerCase();
+  const isCashParty = ['cash', 'cash customer', 'walking cash sale', 'walking cash', 'walk-in', 'walk-in customer', 'cash sale', 'cash-in-hand'].includes(sLgLower) || customerLedgerObj?.Group === 'Cash-in-Hand';
+
+  if (isCashParty && cash === 0 && b1 === 0 && b2 === 0) {
+    cash = finalTot;
+  }
   const cr = round2(finalTot - cash - b1 - b2);
   const st = cr > 0.009 ? ((cash + b1 + b2) > 0 ? 'Partial Credit' : 'Credit') : 'Paid';
-  const sLg = customer.name?.trim() || customer.ledger?.trim() || 'Cash Customer';
 
   // Automatically compile predefined terms & conditions if none passed
   let finalTerms = termsAndConditions;
@@ -1931,7 +1937,14 @@ export function savePurchaseInvoice(payload: {
 
   const bNo = payload.billNo || ('PUR-' + nextCounter('PurchaseInvoice'));
 
-  const cash = Number(payment.cash) || 0, b1 = Number(payment.bank1) || 0, b2 = Number(payment.bank2) || 0;
+  let cash = Number(payment.cash) || 0, b1 = Number(payment.bank1) || 0, b2 = Number(payment.bank2) || 0;
+  const sLg = supplier.name?.trim() || 'Cash Supplier';
+  const sLgLower = sLg.toLowerCase();
+  const isCashParty = ['cash', 'cash supplier', 'cash purchase', 'walk-in', 'cash-in-hand'].includes(sLgLower) || supplierLedgerObj?.Group === 'Cash-in-Hand';
+
+  if (isCashParty && cash === 0 && b1 === 0 && b2 === 0) {
+    cash = tot;
+  }
   const cr = round2(tot - cash - b1 - b2);
   const st = cr > 0.009 ? ((cash + b1 + b2) > 0 ? 'Partial Credit' : 'Credit') : 'Paid';
 
@@ -3331,7 +3344,7 @@ export function getFullLedgerStatement(name: string) {
   return { openingBalance: op, rows };
 }
 
-function getDeduplicatedSales(): SalesInvoice[] {
+export function getDeduplicatedSales(): SalesInvoice[] {
   const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
   const map = new Map<string, SalesInvoice>();
   sales.forEach(s => {
@@ -3343,7 +3356,7 @@ function getDeduplicatedSales(): SalesInvoice[] {
   return Array.from(map.values());
 }
 
-function getDeduplicatedPurchases(): PurchaseInvoice[] {
+export function getDeduplicatedPurchases(): PurchaseInvoice[] {
   const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
   const map = new Map<string, PurchaseInvoice>();
   purchases.forEach(p => {

@@ -359,7 +359,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
 
   // Drill Modal Info State (F7 / Ctrl+I / Alt+I)
   const [drillModalState, setDrillModalState] = useState<{
-    type: "stock" | "ledger" | null;
+    type: "stock" | "ledger" | "voucher" | null;
     targetId: string | null;
   }>({
     type: null,
@@ -442,8 +442,8 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       setCustomerDrawerOpen(false);
       return true;
     }
-    if (drillModalState) {
-      setDrillModalState(null);
+    if (drillModalState?.type) {
+      setDrillModalState({ type: null, targetId: null });
       return true;
     }
     return false;
@@ -1583,13 +1583,22 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       )}
 
       {/* Item Info / Ledger Report Drill Modal */}
-      {drillModalState.type && drillModalState.targetId && (
+      {drillModalState?.type && drillModalState?.targetId && (
         <DrillModal
           type={drillModalState.type}
           targetId={drillModalState.targetId}
           config={config}
           onClose={() => setDrillModalState({ type: null, targetId: null })}
           onRefresh={onDataRefresh}
+          onDrillVoucher={(refNo) =>
+            setDrillModalState({ type: 'voucher', targetId: refNo })
+          }
+          onDrillLedger={(name) =>
+            setDrillModalState({ type: 'ledger', targetId: name })
+          }
+          onDrillStock={(code) =>
+            setDrillModalState({ type: 'stock', targetId: code })
+          }
         />
       )}
 

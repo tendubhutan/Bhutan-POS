@@ -61,7 +61,7 @@ export default function App() {
   };
 
   const navigateBack = () => {
-    if (drillModal.type) {
+    if (drillModal?.type) {
       setDrillModal({ type: null, targetId: null });
       return;
     }
@@ -194,10 +194,16 @@ export default function App() {
     };
     const handleOpenTrash = () => setShowTrashModal(true);
     const handleOpenBulkDelete = () => setShowBulkDeleteModal(true);
+    const handleOpenVoucher = (e: any) => {
+      if (e.detail?.refNo) {
+        setDrillModal({ type: 'voucher', targetId: e.detail.refNo });
+      }
+    };
 
     window.addEventListener('app:navigate', handleAppNavigate);
     window.addEventListener('app:openTrash', handleOpenTrash);
     window.addEventListener('app:openBulkDelete', handleOpenBulkDelete);
+    window.addEventListener('app:openVoucher', handleOpenVoucher);
 
     return () => {
       unsubStatus();
@@ -205,6 +211,7 @@ export default function App() {
       window.removeEventListener('app:navigate', handleAppNavigate);
       window.removeEventListener('app:openTrash', handleOpenTrash);
       window.removeEventListener('app:openBulkDelete', handleOpenBulkDelete);
+      window.removeEventListener('app:openVoucher', handleOpenVoucher);
     };
   }, []);
 
@@ -263,7 +270,7 @@ export default function App() {
         if (e.defaultPrevented) return;
 
         // 1. If drilldown modal is open, close drilldown first
-        if (drillModal.type) {
+        if (drillModal?.type) {
           e.preventDefault();
           setDrillModal({ type: null, targetId: null });
           return;
