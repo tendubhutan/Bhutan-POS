@@ -27,19 +27,54 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({ isOpen, onClose,
           'Item Name': '',
           'Group': 'General',
           'Unit': 'Nos',
-          'Purchase Rate': 0,
-          'Sale Rate': 0,
-          'MRP': 0,
+          'Purchase Rate': '' as any,
+          'Sale Rate': '' as any,
+          'MRP': '' as any,
           'GST %': 0,
           'Zero Rated (Y/N)': 'N',
-          'Opening Stock': 0,
-          'Reorder Level': 0,
+          'Opening Stock': '' as any,
+          'Reorder Level': '' as any,
           'Is Serialized': 'N',
           'Opening Serials': ''
         });
       }
     }
   }, [isOpen, itemToEdit]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showOpeningSerialModal) return;
+      if (e.key === 'F2' || e.code === 'F2') {
+        e.preventDefault();
+        e.stopPropagation();
+        const saveBtn = document.getElementById('quick-item-submit-btn');
+        saveBtn?.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    };
+
+    const handleAppBack = (e: Event) => {
+      if (showOpeningSerialModal) {
+        setShowOpeningSerialModal(false);
+        e.preventDefault();
+        return;
+      }
+      onClose();
+      e.preventDefault();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('app:back', handleAppBack);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('app:back', handleAppBack);
+    };
+  }, [isOpen, showOpeningSerialModal, onClose]);
 
   if (!isOpen) return null;
 
@@ -130,8 +165,8 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({ isOpen, onClose,
               <input
                 type="number"
                 step="any"
-                value={itemForm['Sale Rate'] || 0}
-                onChange={e => setItemForm({ ...itemForm, 'Sale Rate': Number(e.target.value) })}
+                value={itemForm['Sale Rate'] ?? ''}
+                onChange={e => setItemForm({ ...itemForm, 'Sale Rate': e.target.value === '' ? '' as any : Number(e.target.value) })}
                 className="w-full h-10 rounded-xl border border-slate-300 px-3 font-bold outline-none focus:border-indigo-500"
               />
             </div>
@@ -142,8 +177,8 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({ isOpen, onClose,
                 <input
                   type="number"
                   step="any"
-                  value={itemForm['Wholesale Rate'] || 0}
-                  onChange={e => setItemForm({ ...itemForm, 'Wholesale Rate': Number(e.target.value) })}
+                  value={itemForm['Wholesale Rate'] ?? ''}
+                  onChange={e => setItemForm({ ...itemForm, 'Wholesale Rate': e.target.value === '' ? '' as any : Number(e.target.value) })}
                   className="w-full h-10 rounded-xl border border-slate-300 px-3 font-bold text-emerald-800 outline-none focus:border-emerald-500"
                 />
               </div>
@@ -154,8 +189,8 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({ isOpen, onClose,
               <input
                 type="number"
                 step="any"
-                value={itemForm['Purchase Rate'] || 0}
-                onChange={e => setItemForm({ ...itemForm, 'Purchase Rate': Number(e.target.value) })}
+                value={itemForm['Purchase Rate'] ?? ''}
+                onChange={e => setItemForm({ ...itemForm, 'Purchase Rate': e.target.value === '' ? '' as any : Number(e.target.value) })}
                 className="w-full h-10 rounded-xl border border-slate-300 px-3 outline-none focus:border-indigo-500"
               />
             </div>
@@ -191,8 +226,8 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({ isOpen, onClose,
                 type="number"
                 min="0"
                 step="any"
-                value={itemForm['Opening Stock'] ?? 0}
-                onChange={e => setItemForm({ ...itemForm, 'Opening Stock': Number(e.target.value) || 0 })}
+                value={itemForm['Opening Stock'] ?? ''}
+                onChange={e => setItemForm({ ...itemForm, 'Opening Stock': e.target.value === '' ? '' as any : Number(e.target.value) })}
                 className="w-full h-10 rounded-xl border border-slate-300 px-3 outline-none focus:border-indigo-500"
               />
             </div>
@@ -264,6 +299,7 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({ isOpen, onClose,
               Cancel
             </button>
             <button
+              id="quick-item-submit-btn"
               type="submit"
               className="px-5 py-2 font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition flex items-center gap-2"
             >

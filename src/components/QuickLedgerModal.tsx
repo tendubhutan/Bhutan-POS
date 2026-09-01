@@ -46,12 +46,41 @@ export const QuickLedgerModal: React.FC<QuickLedgerModalProps> = ({
           'TPN No': '',
           Address: '',
           'Contact No': '',
-          'Opening Balance': 0,
+          'Opening Balance': '' as any,
           'Balance Type (Dr/Cr)': 'Dr'
         });
       }
     }
   }, [isOpen, initialGroup, ledgerToEdit]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F2' || e.code === 'F2') {
+        e.preventDefault();
+        e.stopPropagation();
+        const saveBtn = document.getElementById('quick-ledger-submit-btn');
+        saveBtn?.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    };
+
+    const handleAppBack = (e: Event) => {
+      onClose();
+      e.preventDefault();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('app:back', handleAppBack);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('app:back', handleAppBack);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -247,8 +276,8 @@ export const QuickLedgerModal: React.FC<QuickLedgerModalProps> = ({
               <input
                 type="number"
                 step="any"
-                value={ledgerForm['Opening Balance'] || ''}
-                onChange={e => setLedgerForm({ ...ledgerForm, 'Opening Balance': parseFloat(e.target.value) || 0 })}
+                value={ledgerForm['Opening Balance'] ?? ''}
+                onChange={e => setLedgerForm({ ...ledgerForm, 'Opening Balance': e.target.value === '' ? '' as any : parseFloat(e.target.value) })}
                 className="w-full h-10 rounded-xl border border-slate-300 px-3 font-bold outline-none focus:border-indigo-500"
               />
             </div>
@@ -274,6 +303,7 @@ export const QuickLedgerModal: React.FC<QuickLedgerModalProps> = ({
               Cancel
             </button>
             <button
+              id="quick-ledger-submit-btn"
               type="submit"
               className="px-5 py-2 font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition flex items-center gap-2"
             >

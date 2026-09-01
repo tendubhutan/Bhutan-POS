@@ -91,16 +91,16 @@ export const MultiUnitEditor: React.FC<MultiUnitEditorProps> = ({ itemForm, setI
                   <td className="py-1 px-2">
                     <input
                       type="number" step="any"
-                      value={mu.purchaseRate || 0}
-                      onChange={e => handleUpdate(idx, 'purchaseRate', Number(e.target.value))}
+                      value={mu.purchaseRate || ''}
+                      onChange={e => handleUpdate(idx, 'purchaseRate', e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-18 h-7 rounded border border-slate-300 px-1.5 font-mono outline-none focus:border-indigo-500 text-xs"
                     />
                   </td>
                   <td className="py-1 px-2">
                     <input
                       type="number" step="any"
-                      value={mu.saleRate || 0}
-                      onChange={e => handleUpdate(idx, 'saleRate', Number(e.target.value))}
+                      value={mu.saleRate || ''}
+                      onChange={e => handleUpdate(idx, 'saleRate', e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-18 h-7 rounded border border-slate-300 px-1.5 font-mono font-bold text-indigo-900 outline-none focus:border-indigo-500 text-xs"
                     />
                   </td>
@@ -108,8 +108,8 @@ export const MultiUnitEditor: React.FC<MultiUnitEditorProps> = ({ itemForm, setI
                     <td className="py-1 px-2">
                       <input
                         type="number" step="any"
-                        value={mu.wholesaleRate || 0}
-                        onChange={e => handleUpdate(idx, 'wholesaleRate', Number(e.target.value))}
+                        value={mu.wholesaleRate || ''}
+                        onChange={e => handleUpdate(idx, 'wholesaleRate', e.target.value === '' ? '' : Number(e.target.value))}
                         className="w-18 h-7 rounded border border-slate-300 px-1.5 font-mono font-bold text-emerald-800 outline-none focus:border-emerald-500 text-xs"
                       />
                     </td>
@@ -117,8 +117,8 @@ export const MultiUnitEditor: React.FC<MultiUnitEditorProps> = ({ itemForm, setI
                   <td className="py-1 px-2">
                     <input
                       type="number" step="any"
-                      value={mu.mrp || 0}
-                      onChange={e => handleUpdate(idx, 'mrp', Number(e.target.value))}
+                      value={mu.mrp || ''}
+                      onChange={e => handleUpdate(idx, 'mrp', e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-16 h-7 rounded border border-slate-300 px-1.5 font-mono outline-none focus:border-indigo-500 text-xs"
                     />
                   </td>

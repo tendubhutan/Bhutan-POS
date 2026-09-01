@@ -305,7 +305,6 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
       items: quoteItems.map(it => ({
         itemCode: it.itemCode,
         itemName: it.itemName,
-        hsn: it.hsn || '',
         qty: Number(it.qty) || 0,
         unit: it.unit || 'Pcs',
         rate: Number(it.rate) || 0,
@@ -313,11 +312,12 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
         gstPct: Number(it.gstPct) || 0,
         taxableValue: it.taxableValue || (Number(it.qty) * Number(it.rate)),
         gstAmount: it.gstAmount || 0,
+        zeroRated: 'N' as const,
         lineTotal: Number(it.lineTotal) || 0
       }))
     };
 
-    const res = saveQuotation(payload);
+    const res = saveQuotation(payload as any);
     if (res.ok) {
       showToast(`Quotation ${res.quotationNo} generated successfully!`, 'success');
       onDataRefresh();
@@ -334,7 +334,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
         voucherType: 'Quotation / Estimate',
         date: payload.date,
         partyName: customerName,
-        total: netQuotationTotal,
+        totalAmount: netQuotationTotal,
         totalItems: payload.items.length,
         currencySymbol,
         onPrint: () => {
@@ -426,7 +426,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
           return;
         }
       }
-      if (e.key === 'F2' && activeTab === 'create') {
+      if ((e.key === 'F2' || e.code === 'F2') && activeTab === 'create') {
         e.preventDefault();
         const formEl = document.getElementById('quotation-form') as HTMLFormElement | null;
         if (formEl) {
@@ -445,8 +445,21 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
         e.preventDefault();
       }
     };
+    const handleSaveEvent = (e: CustomEvent) => {
+      if (activeTab === 'create') {
+        const formEl = document.getElementById('quotation-form') as HTMLFormElement | null;
+        if (formEl) {
+          formEl.requestSubmit();
+          e.preventDefault();
+        }
+      }
+    };
     window.addEventListener('app:back' as any, handleBackEvent);
-    return () => window.removeEventListener('app:back' as any, handleBackEvent);
+    window.addEventListener('app:save' as any, handleSaveEvent);
+    return () => {
+      window.removeEventListener('app:back' as any, handleBackEvent);
+      window.removeEventListener('app:save' as any, handleSaveEvent);
+    };
   }, [activeTab, successModalDetails, onNavigateBack]);
 
   return (
@@ -1117,7 +1130,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                         {new Date(q.validUntil).toLocaleDateString()}
                       </td>
                       <td className="py-2.5 px-3 text-right font-black text-slate-900">
-                        {currencySymbol} {q.totalAmount.toFixed(2)}
+                        {currencySymbol} {(q.total || 0).toFixed(2)}
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         <select

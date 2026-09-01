@@ -433,13 +433,29 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     dateInputId: "sale-date-input",
   });
 
-  // Global Keyboard Shortcuts (F2 Accept/Save, Ctrl+A Accept/Save, F7/Ctrl+I Item/Ledger Info)
+  const handleSalesBack = (): boolean => {
+    if (serialModalOpen) {
+      setSerialModalOpen(false);
+      return true;
+    }
+    if (customerDrawerOpen) {
+      setCustomerDrawerOpen(false);
+      return true;
+    }
+    if (drillModalState) {
+      setDrillModalState(null);
+      return true;
+    }
+    return false;
+  };
+
+  // Global Keyboard Shortcuts (F2 Accept/Save, Ctrl+A Accept/Save, F7/Ctrl+I Item/Ledger Info, ESC Back)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl + A or F2: Accept and Save Invoice
       const isCtrlA =
         (e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A");
-      const isF2 = e.key === "F2";
+      const isF2 = e.key === "F2" || e.code === "F2";
 
       // Alt+L: Open Customer Ledger Panel
       if (e.altKey && e.key.toLowerCase() === "l") {
@@ -466,13 +482,11 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         e.preventDefault();
         e.stopPropagation();
 
-        // 1. If focused on customer ledger or customer name exists, show ledger report
         if (customerName) {
           setDrillModalState({ type: "ledger", targetId: customerName });
           return;
         }
 
-        // 2. Or if cart has items, show item info for last / active item
         if (cart.length > 0) {
           const lastLine = cart[cart.length - 1];
           const item = items.find(
@@ -492,17 +506,43 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       }
 
       if (e.key === "Escape") {
-        if (serialModalOpen) {
+        const handled = handleSalesBack();
+        if (handled) {
           e.preventDefault();
           e.stopPropagation();
-          setSerialModalOpen(false);
-          return;
         }
       }
     };
+
+    const handleSaveEvent = (e: Event) => {
+      e.preventDefault();
+      handleSaveInvoice();
+    };
+
+    const handleBackEvent = (e: Event) => {
+      const handled = handleSalesBack();
+      if (handled) {
+        e.preventDefault();
+      }
+    };
+
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cart, customerName, billDate, billNo, serialModalOpen]);
+    window.addEventListener("app:save", handleSaveEvent);
+    window.addEventListener("app:back", handleBackEvent);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("app:save", handleSaveEvent);
+      window.removeEventListener("app:back", handleBackEvent);
+    };
+  }, [
+    cart,
+    customerName,
+    billDate,
+    billNo,
+    serialModalOpen,
+    customerDrawerOpen,
+    drillModalState,
+  ]);
 
   const selectItem = (item: Item, autoAdd: boolean = true) => {
     const qty = 1;

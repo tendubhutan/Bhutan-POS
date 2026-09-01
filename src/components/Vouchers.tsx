@@ -528,7 +528,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
       } else if (e.altKey && e.key === 'F4') {
         e.preventDefault();
         handleVTypeChange('QUOTATION');
-      } else if (e.key === 'F2' || (e.ctrlKey && e.key === 'Enter')) {
+      } else if (e.key === 'F2' || e.code === 'F2' || (e.ctrlKey && e.key === 'Enter')) {
         e.preventDefault();
         if (['P', 'R', 'J', 'C'].includes(activeVType)) {
           handleSubmit();
@@ -582,7 +582,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
     filterNarration
   ]);
 
-  // Intercept app:back event from Header/App navigation
+  // Intercept app:back and app:save events from Header/App navigation
   useEffect(() => {
     const handleBackEvent = (e: CustomEvent) => {
       const handled = handleVoucherBack();
@@ -590,11 +590,30 @@ export const Vouchers: React.FC<VouchersProps> = ({
         e.preventDefault();
       }
     };
+    const handleSaveEvent = (e: CustomEvent) => {
+      if (['P', 'R', 'J', 'C'].includes(activeVType)) {
+        handleSubmit();
+        e.preventDefault();
+      }
+    };
     window.addEventListener('app:back' as any, handleBackEvent);
-    return () => window.removeEventListener('app:back' as any, handleBackEvent);
+    window.addEventListener('app:save' as any, handleSaveEvent);
+    return () => {
+      window.removeEventListener('app:back' as any, handleBackEvent);
+      window.removeEventListener('app:save' as any, handleSaveEvent);
+    };
   }, [
-    showCatalogModal,
+    activeVType,
+    amount,
+    partyLedger,
+    toAccount,
+    modeLedger,
+    debitLedger,
+    creditLedger,
+    lines,
+    entryMode,
     showLedgerModal,
+    showCatalogModal,
     viewVoucher,
     mismatchModal,
     successModalDetails,
@@ -602,17 +621,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
     deleteConfirmVoucher,
     shareModalVoucher,
     showShareRegisterModal,
-    activeVType,
-    mainTab,
-    voucherTypeHistory,
-    searchTerm,
-    filterStartDate,
-    filterEndDate,
-    filterVType,
-    filterStatus,
-    filterBillNo,
-    filterLedger,
-    filterNarration
+    voucherTypeHistory
   ]);
 
   // Open Quick Ledger Modal for Creating

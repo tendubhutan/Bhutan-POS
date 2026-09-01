@@ -447,7 +447,7 @@ export interface DeliveryNoteItem {
   itemName: string;
   description?: string;
   lineDescription?: string;
-  qty: number;
+  qty: number | '';
   unit?: string;
   rate?: number;
   amount?: number;

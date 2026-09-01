@@ -228,10 +228,35 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
     }, 20);
   };
 
-  // Global F2 listener
+  const handlePhysicalBack = (): boolean => {
+    if (successModalDetails) {
+      setSuccessModalDetails(null);
+      return true;
+    }
+    if (activeTab === 'history') {
+      setActiveTab('audit');
+      return true;
+    }
+    if (onNavigateBack) {
+      onNavigateBack();
+      return true;
+    }
+    return false;
+  };
+
+  // Global F2, Escape, and app event listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F2' && activeTab === 'audit') {
+      if (e.key === 'Escape') {
+        const handled = handlePhysicalBack();
+        if (handled) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation?.();
+          return;
+        }
+      }
+      if ((e.key === 'F2' || e.code === 'F2') && activeTab === 'audit') {
         e.preventDefault();
         const formEl = document.getElementById('physical-stock-form') as HTMLFormElement | null;
         if (formEl) {
@@ -239,9 +264,32 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
         }
       }
     };
+
+    const handleBackEvent = (e: CustomEvent) => {
+      const handled = handlePhysicalBack();
+      if (handled) {
+        e.preventDefault();
+      }
+    };
+    const handleSaveEvent = (e: CustomEvent) => {
+      if (activeTab === 'audit') {
+        const formEl = document.getElementById('physical-stock-form') as HTMLFormElement | null;
+        if (formEl) {
+          formEl.requestSubmit();
+          e.preventDefault();
+        }
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTab, stockLines, date, verifiedBy, remarks]);
+    window.addEventListener('app:back' as any, handleBackEvent);
+    window.addEventListener('app:save' as any, handleSaveEvent);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('app:back' as any, handleBackEvent);
+      window.removeEventListener('app:save' as any, handleSaveEvent);
+    };
+  }, [activeTab, stockLines, date, verifiedBy, remarks, successModalDetails, onNavigateBack]);
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2">

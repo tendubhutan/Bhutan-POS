@@ -351,10 +351,35 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
     }, 20);
   };
 
-  // Global F2 listener
+  const handleDeliveryBack = (): boolean => {
+    if (successModalDetails) {
+      setSuccessModalDetails(null);
+      return true;
+    }
+    if (activeTab === 'register') {
+      setActiveTab('create');
+      return true;
+    }
+    if (onNavigateBack) {
+      onNavigateBack();
+      return true;
+    }
+    return false;
+  };
+
+  // Global F2 and Escape listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F2' && activeTab === 'create') {
+      if (e.key === 'Escape') {
+        const handled = handleDeliveryBack();
+        if (handled) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation?.();
+          return;
+        }
+      }
+      if ((e.key === 'F2' || e.code === 'F2') && activeTab === 'create') {
         e.preventDefault();
         const formEl = document.getElementById('delivery-note-form') as HTMLFormElement | null;
         if (formEl) {
@@ -362,9 +387,32 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
         }
       }
     };
+
+    const handleBackEvent = (e: CustomEvent) => {
+      const handled = handleDeliveryBack();
+      if (handled) {
+        e.preventDefault();
+      }
+    };
+    const handleSaveEvent = (e: CustomEvent) => {
+      if (activeTab === 'create') {
+        const formEl = document.getElementById('delivery-note-form') as HTMLFormElement | null;
+        if (formEl) {
+          formEl.requestSubmit();
+          e.preventDefault();
+        }
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTab, customerName, totalQty, noteItems, date, orderRefNo, dispatchThrough, destination, vehicleNo, remarks]);
+    window.addEventListener('app:back' as any, handleBackEvent);
+    window.addEventListener('app:save' as any, handleSaveEvent);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('app:back' as any, handleBackEvent);
+      window.removeEventListener('app:save' as any, handleSaveEvent);
+    };
+  }, [activeTab, customerName, totalQty, noteItems, date, orderRefNo, dispatchThrough, destination, vehicleNo, remarks, successModalDetails, onNavigateBack]);
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2">

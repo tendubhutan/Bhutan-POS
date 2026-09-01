@@ -69,7 +69,8 @@ export const STORAGE_KEYS = {
   MONTHLY_PAYROLLS: 'deep_pos_monthly_payrolls',
   USERS: 'deep_pos_users',
   TRASH_LOG: 'deep_pos_trash',
-  BANK_RECON: 'deep_pos_bank_recon'
+  BANK_RECON: 'deep_pos_bank_recon',
+  DELETED_LEDGERS: 'deep_pos_deleted_ledgers'
 };
 
 const DEFAULT_CONFIG: Config = {
@@ -298,16 +299,45 @@ const DEFAULT_LEDGERS: Ledger[] = [
   { 'Ledger Name': 'GST Payable', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'GST Receivable', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
   { 'Ledger Name': 'Duties & Taxes', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
-  { 'Ledger Name': 'Salaries & Wages Expense', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
-  { 'Ledger Name': 'Rent Expense', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
-  { 'Ledger Name': 'Electricity Expense', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
   { 'Ledger Name': 'NPPF Payable', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'GIS Payable', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'PIT Payable', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'Health Contribution Payable', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'Salary Payable', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'Salary Advance Recovery', Group: 'Loans & Advances (Asset)', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
-  { 'Ledger Name': 'Staff Loan Recovery', Group: 'Loans & Advances (Asset)', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 }
+  { 'Ledger Name': 'Staff Loan Recovery', Group: 'Loans & Advances (Asset)', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+
+  // Pre-configured Common Expense Ledgers
+  { 'Ledger Name': 'Telephone Expenses', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Electricity Charges', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Internet Charges', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Water & Sewerage Charges', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Depreciation', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Transportation Charges', Group: 'Direct Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Labour Charges', Group: 'Direct Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Custom Duty', Group: 'Direct Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Loading/Unloading', Group: 'Direct Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Insurance Premium', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'TA/DA Expenses', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Fuel', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Repair & Maintenance Vehicle', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Repair & Maintenance Office', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Repair & Maintenance Shop', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Salary & Allowance', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Staff Welfare', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Entertainment', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Printing & Stationery', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Vehicle Registration Renewal', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Donation', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Membership Fee', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Postage & Courier', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Clearing Charges', Group: 'Direct Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Declaration Fee', Group: 'Direct Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Labour Permit', Group: 'Direct Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Agent Commission', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Training Expenses', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Travelling Expenses', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Rental Charges', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 }
 ];
 
 export function inferLedgerGroup(name: string, fallbackGroup: string = 'Sundry Debtors'): string {
@@ -519,18 +549,13 @@ export function sanitizeLedgers(list: Ledger[]): Ledger[] {
   const updated = list.map(l => {
     if (!l) return l;
     const name = (l['Ledger Name'] || '').trim();
-    const currentGroup = l.Group || '';
+    const currentGroup = (l.Group || '').trim();
 
-    // Check if the name matches a known system/bank/tax/expense type
-    const inferred = inferLedgerGroup(name, currentGroup || 'Sundry Debtors');
-    
     let targetGroup = currentGroup;
     if (l['Bank Name'] || l['Account No']) {
       targetGroup = 'Bank Accounts';
-    } else if (inferred !== 'Sundry Debtors' && inferred !== currentGroup) {
-      targetGroup = inferred;
-    } else if (!currentGroup) {
-      targetGroup = inferred;
+    } else if (!targetGroup) {
+      targetGroup = inferLedgerGroup(name, 'Sundry Debtors');
     }
 
     if (!targetGroup) {
@@ -802,7 +827,31 @@ export function nextCounter(name: string): number {
 }
 
 export function getLedgers(): Ledger[] {
-  return sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
+  let leds = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
+  const deletedLedgers = new Set(loadJson<string[]>(STORAGE_KEYS.DELETED_LEDGERS, []).map(d => (d || '').trim().toLowerCase()));
+
+  // Auto-purge TD/DA Expenses if present and unused (consolidating to TA/DA Expenses)
+  leds = leds.filter(l => {
+    const norm = (l['Ledger Name'] || '').trim().toLowerCase();
+    if (norm === 'td/da expenses' && !isLedgerInUse('TD/DA Expenses')) return false;
+    if (deletedLedgers.has(norm)) return false;
+    return true;
+  });
+
+  const existingLedgerNames = new Set(leds.map(l => (l['Ledger Name'] || '').trim().toLowerCase()));
+  let ledgersUpdated = false;
+  DEFAULT_LEDGERS.forEach(dl => {
+    const normName = (dl['Ledger Name'] || '').trim().toLowerCase();
+    if (!existingLedgerNames.has(normName) && !deletedLedgers.has(normName)) {
+      leds.push(dl);
+      existingLedgerNames.add(normName);
+      ledgersUpdated = true;
+    }
+  });
+
+  leds = sanitizeLedgers(leds);
+  saveJson(STORAGE_KEYS.LEDGERS, leds);
+  return leds;
 }
 
 export function getInitialData() {
@@ -820,7 +869,8 @@ export function getInitialData() {
   const uGrps = loadJson<UnitGroup[]>(STORAGE_KEYS.UNIT_GROUPS, DEFAULT_UNIT_GROUPS);
   const iGrps = loadJson<ItemGroup[]>(STORAGE_KEYS.ITEM_GROUPS, DEFAULT_ITEM_GROUPS);
   const iCats = loadJson<string[]>(STORAGE_KEYS.ITEM_CATEGORIES, DEFAULT_ITEM_CATEGORIES);
-  let leds = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
+  
+  const leds = getLedgers();
   let lGrps = loadJson<LedgerGroup[]>(STORAGE_KEYS.LEDGER_GROUPS, DEFAULT_LEDGER_GROUPS);
   const hB = loadJson<HeldBill[]>(STORAGE_KEYS.HELD_BILLS, []);
   const payHeads = loadJson<PayHead[]>(STORAGE_KEYS.PAY_HEADS, DEFAULT_PAY_HEADS);
@@ -1091,6 +1141,12 @@ export function saveConfig(cfgObj: Partial<Config>) {
 
 export function saveUnit(unit: Unit) {
   const list = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
+  const cleanName = (unit['Unit Name'] || '').trim();
+  if (!cleanName) return { ok: false, error: 'Unit Name is required.', units: list };
+
+  const dup = list.find(u => (u['Unit Name'] || '').trim().toLowerCase() === cleanName.toLowerCase() && (u['Unit Name'] || '').trim() !== (unit.oldName || '').trim());
+  if (dup) return { ok: false, error: `Duplicate Unit: A measurement unit named "${cleanName}" already exists.`, units: list };
+
   const idx = list.findIndex(u => u['Unit Name'] === (unit.oldName || unit['Unit Name']));
   if (idx > -1) list[idx] = unit; else list.push(unit);
   saveJson(STORAGE_KEYS.UNITS, list);
@@ -1099,6 +1155,12 @@ export function saveUnit(unit: Unit) {
 
 export function saveUnitGroup(group: UnitGroup) {
   const list = loadJson<UnitGroup[]>(STORAGE_KEYS.UNIT_GROUPS, DEFAULT_UNIT_GROUPS);
+  const cleanName = (group['Group Name'] || '').trim();
+  if (!cleanName) return { ok: false, error: 'Unit Group Name is required.', unitGroups: list };
+
+  const dup = list.find(g => (g['Group Name'] || '').trim().toLowerCase() === cleanName.toLowerCase() && (g['Group Name'] || '').trim() !== (group.oldName || '').trim());
+  if (dup) return { ok: false, error: `Duplicate Unit Group: A unit group named "${cleanName}" already exists.`, unitGroups: list };
+
   const idx = list.findIndex(g => g['Group Name'] === (group.oldName || group['Group Name']));
   if (idx > -1) list[idx] = group; else list.push(group);
   saveJson(STORAGE_KEYS.UNIT_GROUPS, list);
@@ -1107,6 +1169,12 @@ export function saveUnitGroup(group: UnitGroup) {
 
 export function saveItemGroup(group: ItemGroup) {
   const list = loadJson<ItemGroup[]>(STORAGE_KEYS.ITEM_GROUPS, DEFAULT_ITEM_GROUPS);
+  const cleanName = (group['Group Name'] || '').trim();
+  if (!cleanName) return { ok: false, error: 'Item Group Name is required.', itemGroups: list };
+
+  const dup = list.find(g => (g['Group Name'] || '').trim().toLowerCase() === cleanName.toLowerCase() && (g['Group Name'] || '').trim() !== (group.oldName || '').trim());
+  if (dup) return { ok: false, error: `Duplicate Item Group: An item group named "${cleanName}" already exists.`, itemGroups: list };
+
   const idx = list.findIndex(g => g['Group Name'] === (group.oldName || group['Group Name']));
   if (idx > -1) list[idx] = group; else list.push(group);
   saveJson(STORAGE_KEYS.ITEM_GROUPS, list);
@@ -1119,12 +1187,13 @@ export function getItemCategories(): string[] {
 
 export function saveItemCategory(catName: string) {
   const trimmed = catName.trim();
-  if (!trimmed) return { ok: false, categories: getItemCategories() };
+  if (!trimmed) return { ok: false, error: 'Category Name is required.', categories: getItemCategories() };
   const list = getItemCategories();
-  if (!list.includes(trimmed)) {
-    list.push(trimmed);
-    saveJson(STORAGE_KEYS.ITEM_CATEGORIES, list);
+  if (list.some(c => c.trim().toLowerCase() === trimmed.toLowerCase())) {
+    return { ok: false, error: `Duplicate Category: Category "${trimmed}" already exists.`, categories: list };
   }
+  list.push(trimmed);
+  saveJson(STORAGE_KEYS.ITEM_CATEGORIES, list);
   return { ok: true, categories: list };
 }
 
@@ -1154,17 +1223,25 @@ export function generateMissingBarcodes(): { count: number; items: Item[] } {
 export function saveItem(item: Item) {
   const list = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const isNew = !item.oldCode;
-  
+  const cleanCode = (item['Item Code'] || '').trim();
+  const cleanName = (item['Item Name'] || '').trim();
+
+  if (!cleanName) {
+    return { ok: false, error: 'Item Name is required.' };
+  }
+
+  // Duplicate Code & Name Checks
+  if (cleanCode) {
+    const duplicateCode = list.find(i => (i['Item Code'] || '').trim().toLowerCase() === cleanCode.toLowerCase() && (i['Item Code'] || '').trim() !== (item.oldCode || '').trim());
+    if (duplicateCode) return { ok: false, error: `Duplicate Item Code: An item with code "${cleanCode}" already exists.` };
+  }
+
+  const duplicateName = list.find(i => (i['Item Name'] || '').trim().toLowerCase() === cleanName.toLowerCase() && (i['Item Code'] || '').trim() !== (item.oldCode || '').trim());
+  if (duplicateName) return { ok: false, error: `Duplicate Item Name: An item named "${cleanName}" already exists.` };
+
   if (isNew && !item['Item Code']) {
     item['Item Code'] = 'ITM' + new Date().toISOString().replace(/\D/g, '').slice(2, 14);
   }
-  
-  // Duplicate Checks
-  const duplicateCode = list.find(i => i['Item Code'].toLowerCase() === item['Item Code'].toLowerCase() && i['Item Code'] !== item.oldCode);
-  if (duplicateCode) return { ok: false, error: `Duplicate Item Code: ${item['Item Code']}` };
-
-  const duplicateName = list.find(i => i['Item Name'].toLowerCase() === item['Item Name'].toLowerCase() && i['Item Code'] !== (item.oldCode || item['Item Code']));
-  if (duplicateName) return { ok: false, error: `Duplicate Item Name: ${item['Item Name']}` };
 
   if (!item['Barcode'] || !item['Barcode'].trim()) {
     item['Barcode'] = generateBarcode();
@@ -1186,16 +1263,72 @@ export function saveItem(item: Item) {
   return { ok: true, items: list };
 }
 
+export function isItemInUse(code: string): boolean {
+  if (!code || !code.trim()) return false;
+  const target = code.trim().toLowerCase();
+
+  // 1. Check if current stock > 0
+  const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+  const foundItem = items.find(i => (i['Item Code'] || '').trim().toLowerCase() === target);
+  if (foundItem && Number(foundItem['Current Stock']) > 0) {
+    return true;
+  }
+
+  // 2. Check Sales Invoices
+  const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+  if (sales.some(s => (s.items || []).some(i => (i['Item Code'] || '').trim().toLowerCase() === target))) return true;
+
+  // 3. Check Purchase Invoices
+  const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+  if (purchases.some(p => (p.items || []).some(i => (i['Item Code'] || '').trim().toLowerCase() === target))) return true;
+
+  // 4. Check Quotations, Delivery Notes, Physical Stock
+  const quotes = loadJson<Quotation[]>(STORAGE_KEYS.QUOTATIONS, []);
+  if (quotes.some(q => (q.items || []).some(i => (i['Item Code'] || '').trim().toLowerCase() === target))) return true;
+
+  const notes = loadJson<DeliveryNote[]>(STORAGE_KEYS.DELIVERY_NOTES, []);
+  if (notes.some(n => (n.items || []).some(i => (i['Item Code'] || '').trim().toLowerCase() === target))) return true;
+
+  const physicals = loadJson<PhysicalStockVoucher[]>(STORAGE_KEYS.PHYSICAL_STOCK, []);
+  if (physicals.some(p => (p.items || []).some(i => (i['Item Code'] || '').trim().toLowerCase() === target))) return true;
+
+  return false;
+}
+
 export function deleteItem(code: string) {
+  if (!code || !code.trim()) return { ok: false, error: 'Invalid item code.' };
+  const target = code.trim();
+
+  if (isItemInUse(target)) {
+    return {
+      ok: false,
+      error: `Cannot delete item code "${target}" because it has active stock movements, sales, or purchases.`
+    };
+  }
+
   let list = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
-  list = list.filter(i => i['Item Code'] !== code);
+  list = list.filter(i => (i['Item Code'] || '').trim().toLowerCase() !== target.toLowerCase());
   saveJson(STORAGE_KEYS.ITEMS, list);
-  deleteItemFromFirestore(code).catch(() => {});
+
+  // Clean orphan stock logs for deleted item
+  const stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+  const cleanLogs = stockLogs.filter(l => (l['Item Code'] || '').trim().toLowerCase() !== target.toLowerCase());
+  if (cleanLogs.length !== stockLogs.length) {
+    saveJson(STORAGE_KEYS.STOCK_LEDGER, cleanLogs);
+  }
+
+  deleteItemFromFirestore(target).catch(() => {});
   return { ok: true, items: list };
 }
 
 export function saveLedgerGroup(g: LedgerGroup) {
   const list = loadJson<LedgerGroup[]>(STORAGE_KEYS.LEDGER_GROUPS, DEFAULT_LEDGER_GROUPS);
+  const cleanName = (g['Group Name'] || '').trim();
+  if (!cleanName) return { ok: false, error: 'Ledger Group Name is required.', ledgerGroups: list };
+
+  const dup = list.find(x => (x['Group Name'] || '').trim().toLowerCase() === cleanName.toLowerCase() && (x['Group Name'] || '').trim() !== (g.oldName || '').trim());
+  if (dup) return { ok: false, error: `Duplicate Ledger Group: A group named "${cleanName}" already exists.`, ledgerGroups: list };
+
   const idx = list.findIndex(x => x['Group Name'] === (g.oldName || g['Group Name']));
   if (idx > -1) list[idx] = g; else list.push(g);
   saveJson(STORAGE_KEYS.LEDGER_GROUPS, list);
@@ -1204,19 +1337,24 @@ export function saveLedgerGroup(g: LedgerGroup) {
 
 export function saveLedger(l: Ledger) {
   let list = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
-  
-  const duplicateName = list.find(x => x['Ledger Name'].toLowerCase() === l['Ledger Name'].toLowerCase() && x['Ledger Name'] !== l.oldName);
-  if (duplicateName) return { ok: false, error: `Duplicate Ledger Name: ${l['Ledger Name']}` };
+  const cleanName = (l['Ledger Name'] || '').trim();
+
+  if (!cleanName) {
+    return { ok: false, error: 'Ledger Name is required.' };
+  }
+
+  const duplicateName = list.find(x => (x['Ledger Name'] || '').trim().toLowerCase() === cleanName.toLowerCase() && (x['Ledger Name'] || '').trim() !== (l.oldName || '').trim());
+  if (duplicateName) return { ok: false, error: `Duplicate Ledger Name: A ledger named "${cleanName}" already exists.` };
 
   const isNew = !l.oldName;
   l['Current Balance'] = isNew ? (Number(l['Opening Balance']) || 0) : Number(l['Current Balance']) || 0;
 
-  // Auto-infer group if group was omitted or default
+  // Auto-infer group if group was omitted
   if (!l.Group) {
     l.Group = inferLedgerGroup(l['Ledger Name'], 'Sundry Debtors');
   }
 
-  const idx = list.findIndex(x => x['Ledger Name'] === (l.oldName || l['Ledger Name']));
+  const idx = list.findIndex(x => (x['Ledger Name'] || '').trim().toLowerCase() === (l.oldName || l['Ledger Name']).trim().toLowerCase());
   if (idx > -1) list[idx] = l; else list.push(l);
   list = sanitizeLedgers(list);
   saveJson(STORAGE_KEYS.LEDGERS, list);
@@ -1239,11 +1377,90 @@ export function updateLedgerLogTransactionId(dateIso: string, refNo: string, tra
   }
 }
 
+export function isLedgerInUse(name: string): boolean {
+  if (!name || !name.trim()) return false;
+  const target = name.trim().toLowerCase();
+
+  // 1. Check if ledger has non-zero current balance or opening balance
+  const leds = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
+  const foundLedger = leds.find(l => (l['Ledger Name'] || '').trim().toLowerCase() === target);
+  if (foundLedger) {
+    const curBal = Math.abs(Number(foundLedger['Current Balance']) || 0);
+    const opBal = Math.abs(Number(foundLedger['Opening Balance']) || 0);
+    if (curBal >= 0.01 || opBal >= 0.01) {
+      return true;
+    }
+  }
+
+  // 2. Check Sales Invoices
+  const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+  if (sales.some(s => {
+    const cLedger = (s.customer?.ledger || '').trim().toLowerCase();
+    const cName = (s.customer?.name || '').trim().toLowerCase();
+    const b1 = (s.paymentDetails?.bank1Ledger || '').trim().toLowerCase();
+    const b2 = (s.paymentDetails?.bank2Ledger || '').trim().toLowerCase();
+    const expUsed = (s.additionalExpenses || []).some(exp => (exp.ledger || '').trim().toLowerCase() === target);
+    return cLedger === target || cName === target || b1 === target || b2 === target || expUsed;
+  })) return true;
+
+  // 3. Check Purchase Invoices
+  const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+  if (purchases.some(p => {
+    const sLedger = (p.supplier?.ledger || '').trim().toLowerCase();
+    const sName = (p.supplier?.name || '').trim().toLowerCase();
+    const b1 = (p.paymentDetails?.bank1Ledger || '').trim().toLowerCase();
+    const b2 = (p.paymentDetails?.bank2Ledger || '').trim().toLowerCase();
+    const expUsed = (p.additionalExpenses || []).some(exp => (exp.ledger || '').trim().toLowerCase() === target);
+    return sLedger === target || sName === target || b1 === target || b2 === target || expUsed;
+  })) return true;
+
+  // 4. Check Vouchers
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+  if (vouchers.some(v => {
+    const dbL = (v.debitLedger || '').trim().toLowerCase();
+    const crL = (v.creditLedger || '').trim().toLowerCase();
+    const lineUsed = (v.lines || []).some(r => (r.ledger || '').trim().toLowerCase() === target);
+    return dbL === target || crL === target || lineUsed;
+  })) return true;
+
+  // 5. Check Payroll Employees
+  const employees = loadJson<Employee[]>(STORAGE_KEYS.EMPLOYEES, []);
+  if (employees.some(e => (e['Employee Name'] || '').trim().toLowerCase() === target)) return true;
+
+  return false;
+}
+
 export function deleteLedger(name: string) {
+  if (!name || !name.trim()) return { ok: false, error: 'Invalid ledger name.' };
+  const target = name.trim();
+
+  if (isLedgerInUse(target)) {
+    return {
+      ok: false,
+      error: `Cannot delete ledger "${target}" because it has active transactions, vouchers, or a non-zero balance.`
+    };
+  }
+
   let list = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
-  list = list.filter(x => x['Ledger Name'] !== name);
+  list = list.filter(x => (x['Ledger Name'] || '').trim().toLowerCase() !== target.toLowerCase());
   saveJson(STORAGE_KEYS.LEDGERS, list);
-  deleteLedgerFromFirestore(name).catch(() => {});
+
+  // Record in deleted ledgers so it won't be re-created by DEFAULT_LEDGERS
+  const deleted = loadJson<string[]>(STORAGE_KEYS.DELETED_LEDGERS, []);
+  const normTarget = target.toLowerCase();
+  if (!deleted.includes(normTarget)) {
+    deleted.push(normTarget);
+    saveJson(STORAGE_KEYS.DELETED_LEDGERS, deleted);
+  }
+
+  // Clean orphan ledger log entries for this deleted ledger
+  const logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  const cleanLogs = logs.filter(l => (l['Ledger Name'] || '').trim().toLowerCase() !== normTarget);
+  if (cleanLogs.length !== logs.length) {
+    saveJson(STORAGE_KEYS.LEDGER_LOG, cleanLogs);
+  }
+
+  deleteLedgerFromFirestore(target).catch(() => {});
   return { ok: true, ledgers: list };
 }
 

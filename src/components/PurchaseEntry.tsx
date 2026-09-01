@@ -182,12 +182,24 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     dateInputId: 'pur-date-input'
   });
 
-  // Global Keyboard Shortcuts (F2 Accept/Save, Ctrl+A Accept/Save, F7/Ctrl+I Item/Ledger Info)
+  const handlePurchaseBack = (): boolean => {
+    if (serialModalOpen) {
+      setSerialModalOpen(false);
+      return true;
+    }
+    if (drillModalState) {
+      setDrillModalState(null);
+      return true;
+    }
+    return false;
+  };
+
+  // Global Keyboard Shortcuts (F2 Accept/Save, Ctrl+A Accept/Save, F7/Ctrl+I Item/Ledger Info, ESC Back)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl + A or F2: Accept and Save Purchase
       const isCtrlA = (e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A');
-      const isF2 = e.key === 'F2';
+      const isF2 = e.key === 'F2' || e.code === 'F2';
       if (isCtrlA || isF2) {
         e.preventDefault();
         e.stopPropagation();
@@ -220,17 +232,43 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       }
 
       if (e.key === 'Escape') {
-        if (serialModalOpen) {
+        const handled = handlePurchaseBack();
+        if (handled) {
           e.preventDefault();
           e.stopPropagation();
-          setSerialModalOpen(false);
-          return;
         }
       }
     };
+
+    const handleSaveEvent = (e: Event) => {
+      e.preventDefault();
+      handleSavePurchase();
+    };
+
+    const handleBackEvent = (e: Event) => {
+      const handled = handlePurchaseBack();
+      if (handled) {
+        e.preventDefault();
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cart, supplierName, billDate, billNo, serialModalOpen, isGstMode]);
+    window.addEventListener('app:save', handleSaveEvent);
+    window.addEventListener('app:back', handleBackEvent);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('app:save', handleSaveEvent);
+      window.removeEventListener('app:back', handleBackEvent);
+    };
+  }, [
+    cart,
+    supplierName,
+    billDate,
+    billNo,
+    serialModalOpen,
+    drillModalState,
+    isGstMode
+  ]);
 
   const selectItem = (item: Item, autoAdd: boolean = true) => {
     const qty = 1;

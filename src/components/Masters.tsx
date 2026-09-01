@@ -183,14 +183,14 @@ export const Masters: React.FC<MastersProps> = ({
     Group: itemGroups[0]?.['Group Name'] || 'General Electronics',
     Category: '',
     Unit: units[0]?.['Unit Name'] || 'Pcs',
-    'Purchase Rate': 0,
-    'Sale Rate': 0,
-    MRP: 0,
+    'Purchase Rate': '' as any,
+    'Sale Rate': '' as any,
+    MRP: '' as any,
     'GST %': 5,
     'Zero Rated (Y/N)': 'N',
     'Is Serialized': 'N',
-    'Opening Stock': 0,
-    'Reorder Level': 0,
+    'Opening Stock': '' as any,
+    'Reorder Level': '' as any,
     'Opening Serials': ''
   });
 
@@ -208,7 +208,7 @@ export const Masters: React.FC<MastersProps> = ({
     'Bank Name': '',
     Branch: '',
     'Account No': '',
-    'Opening Balance': 0,
+    'Opening Balance': '' as any,
     'Balance Type (Dr/Cr)': 'Dr'
   });
 
@@ -273,10 +273,14 @@ export const Masters: React.FC<MastersProps> = ({
     return false;
   };
 
-  // Close active modals or step back on Escape key
+  // Close active modals or step back on Escape key / Save on F2
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'F2' || e.code === 'F2') {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerMasterSave();
+      } else if (e.key === 'Escape') {
         const handled = handleMastersBack();
         if (handled) {
           e.preventDefault();
@@ -298,10 +302,25 @@ export const Masters: React.FC<MastersProps> = ({
     itemSearch,
     ledgerSearch,
     activeTab,
-    tabHistory
+    tabHistory,
+    itemForm,
+    ledgerForm,
+    quickGroupName,
+    quickUnitName,
+    quickCategoryName,
+    quickLedgerGroupName
   ]);
 
-  // Intercept app:back event from Header/App navigation
+  const triggerMasterSave = () => {
+    if (showQuickGroupModal) handleSaveQuickGroup();
+    else if (showQuickUnitModal) handleSaveQuickUnit();
+    else if (showQuickCategoryModal) handleSaveQuickCategory();
+    else if (showQuickLedgerGroupModal) handleSaveQuickLedgerGroup();
+    else if (showItemModal) handleSaveItem();
+    else if (showLedgerModal) handleSaveLedger();
+  };
+
+  // Intercept app:back and app:save events from Header/App navigation
   useEffect(() => {
     const handleBackEvent = (e: CustomEvent) => {
       const handled = handleMastersBack();
@@ -309,8 +328,16 @@ export const Masters: React.FC<MastersProps> = ({
         e.preventDefault();
       }
     };
+    const handleSaveEvent = (e: CustomEvent) => {
+      triggerMasterSave();
+      e.preventDefault();
+    };
     window.addEventListener('app:back' as any, handleBackEvent);
-    return () => window.removeEventListener('app:back' as any, handleBackEvent);
+    window.addEventListener('app:save' as any, handleSaveEvent);
+    return () => {
+      window.removeEventListener('app:back' as any, handleBackEvent);
+      window.removeEventListener('app:save' as any, handleSaveEvent);
+    };
   }, [
     showOpeningSerialModal,
     showQuickGroupModal,
@@ -322,7 +349,13 @@ export const Masters: React.FC<MastersProps> = ({
     itemSearch,
     ledgerSearch,
     activeTab,
-    tabHistory
+    tabHistory,
+    itemForm,
+    ledgerForm,
+    quickGroupName,
+    quickUnitName,
+    quickCategoryName,
+    quickLedgerGroupName
   ]);
 
   const showGst = String(config.EnableGST) !== 'false';
@@ -338,14 +371,14 @@ export const Masters: React.FC<MastersProps> = ({
       Group: itemGroups[0]?.['Group Name'] || 'General Electronics',
       Category: categoryList[0] || 'General',
       Unit: units[0]?.['Unit Name'] || 'Pcs',
-      'Purchase Rate': 0,
-      'Sale Rate': 0,
-      MRP: 0,
+      'Purchase Rate': '' as any,
+      'Sale Rate': '' as any,
+      MRP: '' as any,
       'GST %': Number(config.GSTRate) || 5,
       'Zero Rated (Y/N)': 'N',
       'Is Serialized': 'N',
-      'Opening Stock': 0,
-      'Reorder Level': 0,
+      'Opening Stock': '' as any,
+      'Reorder Level': '' as any,
       'Opening Serials': ''
     });
     setShowItemModal(true);
@@ -391,7 +424,12 @@ export const Masters: React.FC<MastersProps> = ({
       'Opening Serials': isSerializedItem && opStock > 0 ? itemForm['Opening Serials'] : ''
     };
 
-    saveItem(toSave);
+    const res = saveItem(toSave);
+    if (!res.ok) {
+      alert(res.error || 'Failed to save item.');
+      return;
+    }
+
     playSaveSound();
     setJustSavedItem(true);
     onDataRefresh();
@@ -403,7 +441,11 @@ export const Masters: React.FC<MastersProps> = ({
 
   const handleDeleteItem = (code: string) => {
     if (confirm('Delete this item?')) {
-      deleteItem(code);
+      const res = deleteItem(code);
+      if (!res.ok) {
+        alert(res.error || 'Cannot delete item.');
+        return;
+      }
       onDataRefresh();
     }
   };
@@ -426,7 +468,7 @@ export const Masters: React.FC<MastersProps> = ({
       'Bank Name': '',
       Branch: '',
       'Account No': '',
-      'Opening Balance': 0,
+      'Opening Balance': '' as any,
       'Balance Type (Dr/Cr)': 'Dr'
     });
     setShowLedgerModal(true);
@@ -456,7 +498,11 @@ export const Masters: React.FC<MastersProps> = ({
       'GST Type': isParty ? (ledgerForm['GST Type'] || 'Regular') : undefined,
       'GST Exempted': isParty && ledgerForm['GST Type'] === 'Exempted' ? 'Y' : 'N'
     };
-    saveLedger(toSave);
+    const res = saveLedger(toSave);
+    if (!res.ok) {
+      alert(res.error || 'Failed to save ledger.');
+      return;
+    }
     playSaveSound();
     setJustSavedLedger(true);
     onDataRefresh();
@@ -467,8 +513,12 @@ export const Masters: React.FC<MastersProps> = ({
   };
 
   const handleDeleteLedger = (name: string) => {
-    if (confirm('Delete this ledger?')) {
-      deleteLedger(name);
+    if (confirm(`Delete ledger "${name}"?`)) {
+      const res = deleteLedger(name);
+      if (!res.ok) {
+        alert(res.error || 'Cannot delete ledger.');
+        return;
+      }
       onDataRefresh();
     }
   };
@@ -480,7 +530,11 @@ export const Masters: React.FC<MastersProps> = ({
       alert('Group Name is required.');
       return;
     }
-    saveItemGroup({ 'Group Name': grpName, 'Parent Group': quickGroupParent.trim() });
+    const res = saveItemGroup({ 'Group Name': grpName, 'Parent Group': quickGroupParent.trim() });
+    if (!res.ok) {
+      alert(res.error || 'Failed to create group.');
+      return;
+    }
     playSaveSound();
     setJustSavedQuickGroup(true);
     onDataRefresh();
@@ -500,7 +554,11 @@ export const Masters: React.FC<MastersProps> = ({
       return;
     }
     const sym = quickUnitSymbol.trim() || uName.toLowerCase();
-    saveUnit({ 'Unit Name': uName, Symbol: sym, Group: 'Count', 'Conversion Factor': 1 });
+    const res = saveUnit({ 'Unit Name': uName, Symbol: sym, Group: 'Count', 'Conversion Factor': 1 });
+    if (!res.ok) {
+      alert(res.error || 'Failed to create unit.');
+      return;
+    }
     playSaveSound();
     setJustSavedQuickUnit(true);
     onDataRefresh();
@@ -520,6 +578,10 @@ export const Masters: React.FC<MastersProps> = ({
       return;
     }
     const res = saveItemCategory(cName);
+    if (!res.ok) {
+      alert(res.error || 'Failed to create category.');
+      return;
+    }
     playSaveSound();
     setJustSavedQuickCategory(true);
     setCategoryList(res.categories);
@@ -538,11 +600,15 @@ export const Masters: React.FC<MastersProps> = ({
       alert('Ledger Group Name is required.');
       return;
     }
-    saveLedgerGroup({
+    const res = saveLedgerGroup({
       'Group Name': lgName,
       'Parent Group': quickLedgerGroupParent.trim(),
       Nature: quickLedgerGroupNature
     });
+    if (!res.ok) {
+      alert(res.error || 'Failed to create ledger group.');
+      return;
+    }
     playSaveSound();
     setJustSavedQuickLedgerGroup(true);
     onDataRefresh();
@@ -926,8 +992,8 @@ export const Masters: React.FC<MastersProps> = ({
                 <input
                   type="number"
                   step="any"
-                  value={itemForm['Purchase Rate'] || 0}
-                  onChange={e => setItemSearchForm({ ...itemForm, 'Purchase Rate': Number(e.target.value) })}
+                  value={itemForm['Purchase Rate'] ?? ''}
+                  onChange={e => setItemSearchForm({ ...itemForm, 'Purchase Rate': e.target.value === '' ? '' as any : Number(e.target.value) })}
                   className="w-full h-8 rounded-lg border border-slate-300 px-2 font-mono text-xs outline-none focus:border-indigo-500"
                 />
               </div>
@@ -937,8 +1003,8 @@ export const Masters: React.FC<MastersProps> = ({
                 <input
                   type="number"
                   step="any"
-                  value={itemForm['Sale Rate'] || 0}
-                  onChange={e => setItemSearchForm({ ...itemForm, 'Sale Rate': Number(e.target.value) })}
+                  value={itemForm['Sale Rate'] ?? ''}
+                  onChange={e => setItemSearchForm({ ...itemForm, 'Sale Rate': e.target.value === '' ? '' as any : Number(e.target.value) })}
                   className="w-full h-8 rounded-lg border border-slate-300 px-2 font-mono font-bold text-indigo-900 text-xs outline-none focus:border-indigo-500 bg-indigo-50/20"
                 />
               </div>
@@ -949,8 +1015,8 @@ export const Masters: React.FC<MastersProps> = ({
                   <input
                     type="number"
                     step="any"
-                    value={itemForm['Wholesale Rate'] || 0}
-                    onChange={e => setItemSearchForm({ ...itemForm, 'Wholesale Rate': Number(e.target.value) })}
+                    value={itemForm['Wholesale Rate'] ?? ''}
+                    onChange={e => setItemSearchForm({ ...itemForm, 'Wholesale Rate': e.target.value === '' ? '' as any : Number(e.target.value) })}
                     className="w-full h-8 rounded-lg border border-slate-300 px-2 font-mono font-bold text-emerald-800 text-xs outline-none focus:border-emerald-500 bg-emerald-50/20"
                   />
                 </div>
@@ -961,8 +1027,8 @@ export const Masters: React.FC<MastersProps> = ({
                 <input
                   type="number"
                   step="any"
-                  value={itemForm.MRP || 0}
-                  onChange={e => setItemSearchForm({ ...itemForm, MRP: Number(e.target.value) })}
+                  value={itemForm.MRP ?? ''}
+                  onChange={e => setItemSearchForm({ ...itemForm, MRP: e.target.value === '' ? '' as any : Number(e.target.value) })}
                   className="w-full h-8 rounded-lg border border-slate-300 px-2 font-mono text-xs outline-none focus:border-indigo-500"
                 />
               </div>
@@ -1008,8 +1074,8 @@ export const Masters: React.FC<MastersProps> = ({
                   type="number"
                   min="0"
                   step="any"
-                  value={itemForm['Opening Stock'] ?? 0}
-                  onChange={e => setItemSearchForm({ ...itemForm, 'Opening Stock': Number(e.target.value) || 0 })}
+                  value={itemForm['Opening Stock'] ?? ''}
+                  onChange={e => setItemSearchForm({ ...itemForm, 'Opening Stock': e.target.value === '' ? '' as any : Number(e.target.value) })}
                   className="w-full h-7.5 rounded-lg border border-slate-300 px-2 font-mono text-xs outline-none focus:border-indigo-500 bg-white"
                 />
               </div>
@@ -1019,8 +1085,8 @@ export const Masters: React.FC<MastersProps> = ({
                 <input
                   type="number"
                   step="any"
-                  value={itemForm['Reorder Level'] || 0}
-                  onChange={e => setItemSearchForm({ ...itemForm, 'Reorder Level': Number(e.target.value) })}
+                  value={itemForm['Reorder Level'] ?? ''}
+                  onChange={e => setItemSearchForm({ ...itemForm, 'Reorder Level': e.target.value === '' ? '' as any : Number(e.target.value) })}
                   className="w-full h-7.5 rounded-lg border border-slate-300 px-2 font-mono text-xs outline-none focus:border-indigo-500 bg-white"
                 />
               </div>
@@ -1309,8 +1375,8 @@ export const Masters: React.FC<MastersProps> = ({
                 <input
                   type="number"
                   step="any"
-                  value={ledgerForm['Opening Balance'] || 0}
-                  onChange={e => setLedgerForm({ ...ledgerForm, 'Opening Balance': Number(e.target.value) })}
+                  value={ledgerForm['Opening Balance'] ?? ''}
+                  onChange={e => setLedgerForm({ ...ledgerForm, 'Opening Balance': e.target.value === '' ? '' as any : Number(e.target.value) })}
                   className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono outline-none"
                 />
               </div>

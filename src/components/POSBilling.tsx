@@ -551,6 +551,13 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         billDiscountInputRef.current?.select();
         return;
       }
+      if (e.key === 'Escape') {
+        const handled = handlePosBack();
+        if (handled) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -570,6 +577,72 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     bank2,
     billDiscount,
     heldBills
+  ]);
+
+  const handlePosBack = (): boolean => {
+    if (receiptModalOpen) {
+      setReceiptModalOpen(false);
+      return true;
+    }
+    if (showWalkInModal) {
+      setShowWalkInModal(false);
+      return true;
+    }
+    if (showCustomerModal) {
+      setShowCustomerModal(false);
+      return true;
+    }
+    if (showShortcutsModal) {
+      setShowShortcutsModal(false);
+      return true;
+    }
+    if (showSettingsModal) {
+      setShowSettingsModal(false);
+      return true;
+    }
+    if (serialModalOpen) {
+      setSerialModalOpen(false);
+      return true;
+    }
+    if (showDropdown) {
+      setShowDropdown(false);
+      return true;
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    const handleSaveEvent = (e: Event) => {
+      e.preventDefault();
+      handleCheckout();
+    };
+
+    const handleBackEvent = (e: Event) => {
+      const handled = handlePosBack();
+      if (handled) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('app:save', handleSaveEvent);
+    window.addEventListener('app:back', handleBackEvent);
+    return () => {
+      window.removeEventListener('app:save', handleSaveEvent);
+      window.removeEventListener('app:back', handleBackEvent);
+    };
+  }, [
+    receiptModalOpen,
+    showWalkInModal,
+    showCustomerModal,
+    showShortcutsModal,
+    showSettingsModal,
+    serialModalOpen,
+    showDropdown,
+    cart,
+    customerName,
+    cash,
+    bank1,
+    bank2
   ]);
 
   // Calculations with Lumpsum / Bill Discount support & GST Exemption

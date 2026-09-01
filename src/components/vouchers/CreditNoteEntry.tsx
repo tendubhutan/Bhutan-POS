@@ -37,7 +37,8 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
   onDataRefresh,
   onOpenQuickLedger,
   onOpenNewItemModal,
-  onPrintVoucher
+  onPrintVoucher,
+  onNavigateBack
 }) => {
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
@@ -297,10 +298,24 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
     }, 20);
   };
 
-  // Global F2 listener
+  // Global F2, Escape, and app event listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F2') {
+      if (e.key === 'Escape') {
+        if (successModalDetails) {
+          setSuccessModalDetails(null);
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        if (onNavigateBack) {
+          onNavigateBack();
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      }
+      if (e.key === 'F2' || e.code === 'F2') {
         e.preventDefault();
         const formEl = document.getElementById('credit-note-form') as HTMLFormElement | null;
         if (formEl) {
@@ -308,9 +323,34 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
         }
       }
     };
+
+    const handleBackEvent = (e: CustomEvent) => {
+      if (successModalDetails) {
+        setSuccessModalDetails(null);
+        e.preventDefault();
+      } else if (onNavigateBack) {
+        onNavigateBack();
+        e.preventDefault();
+      }
+    };
+
+    const handleSaveEvent = (e: CustomEvent) => {
+      const formEl = document.getElementById('credit-note-form') as HTMLFormElement | null;
+      if (formEl) {
+        formEl.requestSubmit();
+        e.preventDefault();
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [totalCreditAmount, partyLedger, date, originalInvoiceRef, itemLines, lumpSumAmount, lumpSumGst]);
+    window.addEventListener('app:back' as any, handleBackEvent);
+    window.addEventListener('app:save' as any, handleSaveEvent);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('app:back' as any, handleBackEvent);
+      window.removeEventListener('app:save' as any, handleSaveEvent);
+    };
+  }, [totalCreditAmount, partyLedger, date, originalInvoiceRef, itemLines, lumpSumAmount, lumpSumGst, successModalDetails, onNavigateBack]);
 
   return (
     <form id="credit-note-form" onSubmit={handleSubmit} className="flex flex-col h-full min-h-0 space-y-2">
