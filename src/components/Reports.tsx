@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Config, Item, Ledger } from '../types';
 import {
-  getDailyColumnarReport, getGSTReport, getAdvancedReports, getFinancialReports, getFullLedgerStatement
+  getDailyColumnarReport, getGSTReport, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig
 } from '../services/storageService';
 import XLSX from 'xlsx-js-style';
 import {
-  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp } from 'lucide-react';
+  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2
+} from 'lucide-react';
 import { PrintReportModal } from './PrintReportModal';
 import { generateReportPDF, shareOrDownloadPDF } from '../utils/pdfExport';
+import { TallyPrimeView, ReportDetailDepth } from './TallyPrimeView';
 
 export interface ReportTarget {
   category: 'daily' | 'gst' | 'inv' | 'fin' | 'reg';
@@ -44,6 +46,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const [mainCategory, setMainCategory] = useState<'daily' | 'gst' | 'inv' | 'fin' | 'reg'>('daily');
   const [invSubTab, setInvSubTab] = useState<'summary' | 'mov' | 'prof' | 'top' | 'serials'>('summary');
   const [finSubTab, setFinSubTab] = useState<'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED'>('TB');
+  const [reportDepth, setReportDepth] = useState<ReportDetailDepth>(config?.ReportDetailDepth || 'detailed');
   const [regSubTab, setRegSubTab] = useState<'sales' | 'purchases'>('sales');
   const [ledgerTypeFilter, setLedgerTypeFilter] = useState('ALL');
 
@@ -395,26 +398,72 @@ export const Reports: React.FC<ReportsProps> = ({
         ];
       }
     } else if (mainCategory === 'fin') {
+      const detailDepth = config?.ReportDetailDepth || 'detailed';
+
       if (finSubTab === 'TB' && reportData?.tb) {
-        reportTitle = 'Trial Balance Statement';
-        headers = ['Ledger Account', 'Parent Group / Classification', 'Nature', 'Debit Amount (Dr) (Nu.)', 'Credit Amount (Cr) (Nu.)'];
         let totDr = 0;
         let totCr = 0;
         reportData.tb.forEach((l: any) => {
           totDr += Number(l.dr) || 0;
           totCr += Number(l.cr) || 0;
-          rows.push([l.name, l.grp || '-', l.nat || '-', l.dr ? fmt(l.dr) : '', l.cr ? fmt(l.cr) : '']);
         });
-        totalsRow = ['TOTAL TRIAL BALANCE', '', '', fmt(totDr), fmt(totCr)];
         const diff = Math.abs(totDr - totCr);
+
+        if (detailDepth === 'summary') {
+          reportTitle = 'Trial Balance Statement (Grouped Summary)';
+          headers = ['Primary Account Group', 'Nature', 'Debit Amount (Dr) (Nu.)', 'Credit Amount (Cr) (Nu.)'];
+          const grpMap: Record<string, { nat: string; dr: number; cr: number }> = {};
+          reportData.tb.forEach((l: any) => {
+            const g = l.grp || 'Unassigned';
+            if (!grpMap[g]) grpMap[g] = { nat: l.nat || '-', dr: 0, cr: 0 };
+            grpMap[g].dr += Number(l.dr) || 0;
+            grpMap[g].cr += Number(l.cr) || 0;
+          });
+          Object.entries(grpMap).forEach(([grp, val]) => {
+            rows.push([grp, val.nat, val.dr ? fmt(val.dr) : '', val.cr ? fmt(val.cr) : '']);
+          });
+        } else {
+          const isSuper = detailDepth === 'super_detailed';
+          reportTitle = `Trial Balance Statement (${isSuper ? 'Super Detailed Master View' : 'Detailed Group View'})`;
+          headers = ['Particulars (Group / Master Ledger)', 'Opening Dr/Cr', 'Period Dr (Nu.)', 'Period Cr (Nu.)', 'Closing Dr (Nu.)', 'Closing Cr (Nu.)'];
+
+          const grpMap: Record<string, any[]> = {};
+          reportData.tb.forEach((l: any) => {
+            const g = l.grp || 'Unassigned';
+            if (!grpMap[g]) grpMap[g] = [];
+            grpMap[g].push(l);
+          });
+
+          Object.entries(grpMap).forEach(([grpName, ledgersInGrp]) => {
+            let gOpDr = 0, gOpCr = 0, gPeriodDr = 0, gPeriodCr = 0, gDr = 0, gCr = 0;
+            ledgersInGrp.forEach((l: any) => {
+              gOpDr += l.opDr || 0;
+              gOpCr += l.opCr || 0;
+              gPeriodDr += l.periodDr || 0;
+              gPeriodCr += l.periodCr || 0;
+              gDr += l.dr || 0;
+              gCr += l.cr || 0;
+            });
+
+            const opStr = gOpDr > 0 ? `${fmt(gOpDr)} Dr` : gOpCr > 0 ? `${fmt(gOpCr)} Cr` : '-';
+            rows.push([grpName.toUpperCase(), opStr, fmt(gPeriodDr), fmt(gPeriodCr), gDr ? fmt(gDr) : '', gCr ? fmt(gCr) : '']);
+
+            if (isSuper) {
+              ledgersInGrp.forEach((l: any) => {
+                const lOpStr = (l.opDr || 0) > 0 ? `${fmt(l.opDr)} Dr` : (l.opCr || 0) > 0 ? `${fmt(l.opCr)} Cr` : '-';
+                rows.push([`   • ${l.name}`, lOpStr, fmt(l.periodDr), fmt(l.periodCr), l.dr ? fmt(l.dr) : '', l.cr ? fmt(l.cr) : '']);
+              });
+            }
+          });
+        }
+
+        totalsRow = ['TOTAL TRIAL BALANCE', '', '', fmt(totDr), fmt(totCr)];
         summaryCards = [
           { label: 'Total Debits (Dr)', value: `Nu. ${fmt(totDr)}` },
           { label: 'Total Credits (Cr)', value: `Nu. ${fmt(totCr)}` },
           { label: 'Balance Status', value: diff < 0.01 ? 'Balanced (Dr = Cr)' : `Unbalanced Diff: Nu. ${fmt(diff)}` }
         ];
       } else if (finSubTab === 'PNL' && reportData?.pnl) {
-        reportTitle = 'Trading & Profit & Loss Statement';
-        headers = ['Particulars / Accounting Schedule', 'Category Type', 'Amount (Nu.)'];
         const p = reportData.pnl;
         const s = Number(p.s) || 0;
         const di = Number(p.di) || 0;
@@ -429,32 +478,29 @@ export const Reports: React.FC<ReportsProps> = ({
         const grossProfit = s + di - cogs;
         const netProfit = grossProfit + ii - ie;
 
+        reportTitle = 'Profit & Loss Statement';
+        headers = ['Particulars (Expenses & Income)', 'Dr Amount (Nu.)', 'Cr Amount (Nu.)'];
+
         rows = [
-          ['--- TRADING ACCOUNT ---', '', ''],
-          ['Revenue from Operations (Sales)', 'Direct Revenue', fmt(s)],
-          ['Direct Incomes', 'Direct Revenue', fmt(di)],
-          ['Opening Stock Valuation', 'COGS Component', fmt(os)],
-          ['Cost of Purchases', 'COGS Component', fmt(pur)],
-          ['Direct Expenses', 'COGS Component', fmt(de)],
-          ['Less: Closing Stock Valuation', 'COGS Component', `-${fmt(cs)}`],
-          ['Total Cost of Goods Sold (COGS)', 'Cost Subtotal', fmt(cogs)],
-          ['GROSS PROFIT / (GROSS LOSS)', 'Gross Margin', fmt(grossProfit)],
-          ['', '', ''],
-          ['--- PROFIT & LOSS ACCOUNT ---', '', ''],
-          ['Gross Profit b/d', 'Gross Margin', fmt(grossProfit)],
-          ['Indirect Income', 'Other Income', fmt(ii)],
-          ['Indirect Expenses', 'Operating Expense', `-${fmt(ie)}`],
-          ['NET PROFIT / (NET LOSS) FOR PERIOD', 'Net Operating Result', fmt(netProfit)]
+          ['Revenue from Operations (Sales)', '', fmt(s)],
+          ['Direct Income', '', fmt(di)],
+          ['Opening Stock Valuation', fmt(os), ''],
+          ['Cost of Purchases', fmt(pur), ''],
+          ['Direct Expenses', fmt(de), ''],
+          ['Less: Closing Stock Valuation', `-${fmt(cs)}`, ''],
+          ['GROSS PROFIT', fmt(grossProfit >= 0 ? grossProfit : 0), fmt(grossProfit < 0 ? Math.abs(grossProfit) : 0)],
+          ['Indirect Income', '', fmt(ii)],
+          ['Indirect Expenses', fmt(ie), ''],
+          ['NET PROFIT / (LOSS)', fmt(netProfit < 0 ? Math.abs(netProfit) : 0), fmt(netProfit >= 0 ? netProfit : 0)]
         ];
-        totalsRow = ['NET PROFIT / (LOSS) TRANSFERRED TO EQUITY', '', fmt(netProfit)];
+
+        totalsRow = ['TOTAL NET RESULT', fmt(netProfit < 0 ? Math.abs(netProfit) : 0), fmt(netProfit >= 0 ? netProfit : 0)];
         summaryCards = [
           { label: 'Total Revenue', value: `Nu. ${fmt(s + di + ii)}` },
           { label: 'Gross Profit', value: `Nu. ${fmt(grossProfit)}` },
           { label: 'Net Profit / (Loss)', value: `Nu. ${fmt(netProfit)}` }
         ];
       } else if (finSubTab === 'BS' && reportData?.bs && reportData?.pnl) {
-        reportTitle = 'Balance Sheet Statement';
-        headers = ['Capital & Liabilities', 'Amount (Nu.)', 'Assets & Properties', 'Amount (Nu.)'];
         const p = reportData.pnl;
         const s = Number(p.s) || 0;
         const di = Number(p.di) || 0;
@@ -479,32 +525,24 @@ export const Reports: React.FC<ReportsProps> = ({
 
         const totLiabBeforeDiff = netEquity + loans + cl;
         const totAssetBeforeDiff = fa + ca + stockVal;
-        const diff = totAssetBeforeDiff - totLiabBeforeDiff;
-
         const finalTotal = Math.max(totLiabBeforeDiff, totAssetBeforeDiff);
 
+        reportTitle = 'Balance Sheet Statement';
+        headers = ['Capital & Liabilities', 'Amount (Nu.)', 'Assets & Properties', 'Amount (Nu.)'];
+
         rows = [
-          ['Owner\'s Capital Account (Opening)', fmt(cap), 'Fixed Assets (Properties/Equip)', fmt(fa)],
+          ['Capital Account (Opening)', fmt(cap), 'Fixed Assets', fmt(fa)],
           ['Add: Net Profit / (Loss) for Period', fmt(netProfit), 'Current Assets (Cash/Bank/Debtors)', fmt(ca)],
-          ['Total Owner\'s Equity', fmt(netEquity), 'Closing Stock Valuation', fmt(stockVal)],
-          ['Loans & Borrowings (Liabilities)', fmt(loans), '', ''],
-          ['Current Liabilities & Payables', fmt(cl), '', '']
+          ['Loans & Borrowings (Liabilities)', fmt(loans), 'Closing Stock Valuation', fmt(stockVal)],
+          ['Current Liabilities & Payables', fmt(cl), '', ''],
+          ['TOTAL LIABILITIES & EQUITY', fmt(finalTotal), 'TOTAL ASSETS', fmt(finalTotal)]
         ];
 
-        if (Math.abs(diff) > 0.01) {
-          rows.push([
-            diff > 0 ? 'Unadjusted Opening Mismatch' : '',
-            diff > 0 ? fmt(diff) : '',
-            diff < 0 ? 'Unadjusted Opening Mismatch' : '',
-            diff < 0 ? fmt(Math.abs(diff)) : ''
-          ]);
-        }
-
-        totalsRow = ['TOTAL CAPITAL & LIABILITIES', fmt(finalTotal), 'TOTAL ASSETS', fmt(finalTotal)];
+        totalsRow = ['BALANCE SHEET TOTAL', fmt(finalTotal), 'BALANCE SHEET TOTAL', fmt(finalTotal)];
         summaryCards = [
-          { label: 'Total Owner\'s Equity', value: `Nu. ${fmt(netEquity)}` },
-          { label: 'Total Liabilities & Capital', value: `Nu. ${fmt(finalTotal)}` },
-          { label: 'Total Assets & Stock', value: `Nu. ${fmt(finalTotal)}` }
+          { label: 'Total Owner Equity', value: `Nu. ${fmt(netEquity)}` },
+          { label: 'Total Assets', value: `Nu. ${fmt(totAssetBeforeDiff)}` },
+          { label: 'Total Liabilities', value: `Nu. ${fmt(totLiabBeforeDiff)}` }
         ];
       } else if (finSubTab === 'REC' && reportData?.rec) {
         reportTitle = 'Outstanding Receivables Report';
@@ -807,7 +845,20 @@ export const Reports: React.FC<ReportsProps> = ({
   const handleDirectDownloadPDF = () => {
     const p = getReportDataExportPayload();
     if (!p) return;
-    const doc = generateReportPDF(p.reportTitle, config, fromDate, toDate, p.headers, p.rows, p.totalsRow, p.summaryCards);
+    const isFin = mainCategory === 'fin' && (finSubTab === 'TB' || finSubTab === 'PNL' || finSubTab === 'BS');
+    const doc = generateReportPDF(
+      p.reportTitle,
+      config,
+      fromDate,
+      toDate,
+      p.headers,
+      p.rows,
+      p.totalsRow,
+      p.summaryCards,
+      isFin ? (finSubTab as 'TB' | 'PNL' | 'BS') : undefined,
+      reportData,
+      config?.ReportDetailDepth || 'detailed'
+    );
     const safeTitle = p.reportTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
     doc.save(`${safeTitle}_${fromDate}_to_${toDate}.pdf`);
   };
@@ -815,7 +866,20 @@ export const Reports: React.FC<ReportsProps> = ({
   const handleDirectSharePDF = async () => {
     const p = getReportDataExportPayload();
     if (!p) return;
-    const doc = generateReportPDF(p.reportTitle, config, fromDate, toDate, p.headers, p.rows, p.totalsRow, p.summaryCards);
+    const isFin = mainCategory === 'fin' && (finSubTab === 'TB' || finSubTab === 'PNL' || finSubTab === 'BS');
+    const doc = generateReportPDF(
+      p.reportTitle,
+      config,
+      fromDate,
+      toDate,
+      p.headers,
+      p.rows,
+      p.totalsRow,
+      p.summaryCards,
+      isFin ? (finSubTab as 'TB' | 'PNL' | 'BS') : undefined,
+      reportData,
+      config?.ReportDetailDepth || 'detailed'
+    );
     const safeTitle = p.reportTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const filename = `${safeTitle}_${fromDate}_to_${toDate}.pdf`;
     await shareOrDownloadPDF(doc, filename, `${p.reportTitle} - ${config.CompanyName || 'Store'}`, generateReportSummaryText());
@@ -834,6 +898,13 @@ export const Reports: React.FC<ReportsProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  const handleDepthChange = (depth: ReportDetailDepth) => {
+    setReportDepth(depth);
+    if (config) {
+      saveConfig({ ...config, ReportDetailDepth: depth });
+    }
+  };
+
   const currentPayload = getReportDataExportPayload();
 
   return (
@@ -851,6 +922,9 @@ export const Reports: React.FC<ReportsProps> = ({
           rows={currentPayload.rows}
           totals={currentPayload.totalsRow || undefined}
           summaryCards={currentPayload.summaryCards}
+          reportType={mainCategory === 'fin' && (finSubTab === 'TB' || finSubTab === 'PNL' || finSubTab === 'BS') ? (finSubTab as 'TB' | 'PNL' | 'BS') : undefined}
+          reportData={reportData}
+          depth={reportDepth}
         />
       )}
 
@@ -1012,6 +1086,38 @@ export const Reports: React.FC<ReportsProps> = ({
                   GST Only
                 </label>
               )}
+            </div>
+          )}
+
+          {mainCategory === 'fin' && (finSubTab === 'TB' || finSubTab === 'PNL' || finSubTab === 'BS') && (
+            <div className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-lg p-0.5 shadow-inner">
+              <button
+                onClick={() => handleDepthChange('summary')}
+                className={`px-2 py-1 rounded text-xs font-semibold transition flex items-center gap-1 ${
+                  reportDepth === 'summary' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                }`}
+              >
+                <ListFilter className="h-3 w-3" />
+                <span className="hidden sm:inline">Summary</span>
+              </button>
+              <button
+                onClick={() => handleDepthChange('detailed')}
+                className={`px-2 py-1 rounded text-xs font-semibold transition flex items-center gap-1 ${
+                  reportDepth === 'detailed' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                }`}
+              >
+                <Layers className="h-3 w-3" />
+                <span className="hidden sm:inline">Detailed</span>
+              </button>
+              <button
+                onClick={() => handleDepthChange('super_detailed')}
+                className={`px-2 py-1 rounded text-xs font-semibold transition flex items-center gap-1 ${
+                  reportDepth === 'super_detailed' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                }`}
+              >
+                <Maximize2 className="h-3 w-3" />
+                <span className="hidden sm:inline">Super Detailed</span>
+              </button>
             </div>
           )}
         </div>
@@ -1228,7 +1334,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
       <div className="bg-white border-y border-slate-200 shadow-xs -mx-3 sm:-mx-6 mb-[-1.5rem] lg:mb-[-2rem]">
         {!isControlsCollapsed && (
-          <div className="px-4 sm:px-6 py-2 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          <div className="px-4 sm:px-6 py-2 border-b border-slate-200 bg-slate-50 flex flex-wrap justify-between items-center gap-2">
             <h2 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-2">
               <span>Report View</span>
             </h2>
@@ -1308,11 +1414,11 @@ export const Reports: React.FC<ReportsProps> = ({
                               return cName;
                             })()}
                           </td>
-                          <td className="py-2 px-3 text-right font-mono">{fmt(r.cash)}</td>
-                          <td className="py-2 px-3 text-right font-mono">{fmt(r.bank1)}</td>
-                          <td className="py-2 px-3 text-right font-mono">{fmt(r.bank2)}</td>
-                          <td className="py-2 px-3 text-right font-mono text-amber-600">{fmt(r.credit)}</td>
-                          <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono">{fmt(r.total)}</td>
+                          <td className="py-2 px-3 text-right font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.cash)}</td>
+                          <td className="py-2 px-3 text-right font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.bank1)}</td>
+                          <td className="py-2 px-3 text-right font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.bank2)}</td>
+                          <td className="py-2 px-3 text-right font-mono text-amber-600">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.credit)}</td>
+                          <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.total)}</td>
                         </tr>
                       ))}
                 </tbody>
@@ -1370,10 +1476,10 @@ export const Reports: React.FC<ReportsProps> = ({
                       </td>
                       <td className="py-2 px-3 font-mono text-slate-500">{r.customerGST || '-'}</td>
                       <td className="py-2 px-3 font-bold text-indigo-600">{r.billNumber}</td>
-                      <td className="py-2 px-3 text-right font-mono">{fmt(r.taxable)}</td>
-                      <td className="py-2 px-3 text-right font-mono">{fmt(r.zeroRated)}</td>
-                      <td className="py-2 px-3 text-right font-mono text-indigo-700">{fmt(r.gstAmount)}</td>
-                      <td className="py-2 px-3 text-right font-bold font-mono">{fmt(r.total)}</td>
+                      <td className="py-2 px-3 text-right font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.taxable)}</td>
+                      <td className="py-2 px-3 text-right font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.zeroRated)}</td>
+                      <td className="py-2 px-3 text-right font-mono text-indigo-700">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.gstAmount)}</td>
+                      <td className="py-2 px-3 text-right font-bold font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.total)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1767,7 +1873,13 @@ export const Reports: React.FC<ReportsProps> = ({
                             {inv.payment?.bank1 > 0 ? 'Bank1 ' : ''}
                             {inv.payment?.bank2 > 0 ? 'Bank2 ' : ''}
                           </td>
-                          <td className="py-3 px-4 text-right text-slate-900 font-bold">{fmt(inv.totalAmount)}</td>
+                          <td className="py-3 px-4 text-right font-bold font-mono">
+                            {inv.isCancelled ? (
+                              <span className="text-red-600 font-bold">0.00</span>
+                            ) : (
+                              <span className="text-slate-900">{fmt(inv.totalAmount)}</span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                       {reportData.length === 0 && (
@@ -1806,7 +1918,13 @@ export const Reports: React.FC<ReportsProps> = ({
                             {inv.payment?.bank1 > 0 ? 'Bank1 ' : ''}
                             {inv.payment?.bank2 > 0 ? 'Bank2 ' : ''}
                           </td>
-                          <td className="py-3 px-4 text-right text-slate-900 font-bold">{fmt(inv.totalAmount)}</td>
+                          <td className="py-3 px-4 text-right font-bold font-mono">
+                            {inv.isCancelled ? (
+                              <span className="text-red-600 font-bold">0.00</span>
+                            ) : (
+                              <span className="text-slate-900">{fmt(inv.totalAmount)}</span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                       {reportData.length === 0 && (
@@ -1816,497 +1934,50 @@ export const Reports: React.FC<ReportsProps> = ({
                   </table>
                 )}
 
-                {finSubTab === 'TB' && reportData?.tb && (() => {
-                  let totDr = 0;
-                  let totCr = 0;
-                  (reportData.tb || []).forEach((l: any) => {
-                    totDr += Number(l.dr) || 0;
-                    totCr += Number(l.cr) || 0;
-                  });
-                  const diff = Math.abs(totDr - totCr);
-                  const isBalanced = diff < 0.01;
-
-                  // Filter by search term
-                  const filteredTb = (reportData.tb || []).filter((l: any) =>
-                    l.name.toLowerCase().includes(tbSearch.toLowerCase()) ||
-                    (l.grp && l.grp.toLowerCase().includes(tbSearch.toLowerCase())) ||
-                    (l.nat && l.nat.toLowerCase().includes(tbSearch.toLowerCase()))
-                  );
-
-                  // Group summary aggregation if view mode is 'group'
-                  const groupAgg: { [key: string]: { grp: string; nat: string; dr: number; cr: number } } = {};
-                  if (tbViewMode === 'group') {
-                    filteredTb.forEach((l: any) => {
-                      const key = l.grp || 'Unassigned';
-                      if (!groupAgg[key]) {
-                        groupAgg[key] = { grp: key, nat: l.nat || 'Asset', dr: 0, cr: 0 };
-                      }
-                      groupAgg[key].dr += Number(l.dr) || 0;
-                      groupAgg[key].cr += Number(l.cr) || 0;
-                    });
-                  }
-
-                  return (
-                    <div className="space-y-4">
-                      {/* Summary Header Badges */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3 flex justify-between items-center">
-                          <div>
-                            <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">Total Debits (Dr)</span>
-                            <div className="text-lg font-bold font-mono text-emerald-900">Nu. {fmt(totDr)}</div>
-                          </div>
-                          <CircleDollarSign className="h-6 w-6 text-emerald-500 opacity-60" />
-                        </div>
-
-                        <div className="bg-rose-50/80 border border-rose-200 rounded-xl p-3 flex justify-between items-center">
-                          <div>
-                            <span className="text-[11px] font-semibold text-rose-700 uppercase tracking-wide">Total Credits (Cr)</span>
-                            <div className="text-lg font-bold font-mono text-rose-900">Nu. {fmt(totCr)}</div>
-                          </div>
-                          <CircleDollarSign className="h-6 w-6 text-rose-500 opacity-60" />
-                        </div>
-
-                        <div className={`border rounded-xl p-3 flex justify-between items-center ${isBalanced ? 'bg-indigo-50/80 border-indigo-200' : 'bg-amber-50/80 border-amber-200'}`}>
-                          <div>
-                            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wide">Trial Balance Status</span>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              {isBalanced ? (
-                                <>
-                                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                                  <span className="font-bold text-sm text-emerald-800">Balanced (Dr = Cr)</span>
-                                </>
-                              ) : (
-                                <>
-                                  <AlertCircle className="h-4 w-4 text-amber-600" />
-                                  <span className="font-bold text-sm text-amber-900">Diff: Nu. {fmt(diff)}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          <Scale className={`h-6 w-6 opacity-60 ${isBalanced ? 'text-indigo-500' : 'text-amber-500'}`} />
-                        </div>
-                      </div>
-
-                      {/* Controls: Search and View Mode */}
-                      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                        <div className="relative flex-1">
-                          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                          <input
-                            type="text"
-                            value={tbSearch}
-                            onChange={(e) => setTbSearch(e.target.value)}
-                            placeholder="Filter ledger account or group..."
-                            className="w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 py-1.5 text-xs focus:border-indigo-500 focus:outline-hidden"
-                          />
-                        </div>
-                        <div className="flex items-center gap-1 bg-slate-200 p-0.5 rounded-lg text-xs font-semibold">
-                          <button
-                            onClick={() => setTbViewMode('ledger')}
-                            className={`px-3 py-1 rounded-md transition ${tbViewMode === 'ledger' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-                          >
-                            Detailed Ledgers
-                          </button>
-                          <button
-                            onClick={() => setTbViewMode('group')}
-                            className={`px-3 py-1 rounded-md transition ${tbViewMode === 'group' ? 'bg-white text-indigo-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
-                          >
-                            Group Summary
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Trial Balance Table */}
-                      <div className="rounded-xl border border-slate-200 bg-white">
-                        <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                            <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
-                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">
-                                {tbViewMode === 'ledger' ? 'Ledger Account' : 'Parent Group'}
-                              </th>
-                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">
-                                {tbViewMode === 'ledger' ? 'Group / Classification' : 'Nature'}
-                              </th>
-                              {tbViewMode === 'ledger' && <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Nature</th>}
-                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Debit Balance (Dr)</th>
-                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Credit Balance (Cr)</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {tbViewMode === 'ledger' ? (
-                              filteredTb.map((l: any, idx: number) => (
-                                <tr
-                                  key={idx}
-                                  onClick={() => onDrillLedger(l.name)}
-                                  className="hover:bg-slate-50 cursor-pointer transition"
-                                >
-                                  <td className="py-2 px-3 font-semibold text-slate-800">{l.name}</td>
-                                  <td className="py-2 px-3 text-slate-600 text-xs">{l.grp || '-'}</td>
-                                  <td className="py-2 px-3 text-center text-xs">
-                                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium">
-                                      {l.nat}
-                                    </span>
-                                  </td>
-                                  <td className="py-2 px-3 text-right font-mono text-emerald-700 font-semibold">{l.dr ? fmt(l.dr) : ''}</td>
-                                  <td className="py-2 px-3 text-right font-mono text-rose-700 font-semibold">{l.cr ? fmt(l.cr) : ''}</td>
-                                </tr>
-                              ))
-                            ) : (
-                              Object.values(groupAgg).map((g: any, idx: number) => (
-                                <tr
-                                  key={idx}
-                                  onClick={() => onDrillGroup && onDrillGroup(g.grp, fromDate, toDate)}
-                                  className="hover:bg-indigo-50/60 cursor-pointer transition"
-                                >
-                                  <td className="py-2.5 px-3 font-bold text-slate-900">{g.grp}</td>
-                                  <td className="py-2.5 px-3 text-slate-600 text-xs">{g.nat}</td>
-                                  <td className="py-2.5 px-3 text-right font-mono text-emerald-700 font-bold">{g.dr ? fmt(g.dr) : ''}</td>
-                                  <td className="py-2.5 px-3 text-right font-mono text-rose-700 font-bold">{g.cr ? fmt(g.cr) : ''}</td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                          <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
-                            <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
-                              <td colSpan={tbViewMode === 'ledger' ? 3 : 2} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left">
-                                TOTAL TRIAL BALANCE
-                              </td>
-                              <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-emerald-800 text-sm">{fmt(totDr)}</td>
-                              <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-rose-800 text-sm">{fmt(totCr)}</td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })()}
+                {/* Trial Balance Statement */}
+                {finSubTab === 'TB' && reportData?.tb && (
+                  <TallyPrimeView
+                    reportType="TB"
+                    reportData={reportData}
+                    fromDate={fromDate}
+                    toDate={toDate}
+                    initialDepth={reportDepth}
+                    onDepthChange={handleDepthChange}
+                    onDrillLedger={onDrillLedger}
+                    onDrillGroup={onDrillGroup}
+                    config={config}
+                  />
+                )}
 
                 {/* Trading & Profit & Loss Statement */}
-                {finSubTab === 'PNL' && reportData?.pnl && (() => {
-                  const p = reportData.pnl;
-                  const s = Number(p.s) || 0;
-                  const di = Number(p.di) || 0;
-                  const os = Number(p.os) || 0;
-                  const pur = Number(p.p) || 0;
-                  const de = Number(p.de) || 0;
-                  const cs = Number(p.cs) || 0;
-                  const ii = Number(p.ii) || 0;
-                  const ie = Number(p.ie) || 0;
-
-                  const cogs = os + pur + de - cs;
-                  const grossProfit = (s + di) - cogs;
-                  const netProfit = grossProfit + ii - ie;
-
-                  return (
-                    <div className="space-y-5 text-xs sm:text-sm max-w-4xl mx-auto">
-                      {/* Section 1: TRADING ACCOUNT */}
-                      <div className="border border-slate-200 rounded-2xl bg-white shadow-xs">
-                        <div className="bg-slate-800 text-white p-3 font-bold flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <Layers className="h-4 w-4 text-indigo-300" />
-                            <span>1. TRADING ACCOUNT (Gross Margin Analysis)</span>
-                          </div>
-                          <span className="text-[10px] bg-slate-700 text-indigo-200 px-2.5 py-0.5 rounded-full font-medium">
-                            COGS = Opening Stock + Purchases + Direct Exp - Closing Stock
-                          </span>
-                        </div>
-
-                        <div className="p-4 space-y-2">
-                          <div
-                            onClick={() => onDrillGroup && onDrillGroup('Sales Revenue', fromDate, toDate)}
-                            className="flex justify-between items-center py-2 px-3 rounded-xl hover:bg-slate-50 cursor-pointer border-b border-slate-100 transition"
-                          >
-                            <span className="font-semibold text-slate-800">Revenue from Operations (Sales Accounts)</span>
-                            <span className="font-mono font-bold text-emerald-700">Nu. {fmt(s)}</span>
-                          </div>
-
-                          {di > 0 && (
-                            <div
-                              onClick={() => onDrillGroup && onDrillGroup('Direct Income', fromDate, toDate)}
-                              className="flex justify-between items-center py-2 px-3 rounded-xl hover:bg-slate-50 cursor-pointer border-b border-slate-100 transition"
-                            >
-                              <span className="font-semibold text-slate-800">Direct Incomes</span>
-                              <span className="font-mono font-bold text-emerald-700">Nu. {fmt(di)}</span>
-                            </div>
-                          )}
-
-                          <div className="pl-3 py-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                            Less: Cost of Goods Sold (COGS)
-                          </div>
-
-                          <div className="pl-6 space-y-1 text-slate-600">
-                            <div
-                              onClick={() => onDrillGroup && onDrillGroup('Stock Valuation', fromDate, toDate)}
-                              className="flex justify-between items-center py-1.5 px-3 rounded-lg hover:bg-slate-50 cursor-pointer"
-                            >
-                              <span>Opening Stock Valuation</span>
-                              <span className="font-mono">Nu. {fmt(os)}</span>
-                            </div>
-                            <div
-                              onClick={() => onDrillGroup && onDrillGroup('Cost of Purchases', fromDate, toDate)}
-                              className="flex justify-between items-center py-1.5 px-3 rounded-lg hover:bg-slate-50 cursor-pointer"
-                            >
-                              <span>Cost of Purchases</span>
-                              <span className="font-mono">Nu. {fmt(pur)}</span>
-                            </div>
-                            {de > 0 && (
-                              <div
-                                onClick={() => onDrillGroup && onDrillGroup('Direct Expenses', fromDate, toDate)}
-                                className="flex justify-between items-center py-1.5 px-3 rounded-lg hover:bg-slate-50 cursor-pointer"
-                              >
-                                <span>Direct Expenses</span>
-                                <span className="font-mono">Nu. {fmt(de)}</span>
-                              </div>
-                            )}
-                            <div
-                              onClick={() => onDrillGroup && onDrillGroup('Stock Valuation', fromDate, toDate)}
-                              className="flex justify-between items-center py-1.5 px-3 rounded-lg hover:bg-slate-50 cursor-pointer text-rose-700 font-medium"
-                            >
-                              <span>Less: Closing Stock Valuation</span>
-                              <span className="font-mono">- Nu. {fmt(cs)}</span>
-                            </div>
-                          </div>
-
-                          <div className="flex justify-between items-center py-2 px-3 bg-slate-100 rounded-xl font-bold text-slate-900 mt-2">
-                            <span>Total Cost of Goods Sold (COGS)</span>
-                            <span className="font-mono">Nu. {fmt(cogs)}</span>
-                          </div>
-
-                          <div className={`flex justify-between items-center py-3 px-4 rounded-xl font-bold text-sm border-2 ${grossProfit >= 0 ? 'bg-emerald-50 border-emerald-300 text-emerald-950' : 'bg-rose-50 border-rose-300 text-rose-950'}`}>
-                            <span className="flex items-center gap-2">
-                              <TrendingUp className={`h-5 w-5 ${grossProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} />
-                              {grossProfit >= 0 ? 'GROSS PROFIT' : 'GROSS LOSS'}
-                            </span>
-                            <span className="font-mono text-base font-extrabold">Nu. {fmt(grossProfit)}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Section 2: PROFIT & LOSS ACCOUNT */}
-                      <div className="border border-slate-200 rounded-2xl bg-white shadow-xs">
-                        <div className="bg-slate-800 text-white p-3 font-bold flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <PieChart className="h-4 w-4 text-emerald-300" />
-                            <span>2. PROFIT & LOSS ACCOUNT (Net Result)</span>
-                          </div>
-                          <span className="text-[10px] bg-slate-700 text-emerald-200 px-2.5 py-0.5 rounded-full font-medium">
-                            Net Profit = Gross Profit + Indirect Income - Indirect Expenses
-                          </span>
-                        </div>
-
-                        <div className="p-4 space-y-2">
-                          <div className="flex justify-between items-center py-2 px-3 bg-slate-50 rounded-xl font-semibold text-slate-800 border border-slate-200">
-                            <span>Gross Profit b/d (Transferred from Trading Acc)</span>
-                            <span className={`font-mono font-bold ${grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                              Nu. {fmt(grossProfit)}
-                            </span>
-                          </div>
-
-                          <div
-                            onClick={() => onDrillGroup && onDrillGroup('Indirect Income', fromDate, toDate)}
-                            className="flex justify-between items-center py-2 px-3 rounded-xl hover:bg-slate-50 cursor-pointer border-b border-slate-100 transition"
-                          >
-                            <span className="font-semibold text-slate-800">Add: Indirect Income</span>
-                            <span className="font-mono font-bold text-emerald-700">+ Nu. {fmt(ii)}</span>
-                          </div>
-
-                          <div
-                            onClick={() => onDrillGroup && onDrillGroup('Indirect Expenses', fromDate, toDate)}
-                            className="flex justify-between items-center py-2 px-3 rounded-xl hover:bg-slate-50 cursor-pointer border-b border-slate-100 transition"
-                          >
-                            <span className="font-semibold text-slate-800">Less: Indirect Expenses</span>
-                            <span className="font-mono font-bold text-rose-700">- Nu. {fmt(ie)}</span>
-                          </div>
-
-                          <div className={`flex justify-between items-center py-3.5 px-4 rounded-xl font-extrabold text-base border-2 mt-4 shadow-xs ${netProfit >= 0 ? 'bg-emerald-600 border-emerald-700 text-white' : 'bg-rose-600 border-rose-700 text-white'}`}>
-                            <span className="flex items-center gap-2">
-                              <ShieldCheck className="h-5 w-5" />
-                              {netProfit >= 0 ? 'NET PROFIT (TRANSFERRED TO CAPITAL)' : 'NET LOSS (DEDUCTED FROM CAPITAL)'}
-                            </span>
-                            <span className="font-mono text-lg">Nu. {fmt(netProfit)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
+                {finSubTab === 'PNL' && reportData?.pnl && (
+                  <TallyPrimeView
+                    reportType="PNL"
+                    reportData={reportData}
+                    fromDate={fromDate}
+                    toDate={toDate}
+                    initialDepth={reportDepth}
+                    onDepthChange={handleDepthChange}
+                    onDrillLedger={onDrillLedger}
+                    onDrillGroup={onDrillGroup}
+                    config={config}
+                  />
+                )}
 
                 {/* Balance Sheet */}
-                {finSubTab === 'BS' && reportData?.bs && reportData?.pnl && (() => {
-                  const p = reportData.pnl;
-                  const s = Number(p.s) || 0;
-                  const di = Number(p.di) || 0;
-                  const os = Number(p.os) || 0;
-                  const pur = Number(p.p) || 0;
-                  const de = Number(p.de) || 0;
-                  const cs = Number(p.cs) || 0;
-                  const ii = Number(p.ii) || 0;
-                  const ie = Number(p.ie) || 0;
-
-                  const cogs = os + pur + de - cs;
-                  const grossProfit = s + di - cogs;
-                  const netProfit = grossProfit + ii - ie;
-
-                  const cap = Number(reportData.bs.cap) || 0;
-                  const netEquity = cap + netProfit;
-                  const loans = Number(reportData.bs.ln) || 0;
-                  const cl = Number(reportData.bs.cl) || 0;
-
-                  const fa = Number(reportData.bs.fa) || 0;
-                  const ca = Number(reportData.bs.ca) || 0;
-                  const stockVal = Number(reportData.bs.cs) || 0;
-
-                  const totLiabBeforeDiff = netEquity + loans + cl;
-                  const totAssetBeforeDiff = fa + ca + stockVal;
-                  const diff = totAssetBeforeDiff - totLiabBeforeDiff;
-
-                  const finalTotal = Math.max(totLiabBeforeDiff, totAssetBeforeDiff);
-                  const isBalanced = Math.abs(diff) < 0.01;
-
-                  return (
-                    <div className="space-y-4 text-xs sm:text-sm">
-                      {/* Statement Header Status */}
-                      <div className="bg-slate-800 text-white p-3 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                        <div className="flex items-center gap-2">
-                          <Building2 className="h-5 w-5 text-indigo-400" />
-                          <div>
-                            <span className="font-bold text-sm block">Balance Sheet Statement</span>
-                            <span className="text-[11px] text-slate-300">Statement of Financial Position as on {toDate}</span>
-                          </div>
-                        </div>
-                        <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${isBalanced ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'}`}>
-                          {isBalanced ? (
-                            <>
-                              <CheckCircle2 className="h-4 w-4" />
-                              <span>Statement Balanced (Assets = Liabilities)</span>
-                            </>
-                          ) : (
-                            <>
-                              <AlertCircle className="h-4 w-4" />
-                              <span>Opening Mismatch: Nu. {fmt(Math.abs(diff))}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* T-Account Layout */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* LIABILITIES & CAPITAL */}
-                        <div className="border border-slate-200 rounded-2xl bg-slate-50 flex flex-col justify-between shadow-xs">
-                          <div>
-                            <div className="bg-slate-200 px-4 py-2.5 font-bold text-slate-800 border-b border-slate-300 flex justify-between items-center">
-                              <span>CAPITAL & LIABILITIES</span>
-                              <span className="text-[10px] text-slate-600 uppercase font-semibold">Amount (Nu.)</span>
-                            </div>
-
-                            <div className="p-3 space-y-1">
-                              {/* Owner's Equity Block */}
-                              <div className="border border-slate-200 rounded-xl p-2.5 bg-white space-y-1">
-                                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-                                  Owner's Equity & Capital
-                                </div>
-                                <div
-                                  onClick={() => onDrillGroup && onDrillGroup('Capital Account', fromDate, toDate)}
-                                  className="flex justify-between items-center py-1 px-2 hover:bg-slate-50 rounded cursor-pointer"
-                                >
-                                  <span className="font-semibold text-slate-700">Opening Capital Account</span>
-                                  <span className="font-mono">{fmt(cap)}</span>
-                                </div>
-                                <div
-                                  onClick={() => onDrillGroup && onDrillGroup('Indirect Expenses', fromDate, toDate)}
-                                  className={`flex justify-between items-center py-1 px-2 hover:bg-slate-50 rounded cursor-pointer ${netProfit >= 0 ? 'text-emerald-700 font-semibold' : 'text-rose-700 font-semibold'}`}
-                                >
-                                  <span>Add: Net Profit / (Loss) for Period</span>
-                                  <span className="font-mono">{netProfit >= 0 ? '+' : ''}{fmt(netProfit)}</span>
-                                </div>
-                                <div className="flex justify-between items-center py-1 px-2 bg-slate-100 rounded font-bold text-slate-900 border-t border-slate-200 mt-1">
-                                  <span>Total Owner's Equity</span>
-                                  <span className="font-mono text-indigo-700">{fmt(netEquity)}</span>
-                                </div>
-                              </div>
-
-                              {/* Liabilities */}
-                              <div
-                                onClick={() => onDrillGroup && onDrillGroup('Loans & Liabilities', fromDate, toDate)}
-                                className="flex justify-between items-center p-2.5 rounded-xl hover:bg-indigo-50/80 cursor-pointer bg-white border border-slate-200 transition"
-                              >
-                                <span className="font-semibold text-slate-700">Non-Current Loans & Borrowings</span>
-                                <span className="font-mono font-bold text-slate-900">{fmt(loans)}</span>
-                              </div>
-
-                              <div
-                                onClick={() => onDrillGroup && onDrillGroup('Current Liabilities', fromDate, toDate)}
-                                className="flex justify-between items-center p-2.5 rounded-xl hover:bg-indigo-50/80 cursor-pointer bg-white border border-slate-200 transition"
-                              >
-                                <span className="font-semibold text-slate-700">Current Liabilities & Sundry Creditors</span>
-                                <span className="font-mono font-bold text-slate-900">{fmt(cl)}</span>
-                              </div>
-
-                              {diff > 0.01 && (
-                                <div className="flex justify-between items-center p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-semibold">
-                                  <span>Unadjusted Opening Difference</span>
-                                  <span className="font-mono">{fmt(diff)}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="bg-slate-800 text-white p-3 font-bold text-sm flex justify-between items-center border-t border-slate-900 mt-2">
-                            <span>TOTAL CAPITAL & LIABILITIES</span>
-                            <span className="font-mono text-base text-emerald-400">Nu. {fmt(finalTotal)}</span>
-                          </div>
-                        </div>
-
-                        {/* ASSETS */}
-                        <div className="border border-slate-200 rounded-2xl bg-slate-50 flex flex-col justify-between shadow-xs">
-                          <div>
-                            <div className="bg-slate-200 px-4 py-2.5 font-bold text-slate-800 border-b border-slate-300 flex justify-between items-center">
-                              <span>ASSETS & PROPERTIES</span>
-                              <span className="text-[10px] text-slate-600 uppercase font-semibold">Amount (Nu.)</span>
-                            </div>
-
-                            <div className="p-3 space-y-1">
-                              <div
-                                onClick={() => onDrillGroup && onDrillGroup('Fixed Assets', fromDate, toDate)}
-                                className="flex justify-between items-center p-2.5 rounded-xl hover:bg-indigo-50/80 cursor-pointer bg-white border border-slate-200 transition"
-                              >
-                                <span className="font-semibold text-slate-700">Fixed Assets (Properties & Equipment)</span>
-                                <span className="font-mono font-bold text-slate-900">{fmt(fa)}</span>
-                              </div>
-
-                              <div
-                                onClick={() => onDrillGroup && onDrillGroup('Current Assets', fromDate, toDate)}
-                                className="flex justify-between items-center p-2.5 rounded-xl hover:bg-indigo-50/80 cursor-pointer bg-white border border-slate-200 transition"
-                              >
-                                <span className="font-semibold text-slate-700">Current Assets (Bank, Cash & Sundry Debtors)</span>
-                                <span className="font-mono font-bold text-slate-900">{fmt(ca)}</span>
-                              </div>
-
-                              <div
-                                onClick={() => onDrillGroup && onDrillGroup('Stock Valuation', fromDate, toDate)}
-                                className="flex justify-between items-center p-2.5 rounded-xl hover:bg-indigo-50/80 cursor-pointer bg-white border border-slate-200 transition"
-                              >
-                                <span className="font-semibold text-slate-700">Closing Stock Valuation</span>
-                                <span className="font-mono font-bold text-slate-900">{fmt(stockVal)}</span>
-                              </div>
-
-                              {diff < -0.01 && (
-                                <div className="flex justify-between items-center p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-semibold">
-                                  <span>Unadjusted Opening Difference</span>
-                                  <span className="font-mono">{fmt(Math.abs(diff))}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="bg-slate-800 text-white p-3 font-bold text-sm flex justify-between items-center border-t border-slate-900 mt-2">
-                            <span>TOTAL ASSETS</span>
-                            <span className="font-mono text-base text-emerald-400">Nu. {fmt(finalTotal)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
+                {finSubTab === 'BS' && reportData?.bs && reportData?.pnl && (
+                  <TallyPrimeView
+                    reportType="BS"
+                    reportData={reportData}
+                    fromDate={fromDate}
+                    toDate={toDate}
+                    initialDepth={reportDepth}
+                    onDepthChange={handleDepthChange}
+                    onDrillLedger={onDrillLedger}
+                    onDrillGroup={onDrillGroup}
+                    config={config}
+                  />
+                )}
 
                 {finSubTab === 'REC' && reportData?.rec && (() => {
                   const filteredRec = reportData.rec.filter((r: any) =>
@@ -2471,13 +2142,15 @@ export const Reports: React.FC<ReportsProps> = ({
                   let totalCr = 0;
 
                   const processedRows = (reportData.rows || []).map((r: any) => {
-                    const dr = Number(r.Debit) || 0;
-                    const cr = Number(r.Credit) || 0;
+                    const isCancelled = r.isCancelled || r.Status === 'Cancelled';
+                    const dr = isCancelled ? 0 : (Number(r.Debit) || 0);
+                    const cr = isCancelled ? 0 : (Number(r.Credit) || 0);
                     totalDr += dr;
                     totalCr += cr;
                     runningBal = runningBal + dr - cr;
                     return {
                       ...r,
+                      isCancelled,
                       dr,
                       cr,
                       runningBal
@@ -2570,7 +2243,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               <tr
                                 key={idx}
                                 onClick={() => r['Ref No'] && onDrillVoucher(r['Ref No'])}
-                                className="hover:bg-indigo-50/50 cursor-pointer transition"
+                                className={`hover:bg-indigo-50/50 cursor-pointer transition ${r.isCancelled ? 'bg-red-50/30' : ''}`}
                               >
                                 <td className="py-2.5 px-3 text-center font-mono text-slate-600">{formatDateStr(r.DateIso)}</td>
                                 <td className="py-2.5 px-3">
@@ -2582,13 +2255,16 @@ export const Reports: React.FC<ReportsProps> = ({
                                   <span className="font-mono font-bold text-indigo-600 hover:underline">
                                     {r['Ref No']}
                                   </span>
+                                  {r.isCancelled && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">CANCELLED</span>}
                                 </td>
-                                <td className="py-2.5 px-3 text-slate-700 font-medium">{r.Narration || '-'}</td>
+                                <td className="py-2.5 px-3 text-slate-700 font-medium">
+                                  {r.isCancelled ? <span className="text-red-600 font-bold">Cancelled / Void</span> : (r.Narration || '-')}
+                                </td>
                                 <td className="py-2.5 px-3 text-right font-mono font-semibold text-emerald-700">
-                                  {r.dr ? fmt(r.dr) : ''}
+                                  {r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : (r.dr ? fmt(r.dr) : '')}
                                 </td>
                                 <td className="py-2.5 px-3 text-right font-mono font-semibold text-rose-700">
-                                  {r.cr ? fmt(r.cr) : ''}
+                                  {r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : (r.cr ? fmt(r.cr) : '')}
                                 </td>
                                 <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 bg-slate-50/40">
                                   Nu. {fmt(Math.abs(r.runningBal))} <span className={`text-[10px] font-bold ${r.runningBal >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{r.runningBal >= 0 ? 'Dr' : 'Cr'}</span>
@@ -2619,6 +2295,7 @@ export const Reports: React.FC<ReportsProps> = ({
         )}
         </div>
       </div>
+
     </div>
   );
 };

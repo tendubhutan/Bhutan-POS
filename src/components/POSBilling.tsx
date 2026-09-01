@@ -1138,7 +1138,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       gstNo = walkInDetails.gst;
       address = walkInDetails.address;
       phone = walkInDetails.phone;
-      custLedger = 'Cash';
+      custLedger = 'Cash Customer';
     } else if (custLedger) {
       name = custLedger;
       const matched = ledgers.find(l => l['Ledger Name'] === custLedger);

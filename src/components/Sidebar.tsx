@@ -10,6 +10,7 @@ import {
   Users,
   Building,
   Settings,
+  Trash2,
   X
 } from 'lucide-react';
 import { Config } from "../types";

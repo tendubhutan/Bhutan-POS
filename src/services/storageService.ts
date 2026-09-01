@@ -28,7 +28,8 @@ import {
   MonthlyPayroll,
   AppUser,
   UserPermission,
-  ModuleId
+  ModuleId,
+  TrashEntry
 } from '../types';
 import {
   syncConfigToFirestore,
@@ -66,7 +67,8 @@ export const STORAGE_KEYS = {
   EMPLOYEES: 'deep_pos_employees',
   EMPLOYEE_ADVANCES: 'deep_pos_employee_advances',
   MONTHLY_PAYROLLS: 'deep_pos_monthly_payrolls',
-  USERS: 'deep_pos_users'
+  USERS: 'deep_pos_users',
+  TRASH_LOG: 'deep_pos_trash'
 };
 
 const DEFAULT_CONFIG: Config = {
@@ -115,7 +117,8 @@ const DEFAULT_CONFIG: Config = {
   DebitNotePrefix: 'DN-',
   DeliveryNotePrefix: 'DLV-',
   PhysicalStockPrefix: 'PHY-',
-  QuotationPrefix: 'QTN-'
+  QuotationPrefix: 'QTN-',
+  IntegrateAccountsWithInventory: 'true'
 };
 
 export const DEFAULT_VOUCHER_TYPES: VoucherType[] = [
@@ -798,6 +801,14 @@ export function getLedgers(): Ledger[] {
 }
 
 export function getInitialData() {
+  autoCleanTrash();
+  const logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+  if (logs.length === 0 && sales.length > 0) {
+    rebuildAccountingLogs();
+  } else {
+    recalculateLedgerBalances();
+  }
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const units = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
@@ -1839,6 +1850,259 @@ export function saveMultiLineVoucher(payload: {
 }
 
 
+export function autoCleanTrash() {
+  const trash = loadJson<TrashEntry[]>(STORAGE_KEYS.TRASH_LOG, []);
+  const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000); // 24 hours
+  const filtered = trash.filter(item => {
+    const t = new Date(item.deletedAt).getTime();
+    return t >= oneDayAgo;
+  });
+  if (filtered.length !== trash.length) {
+    saveJson(STORAGE_KEYS.TRASH_LOG, filtered);
+  }
+}
+
+export function getTrashLog(): TrashEntry[] {
+  autoCleanTrash();
+  return loadJson<TrashEntry[]>(STORAGE_KEYS.TRASH_LOG, []);
+}
+
+export function addToTrash(entry: Omit<TrashEntry, 'id' | 'deletedAt'>) {
+  const trash = loadJson<TrashEntry[]>(STORAGE_KEYS.TRASH_LOG, []);
+  const newEntry: TrashEntry = {
+    ...entry,
+    id: 'trash_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+    deletedAt: new Date().toISOString()
+  };
+  trash.unshift(newEntry);
+  saveJson(STORAGE_KEYS.TRASH_LOG, trash);
+  return newEntry;
+}
+
+export function emptyTrash() {
+  saveJson(STORAGE_KEYS.TRASH_LOG, []);
+  return { ok: true, message: 'Trash emptied successfully' };
+}
+
+export function restoreFromTrash(id: string) {
+  const trash = loadJson<TrashEntry[]>(STORAGE_KEYS.TRASH_LOG, []);
+  const item = trash.find(t => t.id === id);
+  if (!item) return { ok: false, error: 'Trash item not found' };
+
+  if (item.originalData) {
+    const data = item.originalData;
+    const type = (item.type || '').toUpperCase();
+
+    if (type === 'SALE' || type.includes('SAL') || type.includes('POS')) {
+      const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+      const idx = sales.findIndex(s => s.invoiceNo === data.invoiceNo);
+      if (idx >= 0) {
+        sales[idx] = data;
+      } else {
+        sales.push(data);
+      }
+      saveJson(STORAGE_KEYS.SALES_INVOICES, sales);
+    } else if (type === 'PURCHASE' || type.includes('PUR')) {
+      const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+      const ref = data.billNo || data.invoiceNo || item.refNo;
+      const idx = purchases.findIndex(p => (p.billNo === ref || p.invoiceNo === ref));
+      if (idx >= 0) {
+        purchases[idx] = data;
+      } else {
+        purchases.push(data);
+      }
+      saveJson(STORAGE_KEYS.PURCHASE_INVOICES, purchases);
+    } else {
+      const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+      const ref = data.voucherNo || item.refNo;
+      const idx = vouchers.findIndex(v => v.voucherNo === ref);
+      if (idx >= 0) {
+        vouchers[idx] = data;
+      } else {
+        vouchers.push(data);
+      }
+      saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
+    }
+  }
+
+  const updatedTrash = trash.filter(t => t.id !== id);
+  saveJson(STORAGE_KEYS.TRASH_LOG, updatedTrash);
+
+  recalculateLedgerBalances();
+  return { ok: true, message: `Restored ${item.refNo} successfully` };
+}
+
+export function restoreAllFromTrash() {
+  const trash = loadJson<TrashEntry[]>(STORAGE_KEYS.TRASH_LOG, []);
+  let count = 0;
+  trash.forEach(item => {
+    if (item.id) {
+      restoreFromTrash(item.id);
+      count++;
+    }
+  });
+  return { ok: true, message: `Restored ${count} items from trash` };
+}
+
+export function recalculateLedgerBalances() {
+  const ledgers = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
+  const logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  
+  const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+  const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+
+  const cancelledSales = new Set<string>();
+  sales.filter(s => (s.status as string) === 'Cancelled').forEach(s => cancelledSales.add(s.invoiceNo));
+  
+  const cancelledPurchases = new Set<string>();
+  purchases.filter(p => (p.status as string) === 'Cancelled').forEach(p => {
+    if (p.billNo) cancelledPurchases.add(p.billNo);
+    if (p.invoiceNo) cancelledPurchases.add(p.invoiceNo);
+  });
+  
+  const cancelledVouchers = new Set<string>();
+  vouchers.filter(v => (v.status as string) === 'Cancelled').forEach(v => cancelledVouchers.add(v.voucherNo));
+
+  const cleanLogs = logs.filter(l => {
+    const ref = (l['Ref No'] || '').trim();
+    const type = l.Type || '';
+    if (!ref) return true;
+    
+    // Check based on transaction type to prevent cross-document wiping
+    if (type === 'Sale' || type === 'Sales Return') {
+      if (cancelledSales.has(ref)) return false;
+      if (ref.startsWith('REV-') && cancelledSales.has(ref.substring(4))) return false;
+      if (ref.startsWith('DEL-') && cancelledSales.has(ref.substring(4))) return false;
+    } else if (type === 'Purchase' || type === 'Purchase Return') {
+      if (cancelledPurchases.has(ref)) return false;
+      if (ref.startsWith('REV-') && cancelledPurchases.has(ref.substring(4))) return false;
+      if (ref.startsWith('DEL-') && cancelledPurchases.has(ref.substring(4))) return false;
+    } else {
+      // Vouchers or other types
+      if (cancelledVouchers.has(ref)) return false;
+      if (ref.startsWith('REV-') && cancelledVouchers.has(ref.substring(4))) return false;
+      if (ref.startsWith('DEL-') && cancelledVouchers.has(ref.substring(4))) return false;
+    }
+    
+    return true;
+  });
+
+  saveJson(STORAGE_KEYS.LEDGER_LOG, cleanLogs);
+
+  // --- HEAL MISSING LOGS (from earlier cancellation bugs or missing syncs) ---
+  const existingSaleRefs = new Set(cleanLogs.filter(l => l.Type === 'Sale').map(l => l['Ref No']));
+  sales.forEach(s => {
+    if (s.status === 'Cancelled') return;
+    const iNo = s.invoiceNo || '';
+    if (!iNo || existingSaleRefs.has(iNo)) return;
+    
+    // It's missing! Restore it
+    const cash = Number(s.cash) || 0, b1 = Number(s.bank1) || 0, b2 = Number(s.bank2) || 0;
+    const cr = Number(s.credit) || 0;
+    const tax = Number(s.taxable) || 0, zro = Number(s.zeroRated) || 0, gst = Number(s.gstAmt) || 0;
+    const appliedDiscount = Number(s.discount) || 0;
+    const sLg = typeof s.customer === 'object' ? (s.customer.name?.trim() || s.customer.ledger?.trim() || 'Cash Customer') : (s.customer || 'Cash Customer');
+
+    if (cash > 0) adjustLedgerBalance('Cash', cash, 'Dr', iNo, 'Cash sale ' + iNo, 'Sale');
+    if (b1 > 0) adjustLedgerBalance(s.paymentDetails?.bank1Ledger || 'BOB Account', b1, 'Dr', iNo, 'Bank sale ' + iNo, 'Sale');
+    if (b2 > 0) adjustLedgerBalance(s.paymentDetails?.bank2Ledger || 'BNBL Account', b2, 'Dr', iNo, 'Bank sale ' + iNo, 'Sale');
+    if (cr > 0.009) adjustLedgerBalance(sLg, cr, 'Dr', iNo, 'Credit sale ' + iNo, 'Sale');
+
+    const netSalesCredit = Math.max(0, round2((tax + zro) - appliedDiscount));
+    adjustLedgerBalance('Sales Account', netSalesCredit, 'Cr', iNo, 'Sale ' + iNo, 'Sale');
+    if (gst > 0) adjustLedgerBalance('GST Payable', gst, 'Cr', iNo, 'GST ' + iNo, 'Sale');
+
+    (s.additionalExpenses || []).forEach(exp => {
+      if (exp.ledger && Number(exp.amount) > 0) adjustLedgerBalance(exp.ledger, Number(exp.amount), 'Cr', iNo, 'Sales Additional Charge ' + iNo, 'Sale');
+    });
+  });
+
+  const existingPurchRefs = new Set(cleanLogs.filter(l => l.Type === 'Purchase').map(l => l['Ref No']));
+  purchases.forEach(p => {
+    if (p.status === 'Cancelled') return;
+    const bNo = p.billNo || p.invoiceNo || '';
+    if (!bNo || existingPurchRefs.has(bNo)) return;
+
+    const cash = Number(p.cash) || 0, b1 = Number(p.bank1) || 0, b2 = Number(p.bank2) || 0;
+    const cr = Number(p.credit) || 0;
+    const tax = Number(p.taxable) || 0, zro = Number(p.zeroRated) || 0, gst = Number(p.gstAmt) || 0;
+    const sLg = typeof p.supplier === 'object' ? (p.supplier.name?.trim() || p.supplier.ledger?.trim() || 'Supplier') : (p.supplier || 'Supplier');
+
+    if (cash > 0) adjustLedgerBalance('Cash', cash, 'Cr', bNo, 'Cash purchase ' + bNo, 'Purchase');
+    if (b1 > 0) adjustLedgerBalance(p.paymentDetails?.bank1Ledger || 'BOB Account', b1, 'Cr', bNo, 'Bank purchase ' + bNo, 'Purchase');
+    if (b2 > 0) adjustLedgerBalance(p.paymentDetails?.bank2Ledger || 'BNBL Account', b2, 'Cr', bNo, 'Bank purchase ' + bNo, 'Purchase');
+    if (cr > 0.009) adjustLedgerBalance(sLg, cr, 'Cr', bNo, 'Credit purchase ' + bNo, 'Purchase');
+
+    adjustLedgerBalance('Purchase Account', tax + zro, 'Dr', bNo, 'Purchase ' + bNo, 'Purchase');
+    if (gst > 0) adjustLedgerBalance('Duties & Taxes', gst, 'Dr', bNo, 'GST ' + bNo, 'Purchase');
+
+    (p.additionalExpenses || []).forEach(exp => {
+      if (exp.ledger && Number(exp.amount) > 0) adjustLedgerBalance(exp.ledger, Number(exp.amount), 'Dr', bNo, 'Purchase Expense ' + bNo, 'Purchase');
+    });
+  });
+
+  const existingVouchRefs = new Set(cleanLogs.filter(l => l.Type !== 'Sale' && l.Type !== 'Purchase' && l.Type !== 'Sales Return' && l.Type !== 'Purchase Return').map(l => l['Ref No']));
+  vouchers.forEach(v => {
+    if (v.status === 'Cancelled') return;
+    const no = v.voucherNo || '';
+    if (!no || existingVouchRefs.has(no)) return;
+
+    if (v.type === 'J') {
+      (v.lines || []).forEach(line => {
+        if (line.ledger && Number(line.amount) > 0) {
+          adjustLedgerBalance(line.ledger, Number(line.amount), line.type as 'Dr' | 'Cr', no, v.narration || '', 'Journal');
+        }
+      });
+    } else {
+      const dr = v.debitLedger || '';
+      const cr = v.creditLedger || '';
+      const t = v.type === 'P' ? 'Payment' : (v.type === 'R' ? 'Receipt' : (v.type === 'C' ? 'Contra' : 'Journal'));
+      if (dr && cr && Number(v.amount) > 0) {
+        adjustLedgerBalance(dr, Number(v.amount), 'Dr', no, v.narration || '', t);
+        adjustLedgerBalance(cr, Number(v.amount), 'Cr', no, v.narration || '', t);
+      }
+    }
+  });
+
+  // Reload ledgers and logs after healing
+  const healedLedgers = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
+  const healedLogs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+
+  const ledgerMap = new Map<string, { opening: number; current: number }>();
+  healedLedgers.forEach(l => {
+    const cleanName = (l['Ledger Name'] || '').trim().toLowerCase();
+    const op = Number(l['Opening Balance']) || 0;
+    const isDr = l['Balance Type (Dr/Cr)'] !== 'Cr';
+    ledgerMap.set(cleanName, {
+      opening: op,
+      current: isDr ? op : -op
+    });
+  });
+
+  healedLogs.forEach(log => {
+    const cleanName = (log['Ledger Name'] || '').trim().toLowerCase();
+    const entry = ledgerMap.get(cleanName);
+    if (entry) {
+      const dr = Number(log.Debit) || 0;
+      const cr = Number(log.Credit) || 0;
+      entry.current += (dr - cr);
+    }
+  });
+
+  healedLedgers.forEach(l => {
+    const cleanName = (l['Ledger Name'] || '').trim().toLowerCase();
+    const entry = ledgerMap.get(cleanName);
+    if (entry) {
+      l['Current Balance'] = Math.abs(round2(entry.current));
+      l['Balance Type (Dr/Cr)'] = entry.current >= 0 ? 'Dr' : 'Cr';
+    }
+  });
+
+  saveJson(STORAGE_KEYS.LEDGERS, healedLedgers);
+  return healedLedgers;
+}
+
 export function cancelSalesInvoice(invoiceNo: string, reason?: string) {
   let invoices = getDeduplicatedSales();
   const target = invoices.find((v: any) => v.invoiceNo === invoiceNo);
@@ -1854,31 +2118,12 @@ export function cancelSalesInvoice(invoiceNo: string, reason?: string) {
     }
   });
 
-  // Reverse ledger entries
-  const cash = Number(target.cash) || Number(target.paymentDetails?.cash) || 0;
-  const b1 = Number(target.bank1) || Number(target.paymentDetails?.bank1) || 0;
-  const b2 = Number(target.bank2) || Number(target.paymentDetails?.bank2) || 0;
-  const cr = Number(target.credit) || 0;
-
-  if (cash > 0) adjustLedgerBalance('Cash', cash, 'Cr', invoiceNo, 'Cancellation of Cash sale ' + invoiceNo + (reason ? `: ${reason}` : ''), 'Sale Cancellation');
-  if (b1 > 0) adjustLedgerBalance(target.paymentDetails?.bank1Ledger || 'BOB Account', b1, 'Cr', invoiceNo, 'Cancellation of Bank sale ' + invoiceNo + (reason ? `: ${reason}` : ''), 'Sale Cancellation');
-  if (b2 > 0) adjustLedgerBalance(target.paymentDetails?.bank2Ledger || 'BNBL Account', b2, 'Cr', invoiceNo, 'Cancellation of Bank sale ' + invoiceNo + (reason ? `: ${reason}` : ''), 'Sale Cancellation');
-  
-  const sLg = (typeof target.customer === 'object' ? target.customer.ledger || target.customer.name : target.customer) || 'Walk-in Cash Customer';
-  if (cr > 0.009) {
-    adjustLedgerBalance(sLg, cr, 'Cr', invoiceNo, 'Cancellation of Credit sale ' + invoiceNo + (reason ? `: ${reason}` : ''), 'Sale Cancellation');
-  }
-
-  const netSales = Math.max(0, round2((Number(target.taxable) || 0) + (Number(target.zeroRated) || 0) - (Number(target.discount) || 0)));
-  adjustLedgerBalance('Sales Account', netSales, 'Dr', invoiceNo, 'Cancellation of Sale ' + invoiceNo + (reason ? `: ${reason}` : ''), 'Sale Cancellation');
-  
-  const gst = Number(target.gstAmt) || 0;
-  if (gst > 0) adjustLedgerBalance('GST Payable', gst, 'Dr', invoiceNo, 'Cancellation of GST ' + invoiceNo + (reason ? `: ${reason}` : ''), 'Sale Cancellation');
-
   target.status = 'Cancelled';
   (target as any).cancelledAt = new Date().toISOString();
   (target as any).cancellationReason = reason || 'Cancelled by user';
   saveJson(STORAGE_KEYS.SALES_INVOICES, invoices);
+
+  recalculateLedgerBalances();
 
   const updatedItems = loadJson(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const updatedLedgers = loadJson(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
@@ -1893,14 +2138,25 @@ export function deleteSalesInvoicePermanent(invoiceNo: string) {
   let invoices = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
   const target = invoices.find(v => v.invoiceNo === invoiceNo);
   if (!target) return { ok: false, error: 'Invoice not found' };
-  
-  if (target.status !== 'Cancelled') {
-    cancelSalesInvoice(invoiceNo, 'Permanent Deletion');
-    invoices = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
-  }
+
+  addToTrash({
+    refNo: invoiceNo,
+    type: 'Sale',
+    amount: Number(target.total) || 0,
+    date: target.date,
+    narration: `Permanent deletion of Sales Invoice ${invoiceNo}`,
+    originalData: target
+  });
 
   invoices = invoices.filter(v => v.invoiceNo !== invoiceNo);
   saveJson(STORAGE_KEYS.SALES_INVOICES, invoices);
+
+  let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+  stockLogs = stockLogs.filter(s => s['Ref No'] !== invoiceNo);
+  saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
+
+  recalculateLedgerBalances();
+
   const updatedItems = loadJson(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const updatedLedgers = loadJson(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
   return { ok: true, items: updatedItems, ledgers: updatedLedgers };
@@ -1921,37 +2177,12 @@ export function cancelPurchaseInvoice(billNo: string, reason?: string) {
     }
   });
 
-  // Reverse ledger entries
-  const cash = Number(target.cash) || Number(target.paymentDetails?.cash) || 0;
-  const b1 = Number(target.bank1) || Number(target.paymentDetails?.bank1) || 0;
-  const b2 = Number(target.bank2) || Number(target.paymentDetails?.bank2) || 0;
-  const cr = Number(target.credit) || 0;
-
-  if (cash > 0) adjustLedgerBalance('Cash', cash, 'Dr', billNo, 'Cancellation of Cash purchase ' + billNo + (reason ? `: ${reason}` : ''), 'Purchase Cancellation');
-  if (b1 > 0) adjustLedgerBalance(target.paymentDetails?.bank1Ledger || 'BOB Account', b1, 'Dr', billNo, 'Cancellation of Bank purchase ' + billNo + (reason ? `: ${reason}` : ''), 'Purchase Cancellation');
-  if (b2 > 0) adjustLedgerBalance(target.paymentDetails?.bank2Ledger || 'BNBL Account', b2, 'Dr', billNo, 'Cancellation of Bank purchase ' + billNo + (reason ? `: ${reason}` : ''), 'Purchase Cancellation');
-  
-  const pLg = (typeof target.supplier === 'object' ? (target.supplier as any).ledger || target.supplier.name : target.supplier) || 'Unknown Supplier';
-  if (cr > 0.009) {
-    adjustLedgerBalance(pLg, cr, 'Dr', billNo, 'Cancellation of Credit purchase ' + billNo + (reason ? `: ${reason}` : ''), 'Purchase Cancellation');
-  }
-
-  const netPurchases = Math.max(0, round2((Number(target.taxable) || 0) + (Number(target.zeroRated) || 0) - (Number((target as any).discount) || 0)));
-  adjustLedgerBalance('Purchase Account', netPurchases, 'Cr', billNo, 'Cancellation of Purchase ' + billNo + (reason ? `: ${reason}` : ''), 'Purchase Cancellation');
-  
-  const gst = Number(target.gstAmt) || 0;
-  if (gst > 0) adjustLedgerBalance('GST Receivable', gst, 'Cr', billNo, 'Cancellation of GST on purchase ' + billNo + (reason ? `: ${reason}` : ''), 'Purchase Cancellation');
-
-  if (target.additionalExpenses && target.additionalExpenses.length > 0) {
-    target.additionalExpenses.forEach((exp: any) => {
-      adjustLedgerBalance(exp.ledger, exp.amount, 'Cr', billNo, 'Cancellation of purchase expense ' + billNo + (reason ? `: ${reason}` : ''), 'Purchase Cancellation');
-    });
-  }
-
   target.status = 'Cancelled';
   (target as any).cancelledAt = new Date().toISOString();
   (target as any).cancellationReason = reason || 'Cancelled by user';
   saveJson(STORAGE_KEYS.PURCHASE_INVOICES, purchases);
+
+  recalculateLedgerBalances();
 
   const updatedItems = loadJson(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const updatedLedgers = loadJson(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
@@ -1967,13 +2198,25 @@ export function deletePurchaseInvoicePermanent(billNo: string) {
   const target = purchases.find(v => v.billNo === billNo || v.invoiceNo === billNo);
   if (!target) return { ok: false, error: 'Purchase Invoice not found' };
 
-  if (target.status !== 'Cancelled') {
-    cancelPurchaseInvoice(billNo, 'Permanent Deletion');
-    purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
-  }
+  const ref = target.billNo || target.invoiceNo;
+  addToTrash({
+    refNo: ref,
+    type: 'Purchase',
+    amount: Number(target.total) || 0,
+    date: target.date,
+    narration: `Permanent deletion of Purchase Invoice ${ref}`,
+    originalData: target
+  });
 
-  purchases = purchases.filter(v => v.billNo !== billNo && v.invoiceNo !== billNo);
+  purchases = purchases.filter(v => v.billNo !== ref && v.invoiceNo !== ref);
   saveJson(STORAGE_KEYS.PURCHASE_INVOICES, purchases);
+
+  let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+  stockLogs = stockLogs.filter(s => s['Ref No'] !== ref);
+  saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
+
+  recalculateLedgerBalances();
+
   const updatedItems = loadJson(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const updatedLedgers = loadJson(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
   return { ok: true, items: updatedItems, ledgers: updatedLedgers };
@@ -1985,25 +2228,12 @@ export function cancelVoucher(voucherNo: string, reason?: string) {
   if (!target) return { ok: false, error: 'Voucher not found' };
   if (target.status === 'Cancelled') return { ok: false, error: 'Voucher is already cancelled' };
 
-  // Reverse ledger entries
-  if (target.lines && target.lines.length > 0) {
-    target.lines.forEach((line: any) => {
-      const reverseDrCr = line.type === 'Dr' ? 'Cr' : 'Dr';
-      adjustLedgerBalance(line.ledger, line.amount, reverseDrCr, 'REV-' + voucherNo, `Cancellation of voucher ${voucherNo}: ${reason || 'User cancelled'}`, target.type);
-    });
-  } else {
-    if (target.debitLedger && target.amount > 0) {
-      adjustLedgerBalance(target.debitLedger, target.amount, 'Cr', 'REV-' + voucherNo, `Cancellation of voucher ${voucherNo}: ${reason || 'User cancelled'}`, target.type);
-    }
-    if (target.creditLedger && target.amount > 0) {
-      adjustLedgerBalance(target.creditLedger, target.amount, 'Dr', 'REV-' + voucherNo, `Cancellation of voucher ${voucherNo}: ${reason || 'User cancelled'}`, target.type);
-    }
-  }
-
   target.status = 'Cancelled';
   target.cancelledAt = new Date().toISOString();
   target.cancellationReason = reason || 'Cancelled by user';
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
+
+  recalculateLedgerBalances();
 
   const updatedLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
   return { ok: true, vouchers, ledgers: updatedLedgers };
@@ -2014,25 +2244,19 @@ export function deleteVoucherPermanent(voucherNo: string) {
   const target = vouchers.find(v => v.voucherNo === voucherNo);
   if (!target) return { ok: false, error: 'Voucher not found' };
 
-  // If not already cancelled, reverse ledger entries before removing
-  if (target.status !== 'Cancelled') {
-    if (target.lines && target.lines.length > 0) {
-      target.lines.forEach((line: any) => {
-        const reverseDrCr = line.type === 'Dr' ? 'Cr' : 'Dr';
-        adjustLedgerBalance(line.ledger, line.amount, reverseDrCr, 'DEL-' + voucherNo, `Permanent deletion of voucher ${voucherNo}`, target.type);
-      });
-    } else {
-      if (target.debitLedger && target.amount > 0) {
-        adjustLedgerBalance(target.debitLedger, target.amount, 'Cr', 'DEL-' + voucherNo, `Permanent deletion of voucher ${voucherNo}`, target.type);
-      }
-      if (target.creditLedger && target.amount > 0) {
-        adjustLedgerBalance(target.creditLedger, target.amount, 'Dr', 'DEL-' + voucherNo, `Permanent deletion of voucher ${voucherNo}`, target.type);
-      }
-    }
-  }
+  addToTrash({
+    refNo: voucherNo,
+    type: target.type || 'Voucher',
+    amount: Number(target.totalAmount || target.amount || target.total) || 0,
+    date: target.date,
+    narration: `Permanent deletion of Voucher ${voucherNo}`,
+    originalData: target
+  });
 
   vouchers = vouchers.filter(v => v.voucherNo !== voucherNo);
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
+
+  recalculateLedgerBalances();
 
   const updatedLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
   return { ok: true, vouchers, ledgers: updatedLedgers };
@@ -2040,6 +2264,65 @@ export function deleteVoucherPermanent(voucherNo: string) {
 
 export function deleteVoucher(voucherNo: string) {
   return cancelVoucher(voucherNo);
+}
+
+export function bulkDeleteData(options: { deleteTransactions: boolean; deleteMasters: boolean; resetOpeningBalances: boolean }) {
+  if (options.deleteTransactions) {
+    saveJson(STORAGE_KEYS.SALES_INVOICES, []);
+    saveJson(STORAGE_KEYS.PURCHASE_INVOICES, []);
+    saveJson(STORAGE_KEYS.VOUCHERS, []);
+    saveJson(STORAGE_KEYS.QUOTATIONS, []);
+    saveJson(STORAGE_KEYS.DELIVERY_NOTES, []);
+    saveJson(STORAGE_KEYS.PHYSICAL_STOCK, []);
+    saveJson(STORAGE_KEYS.LEDGER_LOG, []);
+    saveJson(STORAGE_KEYS.STOCK_LEDGER, []);
+    saveJson(STORAGE_KEYS.HELD_BILLS, []);
+    saveJson(STORAGE_KEYS.MONTHLY_PAYROLLS, []);
+    saveJson(STORAGE_KEYS.EMPLOYEE_ADVANCES, []);
+    saveJson(STORAGE_KEYS.TRASH_LOG, []);
+    saveJson(STORAGE_KEYS.COUNTERS, {});
+
+    const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+    items.forEach(i => {
+      i['Current Stock'] = options.resetOpeningBalances ? 0 : (Number(i['Opening Stock']) || 0);
+    });
+    saveJson(STORAGE_KEYS.ITEMS, items);
+  }
+
+  if (options.deleteMasters) {
+    saveJson(STORAGE_KEYS.ITEMS, []);
+    saveJson(STORAGE_KEYS.ITEM_GROUPS, DEFAULT_ITEM_GROUPS);
+    saveJson(STORAGE_KEYS.ITEM_CATEGORIES, []);
+    saveJson(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
+    saveJson(STORAGE_KEYS.UNIT_GROUPS, []);
+    saveJson(STORAGE_KEYS.PAY_HEADS, []);
+    saveJson(STORAGE_KEYS.EMPLOYEES, []);
+
+    const ledgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
+    const systemNames = new Set(DEFAULT_LEDGERS.map(l => l['Ledger Name'].toLowerCase()));
+    const preservedLedgers = ledgers.filter(l => systemNames.has(l['Ledger Name'].toLowerCase()));
+    saveJson(STORAGE_KEYS.LEDGERS, preservedLedgers.length > 0 ? preservedLedgers : DEFAULT_LEDGERS);
+  }
+
+  if (options.resetOpeningBalances) {
+    const ledgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
+    ledgers.forEach(l => {
+      l['Opening Balance'] = 0;
+      l['Current Balance'] = 0;
+    });
+    saveJson(STORAGE_KEYS.LEDGERS, ledgers);
+
+    const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+    items.forEach(i => {
+      i['Opening Stock'] = 0;
+      i['Current Stock'] = 0;
+      i['Opening Valuation'] = 0;
+    });
+    saveJson(STORAGE_KEYS.ITEMS, items);
+  }
+
+  recalculateLedgerBalances();
+  return { ok: true, message: 'Bulk data cleanup completed successfully' };
 }
 
 export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: { voucherNo?: string; date?: string; ledger?: string; amount: number; mode?: string; debitLedger?: string; creditLedger?: string; toAccount?: string; fromAccount?: string; narration?: string }) {
@@ -3115,10 +3398,15 @@ export function getFinancialReports(type: string, from: string, to: string) {
     return 'Asset';
   };
 
+  const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
+  const integrateInv = cfg.IntegrateAccountsWithInventory !== 'false';
+
   let oV = 0, cV = 0;
   items.filter(i => i['Maintain Stock'] !== 'N').forEach(i => {
     const c = i['Item Code'], pr = Number(i['Purchase Rate']) || 0;
-    let o = 0, cl = 0;
+    const opStock = Number(i['Opening Stock']) || 0;
+    let o = opStock;
+    let cl = opStock;
     stockLog.filter(l => l['Item Code'] === c).forEach(l => {
       const d = new Date(l.DateIso).getTime();
       const df = (Number(l['Qty In']) || 0) - (Number(l['Qty Out']) || 0);
@@ -3128,9 +3416,12 @@ export function getFinancialReports(type: string, from: string, to: string) {
     oV += o * pr; cV += cl * pr;
   });
 
-  const tb: Array<{ name: string; grp: string; dr: number; cr: number; nat: string }> = [];
-  const pnl = { p: 0, s: 0, de: 0, di: 0, ie: 0, ii: 0, os: oV, cs: cV };
-  const bs = { cap: 0, ln: 0, cl: 0, fa: 0, ca: 0, cs: cV };
+  const effOpeningStock = integrateInv ? oV : 0;
+  const effClosingStock = integrateInv ? cV : 0;
+
+  const tb: Array<{ name: string; grp: string; dr: number; cr: number; nat: string; opDr: number; opCr: number; periodDr: number; periodCr: number }> = [];
+  const pnl = { p: 0, s: 0, de: 0, di: 0, ie: 0, ii: 0, os: effOpeningStock, cs: effClosingStock, rawOpeningStock: oV, rawClosingStock: cV, isIntegrated: integrateInv };
+  const bs = { cap: 0, ln: 0, cl: 0, fa: 0, ca: 0, cs: effClosingStock };
   const recMap = new Map<string, number>();
   const payMap = new Map<string, number>();
 
@@ -3139,33 +3430,72 @@ export function getFinancialReports(type: string, from: string, to: string) {
     const grp = l.Group || inferLedgerGroup(n, 'Sundry Debtors');
     const path = getGrp(grp);
     const nat = getNat(grp);
-    let bal = (Number(l['Opening Balance']) || 0) * (l['Balance Type (Dr/Cr)'] === 'Cr' ? -1 : 1);
+    let initBal = (Number(l['Opening Balance']) || 0) * (l['Balance Type (Dr/Cr)'] === 'Cr' ? -1 : 1);
     const cleanLName = n.trim().toLowerCase();
+
+    let priorDr = 0, priorCr = 0;
+    let periodDr = 0, periodCr = 0;
 
     ledgerLog.forEach(log => {
       const logName = (log['Ledger Name'] || '').trim().toLowerCase();
       if (logName === cleanLName) {
         const d = new Date(log.DateIso).getTime();
-        if (d <= toDt) bal += ((Number(log.Debit) || 0) - (Number(log.Credit) || 0));
+        const drAmt = Number(log.Debit) || 0;
+        const crAmt = Number(log.Credit) || 0;
+        if (d < fr) {
+          priorDr += drAmt;
+          priorCr += crAmt;
+        } else if (d <= toDt) {
+          periodDr += drAmt;
+          periodCr += crAmt;
+        }
       }
     });
 
-    if (bal === 0 && Number(l['Current Balance']) !== 0) {
+    const opNet = initBal + priorDr - priorCr;
+    const closeNet = opNet + periodDr - periodCr;
+
+    const isNominalAccount =
+      nat === 'Income' ||
+      nat === 'Expense' ||
+      path.includes('Sales Account') ||
+      path.includes('Sales Accounts') ||
+      path.includes('Purchase Account') ||
+      path.includes('Purchase Accounts') ||
+      path.includes('Direct Expenses') ||
+      path.includes('Indirect Expenses') ||
+      path.includes('Direct Income') ||
+      path.includes('Direct Incomes') ||
+      path.includes('Indirect Income');
+
+    let bal = isNominalAccount ? (periodDr - periodCr) : closeNet;
+    if (!isNominalAccount && bal === 0 && Number(l['Current Balance']) !== 0 && periodDr === 0 && periodCr === 0) {
       bal = (Number(l['Current Balance']) || 0) * (l['Balance Type (Dr/Cr)'] === 'Cr' ? -1 : 1);
     }
 
     let pBal = 0;
     if (nat === 'Income' || nat === 'Expense') {
-      ledgerLog.forEach(log => {
-        const logName = (log['Ledger Name'] || '').trim().toLowerCase();
-        if (logName === cleanLName) {
-          const d = new Date(log.DateIso).getTime();
-          if (d >= fr && d <= toDt) pBal += ((Number(log.Debit) || 0) - (Number(log.Credit) || 0));
-        }
-      });
+      pBal = periodDr - periodCr;
     }
 
-    if (Math.abs(bal) > 0.005) tb.push({ name: n, grp, dr: bal > 0 ? bal : 0, cr: bal < 0 ? Math.abs(bal) : 0, nat });
+    const opDr = opNet > 0 ? opNet : 0;
+    const opCr = opNet < 0 ? Math.abs(opNet) : 0;
+    const finalDr = bal > 0 ? bal : 0;
+    const finalCr = bal < 0 ? Math.abs(bal) : 0;
+
+    if (Math.abs(bal) > 0.005 || Math.abs(opNet) > 0.005 || periodDr > 0 || periodCr > 0) {
+      tb.push({
+        name: n,
+        grp,
+        dr: finalDr,
+        cr: finalCr,
+        nat,
+        opDr,
+        opCr,
+        periodDr,
+        periodCr
+      });
+    }
     
     // Strict non-party exclusion for Sundry Debtors (Receivables) and Sundry Creditors (Payables)
     const isBank =
@@ -3263,6 +3593,31 @@ export function getFinancialReports(type: string, from: string, to: string) {
     else if (path.includes('Current Assets') && !path.includes('Sundry Debtors') && !path.includes('Bank Accounts') && !path.includes('Cash-in-Hand')) bs.ca += bal;
     else if (nat === 'Asset' && !path.includes('Fixed Assets') && !path.includes('Current Assets')) bs.ca += bal;
   });
+
+  // Fallback if sales/purchase ledger log entries are missing for the selected date range
+  if (pnl.s === 0 && sales.length > 0) {
+    sales.forEach(s => {
+      if ((s.status as string) !== 'Cancelled') {
+        const d = new Date(s.date).getTime();
+        if (d >= fr && d <= toDt) {
+          const netSale = (Number(s.taxable) || 0) + (Number(s.zeroRated) || 0) - (Number(s.discount) || 0);
+          pnl.s += Math.max(0, netSale > 0 ? netSale : (Number(s.total) || 0) - (Number(s.gstAmt) || 0));
+        }
+      }
+    });
+  }
+
+  if (pnl.p === 0 && purchases.length > 0) {
+    purchases.forEach(p => {
+      if ((p.status as string) !== 'Cancelled') {
+        const d = new Date(p.date).getTime();
+        if (d >= fr && d <= toDt) {
+          const netPurch = (Number(p.taxable) || Number(p.total)) - (Number(p.gstAmt) || 0);
+          pnl.p += Math.max(0, netPurch);
+        }
+      }
+    });
+  }
 
   // Calculate detailed bill-wise credit breakdown
   const unpaidSalesInvoices = sales
@@ -4364,4 +4719,95 @@ export function getEmployeeAdvances(): import('../types').EmployeeAdvance[] {
 
 export function saveEmployeeAdvances(advances: import('../types').EmployeeAdvance[]): void {
   saveJson(STORAGE_KEYS.EMPLOYEE_ADVANCES, advances);
+}
+
+
+export function rebuildAccountingLogs() {
+  saveJson(STORAGE_KEYS.LEDGER_LOG, []);
+  saveJson(STORAGE_KEYS.STOCK_LEDGER, []);
+
+  const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []).sort((a,b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
+
+  sales.forEach(s => {
+    if (s.status === 'Cancelled') return;
+    const iNo = s.invoiceNo || '';
+    s.items.forEach(l => {
+      logStock(l['Item Code'], l['Item Name'], 'Sale', 0, Number(l.Qty), 0, iNo);
+    });
+
+    const cash = Number(s.cash) || 0, b1 = Number(s.bank1) || 0, b2 = Number(s.bank2) || 0;
+    const cr = Number(s.credit) || 0;
+    const tax = Number(s.taxable) || 0, zro = Number(s.zeroRated) || 0, gst = Number(s.gstAmt) || 0;
+    const appliedDiscount = Number(s.discount) || 0;
+    const sLg = typeof s.customer === 'object' ? (s.customer.name?.trim() || s.customer.ledger?.trim() || 'Cash Customer') : (s.customer || 'Cash Customer');
+
+    if (cash > 0) adjustLedgerBalance('Cash', cash, 'Dr', iNo, 'Cash sale ' + iNo, 'Sale');
+    if (b1 > 0) adjustLedgerBalance(s.paymentDetails?.bank1Ledger || 'BOB Account', b1, 'Dr', iNo, 'Bank sale ' + iNo, 'Sale');
+    if (b2 > 0) adjustLedgerBalance(s.paymentDetails?.bank2Ledger || 'BNBL Account', b2, 'Dr', iNo, 'Bank sale ' + iNo, 'Sale');
+    if (cr > 0.009) adjustLedgerBalance(sLg, cr, 'Dr', iNo, 'Credit sale ' + iNo, 'Sale');
+
+    const netSalesCredit = Math.max(0, round2((tax + zro) - appliedDiscount));
+    adjustLedgerBalance('Sales Account', netSalesCredit, 'Cr', iNo, 'Sale ' + iNo, 'Sale');
+    if (gst > 0) adjustLedgerBalance('GST Payable', gst, 'Cr', iNo, 'GST ' + iNo, 'Sale');
+
+    (s.additionalExpenses || []).forEach(exp => {
+      if (exp.ledger && Number(exp.amount) > 0) adjustLedgerBalance(exp.ledger, Number(exp.amount), 'Cr', iNo, 'Sales Additional Charge ' + iNo, 'Sale');
+    });
+  });
+
+  purchases.forEach(p => {
+    if (p.status === 'Cancelled') return;
+    const bNo = p.billNo || p.invoiceNo || '';
+    p.items.forEach(l => {
+      logStock(l['Item Code'], l['Item Name'], 'Purchase', Number(l.Qty), 0, 0, bNo);
+    });
+
+    const cash = Number(p.cash) || 0, b1 = Number(p.bank1) || 0, b2 = Number(p.bank2) || 0;
+    const cr = Number(p.credit) || 0;
+    const tax = Number(p.taxable) || 0, zro = Number(p.zeroRated) || 0, gst = Number(p.gstAmt) || 0;
+    const sLg = typeof p.supplier === 'object' ? (p.supplier.name?.trim() || p.supplier.ledger?.trim() || 'Supplier') : (p.supplier || 'Supplier');
+
+    if (cash > 0) adjustLedgerBalance('Cash', cash, 'Cr', bNo, 'Cash purchase ' + bNo, 'Purchase');
+    if (b1 > 0) adjustLedgerBalance(p.paymentDetails?.bank1Ledger || 'BOB Account', b1, 'Cr', bNo, 'Bank purchase ' + bNo, 'Purchase');
+    if (b2 > 0) adjustLedgerBalance(p.paymentDetails?.bank2Ledger || 'BNBL Account', b2, 'Cr', bNo, 'Bank purchase ' + bNo, 'Purchase');
+    if (cr > 0.009) adjustLedgerBalance(sLg, cr, 'Cr', bNo, 'Credit purchase ' + bNo, 'Purchase');
+
+    adjustLedgerBalance('Purchase Account', tax + zro, 'Dr', bNo, 'Purchase ' + bNo, 'Purchase');
+    if (gst > 0) adjustLedgerBalance('Duties & Taxes', gst, 'Dr', bNo, 'GST ' + bNo, 'Purchase');
+
+    (p.additionalExpenses || []).forEach(exp => {
+      if (exp.ledger && Number(exp.amount) > 0) adjustLedgerBalance(exp.ledger, Number(exp.amount), 'Dr', bNo, 'Purchase Expense ' + bNo, 'Purchase');
+    });
+  });
+
+  vouchers.forEach(v => {
+    if (v.status === 'Cancelled') return;
+    const no = v.voucherNo || '';
+    if (v.type === 'J') {
+      (v.lines || []).forEach(line => {
+        if (line.ledger && Number(line.amount) > 0) {
+          adjustLedgerBalance(line.ledger, Number(line.amount), line.type as 'Dr' | 'Cr', no, v.narration || '', 'Journal');
+        }
+      });
+    } else {
+      const dr = v.debitLedger || '';
+      const cr = v.creditLedger || '';
+      const t = v.type === 'P' ? 'Payment' : (v.type === 'R' ? 'Receipt' : (v.type === 'C' ? 'Contra' : 'Journal'));
+      if (dr && cr && Number(v.amount) > 0) {
+        adjustLedgerBalance(dr, Number(v.amount), 'Dr', no, v.narration || '', t);
+        adjustLedgerBalance(cr, Number(v.amount), 'Cr', no, v.narration || '', t);
+      }
+    }
+  });
+
+  const payrolls = loadJson<MonthlyPayroll[]>(STORAGE_KEYS.MONTHLY_PAYROLLS, []);
+  if (payrolls.length > 0) {
+    saveJson(STORAGE_KEYS.MONTHLY_PAYROLLS, payrolls.map(p => ({ ...p, isPostedToAccounting: false })));
+    saveJson(STORAGE_KEYS.MONTHLY_PAYROLLS, payrolls);
+    syncPayrollToAccounting();
+  }
+
+  recalculateLedgerBalances();
 }

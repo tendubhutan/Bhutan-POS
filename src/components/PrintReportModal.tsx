@@ -14,6 +14,9 @@ interface PrintReportModalProps {
   rows: any[][];
   totals?: any[];
   summaryCards?: { label: string; value: string | number; color?: string }[];
+  reportType?: 'TB' | 'PNL' | 'BS' | null;
+  reportData?: any;
+  depth?: 'summary' | 'detailed' | 'super_detailed';
 }
 
 export const PrintReportModal: React.FC<PrintReportModalProps> = ({
@@ -26,7 +29,10 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
   headers,
   rows,
   totals,
-  summaryCards
+  summaryCards,
+  reportType,
+  reportData,
+  depth = 'detailed'
 }) => {
   const [copied, setCopied] = useState(false);
   const [phoneInput, setPhoneInput] = useState('');
@@ -88,19 +94,475 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
   };
 
   const handleDownloadPDF = () => {
-    const doc = generateReportPDF(reportTitle, config, fromDate, toDate, headers, rows, totals, summaryCards);
+    const doc = generateReportPDF(
+      reportTitle,
+      config,
+      fromDate,
+      toDate,
+      headers,
+      rows,
+      totals,
+      summaryCards,
+      reportType,
+      reportData,
+      (depth as 'summary' | 'detailed' | 'super_detailed') || 'detailed'
+    );
     const safeTitle = reportTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
     doc.save(`${safeTitle}_${fromDate}_to_${toDate}.pdf`);
   };
 
   const handleSharePDF = async () => {
-    const doc = generateReportPDF(reportTitle, config, fromDate, toDate, headers, rows, totals, summaryCards);
+    const doc = generateReportPDF(
+      reportTitle,
+      config,
+      fromDate,
+      toDate,
+      headers,
+      rows,
+      totals,
+      summaryCards,
+      reportType,
+      reportData,
+      (depth as 'summary' | 'detailed' | 'super_detailed') || 'detailed'
+    );
     const safeTitle = reportTitle.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const filename = `${safeTitle}_${fromDate}_to_${toDate}.pdf`;
     await shareOrDownloadPDF(doc, filename, `${reportTitle} - ${config.CompanyName || 'Store'}`, generateReportSummaryText());
   };
 
+  const fmtNum = (val: number) => (Number(val) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const getFinancialReportHTML = () => {
+    if (reportType === 'PNL' && reportData?.pnl) {
+      const p = reportData.pnl;
+      const s = Number(p.s) || 0;
+      const di = Number(p.di) || 0;
+      const os = Number(p.os) || 0;
+      const pur = Number(p.p) || 0;
+      const de = Number(p.de) || 0;
+      const cs = Number(p.cs) || 0;
+      const ii = Number(p.ii) || 0;
+      const ie = Number(p.ie) || 0;
+
+      const cogs = os + pur + de - cs;
+      const grossProfit = s + di - cogs;
+      const netProfit = grossProfit + ii - ie;
+
+      const rawTb = reportData.tb || [];
+
+      const getPnlAmt = (l: any, isIncome: boolean) => {
+        if (l.periodAmount !== undefined) return l.periodAmount;
+        const pDr = Number(l.periodDr) || 0;
+        const pCr = Number(l.periodCr) || 0;
+        if (pDr > 0 || pCr > 0) {
+          return isIncome ? Math.abs(pCr - pDr) : Math.max(0, pDr - pCr);
+        }
+        return isIncome ? Math.abs((Number(l.cr) || 0) - (Number(l.dr) || 0)) : Math.max(0, (Number(l.dr) || 0) - (Number(l.cr) || 0));
+      };
+
+      const mapPnlLedger = (l: any, isIncome: boolean) => ({
+        ...l,
+        amount: getPnlAmt(l, isIncome)
+      });
+
+      const filterPnlLedgers = (ledgers: any[], isIncome: boolean) => {
+        const mapped = ledgers.map(l => mapPnlLedger(l, isIncome));
+        if (depth === 'detailed') {
+          return mapped.filter(l => l.amount > 0);
+        }
+        return mapped;
+      };
+
+      const salesLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Sales')), true);
+      const purchLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Purchase')), false);
+      const directExpLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Direct Expense')), false);
+      const indirectExpLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Indirect Expense')), false);
+      const indirectIncLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Indirect Income')), true);
+
+      const totalTradingLeft = os + pur + de + Math.max(0, grossProfit);
+      const totalTradingRight = s + di + cs;
+
+      const renderLedgers = (ledgers: any[]) => {
+        if (depth === 'summary' || !ledgers || ledgers.length === 0) return '';
+        return ledgers.map(l => `
+          <div style="display: flex; justify-content: space-between; padding-left: 14px; font-size: 10px; color: #475569;">
+            <span>${l.name}</span>
+            <span class="num">${fmtNum(l.amount !== undefined ? l.amount : (l.dr || l.cr))}</span>
+          </div>
+        `).join('');
+      };
+
+      return `
+        <div style="border: 1.5px solid #0f172a; border-radius: 6px; overflow: hidden; margin-top: 10px;">
+          <div style="font-weight: 800; font-size: 10px; background: #e0e7ff; color: #3730a3; padding: 4px 8px; border-bottom: 1px solid #0f172a; text-transform: uppercase;">
+            Trading Account
+          </div>
+          <div style="display: flex; border-bottom: 2px solid #0f172a;">
+            <div style="flex: 1; border-right: 1px solid #0f172a; padding: 6px 8px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; font-weight: 800; border-bottom: 1px solid #94a3b8; padding-bottom: 3px; margin-bottom: 4px; font-size: 10px;">
+                  <span>P a r t i c u l a r s</span>
+                  <span>Amount (${config.CurrencySymbol || 'Nu.'})</span>
+                </div>
+                <div style="margin-bottom: 6px;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                    <span>Opening Stock</span>
+                    <span class="num">${fmtNum(os)}</span>
+                  </div>
+                </div>
+                <div style="margin-bottom: 6px;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                    <span>Purchase Accounts</span>
+                    <span class="num">${fmtNum(pur)}</span>
+                  </div>
+                  ${renderLedgers(purchLedgers)}
+                </div>
+                ${de > 0 ? `
+                  <div style="margin-bottom: 6px;">
+                    <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                      <span>Direct Expenses</span>
+                      <span class="num">${fmtNum(de)}</span>
+                    </div>
+                    ${renderLedgers(directExpLedgers)}
+                  </div>
+                ` : ''}
+                ${grossProfit >= 0 ? `
+                  <div style="display: flex; justify-content: space-between; font-weight: 800; color: #166534; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #cbd5e1;">
+                    <span>Gross Profit c/o</span>
+                    <span class="num">${fmtNum(grossProfit)}</span>
+                  </div>
+                ` : ''}
+              </div>
+              <div style="display: flex; justify-content: space-between; font-weight: 800; border-top: 1px solid #0f172a; padding-top: 4px; margin-top: 8px;">
+                <span>TOTAL</span>
+                <span class="num">${fmtNum(totalTradingLeft)}</span>
+              </div>
+            </div>
+
+            <div style="flex: 1; padding: 6px 8px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; font-weight: 800; border-bottom: 1px solid #94a3b8; padding-bottom: 3px; margin-bottom: 4px; font-size: 10px;">
+                  <span>P a r t i c u l a r s</span>
+                  <span>Amount (${config.CurrencySymbol || 'Nu.'})</span>
+                </div>
+                <div style="margin-bottom: 6px;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                    <span>Sales Accounts</span>
+                    <span class="num">${fmtNum(s)}</span>
+                  </div>
+                  ${renderLedgers(salesLedgers)}
+                </div>
+                ${di > 0 ? `
+                  <div style="margin-bottom: 6px;">
+                    <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                      <span>Direct Incomes</span>
+                      <span class="num">${fmtNum(di)}</span>
+                    </div>
+                  </div>
+                ` : ''}
+                <div style="margin-bottom: 6px;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                    <span>Closing Stock Valuation</span>
+                    <span class="num">${fmtNum(cs)}</span>
+                  </div>
+                </div>
+                ${grossProfit < 0 ? `
+                  <div style="display: flex; justify-content: space-between; font-weight: 800; color: #991b1b; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #cbd5e1;">
+                    <span>Gross Loss c/o</span>
+                    <span class="num">${fmtNum(Math.abs(grossProfit))}</span>
+                  </div>
+                ` : ''}
+              </div>
+              <div style="display: flex; justify-content: space-between; font-weight: 800; border-top: 1px solid #0f172a; padding-top: 4px; margin-top: 8px;">
+                <span>TOTAL</span>
+                <span class="num">${fmtNum(totalTradingRight)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="font-weight: 800; font-size: 10px; background: #e0e7ff; color: #3730a3; padding: 4px 8px; border-bottom: 1px solid #0f172a; text-transform: uppercase;">
+            Profit & Loss Account
+          </div>
+          <div style="display: flex;">
+            <div style="flex: 1; border-right: 1px solid #0f172a; padding: 6px 8px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                ${grossProfit < 0 ? `
+                  <div style="display: flex; justify-content: space-between; font-weight: 700; color: #991b1b; margin-bottom: 6px;">
+                    <span>Gross Loss b/f</span>
+                    <span class="num">${fmtNum(Math.abs(grossProfit))}</span>
+                  </div>
+                ` : ''}
+                <div style="margin-bottom: 6px;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                    <span>Indirect Expenses</span>
+                    <span class="num">${fmtNum(ie)}</span>
+                  </div>
+                  ${renderLedgers(indirectExpLedgers)}
+                </div>
+                ${netProfit >= 0 ? `
+                  <div style="display: flex; justify-content: space-between; font-weight: 800; color: #15803d; margin-top: 6px; padding-top: 4px; border-top: 1px solid #cbd5e1;">
+                    <span>Nett Profit</span>
+                    <span class="num">${fmtNum(netProfit)}</span>
+                  </div>
+                ` : ''}
+              </div>
+              <div style="display: flex; justify-content: space-between; font-weight: 800; border-top: 1px solid #0f172a; padding-top: 4px; margin-top: 8px;">
+                <span>TOTAL</span>
+                <span class="num">${fmtNum(ie + Math.max(0, netProfit))}</span>
+              </div>
+            </div>
+
+            <div style="flex: 1; padding: 6px 8px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                ${grossProfit >= 0 ? `
+                  <div style="display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 6px;">
+                    <span>Gross Profit b/f</span>
+                    <span class="num">${fmtNum(grossProfit)}</span>
+                  </div>
+                ` : ''}
+                ${ii > 0 ? `
+                  <div style="margin-bottom: 6px;">
+                    <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                      <span>Indirect Incomes</span>
+                      <span class="num">${fmtNum(ii)}</span>
+                    </div>
+                    ${renderLedgers(indirectIncLedgers)}
+                  </div>
+                ` : ''}
+                ${netProfit < 0 ? `
+                  <div style="display: flex; justify-content: space-between; font-weight: 800; color: #991b1b; margin-top: 6px; padding-top: 4px; border-top: 1px solid #cbd5e1;">
+                    <span>Nett Loss</span>
+                    <span class="num">${fmtNum(Math.abs(netProfit))}</span>
+                  </div>
+                ` : ''}
+              </div>
+              <div style="display: flex; justify-content: space-between; font-weight: 800; border-top: 1px solid #0f172a; padding-top: 4px; margin-top: 8px;">
+                <span>TOTAL</span>
+                <span class="num">${fmtNum(Math.max(0, grossProfit) + ii)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    if (reportType === 'BS' && reportData?.bs && reportData?.pnl) {
+      const p = reportData.pnl;
+      const netProfit = (Number(p.s) || 0) + (Number(p.di) || 0) - ((Number(p.os) || 0) + (Number(p.p) || 0) + (Number(p.de) || 0) - (Number(p.cs) || 0)) + (Number(p.ii) || 0) - (Number(p.ie) || 0);
+
+      const cap = Number(reportData.bs.cap) || 0;
+      const netEquity = cap + netProfit;
+      const loans = Number(reportData.bs.ln) || 0;
+      const cl = Number(reportData.bs.cl) || 0;
+      const fa = Number(reportData.bs.fa) || 0;
+      const ca = Number(reportData.bs.ca) || 0;
+      const stockVal = Number(reportData.bs.cs) || 0;
+
+      const rawTb = reportData.tb || [];
+      const capitalLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Capital'));
+      const loanLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Loan'));
+      const currentLiabLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Liabilit') || (l.grp || '').includes('Creditor') || (l.grp || '').includes('Dut'));
+      const fixedAssetLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Fixed Asset'));
+      const currentAssetLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Current Asset') || (l.grp || '').includes('Debtor') || (l.grp || '').includes('Bank') || (l.grp || '').includes('Cash'));
+
+      const totalLiab = netEquity + loans + cl;
+      const totalAssets = fa + ca + stockVal;
+
+      const renderLedgers = (ledgers: any[]) => {
+        if (depth === 'summary' || !ledgers || ledgers.length === 0) return '';
+        return ledgers.map(l => `
+          <div style="display: flex; justify-content: space-between; padding-left: 14px; font-size: 10px; color: #475569;">
+            <span>${l.name}</span>
+            <span class="num">${fmtNum(l.cr || l.dr)}</span>
+          </div>
+        `).join('');
+      };
+
+      return `
+        <div style="border: 1.5px solid #0f172a; border-radius: 6px; overflow: hidden; margin-top: 10px;">
+          <div style="display: flex;">
+            <div style="flex: 1; border-right: 1px solid #0f172a; padding: 6px 8px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; font-weight: 800; border-bottom: 1px solid #0f172a; padding-bottom: 3px; margin-bottom: 6px; font-size: 10px;">
+                  <span>L I A B I L I T I E S</span>
+                  <span>Amount (${config.CurrencySymbol || 'Nu.'})</span>
+                </div>
+                
+                <div style="margin-bottom: 6px;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                    <span>Capital Account</span>
+                    <span class="num">${fmtNum(cap)}</span>
+                  </div>
+                  ${renderLedgers(capitalLedgers)}
+                  <div style="display: flex; justify-content: space-between; padding-left: 10px; font-size: 10px; color: #166534;">
+                    <span>Add: Nett Profit / (Loss)</span>
+                    <span class="num">${fmtNum(netProfit)}</span>
+                  </div>
+                </div>
+
+                ${loans > 0 ? `
+                  <div style="margin-bottom: 6px;">
+                    <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                      <span>Loans (Liability)</span>
+                      <span class="num">${fmtNum(loans)}</span>
+                    </div>
+                    ${renderLedgers(loanLedgers)}
+                  </div>
+                ` : ''}
+
+                <div style="margin-bottom: 6px;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                    <span>Current Liabilities & Payables</span>
+                    <span class="num">${fmtNum(cl)}</span>
+                  </div>
+                  ${renderLedgers(currentLiabLedgers)}
+                </div>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; font-weight: 800; border-top: 2px solid #0f172a; border-bottom: 2px solid #0f172a; padding: 4px 0; margin-top: 12px; font-size: 11px;">
+                <span>TOTAL LIABILITIES</span>
+                <span class="num">${fmtNum(totalLiab)}</span>
+              </div>
+            </div>
+
+            <div style="flex: 1; padding: 6px 8px; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; font-weight: 800; border-bottom: 1px solid #0f172a; padding-bottom: 3px; margin-bottom: 6px; font-size: 10px;">
+                  <span>A S S E T S</span>
+                  <span>Amount (${config.CurrencySymbol || 'Nu.'})</span>
+                </div>
+
+                <div style="margin-bottom: 6px;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                    <span>Fixed Assets</span>
+                    <span class="num">${fmtNum(fa)}</span>
+                  </div>
+                  ${renderLedgers(fixedAssetLedgers)}
+                </div>
+
+                <div style="margin-bottom: 6px;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                    <span>Current Assets</span>
+                    <span class="num">${fmtNum(ca)}</span>
+                  </div>
+                  ${renderLedgers(currentAssetLedgers)}
+                </div>
+
+                <div style="margin-bottom: 6px;">
+                  <div style="display: flex; justify-content: space-between; font-weight: 700;">
+                    <span>Closing Stock Valuation</span>
+                    <span class="num">${fmtNum(stockVal)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; font-weight: 800; border-top: 2px solid #0f172a; border-bottom: 2px solid #0f172a; padding: 4px 0; margin-top: 12px; font-size: 11px;">
+                <span>TOTAL ASSETS</span>
+                <span class="num">${fmtNum(totalAssets)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    if (reportType === 'TB' && reportData?.tb) {
+      const rawTb: any[] = reportData.tb;
+      const primaryGroupOrder = [
+        'Capital Account', 'Loans (Liability)', 'Current Liabilities',
+        'Fixed Assets', 'Investments', 'Current Assets', 'Branch / Divisions',
+        'Sales Accounts', 'Direct Incomes', 'Indirect Incomes',
+        'Purchase Accounts', 'Direct Expenses', 'Indirect Expenses'
+      ];
+
+      const grouped: Record<string, { name: string; dr: number; cr: number; ledgers: any[] }> = {};
+      let totalDr = 0;
+      let totalCr = 0;
+
+      rawTb.forEach(l => {
+        const grp = l.grp || 'Other Accounts';
+        if (!grouped[grp]) {
+          grouped[grp] = { name: grp, dr: 0, cr: 0, ledgers: [] };
+        }
+        const dr = Number(l.dr) || 0;
+        const cr = Number(l.cr) || 0;
+        grouped[grp].dr += dr;
+        grouped[grp].cr += cr;
+        grouped[grp].ledgers.push(l);
+        totalDr += dr;
+        totalCr += cr;
+      });
+
+      const groupKeys = Object.keys(grouped).sort((a, b) => {
+        const idxA = primaryGroupOrder.indexOf(a);
+        const idxB = primaryGroupOrder.indexOf(b);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return a.localeCompare(b);
+      });
+
+      const rowsHtml = groupKeys.map(grpKey => {
+        const g = grouped[grpKey];
+        const net = g.dr - g.cr;
+        const isDr = net >= 0;
+        const absVal = Math.abs(net);
+
+        let html = `
+          <tr style="font-weight: 700; background: #f8fafc;">
+            <td style="padding: 5px 8px; font-size: 11px;">${g.name}</td>
+            <td class="num" style="padding: 5px 8px; font-size: 11px;">${isDr && absVal > 0 ? fmtNum(absVal) : ''}</td>
+            <td class="num" style="padding: 5px 8px; font-size: 11px;">${!isDr && absVal > 0 ? fmtNum(absVal) : ''}</td>
+          </tr>
+        `;
+
+        if (depth !== 'summary') {
+          g.ledgers.forEach(l => {
+            const lNet = (Number(l.dr) || 0) - (Number(l.cr) || 0);
+            const lIsDr = lNet >= 0;
+            const lAbs = Math.abs(lNet);
+            html += `
+              <tr style="color: #475569;">
+                <td style="padding: 3px 8px 3px 22px; font-size: 10px;">${l.name}</td>
+                <td class="num" style="padding: 3px 8px; font-size: 10px;">${lIsDr && lAbs > 0 ? fmtNum(lAbs) : ''}</td>
+                <td class="num" style="padding: 3px 8px; font-size: 10px;">${!lIsDr && lAbs > 0 ? fmtNum(lAbs) : ''}</td>
+              </tr>
+            `;
+          });
+        }
+
+        return html;
+      }).join('');
+
+      return `
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #cbd5e1;">
+          <thead>
+            <tr style="background: #e0e7ff; color: #3730a3; font-weight: 800; font-size: 10px; text-transform: uppercase;">
+              <th style="padding: 6px 8px; text-align: left; border: 1px solid #cbd5e1;">P a r t i c u l a r s</th>
+              <th style="padding: 6px 8px; text-align: right; border: 1px solid #cbd5e1; width: 140px;">Closing Debit (${config.CurrencySymbol || 'Nu.'})</th>
+              <th style="padding: 6px 8px; text-align: right; border: 1px solid #cbd5e1; width: 140px;">Closing Credit (${config.CurrencySymbol || 'Nu.'})</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+          <tfoot>
+            <tr style="background: #f1f5f9; font-weight: 800; font-size: 11px; border-top: 2px solid #0f172a; border-bottom: 2px double #0f172a;">
+              <td style="padding: 6px 8px;">CARRIED OVER / GRAND TOTAL</td>
+              <td class="num" style="padding: 6px 8px;">${fmtNum(totalDr)}</td>
+              <td class="num" style="padding: 6px 8px;">${fmtNum(totalCr)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      `;
+    }
+
+    return null;
+  };
+
   const generatePrintHTML = () => {
+    const customFinHTML = getFinancialReportHTML();
+
     return `
       <!DOCTYPE html>
       <html>
@@ -129,8 +591,10 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            border-bottom: 2px solid #0f172a;
-            padding-bottom: 12px;
+            background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 14px 18px;
             margin-bottom: 16px;
           }
           .company-name {
@@ -138,10 +602,10 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
             font-weight: 800;
             color: #0f172a;
             letter-spacing: -0.5px;
-            margin-bottom: 2px;
+            margin-bottom: 3px;
           }
           .company-meta {
-            font-size: 10px;
+            font-size: 10.5px;
             color: #475569;
             line-height: 1.4;
           }
@@ -151,7 +615,7 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
           .report-title {
             font-size: 16px;
             font-weight: 800;
-            color: #1e1b4b;
+            color: #3730a3;
             text-transform: uppercase;
             letter-spacing: 0.5px;
           }
@@ -160,8 +624,8 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
             background: #e0e7ff;
             color: #3730a3;
             font-weight: 700;
-            font-size: 10px;
-            padding: 3px 8px;
+            font-size: 10.5px;
+            padding: 3px 10px;
             border-radius: 999px;
             margin-top: 4px;
           }
@@ -182,8 +646,8 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
             display: table-footer-group;
           }
           th {
-            background-color: #f1f5f9;
-            color: #1e293b;
+            background-color: #e0e7ff;
+            color: #3730a3;
             font-weight: 800;
             text-transform: uppercase;
             font-size: 9.5px;
@@ -212,11 +676,11 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
             background-color: #f1f5f9;
             font-weight: 800;
             border-top: 2px solid #0f172a;
-            border-bottom: 2px solid #0f172a;
+            border-bottom: 2px double #0f172a;
             font-size: 11px;
           }
           .footer-section {
-            margin-top: 40px;
+            margin-top: 35px;
             display: flex;
             justify-content: space-between;
             align-items: flex-end;
@@ -237,49 +701,55 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
         </style>
       </head>
       <body>
-        <div class="header-container">
-          <div>
-            <div class="company-name">${config.CompanyName || 'Business Store'}</div>
-            <div class="company-meta">
-              ${config.CompanyAddress ? `<span>${config.CompanyAddress}</span><br>` : ''}
-              ${config.CompanyPhone ? `<span>Contact: ${config.CompanyPhone}</span>` : ''}
-              ${config.GSTIN ? `<span> | GSTIN: ${config.GSTIN}</span>` : ''}
-            </div>
+        <div style="position: relative; text-align: center; background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
+          <div style="font-size: 22px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px; margin-bottom: 3px;">
+            ${config.CompanyName || 'Business Store'}
           </div>
-          <div class="report-badge">
-            <div class="report-title">${reportTitle}</div>
-            <div class="period-pill">Period: ${fromDate} to ${toDate}</div>
-            <div style="font-size: 9px; color: #94a3b8; margin-top: 4px;">Printed: ${nowStr}</div>
+          <div style="font-size: 11px; color: #64748b; font-weight: 600; margin-bottom: 6px;">
+            ${[
+              config.CompanyAddress || config.Address,
+              (config.GSTIN || config.CompanyGSTNo) ? `GSTIN: ${config.GSTIN || config.CompanyGSTNo}` : ''
+            ].filter(Boolean).join(' • ')}
+          </div>
+          <div style="font-size: 16px; font-weight: 900; color: #1e1b4b; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px;">
+            ${reportTitle}
+          </div>
+          <div style="margin-top: 6px;">
+            <span style="display: inline-block; background: #e0e7ff; color: #3730a3; font-weight: 700; font-size: 11px; padding: 3px 14px; border-radius: 9999px; border: 1px solid #c7d2fe;">
+              ${reportType === 'BS' ? `As at: ${toDate}` : `Period: ${fromDate} to ${toDate}`}
+            </span>
           </div>
         </div>
 
-        <table>
-          <thead>
-            <tr>
-              ${headers.map(h => `<th>${h}</th>`).join('')}
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map(row => `
+        ${customFinHTML ? customFinHTML : `
+          <table>
+            <thead>
               <tr>
-                ${row.map((cell: any) => {
-                  const isNum = typeof cell === 'number' || (!isNaN(Number(cell)) && String(cell).includes('.') && !isNaN(parseFloat(cell)));
-                  return `<td class="${isNum ? 'num' : ''}">${cell ?? '-'}</td>`;
-                }).join('')}
+                ${headers.map(h => `<th>${h}</th>`).join('')}
               </tr>
-            `).join('')}
-          </tbody>
-          ${totals && totals.length > 0 ? `
-            <tfoot>
-              <tr>
-                ${totals.map((t: any) => {
-                  const isNum = typeof t === 'number' || (!isNaN(Number(t)) && String(t).includes('.') && !isNaN(parseFloat(t)));
-                  return `<td class="${isNum ? 'num' : ''}">${t ?? ''}</td>`;
-                }).join('')}
-              </tr>
-            </tfoot>
-          ` : ''}
-        </table>
+            </thead>
+            <tbody>
+              ${rows.map(row => `
+                <tr>
+                  ${row.map((cell: any) => {
+                    const isNum = typeof cell === 'number' || (!isNaN(Number(cell)) && String(cell).includes('.') && !isNaN(parseFloat(cell)));
+                    return `<td class="${isNum ? 'num' : ''}">${cell ?? '-'}</td>`;
+                  }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+            ${totals && totals.length > 0 ? `
+              <tfoot>
+                <tr>
+                  ${totals.map((t: any) => {
+                    const isNum = typeof t === 'number' || (!isNaN(Number(t)) && String(t).includes('.') && !isNaN(parseFloat(t)));
+                    return `<td class="${isNum ? 'num' : ''}">${t ?? ''}</td>`;
+                  }).join('')}
+                </tr>
+              </tfoot>
+            ` : ''}
+          </table>
+        `}
 
         <div class="footer-section">
           <div>Computer Generated Report | ${config.CompanyName || 'Store'}</div>
@@ -450,69 +920,75 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
 
         {/* Printable Document View Canvas */}
         <div className="print-modal-body flex-1 overflow-y-auto p-8 bg-slate-100/70">
-          <div className="print-report-sheet max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-slate-200 space-y-6 text-slate-900 text-xs">
-            {/* Header */}
-            <div className="flex justify-between items-start pb-4 border-b-2 border-slate-900">
-              <div>
-                <h1 className="text-xl font-black text-slate-900 tracking-tight">{config.CompanyName || 'Business Store'}</h1>
-                <p className="text-slate-500 text-[11px] mt-0.5">
-                  {config.CompanyAddress && <span>{config.CompanyAddress} | </span>}
-                  {config.CompanyPhone && <span>Contact: {config.CompanyPhone}</span>}
-                  {config.GSTIN && <span> | GSTIN: {config.GSTIN}</span>}
-                </p>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-extrabold text-indigo-950 uppercase">{reportTitle}</span>
-                <div className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full inline-block mt-1">
-                  Period: {fromDate} to {toDate}
-                </div>
-                <div className="text-[10px] text-slate-400 mt-1">Printed: {nowStr}</div>
+          <div className="print-report-sheet max-w-3xl mx-auto bg-white p-6 rounded-xl shadow-lg border border-slate-200 space-y-5 text-slate-900 text-xs">
+            {/* Centered Light Header matching Tally/Print layout */}
+            <div className="relative text-center p-5 bg-gradient-to-br from-slate-50 via-indigo-50/40 to-slate-50 rounded-2xl border border-slate-200/90 shadow-2xs space-y-1">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight pt-1">
+                {config.CompanyName || 'Business Store'}
+              </h1>
+              <p className="text-xs text-slate-500 font-semibold">
+                {[
+                  config.CompanyAddress || config.Address,
+                  (config.GSTIN || config.CompanyGSTNo) ? `GSTIN: ${config.GSTIN || config.CompanyGSTNo}` : ''
+                ].filter(Boolean).join(' • ')}
+              </p>
+              <h2 className="text-base sm:text-lg font-black text-indigo-950 uppercase tracking-wide pt-1">
+                {reportTitle}
+              </h2>
+              <div className="pt-0.5">
+                <span className="inline-block bg-indigo-100/90 text-indigo-800 font-bold text-xs px-3.5 py-0.5 rounded-full border border-indigo-200 shadow-2xs">
+                  {reportType === 'BS' ? `As at: ${toDate}` : `Period: ${fromDate} to ${toDate}`}
+                </span>
               </div>
             </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-800 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
-                    {headers.map((h, i) => (
-                      <th key={i} className="py-2.5 px-3 text-left border-r border-slate-200 last:border-r-0">{h}</th>
+            {/* Custom Financial Report Body OR Standard Table */}
+            {getFinancialReportHTML() ? (
+              <div dangerouslySetInnerHTML={{ __html: getFinancialReportHTML()! }} />
+            ) : (
+              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-indigo-50/80 text-indigo-950 font-bold uppercase text-[10px] tracking-wider border-b border-indigo-100">
+                      {headers.map((h, i) => (
+                        <th key={i} className="py-2.5 px-3 text-left border-r border-indigo-100 last:border-r-0">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {rows.map((row, rIdx) => (
+                      <tr key={rIdx} className="hover:bg-slate-50">
+                        {row.map((cell: any, cIdx: number) => {
+                          const isNum = typeof cell === 'number' || (!isNaN(Number(cell)) && String(cell).includes('.') && !isNaN(parseFloat(cell)));
+                          return (
+                            <td key={cIdx} className={`py-2 px-3 border-r border-slate-100 last:border-r-0 ${isNum ? 'text-right font-mono font-medium' : ''}`}>
+                              {cell ?? '-'}
+                            </td>
+                          );
+                        })}
+                      </tr>
                     ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {rows.map((row, rIdx) => (
-                    <tr key={rIdx} className="hover:bg-slate-50">
-                      {row.map((cell: any, cIdx: number) => {
-                        const isNum = typeof cell === 'number' || (!isNaN(Number(cell)) && String(cell).includes('.') && !isNaN(parseFloat(cell)));
-                        return (
-                          <td key={cIdx} className={`py-2 px-3 border-r border-slate-100 last:border-r-0 ${isNum ? 'text-right font-mono font-medium' : ''}`}>
-                            {cell ?? '-'}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-                {totals && totals.length > 0 && (
-                  <tfoot>
-                    <tr className="bg-slate-100 font-extrabold border-t-2 border-slate-900 text-slate-900 text-xs">
-                      {totals.map((t: any, i: number) => {
-                        const isNum = typeof t === 'number' || (!isNaN(Number(t)) && String(t).includes('.') && !isNaN(parseFloat(t)));
-                        return (
-                          <td key={i} className={`py-2.5 px-3 border-r border-slate-200 last:border-r-0 ${isNum ? 'text-right font-mono' : ''}`}>
-                            {t ?? ''}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
+                  </tbody>
+                  {totals && totals.length > 0 && (
+                    <tfoot>
+                      <tr className="bg-slate-100 font-extrabold border-t-2 border-slate-900 text-slate-900 text-xs">
+                        {totals.map((t: any, i: number) => {
+                          const isNum = typeof t === 'number' || (!isNaN(Number(t)) && String(t).includes('.') && !isNaN(parseFloat(t)));
+                          return (
+                            <td key={i} className={`py-2.5 px-3 border-r border-slate-200 last:border-r-0 ${isNum ? 'text-right font-mono' : ''}`}>
+                              {t ?? ''}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            )}
 
             {/* Signatures */}
-            <div className="pt-8 flex justify-between items-end text-slate-500 text-[11px]">
+            <div className="pt-6 flex justify-between items-end text-slate-500 text-[11px]">
               <div>Computer Generated Report | {config.CompanyName || 'Store'}</div>
               <div className="w-40 border-t border-slate-400 text-center pt-1 font-semibold text-slate-700">
                 Authorized Signatory

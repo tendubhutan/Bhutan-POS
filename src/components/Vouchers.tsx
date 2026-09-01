@@ -1174,7 +1174,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
   });
 
   const totalFilteredAmount = filteredRecent.reduce(
-    (acc, v) => acc + (Number(v.totalAmount || v.total) || 0),
+    (acc, v) => acc + (v.status === 'Cancelled' ? 0 : (Number(v.totalAmount || v.total) || 0)),
     0
   );
 
@@ -1560,6 +1560,28 @@ export const Vouchers: React.FC<VouchersProps> = ({
                   <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
                   <span>Export Excel</span>
                 </button>
+
+                {/* Trash Bin */}
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('app:openTrash'))}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-300 shadow-2xs transition active:scale-95 cursor-pointer"
+                  title="Open Trash & Recycle Bin"
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Trash</span>
+                </button>
+
+                {/* Bulk Delete */}
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('app:openBulkDelete'))}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 shadow-2xs transition active:scale-95 cursor-pointer"
+                  title="Bulk Delete Data (Ctrl+Alt+D)"
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                  <span>Bulk Delete</span>
+                </button>
               </div>
             </div>
 
@@ -1825,8 +1847,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
                           </td>
                           <td className="py-2.5 px-3 text-right font-black text-slate-900 whitespace-nowrap">
                             {isCancelled ? (
-                              <span className="line-through text-slate-400 font-mono text-xs">
-                                {currencySymbol} {(v.totalAmount || v.total || 0).toFixed(2)}
+                              <span className="text-red-600 font-bold font-mono text-xs">
+                                {currencySymbol} 0.00
                               </span>
                             ) : (
                               <span className="text-slate-900 font-mono">

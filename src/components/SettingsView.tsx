@@ -621,6 +621,49 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
 
+            <div className="p-4 bg-indigo-50/60 border border-indigo-200/80 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2 text-indigo-950 font-extrabold text-xs">
+                <FileText className="h-4 w-4 text-indigo-600" />
+                <span>Financial Statements & Accounting Integration</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Integrate Accounts with Inventory */}
+                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                      checked={form.IntegrateAccountsWithInventory !== 'false'}
+                      onChange={e => setForm({ ...form, IntegrateAccountsWithInventory: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Integrate Accounts with Inventory</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Automatically calculate and display Opening Stock & Closing Stock in Profit & Loss and Balance Sheet statements.</p>
+                  </div>
+                </label>
+
+                {/* Report Expansion Detail Level */}
+                <div className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-1.5">
+                  <label className="font-extrabold text-slate-900 text-xs block">
+                    Financial Statement Detail Level
+                  </label>
+                  <p className="text-[10px] text-slate-500 leading-snug">
+                    Controls default expansion depth across Trial Balance, Profit & Loss, and Balance Sheet:
+                  </p>
+                  <select
+                    value={form.ReportDetailDepth || 'detailed'}
+                    onChange={e => setForm({ ...form, ReportDetailDepth: e.target.value as any })}
+                    className="w-full h-8 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-slate-800 bg-white outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
+                  >
+                    <option value="summary">Summary (Primary Groups Only)</option>
+                    <option value="detailed">Detailed (Sub-Groups & Totals)</option>
+                    <option value="super_detailed">Super Detailed (All Master Ledgers)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {/* GST / Taxation Module */}
               <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
@@ -870,6 +913,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
 
 
+
+            {/* Data Maintenance & Mass Reset Tools */}
+            <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-extrabold text-white text-xs flex items-center gap-2">
+                    <Trash2 className="h-4 w-4 text-rose-400" />
+                    <span>Data Maintenance & System Resets</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Manage deleted records in Trash or perform bulk data resets for system testing.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('app:openTrash'))}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-bold text-xs flex items-center gap-2 transition cursor-pointer"
+                >
+                  <Trash2 className="h-4 w-4 text-amber-400" />
+                  <span>Open Trash & Recycle Bin</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('app:openBulkDelete'))}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition cursor-pointer"
+                >
+                  <AlertTriangle className="h-4 w-4 text-rose-200" />
+                  <span>Bulk Data Cleanup (Ctrl+Alt+D)</span>
+                </button>
+              </div>
+            </div>
 
             {renderSaveButton('features', 'System Toggles', true, 'lg')}
           </div>

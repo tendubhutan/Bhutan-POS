@@ -449,6 +449,79 @@ export function generateInvoicePDF(
   return doc;
 }
 
+function drawReportHeaderBox(
+  doc: jsPDF,
+  config: Config,
+  reportTitle: string,
+  fromDate: string,
+  toDate: string,
+  depth: 'summary' | 'detailed' | 'super_detailed' = 'detailed',
+  reportType?: 'TB' | 'PNL' | 'BS' | null
+): number {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 12;
+  const headerWidth = pageWidth - margin * 2;
+  const headerHeight = 28;
+  const startY = 10;
+
+  // Outer Box
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.4);
+  doc.roundedRect(margin, startY, headerWidth, headerHeight, 3, 3, 'FD');
+
+  // Mode Pill Badge (Top Right)
+  const modeText = depth === 'summary' ? 'Summary Mode' : depth === 'super_detailed' ? 'Super Detailed' : 'Detailed Mode';
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  const modeWidth = doc.getTextWidth(modeText) + 6;
+  const modeX = pageWidth - margin - 4 - modeWidth;
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(199, 210, 254);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(modeX, startY + 2.5, modeWidth, 4.5, 2.25, 2.25, 'FD');
+  doc.setTextColor(67, 56, 202);
+  doc.text(modeText, modeX + modeWidth / 2, startY + 5.8, { align: 'center' });
+
+  // Company Name (Centered)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(15, 23, 42);
+  doc.text(config.CompanyName || 'Store Name', pageWidth / 2, startY + 8.5, { align: 'center' });
+
+  // Address & GSTIN (Centered)
+  const addr = config.Address || (config as any).CompanyAddress || '';
+  const gstin = config.CompanyGSTNo || (config as any).GSTIN || '';
+  const metaStr = [addr, gstin ? `GSTIN: ${gstin}` : ''].filter(Boolean).join(' • ');
+
+  if (metaStr) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(100, 116, 139);
+    doc.text(metaStr, pageWidth / 2, startY + 13, { align: 'center' });
+  }
+
+  // Report Title (Centered, Dark Navy Uppercase)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(30, 27, 75);
+  doc.text(reportTitle.toUpperCase(), pageWidth / 2, startY + 18, { align: 'center' });
+
+  // Period Badge Pill (Centered)
+  const periodStr = reportType === 'BS' ? `As at: ${toDate}` : `Period: ${fromDate} to ${toDate}`;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  const periodWidth = doc.getTextWidth(periodStr) + 8;
+  const periodX = (pageWidth - periodWidth) / 2;
+  doc.setFillColor(224, 231, 255);
+  doc.setDrawColor(199, 210, 254);
+  doc.roundedRect(periodX, startY + 20.5, periodWidth, 4.5, 2.25, 2.25, 'FD');
+  doc.setTextColor(55, 48, 163);
+  doc.text(periodStr, pageWidth / 2, startY + 23.8, { align: 'center' });
+
+  return startY + headerHeight + 5;
+}
+
 /**
  * Generate a clean PDF for any Report
  */
@@ -460,8 +533,288 @@ export function generateReportPDF(
   headers: string[],
   rows: any[][],
   totals?: any[],
-  summaryCards?: { label: string; value: string | number }[]
+  summaryCards?: { label: string; value: string | number }[],
+  reportType?: 'TB' | 'PNL' | 'BS' | null,
+  reportData?: any,
+  depth: 'summary' | 'detailed' | 'super_detailed' = 'detailed'
 ): jsPDF {
+  const currency = config.CurrencySymbol || 'Nu.';
+  const fmtNum = (val: number) => (Number(val) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // 1. FINANCIAL REPORT: PROFIT & LOSS ACCOUNT
+  if (reportType === 'PNL' && reportData?.pnl) {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 12;
+
+    const p = reportData.pnl;
+    const s = Number(p.s) || 0;
+    const di = Number(p.di) || 0;
+    const os = Number(p.os) || 0;
+    const pur = Number(p.p) || 0;
+    const de = Number(p.de) || 0;
+    const cs = Number(p.cs) || 0;
+    const ii = Number(p.ii) || 0;
+    const ie = Number(p.ie) || 0;
+
+    const cogs = os + pur + de - cs;
+    const grossProfit = s + di - cogs;
+    const netProfit = grossProfit + ii - ie;
+
+    const rawTb = reportData.tb || [];
+
+    const getPnlAmt = (l: any, isIncome: boolean) => {
+      if (l.periodAmount !== undefined) return l.periodAmount;
+      const pDr = Number(l.periodDr) || 0;
+      const pCr = Number(l.periodCr) || 0;
+      if (pDr > 0 || pCr > 0) {
+        return isIncome ? Math.abs(pCr - pDr) : Math.max(0, pDr - pCr);
+      }
+      return isIncome ? Math.abs((Number(l.cr) || 0) - (Number(l.dr) || 0)) : Math.max(0, (Number(l.dr) || 0) - (Number(l.cr) || 0));
+    };
+
+    const mapPnlLedger = (l: any, isIncome: boolean) => ({
+      ...l,
+      amount: getPnlAmt(l, isIncome)
+    });
+
+    const filterPnlLedgers = (ledgers: any[], isIncome: boolean) => {
+      const mapped = ledgers.map(l => mapPnlLedger(l, isIncome));
+      if (depth === 'detailed') {
+        return mapped.filter(l => l.amount > 0);
+      }
+      return mapped;
+    };
+
+    const salesLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Sales')), true);
+    const purchLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Purchase')), false);
+    const directExpLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Direct Expense')), false);
+    const indirectExpLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Indirect Expense')), false);
+    const indirectIncLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Indirect Income')), true);
+
+    const totalTradingLeft = os + pur + de + Math.max(0, grossProfit);
+    const totalTradingRight = s + di + cs;
+
+    // Header Banner
+    let startY = drawReportHeaderBox(doc, config, 'PROFIT & LOSS ACCOUNT', fromDate, toDate, depth, 'PNL');
+
+    // Trading Account Section Header
+    doc.setFillColor(224, 231, 255);
+    doc.rect(margin, startY, pageWidth - margin * 2, 5.5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(55, 48, 163);
+    doc.text('TRADING ACCOUNT', margin + 3, startY + 4);
+
+    startY += 5.5;
+
+    const tradingRows: any[] = [];
+    tradingRows.push(['Opening Stock', fmtNum(os), 'Sales Accounts', fmtNum(s)]);
+    if (depth !== 'summary') {
+      salesLedgers.forEach((l: any) => tradingRows.push(['', '', `  ${l.name}`, fmtNum(l.amount)]));
+    }
+    tradingRows.push(['Purchase Accounts', fmtNum(pur), 'Closing Stock Valuation', fmtNum(cs)]);
+    if (depth !== 'summary') {
+      purchLedgers.forEach((l: any) => tradingRows.push([`  ${l.name}`, fmtNum(l.amount), '', '']));
+    }
+    if (de > 0) {
+      tradingRows.push(['Direct Expenses', fmtNum(de), '', '']);
+      if (depth !== 'summary') {
+        directExpLedgers.forEach((l: any) => tradingRows.push([`  ${l.name}`, fmtNum(l.amount), '', '']));
+      }
+    }
+    if (grossProfit >= 0) {
+      tradingRows.push(['Gross Profit c/o', fmtNum(grossProfit), '', '']);
+    } else {
+      tradingRows.push(['', '', 'Gross Loss c/o', fmtNum(Math.abs(grossProfit))]);
+    }
+
+    autoTable(doc, {
+      startY: startY,
+      head: [['Particulars (Debit)', `Amount (${currency})`, 'Particulars (Credit)', `Amount (${currency})`]],
+      body: tradingRows,
+      foot: [['TOTAL', fmtNum(totalTradingLeft), 'TOTAL', fmtNum(totalTradingRight)]],
+      margin: { left: margin, right: margin },
+      theme: 'grid',
+      headStyles: { fillColor: [55, 48, 163], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8 },
+      bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
+      columnStyles: {
+        0: { cellWidth: (pageWidth - margin * 2) * 0.35 },
+        1: { cellWidth: (pageWidth - margin * 2) * 0.15, halign: 'right' },
+        2: { cellWidth: (pageWidth - margin * 2) * 0.35 },
+        3: { cellWidth: (pageWidth - margin * 2) * 0.15, halign: 'right' }
+      }
+    });
+
+    startY = (doc as any).lastAutoTable.finalY + 5;
+
+    // P&L Section Header
+    doc.setFillColor(224, 231, 255);
+    doc.rect(margin, startY, pageWidth - margin * 2, 5.5, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(55, 48, 163);
+    doc.text('PROFIT & LOSS ACCOUNT', margin + 3, startY + 4);
+
+    startY += 5.5;
+
+    const pnlRows: any[] = [];
+    if (grossProfit < 0) {
+      pnlRows.push(['Gross Loss b/f', fmtNum(Math.abs(grossProfit)), '', '']);
+    } else {
+      pnlRows.push(['', '', 'Gross Profit b/f', fmtNum(grossProfit)]);
+    }
+
+    pnlRows.push(['Indirect Expenses', fmtNum(ie), 'Indirect Incomes', fmtNum(ii)]);
+    if (depth !== 'summary') {
+      indirectExpLedgers.forEach((l: any) => pnlRows.push([`  ${l.name}`, fmtNum(l.amount), '', '']));
+      indirectIncLedgers.forEach((l: any) => pnlRows.push(['', '', `  ${l.name}`, fmtNum(l.amount)]));
+    }
+
+    if (netProfit >= 0) {
+      pnlRows.push(['Nett Profit', fmtNum(netProfit), '', '']);
+    } else {
+      pnlRows.push(['', '', 'Nett Loss', fmtNum(Math.abs(netProfit))]);
+    }
+
+    const totalPnlLeft = ie + (grossProfit < 0 ? Math.abs(grossProfit) : 0) + Math.max(0, netProfit);
+    const totalPnlRight = ii + (grossProfit >= 0 ? grossProfit : 0) + (netProfit < 0 ? Math.abs(netProfit) : 0);
+
+    autoTable(doc, {
+      startY: startY,
+      head: [['Particulars (Debit)', `Amount (${currency})`, 'Particulars (Credit)', `Amount (${currency})`]],
+      body: pnlRows,
+      foot: [['TOTAL', fmtNum(totalPnlLeft), 'TOTAL', fmtNum(totalPnlRight)]],
+      margin: { left: margin, right: margin },
+      theme: 'grid',
+      headStyles: { fillColor: [55, 48, 163], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8 },
+      bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
+      columnStyles: {
+        0: { cellWidth: (pageWidth - margin * 2) * 0.35 },
+        1: { cellWidth: (pageWidth - margin * 2) * 0.15, halign: 'right' },
+        2: { cellWidth: (pageWidth - margin * 2) * 0.35 },
+        3: { cellWidth: (pageWidth - margin * 2) * 0.15, halign: 'right' }
+      }
+    });
+
+    return doc;
+  }
+
+  // 2. FINANCIAL REPORT: BALANCE SHEET
+  if (reportType === 'BS' && reportData?.bs && reportData?.pnl) {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 12;
+
+    const p = reportData.pnl;
+    const netProfit = (Number(p.s) || 0) + (Number(p.di) || 0) - ((Number(p.os) || 0) + (Number(p.p) || 0) + (Number(p.de) || 0) - (Number(p.cs) || 0)) + (Number(p.ii) || 0) - (Number(p.ie) || 0);
+
+    const cap = Number(reportData.bs.cap) || 0;
+    const netEquity = cap + netProfit;
+    const loans = Number(reportData.bs.ln) || 0;
+    const cl = Number(reportData.bs.cl) || 0;
+    const fa = Number(reportData.bs.fa) || 0;
+    const ca = Number(reportData.bs.ca) || 0;
+    const stockVal = Number(reportData.bs.cs) || 0;
+
+    const rawTb = reportData.tb || [];
+    const capitalLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Capital'));
+    const loanLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Loan'));
+    const currentLiabLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Liabilit') || (l.grp || '').includes('Creditor') || (l.grp || '').includes('Dut'));
+    const fixedAssetLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Fixed Asset'));
+    const currentAssetLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Current Asset') || (l.grp || '').includes('Debtor') || (l.grp || '').includes('Bank') || (l.grp || '').includes('Cash'));
+
+    const totalLiab = netEquity + loans + cl;
+    const totalAssets = fa + ca + stockVal;
+
+    // Header Banner
+    const startY = drawReportHeaderBox(doc, config, 'BALANCE SHEET', fromDate, toDate, depth, 'BS');
+
+    const bsRows: any[] = [];
+    bsRows.push(['Capital Account', fmtNum(cap), 'Fixed Assets', fmtNum(fa)]);
+    if (depth !== 'summary') {
+      capitalLedgers.forEach((l: any) => bsRows.push([`  ${l.name}`, fmtNum(l.cr || l.dr), '', '']));
+      fixedAssetLedgers.forEach((l: any) => bsRows.push(['', '', `  ${l.name}`, fmtNum(l.dr || l.cr)]));
+    }
+    bsRows.push(['  Add: Nett Profit / (Loss)', fmtNum(netProfit), 'Current Assets', fmtNum(ca)]);
+    if (depth !== 'summary') {
+      currentAssetLedgers.forEach((l: any) => bsRows.push(['', '', `  ${l.name}`, fmtNum(l.dr || l.cr)]));
+    }
+    bsRows.push(['Loans (Liability)', fmtNum(loans), 'Closing Stock Valuation', fmtNum(stockVal)]);
+    if (depth !== 'summary') {
+      loanLedgers.forEach((l: any) => bsRows.push([`  ${l.name}`, fmtNum(l.cr || l.dr), '', '']));
+    }
+    bsRows.push(['Current Liabilities & Payables', fmtNum(cl), '', '']);
+    if (depth !== 'summary') {
+      currentLiabLedgers.forEach((l: any) => bsRows.push([`  ${l.name}`, fmtNum(l.cr || l.dr), '', '']));
+    }
+
+    autoTable(doc, {
+      startY: startY,
+      head: [['LIABILITIES & EQUITY', `Amount (${currency})`, 'ASSETS & PROPERTIES', `Amount (${currency})`]],
+      body: bsRows,
+      foot: [['TOTAL LIABILITIES', fmtNum(totalLiab), 'TOTAL ASSETS', fmtNum(totalAssets)]],
+      margin: { left: margin, right: margin },
+      theme: 'grid',
+      headStyles: { fillColor: [55, 48, 163], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8 },
+      bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
+      columnStyles: {
+        0: { cellWidth: (pageWidth - margin * 2) * 0.35 },
+        1: { cellWidth: (pageWidth - margin * 2) * 0.15, halign: 'right' },
+        2: { cellWidth: (pageWidth - margin * 2) * 0.35 },
+        3: { cellWidth: (pageWidth - margin * 2) * 0.15, halign: 'right' }
+      }
+    });
+
+    return doc;
+  }
+
+  // 3. FINANCIAL REPORT: TRIAL BALANCE
+  if (reportType === 'TB' && reportData?.tb) {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 12;
+
+    const rawTb = reportData.tb || [];
+    let totalDr = 0;
+    let totalCr = 0;
+
+    const tbRows: any[] = [];
+    rawTb.forEach((l: any) => {
+      const dr = Number(l.dr) || 0;
+      const cr = Number(l.cr) || 0;
+      totalDr += dr;
+      totalCr += cr;
+      tbRows.push([l.name || l.grp || 'Ledger Account', dr > 0 ? fmtNum(dr) : '-', cr > 0 ? fmtNum(cr) : '-']);
+    });
+
+    // Header Banner
+    const startY = drawReportHeaderBox(doc, config, 'TRIAL BALANCE', fromDate, toDate, depth, 'TB');
+
+    autoTable(doc, {
+      startY: startY,
+      head: [['Particulars / Account Groups', `Closing Debit (${currency})`, `Closing Credit (${currency})`]],
+      body: tbRows,
+      foot: [['CARRIED OVER / GRAND TOTAL', fmtNum(totalDr), fmtNum(totalCr)]],
+      margin: { left: margin, right: margin },
+      theme: 'grid',
+      headStyles: { fillColor: [55, 48, 163], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8 },
+      bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
+      columnStyles: {
+        0: { cellWidth: (pageWidth - margin * 2) * 0.6 },
+        1: { cellWidth: (pageWidth - margin * 2) * 0.2, halign: 'right' },
+        2: { cellWidth: (pageWidth - margin * 2) * 0.2, halign: 'right' }
+      }
+    });
+
+    return doc;
+  }
+
+  // 4. FALLBACK GENERAL REPORT TABLE EXPORT
   const isWide = headers.length > 6;
   const doc = new jsPDF({
     orientation: isWide ? 'landscape' : 'portrait',
@@ -474,18 +827,7 @@ export function generateReportPDF(
   const nowStr = new Date().toLocaleString();
 
   // --- Title & Header ---
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.setTextColor(30, 41, 59);
-  doc.text(reportTitle.toUpperCase(), margin, 16);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`${config.CompanyName || 'Store Report'} • Period: ${fromDate} to ${toDate}`, margin, 22);
-  doc.text(`Generated on: ${nowStr}`, pageWidth - margin, 16, { align: 'right' });
-
-  let currentY = 27;
+  const currentY = drawReportHeaderBox(doc, config, reportTitle, fromDate, toDate, depth, reportType);
 
   // --- Data Table ---
   const bodyData = rows.map(r => r.map(c => (c !== undefined && c !== null ? String(c) : '')));

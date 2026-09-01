@@ -19,6 +19,8 @@ import { Reports, ReportTarget } from './components/Reports';
 import { SettingsView } from './components/SettingsView';
 import { DrillModal } from './components/DrillModal';
 import { SaleVoucherTypeModal } from './components/pos/SaleVoucherTypeModal';
+import { TrashModal } from './components/TrashModal';
+import { BulkDeleteModal } from './components/BulkDeleteModal';
 
 export default function App() {
   const [viewHistory, setViewHistory] = useState<string[]>(['dashboard']);
@@ -36,6 +38,10 @@ export default function App() {
 
   // Sequential Navigation Functions
   const navigateTo = (view: string) => {
+    if (view === 'trash') {
+      setShowTrashModal(true);
+      return;
+    }
     if (view === 'pos') {
       handleOpenPOSBilling();
       return;
@@ -148,6 +154,10 @@ export default function App() {
   // Direct Voucher Navigation Target (from drill-down or reports into voucher entry)
   const [voucherTarget, setVoucherTarget] = useState<{ voucherNo: string; timestamp: number } | null>(null);
 
+  // Trash & Bulk Delete Modals
+  const [showTrashModal, setShowTrashModal] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+
   // Quick Masters Trigger
   const [openItemModalCode, setOpenItemModalCode] = useState<string | null>(null);
   const [openLedgerModalGroup, setOpenLedgerModalGroup] = useState<string | null>(null);
@@ -210,11 +220,19 @@ export default function App() {
         navigateTo(e.detail.view);
       }
     };
+    const handleOpenTrash = () => setShowTrashModal(true);
+    const handleOpenBulkDelete = () => setShowBulkDeleteModal(true);
+
     window.addEventListener('app:navigate', handleAppNavigate);
+    window.addEventListener('app:openTrash', handleOpenTrash);
+    window.addEventListener('app:openBulkDelete', handleOpenBulkDelete);
+
     return () => {
       unsubStatus();
       unsubFirestore();
       window.removeEventListener('app:navigate', handleAppNavigate);
+      window.removeEventListener('app:openTrash', handleOpenTrash);
+      window.removeEventListener('app:openBulkDelete', handleOpenBulkDelete);
     };
   }, []);
 
@@ -228,20 +246,39 @@ export default function App() {
         activeEl instanceof HTMLSelectElement ||
         (activeEl as HTMLElement)?.isContentEditable;
 
-      // Report Specific Shortcuts (Ctrl+D, Ctrl+G, Ctrl+L)
-      if (e.ctrlKey || e.metaKey) {
-        const key = e.key.toLowerCase();
-        if (key === 'd') {
+      const rawKey = e.key ? e.key.toLowerCase() : '';
+      const isKeyD = e.code === 'KeyD' || rawKey === 'd' || rawKey === '∂';
+      const isKeyT = e.code === 'KeyT' || rawKey === 't' || rawKey === '†';
+
+      // Bulk Delete Modal: Ctrl+Alt+D, Cmd+Alt+D, or Alt+Shift+D
+      if (((e.ctrlKey || e.metaKey) && e.altKey && isKeyD) || (e.altKey && e.shiftKey && isKeyD)) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowBulkDeleteModal(true);
+        return;
+      }
+
+      // Trash Bin Modal: Ctrl+Alt+T or Cmd+Alt+T
+      if ((e.ctrlKey || e.metaKey) && e.altKey && isKeyT) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowTrashModal(true);
+        return;
+      }
+
+      // Report Shortcuts (Ctrl+D, Ctrl+G, Ctrl+L)
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        if (rawKey === 'd' || e.code === 'KeyD') {
           e.preventDefault();
           setReportTarget({ category: 'daily', timestamp: Date.now() });
           navigateTo('reports');
           return;
-        } else if (key === 'g') {
+        } else if (rawKey === 'g' || e.code === 'KeyG') {
           e.preventDefault();
           setReportTarget({ category: 'gst', timestamp: Date.now() });
           navigateTo('reports');
           return;
-        } else if (key === 'l') {
+        } else if (rawKey === 'l' || e.code === 'KeyL') {
           e.preventDefault();
           setReportTarget({ category: 'fin', finSubTab: 'LED', timestamp: Date.now() });
           navigateTo('reports');
@@ -553,6 +590,21 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Trash & Recycle Bin Modal */}
+      <TrashModal
+        isOpen={showTrashModal}
+        onClose={() => setShowTrashModal(false)}
+        onDataChanged={refreshData}
+        currencySymbol={config.CurrencySymbol}
+      />
+
+      {/* Bulk Delete Modal */}
+      <BulkDeleteModal
+        isOpen={showBulkDeleteModal}
+        onClose={() => setShowBulkDeleteModal(false)}
+        onDataCleared={refreshData}
+      />
     </div>
   );
 }

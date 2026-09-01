@@ -49,6 +49,8 @@ export interface Config {
   PurchaseInvoicePrefix?: string;
   PurchaseInvoiceStartingNo?: number;
   EnableBillDiscount?: string; // "true" | "false"
+  IntegrateAccountsWithInventory?: string; // "true" | "false"
+  ReportDetailDepth?: 'summary' | 'detailed' | 'super_detailed';
 }
 
 export type ModuleId = 'pos' | 'purchase' | 'vouchers' | 'masters' | 'barcode' | 'payroll' | 'reports' | 'settings';
@@ -584,6 +586,17 @@ export interface MonthlyPayroll {
   totalNetPay: number;
   isPostedToAccounting: boolean;
   voucherRefNo?: string;
+}
+
+export interface TrashEntry {
+  id: string;
+  refNo: string;
+  type: string;
+  amount: number;
+  date: string;
+  deletedAt: string;
+  narration?: string;
+  originalData?: any;
 }
 
 export * from './types/assetManagement';
