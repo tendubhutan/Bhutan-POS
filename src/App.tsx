@@ -19,7 +19,6 @@ import { Reports, ReportTarget } from './components/Reports';
 import { SettingsView } from './components/SettingsView';
 import { BankReconciliation } from './components/BankReconciliation';
 import { DrillModal } from './components/DrillModal';
-import { SaleVoucherTypeModal } from './components/pos/SaleVoucherTypeModal';
 import { TrashModal } from './components/TrashModal';
 import { BulkDeleteModal } from './components/BulkDeleteModal';
 
@@ -35,7 +34,6 @@ export default function App() {
 
   // Pre-POS Voucher Type Selection State
   const [selectedSaleVoucherType, setSelectedSaleVoucherType] = useState<VoucherType | null>(null);
-  const [showSaleVoucherTypeModal, setShowSaleVoucherTypeModal] = useState(false);
 
   // Sequential Navigation Functions
   const navigateTo = (view: string) => {
@@ -55,38 +53,11 @@ export default function App() {
     });
   };
 
-  const handleOpenPOSBilling = (voucherTypeOverride?: VoucherType) => {
-    if (voucherTypeOverride) {
-      setSelectedSaleVoucherType(voucherTypeOverride);
-      setCurrentView('pos');
-      setViewHistory(prev => (prev[prev.length - 1] === 'pos' ? prev : [...prev, 'pos']));
-      setIsMobileOpen(false);
-      return;
-    }
-
-    try {
-      const allVTypes = getVoucherTypes();
-      const activeSaleVts = allVTypes.filter(v =>
-        (v.parentType === 'Sale' || v.type === 'Sale' || v.typeCode === 'S') &&
-        v.status !== 'Inactive' &&
-        v.isActive !== false
-      );
-
-      // If only 1 (or 0) active voucher type exists, directly open POS screen without prompting
-      if (activeSaleVts.length <= 1) {
-        setSelectedSaleVoucherType(activeSaleVts[0] || null);
-        setCurrentView('pos');
-        setViewHistory(prev => (prev[prev.length - 1] === 'pos' ? prev : [...prev, 'pos']));
-        setIsMobileOpen(false);
-      } else {
-        // If multiple active voucher types created under Sale exist, prompt the user first
-        setShowSaleVoucherTypeModal(true);
-      }
-    } catch {
-      setCurrentView('pos');
-      setViewHistory(prev => (prev[prev.length - 1] === 'pos' ? prev : [...prev, 'pos']));
-      setIsMobileOpen(false);
-    }
+  const handleOpenPOSBilling = () => {
+    setSelectedSaleVoucherType(null);
+    setCurrentView('pos');
+    setViewHistory(prev => (prev[prev.length - 1] === 'pos' ? prev : [...prev, 'pos']));
+    setIsMobileOpen(false);
   };
 
   const navigateBack = () => {
@@ -572,27 +543,6 @@ export default function App() {
           }
         }}
       />
-
-      {/* Pre-POS Voucher Type Selector Modal */}
-      {showSaleVoucherTypeModal && (
-        <SaleVoucherTypeModal
-          isOpen={showSaleVoucherTypeModal}
-          onClose={() => setShowSaleVoucherTypeModal(false)}
-          voucherTypes={getVoucherTypes().filter(v =>
-            (v.parentType === 'Sale' || v.type === 'Sale' || v.typeCode === 'S') &&
-            v.status !== 'Inactive' &&
-            v.isActive !== false
-          )}
-          selectedVoucherTypeId={selectedSaleVoucherType?.id}
-          onSelectVoucherType={(vt) => {
-            setSelectedSaleVoucherType(vt);
-            setShowSaleVoucherTypeModal(false);
-            setCurrentView('pos');
-            setViewHistory(prev => (prev[prev.length - 1] === 'pos' ? prev : [...prev, 'pos']));
-            setIsMobileOpen(false);
-          }}
-        />
-      )}
 
       {/* Trash & Recycle Bin Modal */}
       <TrashModal

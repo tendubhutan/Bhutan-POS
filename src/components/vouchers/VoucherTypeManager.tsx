@@ -16,7 +16,6 @@ const TYPE_CATEGORIES: { id: VoucherGroupType | 'All'; label: string; color: str
   { id: 'All', label: 'All Types', color: 'bg-slate-100 text-slate-800' },
   { id: 'Payment', label: 'Payment', color: 'bg-rose-100 text-rose-800' },
   { id: 'Receipt', label: 'Receipt', color: 'bg-emerald-100 text-emerald-800' },
-  { id: 'Sale', label: 'Sale / Invoice', color: 'bg-blue-100 text-blue-800' },
   { id: 'Purchase', label: 'Purchase', color: 'bg-amber-100 text-amber-800' },
   { id: 'Journal', label: 'Journal', color: 'bg-indigo-100 text-indigo-800' },
   { id: 'Contra', label: 'Contra', color: 'bg-teal-100 text-teal-800' },
@@ -181,6 +180,7 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
   };
 
   const filteredTypes = voucherTypes.filter(vt => {
+    if (vt.type === 'Sale' || vt.parentType === 'Sale') return false;
     const matchesCat = selectedCategory === 'All' || vt.type === selectedCategory;
     const matchesSearch = 
       vt.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -200,7 +200,7 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
             <span>Custom Voucher Types (ERP Master)</span>
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Create and organize multiple custom voucher types under Payment, Receipt, Sale, Journal, Purchase, and more.
+            Create and organize multiple custom voucher types under Payment, Receipt, Journal, Purchase, and more.
           </p>
         </div>
 
@@ -464,7 +464,6 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
                   >
                     <option value="Payment">Payment</option>
                     <option value="Receipt">Receipt</option>
-                    <option value="Sale">Sale / POS Invoice</option>
                     <option value="Purchase">Purchase Entry</option>
                     <option value="Journal">Journal Voucher</option>
                     <option value="Contra">Contra (Bank / Cash)</option>
