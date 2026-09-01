@@ -44,7 +44,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [posSettings, setPosSettings] = useState<POSSettings>(loadPOSSettings());
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [justSavedSection, setJustSavedSection] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'company' | 'features' | 'vouchers' | 'invoice' | 'security' | 'pos'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'inventory' | 'features' | 'vouchers' | 'invoice' | 'security' | 'pos'>('company');
 
   // Security Users State
   const [usersList, setUsersList] = useState<AppUser[]>([]);
@@ -58,7 +58,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const tabs = [
     { id: 'company', label: 'Company Profile', icon: Building2, desc: 'Identity & Tax' },
-    { id: 'features', label: 'General Settings', icon: Sliders, desc: 'System Modules' },
+    { id: 'inventory', label: 'Inventory Settings', icon: Layers, desc: 'Units, Serials & Categories' },
+    { id: 'features', label: 'Banking & Modules', icon: Sliders, desc: 'Recon, Txn ID & Accounting' },
     { id: 'vouchers', label: 'Voucher Numbers', icon: Hash, desc: 'Prefixes & Modes' },
     { id: 'invoice', label: 'Invoice & Branding', icon: PenTool, desc: 'Logo & Signature' },
     { id: 'security', label: 'User Roles', icon: ShieldCheck, desc: 'Permissions' },
@@ -606,18 +607,175 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* TAB 2: Features & Toggles */}
+        {/* TAB 2: Inventory Settings */}
+        {activeTab === 'inventory' && (
+          <div className="space-y-5 text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-blue-600" />
+                  <span>Inventory Settings & Stock Parameters</span>
+                </h2>
+                <p className="text-[11px] text-slate-500">
+                  Configure multi-unit pricing, serial numbers, item categories, and item discount options.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              {/* Alternative Unit & Price */}
+              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                <div className="pt-0.5">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                    checked={form.EnableAltUnitPrice !== 'false'}
+                    onChange={e => setForm({ ...form, EnableAltUnitPrice: e.target.checked ? 'true' : 'false' })}
+                  />
+                </div>
+                <div>
+                  <span className="font-extrabold text-slate-900 text-xs">Alternative Unit & Price</span>
+                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Allow multiple units of measurement, conversion factors, and unit-wise pricing for stock items.</p>
+                </div>
+              </label>
+
+              {/* Wholesale Price Feature */}
+              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                <div className="pt-0.5">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                    checked={form.EnableWholesalePrice !== 'false'}
+                    onChange={e => setForm({ ...form, EnableWholesalePrice: e.target.checked ? 'true' : 'false' })}
+                  />
+                </div>
+                <div>
+                  <span className="font-extrabold text-slate-900 text-xs">Enable Wholesale Price</span>
+                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Allow defining wholesale price per item and toggle Retail/Wholesale pricing in POS Billing & Sales Invoices.</p>
+                </div>
+              </label>
+
+              {/* Serial Numbers Module */}
+              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                <div className="pt-0.5">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                    checked={form.EnableSerials === 'true'}
+                    onChange={e => setForm({ ...form, EnableSerials: e.target.checked ? 'true' : 'false' })}
+                  />
+                </div>
+                <div>
+                  <span className="font-extrabold text-slate-900 text-xs">Enable Serial Numbers (Inventory)</span>
+                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Track individual stock items by unique IMEI or Serial No.</p>
+                </div>
+              </label>
+
+              {/* Item Categories */}
+              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                <div className="pt-0.5">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                    checked={form.EnableCategory === 'true'}
+                    onChange={e => setForm({ ...form, EnableCategory: e.target.checked ? 'true' : 'false' })}
+                  />
+                </div>
+                <div>
+                  <span className="font-extrabold text-slate-900 text-xs">Enable Item Categories</span>
+                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Group items into hierarchical categories for better reporting.</p>
+                </div>
+              </label>
+
+              {/* Item-wise Discount */}
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-3 transition">
+                <label className="flex items-start gap-3.5 cursor-pointer">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      checked={form.EnableItemDiscount === "true"}
+                      onChange={e => setForm({ ...form, EnableItemDiscount: e.target.checked ? "true" : "false" })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Item-wise Discount</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Allow discounts per individual item in invoices.</p>
+                  </div>
+                </label>
+                {form.EnableItemDiscount === "true" && (
+                  <div className="ml-7 flex items-center gap-3 bg-white p-2.5 border border-slate-200 rounded-xl shadow-sm">
+                    <span className="text-xs font-bold text-slate-700">Type:</span>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name="ItemDiscountType" value="flat" checked={form.ItemDiscountType !== "percent"} onChange={() => setForm({...form, ItemDiscountType: 'flat'})} className="text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                      <span className="text-xs font-semibold text-slate-600">Flat Amount (#)</span>
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input type="radio" name="ItemDiscountType" value="percent" checked={form.ItemDiscountType === "percent"} onChange={() => setForm({...form, ItemDiscountType: 'percent'})} className="text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                      <span className="text-xs font-semibold text-slate-600">Percentage (%)</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {renderSaveButton('inventory', 'Inventory Settings', true, 'lg')}
+          </div>
+        )}
+
+        {/* TAB 3: Features & Toggles */}
         {activeTab === 'features' && (
           <div className="space-y-5 text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Sliders className="h-4 w-4 text-blue-600" />
-                  <span>System Modules & Global Toggles</span>
+                  <span>Banking & Accounting Feature Toggles</span>
                 </h2>
                 <p className="text-[11px] text-slate-500">
-                  Enable or disable specialized accounting, inventory, and point-of-sale modules across the system.
+                  Enable or disable bank reconciliation, transaction ID prompts, financial detail levels, and modules.
                 </p>
+              </div>
+            </div>
+
+            {/* Banking Features Section */}
+            <div className="p-4 bg-emerald-50/60 border border-emerald-200/80 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2 text-emerald-950 font-extrabold text-xs">
+                <CreditCard className="h-4 w-4 text-emerald-600" />
+                <span>Banking Controls & Transaction IDs</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Bank Reconciliation Toggle */}
+                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                      checked={form.EnableBankReconciliation !== 'false'}
+                      onChange={e => setForm({ ...form, EnableBankReconciliation: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Bank Reconciliation</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Track bank statement clearing dates, uncleared cheques, and reconciled balances.</p>
+                  </div>
+                </label>
+
+                {/* Bank Transaction ID Toggle */}
+                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                      checked={form.EnableBankTxnId !== 'false'}
+                      onChange={e => setForm({ ...form, EnableBankTxnId: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Bank Transaction ID / UTR Prompt</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Prompt for bank reference / UTR transaction ID when selecting bank ledgers in vouchers & POS.</p>
+                  </div>
+                </label>
               </div>
             </div>
 
@@ -681,38 +839,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </label>
 
-              {/* Serial Numbers Module */}
-              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-                <div className="pt-0.5">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    checked={form.EnableSerials === 'true'}
-                    onChange={e => setForm({ ...form, EnableSerials: e.target.checked ? 'true' : 'false' })}
-                  />
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-900 text-xs">Enable Serial Numbers (Inventory)</span>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Track individual stock items by unique IMEI or Serial No.</p>
-                </div>
-              </label>
-
-              {/* Item Categories */}
-              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-                <div className="pt-0.5">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    checked={form.EnableCategory === 'true'}
-                    onChange={e => setForm({ ...form, EnableCategory: e.target.checked ? 'true' : 'false' })}
-                  />
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-900 text-xs">Enable Item Categories</span>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Group items into hierarchical categories for better reporting.</p>
-                </div>
-              </label>
-              
               {/* Normal Sale Module */}
               <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
                 <div className="pt-0.5">
@@ -746,70 +872,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </label>
 
               {/* Payroll Module */}
-
-
               <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-
                 <div className="pt-0.5">
-
                   <input
-
                     type="checkbox"
-
                     className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-
                     checked={form.EnablePayroll !== "false"}
-
                     onChange={e => setForm({ ...form, EnablePayroll: e.target.checked ? "true" : "false" })}
-
                   />
-
                 </div>
-
                 <div>
-
                   <span className="font-extrabold text-slate-900 text-xs">Enable Payroll & HR Module</span>
-
                   <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Process salaries, manage employees, and handle provident funds.</p>
-
                 </div>
-
               </label>
 
-
-
-              
-              {/* Discount Modules */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-3 transition">
-                <label className="flex items-start gap-3.5 cursor-pointer">
-                  <div className="pt-0.5">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                      checked={form.EnableItemDiscount === "true"}
-                      onChange={e => setForm({ ...form, EnableItemDiscount: e.target.checked ? "true" : "false" })}
-                    />
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-slate-900 text-xs">Enable Item-wise Discount</span>
-                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Allow discounts per individual item in invoices.</p>
-                  </div>
-                </label>
-                {form.EnableItemDiscount === "true" && (
-                  <div className="ml-7 flex items-center gap-3 bg-white p-2.5 border border-slate-200 rounded-xl shadow-sm">
-                    <span className="text-xs font-bold text-slate-700">Type:</span>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" name="ItemDiscountType" value="flat" checked={form.ItemDiscountType !== "percent"} onChange={() => setForm({...form, ItemDiscountType: 'flat'})} className="text-blue-600 focus:ring-blue-500 cursor-pointer" />
-                      <span className="text-xs font-semibold text-slate-600">Flat Amount (#)</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" name="ItemDiscountType" value="percent" checked={form.ItemDiscountType === "percent"} onChange={() => setForm({...form, ItemDiscountType: 'percent'})} className="text-blue-600 focus:ring-blue-500 cursor-pointer" />
-                      <span className="text-xs font-semibold text-slate-600">Percentage (%)</span>
-                    </label>
-                  </div>
-                )}
-              </div>
-
+              {/* Bill Lumpsum Discount Module */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-3 transition">
                 <label className="flex items-start gap-3.5 cursor-pointer">
                   <div className="pt-0.5">
@@ -841,78 +919,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
 
               {/* Asset Management Module */}
-
               <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-
                 <div className="pt-0.5">
-
                   <input
-
                     type="checkbox"
-
                     className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-
                     checked={form.EnableAssetManagement !== "false"}
-
                     onChange={e => setForm({ ...form, EnableAssetManagement: e.target.checked ? "true" : "false" })}
-
                   />
-
                 </div>
-
                 <div>
-
                   <span className="font-extrabold text-slate-900 text-xs">Enable Asset Management</span>
-
                   <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Track fixed assets, depreciation, and calculate net book values.</p>
-
                 </div>
-
               </label>
-
             </div>
 
-
-
             {form.EnablePayroll !== "false" && (
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mt-3.5">
-
                 {/* Employee Advances & Loans */}
-
                 <label className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-indigo-50 transition">
-
                   <div className="pt-0.5">
-
                     <input
-
                       type="checkbox"
-
                       className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-
                       checked={form.EnableEmployeeAdvances !== "false"}
-
                       onChange={e => setForm({ ...form, EnableEmployeeAdvances: e.target.checked ? "true" : "false" })}
-
                     />
-
                   </div>
-
                   <div>
-
                     <span className="font-extrabold text-indigo-900 text-xs">Detailed Employee Advances (DSA/Imprest)</span>
-
                     <p className="text-[10px] text-indigo-700/70 mt-0.5 leading-snug">Enable deep tracking of DSA and Imprest by individual employee ID.</p>
-
                   </div>
-
                 </label>
-
               </div>
-
             )}
-
-
 
             {/* Data Maintenance & Mass Reset Tools */}
             <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3">

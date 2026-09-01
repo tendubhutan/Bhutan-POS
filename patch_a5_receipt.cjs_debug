@@ -16,7 +16,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   invoice,
   config
 }) => {
-  const [activeTab, setActiveTab] = useState<'thermal' | 'a4' | 'a5'>('thermal');
+  const [activeTab, setActiveTab] = useState<'thermal' | 'a4'>('thermal');
   const [phoneInput, setPhoneInput] = useState<string>('');
   const [showPhonePrompt, setShowPhonePrompt] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
@@ -180,7 +180,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
     );
   };
 
-  const printReceipt = (mode: 'thermal' | 'a4' | 'a5') => {
+  const printReceipt = (mode: 'thermal' | 'a4') => {
     const isThermal = mode === 'thermal';
     let content = '';
 
@@ -416,7 +416,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
           <title>Tax Invoice - ${invoice.invoiceNo}</title>
           <style>
             @page {
-              size: ${mode === 'a5' ? 'A5' : 'A4'} portrait;
+              size: A4 portrait;
               margin: 12mm 15mm;
             }
             * {
@@ -809,17 +809,6 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                 }`}
               >
                 A4 Invoice
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('a5')}
-                className={`px-3 py-1 rounded-lg transition ${
-                  activeTab === 'a5'
-                    ? 'bg-white text-indigo-700 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                A5 Invoice
               </button>
             </div>
 

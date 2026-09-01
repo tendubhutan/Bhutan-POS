@@ -1,9 +1,12 @@
+import { loadJson, STORAGE_KEYS, DEFAULT_UNITS } from '../services/storageService';
 import { AlertCircle } from 'lucide-react';
 import { playSaveSound, playWarningTone } from '../utils/audio';
 import React, { useState, useRef, useEffect } from "react";
 import {
   focusNextOutsideGrid } from "../utils/domUtils";
-import { Config, Item, Ledger, CartLine, BarcodeQueueItem } from "../types";
+import { Config, Item, Ledger, CartLine, Unit, BarcodeQueueItem } from "../types";
+import { BankTransactionIdModal } from "./BankTransactionIdModal";
+import { isBankLedger } from "../utils/ledgerUtils";
 import {
   saveSalesInvoice,
   getFullLedgerStatement,
@@ -203,6 +206,8 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   };
 
   const [narration, setNarration] = useState<string>('');
+  const [bankTxnNo, setBankTxnNo] = useState<string>('');
+  const [bankTxnModalOpen, setBankTxnModalOpen] = useState(false);
   const [termsAndConditions, setTermsAndConditions] = useState<string>(() =>
     getDefaultTerms(config),
   );
@@ -288,6 +293,40 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   }, [initialVoucherTarget]);
 
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [pricingMode, setPricingMode] = useState<'retail' | 'wholesale'>('retail');
+
+  const getItemRate = (item: Item): number => {
+    if (pricingMode === 'wholesale' && Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate'] || 0) > 0) {
+      return Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate']);
+    }
+    return Number((item as any)['Sale Rate'] ?? (item as any)['Sales Rate'] ?? item.MRP ?? 0);
+  };
+
+  const handlePricingModeChange = (newMode: 'retail' | 'wholesale') => {
+    setPricingMode(newMode);
+    if (cart.length > 0) {
+      const updatedCart = cart.map(line => {
+        const match = items.find(i => i['Item Code'] === line.itemCode);
+        if (!match) return line;
+        let newRate = Number((match as any)['Sale Rate'] ?? (match as any)['Sales Rate'] ?? match.MRP ?? 0);
+        if (newMode === 'wholesale' && Number((match as any)['Wholesale Rate'] || (match as any)['wholesaleRate'] || 0) > 0) {
+          newRate = Number((match as any)['Wholesale Rate'] || (match as any)['wholesaleRate']);
+        }
+        const isZ = isCustomerGstExempted || String(line.zeroRated).toUpperCase() === 'Y';
+        const tempLine = { ...line, rate: newRate };
+        const lineDisc = getLineDiscountAmt(tempLine);
+        const gr = line.qty * newRate - lineDisc;
+        const computedGstAmt = isZ ? 0 : round2(((Math.max(0, gr)) * (Number(line.gstPct) || 0)) / 100);
+        return {
+          ...line,
+          rate: newRate,
+          gstAmt: computedGstAmt
+        };
+      });
+      setCart(updatedCart);
+    }
+  };
+  const units = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
@@ -467,12 +506,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
 
   const selectItem = (item: Item, autoAdd: boolean = true) => {
     const qty = 1;
-    const rate = Number(
-      (item as any)["Sale Rate"] ??
-        (item as any)["Sales Rate"] ??
-        item.MRP ??
-        0,
-    );
+    const rate = getItemRate(item);
 
     const isZ =
       isCustomerGstExempted ||
@@ -746,6 +780,32 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {config.EnableWholesalePrice !== 'false' && (
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => handlePricingModeChange('retail')}
+                className={`px-3 py-1 text-xs font-extrabold rounded-lg transition cursor-pointer ${
+                  pricingMode === 'retail'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Retail
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePricingModeChange('wholesale')}
+                className={`px-3 py-1 text-xs font-extrabold rounded-lg transition cursor-pointer ${
+                  pricingMode === 'wholesale'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Wholesale
+              </button>
+            </div>
+          )}
           <div className="text-right">
             <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
               Invoice Total
@@ -848,7 +908,12 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                 <SearchableLedgerSelect
                   ledgers={ledgers}
                   value={customerName}
-                  onChange={setCustomerName}
+                  onChange={(val) => {
+                    setCustomerName(val);
+                    if (isBankLedger(val, ledgers, config)) {
+                      setBankTxnModalOpen(true);
+                    }
+                  }}
                   filterGroups={[
                     "Sundry Debtors",
                     "Cash-in-Hand",
@@ -1084,8 +1149,32 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                         className="w-full text-center h-7.5 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
                       />
                     </td>
-                    <td className="py-1 px-1 align-middle text-center font-semibold text-slate-600 text-xs">
-                      {line.unit || "Pcs"}
+                    <td className="py-1 px-1 align-middle text-center">
+                      <select
+                        value={line.unit || "Pcs"}
+                        onChange={e => {
+                          const val = e.target.value;
+                          const updated = [...cart];
+                          updated[idx].unit = val;
+                          const item = items.find(i => (i['Item Code'] && i['Item Code'] === updated[idx].itemCode) || i['Item Name'] === updated[idx].itemName);
+                          if (item) {
+                            if (val === item.Unit) {
+                              updated[idx].rate = item['Sale Rate'] || 0;
+                            } else if (item.multiUnits) {
+                              const mu = item.multiUnits.find(m => m.unit === val);
+                              if (mu && mu.saleRate) {
+                                updated[idx].rate = mu.saleRate;
+                              }
+                            }
+                          }
+                          setCart(updated);
+                        }}
+                        className="w-full text-center h-7 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
+                      >
+                        {units.map(u => (
+                          <option key={u['Unit Name']} value={u['Unit Name']}>{u.Symbol || u['Unit Name']}</option>
+                        ))}
+                      </select>
                     </td>
                     <td className="py-1 px-1 align-middle text-right">
                       <input
@@ -1463,6 +1552,15 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
           onRefresh={onDataRefresh}
         />
       )}
+
+      {/* Pop-up modal for Bank Transaction ID / UTR when Bank ledger is selected */}
+      <BankTransactionIdModal
+        isOpen={bankTxnModalOpen}
+        bankLedgerName={customerName || 'Bank Account'}
+        initialValue={bankTxnNo}
+        onSave={(newTxnId) => setBankTxnNo(newTxnId)}
+        onClose={() => setBankTxnModalOpen(false)}
+      />
     </div>
   );
 };

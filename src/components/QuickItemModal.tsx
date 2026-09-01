@@ -3,6 +3,7 @@ import { Item, Config } from '../types';
 import { loadJson, saveItem, STORAGE_KEYS, DEFAULT_UNITS, DEFAULT_ITEM_GROUPS } from '../services/storageService';
 import { X, Save, KeyRound } from 'lucide-react';
 import { SerialModal } from './SerialModal';
+import { MultiUnitEditor } from './MultiUnitEditor';
 
 interface QuickItemModalProps {
   isOpen: boolean;
@@ -24,7 +25,7 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({ isOpen, onClose,
         setItemForm({
           'Item Code': 'ITM' + new Date().toISOString().replace(/\D/g, '').slice(2, 14),
           'Item Name': '',
-          'Item Group': 'General',
+          'Group': 'General',
           'Unit': 'Nos',
           'Purchase Rate': 0,
           'Sale Rate': 0,
@@ -101,8 +102,8 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({ isOpen, onClose,
             <div>
               <label className="block font-bold text-slate-700 mb-1">Category</label>
               <select
-                value={itemForm['Item Group'] || ''}
-                onChange={e => setItemForm({ ...itemForm, 'Item Group': e.target.value })}
+                value={itemForm['Group'] || ''}
+                onChange={e => setItemForm({ ...itemForm, 'Group': e.target.value })}
                 className="w-full h-10 rounded-xl border border-slate-300 px-3 outline-none focus:border-indigo-500"
               >
                 {categories.map(c => (
@@ -134,6 +135,19 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({ isOpen, onClose,
                 className="w-full h-10 rounded-xl border border-slate-300 px-3 font-bold outline-none focus:border-indigo-500"
               />
             </div>
+
+            {(config.EnableWholesalePrice !== 'false') && (
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Wholesale Rate</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={itemForm['Wholesale Rate'] || 0}
+                  onChange={e => setItemForm({ ...itemForm, 'Wholesale Rate': Number(e.target.value) })}
+                  className="w-full h-10 rounded-xl border border-slate-300 px-3 font-bold text-emerald-800 outline-none focus:border-emerald-500"
+                />
+              </div>
+            )}
 
             <div>
               <label className="block font-bold text-slate-700 mb-1">Purchase Rate</label>
@@ -183,6 +197,8 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({ isOpen, onClose,
               />
             </div>
           </div>
+
+          <MultiUnitEditor itemForm={itemForm} setItemForm={setItemForm} units={units} showWholesalePrice={config.EnableWholesalePrice !== 'false'} />
 
           <div className="p-3.5 rounded-xl border border-amber-200/80 bg-amber-50/60 mt-4 space-y-1">
             <label className="flex items-center gap-2 cursor-pointer font-bold text-amber-900 select-none">

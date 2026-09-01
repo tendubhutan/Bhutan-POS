@@ -1,3 +1,5 @@
+import { Unit } from '../types';
+import { loadJson, saveJson, STORAGE_KEYS, DEFAULT_UNITS } from '../services/storageService';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Config,
@@ -15,6 +17,7 @@ import {
   savePOSSettings,
   POSSettings
 } from '../types/posSettings';
+import { BankTransactionIdModal } from './BankTransactionIdModal';
 import {
   holdBill,
   resumeBill,
@@ -99,6 +102,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 }) => {
   // POS Preferences & Workflow Settings
   const [posSettings, setPosSettings] = useState<POSSettings>(() => loadPOSSettings());
+  const units = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
 
@@ -201,6 +205,37 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   // Cart & Customer State
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [pricingMode, setPricingMode] = useState<'retail' | 'wholesale'>('retail');
+
+  const getItemRate = (item: Item): number => {
+    if (pricingMode === 'wholesale' && Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate'] || 0) > 0) {
+      return Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate']);
+    }
+    return Number((item as any)['Sale Rate'] ?? (item as any)['Sales Rate'] ?? item.MRP ?? 0);
+  };
+
+  const handlePricingModeChange = (newMode: 'retail' | 'wholesale') => {
+    setPricingMode(newMode);
+    if (cart.length > 0) {
+      const updatedCart = cart.map(line => {
+        const match = items.find(i => i['Item Code'] === line.itemCode);
+        if (!match) return line;
+        let newRate = Number((match as any)['Sale Rate'] ?? (match as any)['Sales Rate'] ?? match.MRP ?? 0);
+        if (newMode === 'wholesale' && Number((match as any)['Wholesale Rate'] || (match as any)['wholesaleRate'] || 0) > 0) {
+          newRate = Number((match as any)['Wholesale Rate'] || (match as any)['wholesaleRate']);
+        }
+        const isZ = isCustomerGstExempted || String(line.zeroRated).toUpperCase() === 'Y';
+        const lineDisc = config.ItemDiscountType === 'percent' ? ((line.qty * newRate) * line.discount / 100) : line.discount;
+        const computedGstAmt = isZ ? 0 : round2(((line.qty * newRate - lineDisc) * (Number(line.gstPct) || 0)) / 100);
+        return {
+          ...line,
+          rate: newRate,
+          gstAmt: computedGstAmt
+        };
+      });
+      setCart(updatedCart);
+    }
+  };
   const [customerName, setCustomerName] = useState('');
   const [walkInDetails, setWalkInDetails] = useState<{ name: string; phone: string; address: string; gst: string; isGSTExempted?: boolean } | null>(null);
   const [showWalkInModal, setShowWalkInModal] = useState(false);
@@ -239,6 +274,9 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   const [bank2, setBank2] = useState<number | ''>('');
   const [bankTxnNo, setBankTxnNo] = useState<string>('');
   const [bank2TxnNo, setBank2TxnNo] = useState<string>('');
+  const [bankTxnModalOpen, setBankTxnModalOpen] = useState(false);
+  const [activeBankLedgerName, setActiveBankLedgerName] = useState('');
+  const [targetBankField, setTargetBankField] = useState<'bank1' | 'bank2'>('bank1');
 
   // Bill-level / Lumpsum Discount State (e.g. customer requests 10 discount on 110 bill)
   const [billDiscount, setBillDiscount] = useState<number | ''>('');
@@ -680,7 +718,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   // Add Item to Cart (Direct or Step-by-Step, matching B2B rate & GST logic)
   const addItemDirectlyToCart = (item: Item, customQty = 1, customRate?: number, customDisc = 0) => {
     const qty = customQty > 0 ? customQty : 1;
-    const rate = customRate !== undefined ? customRate : Number((item as any)['Sale Rate'] ?? (item as any)['Sales Rate'] ?? item.MRP ?? 0);
+    const rate = customRate !== undefined ? customRate : getItemRate(item);
     const discount = showItemDiscount ? customDisc : 0;
 
     const isZ = isCustomerGstExempted || String(item['Zero Rated (Y/N)']).toUpperCase() === 'Y';
@@ -758,14 +796,15 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   // Selecting an Item
   const selectItem = (item: Item) => {
+    const selectedRate = getItemRate(item);
     if (posSettings.itemAddMode === 'direct') {
       // ⚡ Direct Quick-Add Mode: Instantly add to cart and keep focus on search
-      addItemDirectlyToCart(item, 1);
+      addItemDirectlyToCart(item, 1, selectedRate);
     } else {
       // 🎯 Step-by-Step Prompt Mode: Focus Qty -> Rate -> Disc -> Enter to add
       setEntrySearch(item['Item Name']);
       setEntryCode(item['Item Code']);
-      setEntryRate(Number((item as any)['Sale Rate'] ?? (item as any)['Sales Rate'] ?? item.MRP ?? 0));
+      setEntryRate(selectedRate);
       setEntryDisc('');
       setShowDropdown(false);
       setTimeout(() => {
@@ -1068,6 +1107,19 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     setBank2(val);
   };
 
+  const checkAndPromptPOSBankTxn = (field: 'bank1' | 'bank2') => {
+    const amount = field === 'bank1' ? Number(bank1) : Number(bank2);
+    const existingId = field === 'bank1' ? bankTxnNo : bank2TxnNo;
+    const ledgerName = field === 'bank1' ? (config.Bank1Ledger || 'Bank Account 1') : (config.Bank2Ledger || 'Bank Account 2');
+    if (amount > 0 && !existingId) {
+      setTargetBankField(field);
+      setActiveBankLedgerName(ledgerName);
+      setBankTxnModalOpen(true);
+      return true;
+    }
+    return false;
+  };
+
   // Quick Tender Presets (e.g. Exact, +50, +100, +500, +1000, Round Up)
   const applyQuickTender = (amount: number) => {
     handleCashInput(amount);
@@ -1346,12 +1398,45 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded text-[10px] font-bold">
                 {activeVoucherType?.voucherTypeName || 'Sale'}
               </span>
+              {pricingMode === 'wholesale' && (
+                <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded text-[10px] font-extrabold animate-pulse">
+                  Wholesale Mode
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-slate-500 font-medium">
               Quick Retail Entry (Press <kbd className="bg-slate-100 border border-slate-300 rounded px-1 py-0.2 text-[10px] font-mono font-bold">F2</kbd> to Save)
             </p>
           </div>
         </div>
+
+        {/* Retail / Wholesale Toggle Button */}
+        {config.EnableWholesalePrice !== 'false' && (
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => handlePricingModeChange('retail')}
+              className={`px-3 py-1 text-xs font-extrabold rounded-lg transition cursor-pointer ${
+                pricingMode === 'retail'
+                  ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Retail
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePricingModeChange('wholesale')}
+              className={`px-3 py-1 text-xs font-extrabold rounded-lg transition cursor-pointer ${
+                pricingMode === 'wholesale'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Wholesale
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Mobile-only switcher between Cart and Checkout */}
@@ -1617,8 +1702,9 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 <colgroup>
                   {showItemDiscount ? (
                     <>
-                      <col style={{ width: '36%' }} />
+                      <col style={{ width: '28%' }} />
                       <col style={{ width: '11%' }} />
+                      <col style={{ width: '10%' }} />
                       <col style={{ width: '13%' }} />
                       <col style={{ width: '11%' }} />
                       <col style={{ width: '11%' }} />
@@ -1627,8 +1713,9 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                     </>
                   ) : (
                     <>
-                      <col style={{ width: '42%' }} />
+                      <col style={{ width: '32%' }} />
                       <col style={{ width: '12%' }} />
+                      <col style={{ width: '10%' }} />
                       <col style={{ width: '15%' }} />
                       <col style={{ width: '13%' }} />
                       <col style={{ width: '13%' }} />
@@ -1640,6 +1727,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                   <tr>
                     <th className="py-1.5 px-2.5 text-left">Item Name</th>
                     <th className="py-1.5 px-1 text-center">QTY</th>
+                    <th className="py-1.5 px-1 text-center">UNIT</th>
                     <th className="py-1.5 px-1 text-right">Rate</th>
                     {showItemDiscount && <th className="py-1.5 px-1 text-right">Disc</th>}
                     <th className="py-1.5 px-2 text-right">GST</th>
@@ -1715,7 +1803,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                             )}
                           </td>
 
-                          {/* QTY */}
+                                                    {/* QTY */}
                           <td className="py-1 px-1 align-middle text-center">
                             <input
                               ref={el => { cartQtyRefs.current[idx] = el; }}
@@ -1730,6 +1818,34 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                               title="Edit quantity (+/- keys increment/decrement, Del to delete, Enter to save)"
                               className="w-full text-center h-7 rounded-md border border-slate-300 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
                             />
+                          </td>
+                          {/* UNIT */}
+                          <td className="py-1 px-1 align-middle text-center">
+                            <select
+                              value={line.unit || 'Pcs'}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const updated = [...cart];
+                                updated[idx].unit = val;
+                                const item = items.find(i => (i['Item Code'] && i['Item Code'] === updated[idx].itemCode) || i['Item Name'] === updated[idx].itemName);
+                                if (item) {
+                                  if (val === item.Unit) {
+                                    updated[idx].rate = item['Sale Rate'] || 0;
+                                  } else if (item.multiUnits) {
+                                    const mu = item.multiUnits.find(m => m.unit === val);
+                                    if (mu && mu.saleRate) {
+                                      updated[idx].rate = mu.saleRate;
+                                    }
+                                  }
+                                }
+                                setCart(updated);
+                              }}
+                              className="w-full text-center h-7 rounded-md border border-slate-300 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
+                            >
+                              {units.map(u => (
+                                <option key={u['Unit Name']} value={u['Unit Name']}>{u.Symbol || u['Unit Name']}</option>
+                              ))}
+                            </select>
                           </td>
 
                           {/* Rate */}
@@ -2119,9 +2235,25 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-0.5 truncate" title={config.Bank1Ledger || 'Bank 1'}>
-                {config.Bank1Ledger || 'Bank 1'}
-              </label>
+              <div className="flex items-center justify-between mb-0.5">
+                <label className="text-[11px] font-bold text-slate-600 truncate" title={config.Bank1Ledger || 'Bank 1'}>
+                  {config.Bank1Ledger || 'Bank 1'}
+                </label>
+                {bankTxnNo && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetBankField('bank1');
+                      setActiveBankLedgerName(config.Bank1Ledger || 'Bank Account 1');
+                      setBankTxnModalOpen(true);
+                    }}
+                    className="text-[9px] font-mono font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-1 py-0.2 rounded border border-indigo-200 truncate max-w-[80px]"
+                    title={`Txn ID: ${bankTxnNo} (Click to edit)`}
+                  >
+                    #{bankTxnNo}
+                  </button>
+                )}
+              </div>
               <input
                 ref={bank1InputRef}
                 type="number"
@@ -2130,17 +2262,39 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 placeholder=""
                 onChange={e => handleBank1Input(e.target.value === '' ? '' : Number(e.target.value))}
                 onFocus={e => e.target.select()}
-                onBlur={handleFieldBlurReturnToSearch}
+                onBlur={() => {
+                  handleFieldBlurReturnToSearch();
+                  checkAndPromptPOSBankTxn('bank1');
+                }}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') handleCheckout();
+                  if (e.key === 'Enter') {
+                    const prompted = checkAndPromptPOSBankTxn('bank1');
+                    if (!prompted) handleCheckout();
+                  }
                 }}
                 className="w-full h-8 rounded-lg border border-slate-300 px-2.5 font-mono text-xs font-bold focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none bg-white"
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-0.5 truncate" title={config.Bank2Ledger || 'Bank 2'}>
-                {config.Bank2Ledger || 'Bank 2'}
-              </label>
+              <div className="flex items-center justify-between mb-0.5">
+                <label className="text-[11px] font-bold text-slate-600 truncate" title={config.Bank2Ledger || 'Bank 2'}>
+                  {config.Bank2Ledger || 'Bank 2'}
+                </label>
+                {bank2TxnNo && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTargetBankField('bank2');
+                      setActiveBankLedgerName(config.Bank2Ledger || 'Bank Account 2');
+                      setBankTxnModalOpen(true);
+                    }}
+                    className="text-[9px] font-mono font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-1 py-0.2 rounded border border-indigo-200 truncate max-w-[80px]"
+                    title={`Txn ID: ${bank2TxnNo} (Click to edit)`}
+                  >
+                    #{bank2TxnNo}
+                  </button>
+                )}
+              </div>
               <input
                 ref={bank2InputRef}
                 type="number"
@@ -2149,9 +2303,15 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 placeholder=""
                 onChange={e => handleBank2Input(e.target.value === '' ? '' : Number(e.target.value))}
                 onFocus={e => e.target.select()}
-                onBlur={handleFieldBlurReturnToSearch}
+                onBlur={() => {
+                  handleFieldBlurReturnToSearch();
+                  checkAndPromptPOSBankTxn('bank2');
+                }}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') handleCheckout();
+                  if (e.key === 'Enter') {
+                    const prompted = checkAndPromptPOSBankTxn('bank2');
+                    if (!prompted) handleCheckout();
+                  }
                 }}
                 className="w-full h-8 rounded-lg border border-slate-300 px-2.5 font-mono text-xs font-bold focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none bg-white"
               />
@@ -2171,26 +2331,6 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               </div>
             </div>
           </div>
-
-          {/* Bank Transfer / Journal Ref No (Traces payment if customer paid via mBOB/BNB/Transfer) */}
-          {((typeof bank1 === 'number' && bank1 > 0) || (typeof bank2 === 'number' && bank2 > 0)) && (
-            <div className="pt-1 animate-in fade-in duration-150">
-              <label className="block text-[11px] font-bold text-indigo-900 mb-0.5 flex items-center justify-between">
-                <span>Bank Txn / Transfer Journal #</span>
-                <span className="text-[10px] font-normal text-slate-500">For tracing</span>
-              </label>
-              <input
-                type="text"
-                value={bankTxnNo}
-                placeholder="e.g. mBOB Ref / BNB Journal #"
-                onChange={e => setBankTxnNo(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') handleCheckout();
-                }}
-                className="w-full h-8 rounded-lg border border-indigo-200 bg-indigo-50/40 px-2.5 font-mono text-xs font-bold text-indigo-950 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 outline-none"
-              />
-            </div>
-          )}
         </div>
 
         {/* Checkout & Instant Sharing Action Buttons */}
@@ -2549,6 +2689,21 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           </div>
         </div>
       )}
+
+      {/* Pop-up modal for Bank Transaction ID / UTR when Bank ledger payment is entered */}
+      <BankTransactionIdModal
+        isOpen={bankTxnModalOpen}
+        bankLedgerName={activeBankLedgerName}
+        initialValue={targetBankField === 'bank1' ? bankTxnNo : bank2TxnNo}
+        onSave={(newTxnId) => {
+          if (targetBankField === 'bank1') {
+            setBankTxnNo(newTxnId);
+          } else {
+            setBank2TxnNo(newTxnId);
+          }
+        }}
+        onClose={() => setBankTxnModalOpen(false)}
+      />
     </div>
   );
 };

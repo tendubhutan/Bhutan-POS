@@ -17,6 +17,7 @@ import { Payroll } from './components/Payroll';
 import { AssetManagementModule } from './components/assetManagement/AssetManagementModule';
 import { Reports, ReportTarget } from './components/Reports';
 import { SettingsView } from './components/SettingsView';
+import { BankReconciliation } from './components/BankReconciliation';
 import { DrillModal } from './components/DrillModal';
 import { SaleVoucherTypeModal } from './components/pos/SaleVoucherTypeModal';
 import { TrashModal } from './components/TrashModal';
@@ -506,6 +507,8 @@ export default function App() {
               onDrillGroup={(cat, from, to) => setDrillModal({ type: 'group', targetId: cat, fromDate: from, toDate: to })}
             />
           )}
+
+          {currentView === 'bankrecon' && <BankReconciliation />}
 
           {currentView === 'settings' && (
             <SettingsView

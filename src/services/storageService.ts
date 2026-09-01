@@ -68,7 +68,8 @@ export const STORAGE_KEYS = {
   EMPLOYEE_ADVANCES: 'deep_pos_employee_advances',
   MONTHLY_PAYROLLS: 'deep_pos_monthly_payrolls',
   USERS: 'deep_pos_users',
-  TRASH_LOG: 'deep_pos_trash'
+  TRASH_LOG: 'deep_pos_trash',
+  BANK_RECON: 'deep_pos_bank_recon'
 };
 
 const DEFAULT_CONFIG: Config = {
@@ -118,7 +119,11 @@ const DEFAULT_CONFIG: Config = {
   DeliveryNotePrefix: 'DLV-',
   PhysicalStockPrefix: 'PHY-',
   QuotationPrefix: 'QTN-',
-  IntegrateAccountsWithInventory: 'true'
+  IntegrateAccountsWithInventory: 'true',
+  EnableBankReconciliation: 'true',
+  EnableAltUnitPrice: 'true',
+  EnableBankTxnId: 'true',
+  EnableWholesalePrice: 'true'
 };
 
 export const DEFAULT_VOUCHER_TYPES: VoucherType[] = [
@@ -1219,6 +1224,21 @@ export function saveLedger(l: Ledger) {
   return { ok: true, ledgers: list };
 }
 
+export function updateLedgerLogTransactionId(dateIso: string, refNo: string, transactionId: string) {
+  const logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  let updated = false;
+  logs.forEach(l => {
+    if ((dateIso && l.DateIso === dateIso) || (refNo && l['Ref No'] === refNo)) {
+      l.transactionId = transactionId;
+      l['Transaction ID'] = transactionId;
+      updated = true;
+    }
+  });
+  if (updated) {
+    saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
+  }
+}
+
 export function deleteLedger(name: string) {
   let list = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
   list = list.filter(x => x['Ledger Name'] !== name);
@@ -1227,7 +1247,7 @@ export function deleteLedger(name: string) {
   return { ok: true, ledgers: list };
 }
 
-function adjustLedgerBalance(ledgerName: string, amount: number, drCr: 'Dr' | 'Cr', refNo: string, narration: string, type: string) {
+function adjustLedgerBalance(ledgerName: string, amount: number, drCr: 'Dr' | 'Cr', refNo: string, narration: string, type: string, transactionId?: string) {
   if (!ledgerName || !ledgerName.trim()) return;
   const cleanName = ledgerName.trim();
   let ledgers = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
@@ -1263,12 +1283,16 @@ function adjustLedgerBalance(ledgerName: string, amount: number, drCr: 'Dr' | 'C
     Debit: drCr === 'Dr' ? amount : undefined,
     Credit: drCr === 'Cr' ? amount : undefined,
     'Ref No': refNo || '',
-    Narration: narration || ''
+    Narration: narration || '',
+    transactionId: transactionId || '',
+    'Transaction ID': transactionId || ''
   });
   saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
 }
 
-function logStock(itemCode: string, itemName: string, type: string, qtyIn: number, qtyOut: number, balanceQty: number, refNo: string) {
+function logStock(itemCode: string, itemName: string, type: string, qtyIn: number, qtyOut: number, balanceQty: number, refNo: string, unitName?: string) {
+  qtyIn = getBaseQty(itemCode, unitName, qtyIn);
+  qtyOut = getBaseQty(itemCode, unitName, qtyOut);
   const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const it = items.find(i => i['Item Code'] === itemCode);
   if (it && it['Maintain Stock'] === 'N') return; // Do not log stock movement for non-stock / service items
@@ -1287,7 +1311,39 @@ function logStock(itemCode: string, itemName: string, type: string, qtyIn: numbe
   saveJson(STORAGE_KEYS.STOCK_LEDGER, logs);
 }
 
-function updateItemStock(itemCode: string, qtyDelta: number): number {
+
+function getBaseQty(itemCode: string, unitName: string | undefined, rawQty: number): number {
+  if (!unitName) return rawQty;
+  const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+  const units = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
+  const item = items.find(i => i['Item Code'] === itemCode);
+  if (!item) return rawQty;
+  
+  if (unitName === item.Unit) return rawQty;
+  
+  // Check if item has multi-unit mapping
+  if (item.multiUnits && item.multiUnits.length > 0) {
+    const mu = item.multiUnits.find(m => m.unit === unitName);
+    if (mu) {
+      return rawQty * (Number(mu.conversionFactor) || 1);
+    }
+  }
+
+  // Fallback to global unit definitions
+  const selectedUnit = units.find(u => u['Unit Name'] === unitName);
+  if (selectedUnit && selectedUnit['Base Unit'] === item.Unit) {
+    return rawQty * (Number(selectedUnit['Conversion Factor']) || 1);
+  }
+  const itemUnitDef = units.find(u => u['Unit Name'] === item.Unit);
+  if (itemUnitDef && itemUnitDef['Base Unit'] === unitName) {
+    const cf = Number(itemUnitDef['Conversion Factor']) || 1;
+    return rawQty / cf;
+  }
+  return rawQty;
+}
+
+function updateItemStock(itemCode: string, qtyDelta: number, unitName?: string): number {
+  qtyDelta = getBaseQty(itemCode, unitName, qtyDelta);
   const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const idx = items.findIndex(i => i['Item Code'] === itemCode);
   if (idx === -1) return 0;
@@ -1465,8 +1521,8 @@ export function saveSalesInvoice(payload: {
 
   // Stock logging & ledger balance
   cart.forEach(l => {
-    const nq = updateItemStock(l.itemCode, -Number(l.qty));
-    logStock(l.itemCode, l.itemName, 'Sale', 0, Number(l.qty), nq, iNo);
+    const nq = updateItemStock(l.itemCode, -Number(l.qty), l.unit);
+    logStock(l.itemCode, l.itemName, 'Sale', 0, Number(l.qty), nq, iNo, l.unit);
   });
 
   additionalExpenses.forEach(exp => {
@@ -1478,11 +1534,12 @@ export function saveSalesInvoice(payload: {
   if (cash > 0) adjustLedgerBalance('Cash', cash, 'Dr', iNo, 'Cash sale ' + iNo, 'Sale');
   if (b1 > 0) {
     const b1Narr = (payment.bank1Ledger || 'BOB Account') + ' sale ' + iNo + (payment.bankTxnNo ? ` (Txn/Ref: ${payment.bankTxnNo})` : '');
-    adjustLedgerBalance(payment.bank1Ledger || 'BOB Account', b1, 'Dr', iNo, b1Narr, 'Sale');
+    adjustLedgerBalance(payment.bank1Ledger || 'BOB Account', b1, 'Dr', iNo, b1Narr, 'Sale', payment.bankTxnNo);
   }
   if (b2 > 0) {
-    const b2Narr = (payment.bank2Ledger || 'BNBL Account') + ' sale ' + iNo + (payment.bank2TxnNo ? ` (Txn/Ref: ${payment.bank2TxnNo})` : (payment.bankTxnNo ? ` (Txn/Ref: ${payment.bankTxnNo})` : ''));
-    adjustLedgerBalance(payment.bank2Ledger || 'BNBL Account', b2, 'Dr', iNo, b2Narr, 'Sale');
+    const b2Txn = payment.bank2TxnNo || payment.bankTxnNo;
+    const b2Narr = (payment.bank2Ledger || 'BNBL Account') + ' sale ' + iNo + (b2Txn ? ` (Txn/Ref: ${b2Txn})` : '');
+    adjustLedgerBalance(payment.bank2Ledger || 'BNBL Account', b2, 'Dr', iNo, b2Narr, 'Sale', b2Txn);
   }
   if (cr > 0.009) {
     adjustLedgerBalance(sLg, cr, 'Dr', iNo, 'Credit sale ' + iNo, 'Sale');
@@ -1675,6 +1732,8 @@ export function savePurchaseInvoice(payload: {
     bank2: b2,
     credit: cr,
     status: st,
+    bankTxnNo: payment.bankTxnNo || '',
+    bank2TxnNo: payment.bank2TxnNo || '',
     items: itemsRows,
     additionalExpenses
   };
@@ -1690,13 +1749,20 @@ export function savePurchaseInvoice(payload: {
   syncPurchaseInvoiceToFirestore(purchase).catch(() => {});
 
   cart.forEach(l => {
-    const nq = updateItemStock(l.itemCode, Number(l.qty));
-    logStock(l.itemCode, l.itemName, 'Purchase', Number(l.qty), 0, nq, bNo);
+    const nq = updateItemStock(l.itemCode, Number(l.qty), l.unit);
+    logStock(l.itemCode, l.itemName, 'Purchase', Number(l.qty), 0, nq, bNo, l.unit);
   });
 
   if (cash > 0) adjustLedgerBalance('Cash', cash, 'Cr', bNo, 'Cash purchase ' + bNo, 'Purchase');
-  if (b1 > 0) adjustLedgerBalance(payment.bank1Ledger || 'BOB Account', b1, 'Cr', bNo, (payment.bank1Ledger || 'BOB Account') + ' purchase ' + bNo, 'Purchase');
-  if (b2 > 0) adjustLedgerBalance(payment.bank2Ledger || 'BNBL Account', b2, 'Cr', bNo, (payment.bank2Ledger || 'BNBL Account') + ' purchase ' + bNo, 'Purchase');
+  if (b1 > 0) {
+    const b1Narr = (payment.bank1Ledger || 'BOB Account') + ' purchase ' + bNo + (payment.bankTxnNo ? ` (Txn/Ref: ${payment.bankTxnNo})` : '');
+    adjustLedgerBalance(payment.bank1Ledger || 'BOB Account', b1, 'Cr', bNo, b1Narr, 'Purchase', payment.bankTxnNo);
+  }
+  if (b2 > 0) {
+    const b2Txn = payment.bank2TxnNo || payment.bankTxnNo;
+    const b2Narr = (payment.bank2Ledger || 'BNBL Account') + ' purchase ' + bNo + (b2Txn ? ` (Txn/Ref: ${b2Txn})` : '');
+    adjustLedgerBalance(payment.bank2Ledger || 'BNBL Account', b2, 'Cr', bNo, b2Narr, 'Purchase', b2Txn);
+  }
   
   if (cr > 0.009 && supplier.name) adjustLedgerBalance(supplier.name, cr, 'Cr', bNo, 'Credit purchase ' + bNo, 'Purchase');
   
@@ -1775,11 +1841,15 @@ export function saveMultiLineVoucher(payload: {
   voucherNo?: string;
   date?: string;
   narration?: string;
+  transactionId?: string;
+  bankTxnNo?: string;
+  chequeNo?: string;
   lines: Array<{
     type: 'Dr' | 'Cr';
     ledger: string;
     amount: number;
     narration?: string;
+    transactionId?: string;
   }>;
 }) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
@@ -1802,6 +1872,7 @@ export function saveMultiLineVoucher(payload: {
 
   const dateIso = payload.date || new Date().toISOString();
   const overallNarration = payload.narration || '';
+  const txnId = payload.transactionId || payload.bankTxnNo || payload.chequeNo || '';
 
   // Calculate total debit
   const totalDebit = payload.lines
@@ -1820,11 +1891,15 @@ export function saveMultiLineVoucher(payload: {
     creditLedger: mainCr,
     amount: round2(totalDebit),
     narration: overallNarration,
+    transactionId: txnId,
+    bankTxnNo: payload.bankTxnNo || txnId,
+    chequeNo: payload.chequeNo || '',
     lines: payload.lines.map(l => ({
       type: l.type,
       ledger: l.ledger,
       amount: round2(Number(l.amount) || 0),
-      narration: l.narration || ''
+      narration: l.narration || '',
+      transactionId: l.transactionId || txnId
     }))
   };
 
@@ -1840,8 +1915,10 @@ export function saveMultiLineVoucher(payload: {
   // Post to accounting ledger for each Dr/Cr line
   payload.lines.forEach(line => {
     if (line.ledger && Number(line.amount) > 0) {
-      const lineNarr = line.narration ? `${overallNarration} (${line.narration})` : overallNarration;
-      adjustLedgerBalance(line.ledger, Number(line.amount), line.type, no, lineNarr, payload.type);
+      const lineTxn = line.transactionId || txnId;
+      const txnSuffix = lineTxn ? ` (Txn/Ref: ${lineTxn})` : '';
+      const lineNarr = line.narration ? `${overallNarration} (${line.narration})${txnSuffix}` : `${overallNarration}${txnSuffix}`;
+      adjustLedgerBalance(line.ledger, Number(line.amount), line.type, no, lineNarr.trim(), payload.type, lineTxn);
     }
   });
 
@@ -2113,8 +2190,8 @@ export function cancelSalesInvoice(invoiceNo: string, reason?: string) {
   (target.items || []).forEach((item: any) => {
     const qty = Number(item.Qty) || 0;
     if (qty > 0) {
-      const newQty = updateItemStock(item['Item Code'], qty); // Add back to stock
-      logStock(item['Item Code'], item['Item Name'], 'Sale Cancelled', qty, 0, newQty, invoiceNo);
+      const newQty = updateItemStock(item['Item Code'], qty, item.Unit || item.unit);
+      logStock(item['Item Code'], item['Item Name'], 'Sale Cancelled', qty, 0, newQty, invoiceNo, item.Unit || item.unit);
     }
   });
 
@@ -2172,8 +2249,8 @@ export function cancelPurchaseInvoice(billNo: string, reason?: string) {
   (target.items || []).forEach((item: any) => {
     const qty = Number(item.Qty) || 0;
     if (qty > 0) {
-      const newQty = updateItemStock(item['Item Code'], -qty); // Remove from stock
-      logStock(item['Item Code'], item['Item Name'], 'Purchase Cancelled', 0, qty, newQty, billNo);
+      const newQty = updateItemStock(item['Item Code'], -qty, item.Unit || item.unit);
+      logStock(item['Item Code'], item['Item Name'], 'Purchase Cancelled', 0, qty, newQty, billNo, item.Unit || item.unit);
     }
   });
 
@@ -2325,7 +2402,21 @@ export function bulkDeleteData(options: { deleteTransactions: boolean; deleteMas
   return { ok: true, message: 'Bulk data cleanup completed successfully' };
 }
 
-export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: { voucherNo?: string; date?: string; ledger?: string; amount: number; mode?: string; debitLedger?: string; creditLedger?: string; toAccount?: string; fromAccount?: string; narration?: string }) {
+export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: { 
+  voucherNo?: string; 
+  date?: string; 
+  ledger?: string; 
+  amount: number; 
+  mode?: string; 
+  debitLedger?: string; 
+  creditLedger?: string; 
+  toAccount?: string; 
+  fromAccount?: string; 
+  narration?: string;
+  transactionId?: string;
+  bankTxnNo?: string;
+  chequeNo?: string;
+}) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   
   const vouchersList = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
@@ -2355,6 +2446,7 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: { voucherNo?: string; d
     }
   }
 
+  const txnId = v.transactionId || v.bankTxnNo || v.chequeNo || '';
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
   const newV: Voucher = {
     voucherNo: no,
@@ -2363,7 +2455,10 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: { voucherNo?: string; d
     debitLedger: dr,
     creditLedger: cr,
     amount: Number(v.amount),
-    narration: v.narration || ''
+    narration: v.narration || '',
+    transactionId: txnId,
+    bankTxnNo: v.bankTxnNo || txnId,
+    chequeNo: v.chequeNo || ''
   };
   const existIdx = vouchers.findIndex(x => x.voucherNo === no);
   if (existIdx >= 0) {
@@ -2373,8 +2468,11 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: { voucherNo?: string; d
   }
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
 
-  adjustLedgerBalance(dr, Number(v.amount), 'Dr', no, v.narration || t, t);
-  adjustLedgerBalance(cr, Number(v.amount), 'Cr', no, v.narration || t, t);
+  const txnSuffix = txnId ? ` (Txn/Ref: ${txnId})` : '';
+  const narrWithTxn = v.narration ? `${v.narration}${txnSuffix}` : `${t}${txnSuffix}`;
+
+  adjustLedgerBalance(dr, Number(v.amount), 'Dr', no, narrWithTxn, t, txnId);
+  adjustLedgerBalance(cr, Number(v.amount), 'Cr', no, narrWithTxn, t, txnId);
 
   const updatedLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
   return { ok: true, voucherNo: no, ledgers: updatedLedgers };
@@ -2397,6 +2495,7 @@ export function saveCreditNote(payload: {
   items?: Array<{
     itemCode: string;
     itemName: string;
+    unit?: string;
     qty: number;
     rate?: number;
     discount?: number;
@@ -2458,8 +2557,8 @@ export function saveCreditNote(payload: {
     payload.items.forEach(it => {
       const q = Number(it.qty) || 0;
       if (q > 0) {
-        const nq = updateItemStock(it.itemCode, q);
-        logStock(it.itemCode, it.itemName, 'Credit Note (Return)', q, 0, nq, no);
+        const nq = updateItemStock(it.itemCode, q, it.unit);
+        logStock(it.itemCode, it.itemName, 'Credit Note (Return)', q, 0, nq, no, it.unit);
       }
     });
   }
@@ -2483,6 +2582,7 @@ export function saveDebitNote(payload: {
   items?: Array<{
     itemCode: string;
     itemName: string;
+    unit?: string;
     qty: number;
     rate?: number;
     discount?: number;
@@ -2544,8 +2644,8 @@ export function saveDebitNote(payload: {
     payload.items.forEach(it => {
       const q = Number(it.qty) || 0;
       if (q > 0) {
-        const nq = updateItemStock(it.itemCode, -q);
-        logStock(it.itemCode, it.itemName, 'Debit Note (Return)', 0, q, nq, no);
+        const nq = updateItemStock(it.itemCode, -q, it.unit);
+        logStock(it.itemCode, it.itemName, 'Debit Note (Return)', 0, q, nq, no, it.unit);
       }
     });
   }
@@ -4811,3 +4911,97 @@ export function rebuildAccountingLogs() {
 
   recalculateLedgerBalances();
 }
+
+export function deleteUnit(name: string): { ok: boolean; error?: string } {
+  let units = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
+  units = units.filter(u => u['Unit Name'] !== name);
+  saveJson(STORAGE_KEYS.UNITS, units);
+  return { ok: true };
+}
+
+export function getBankRecon(): Record<string, { isCleared: boolean; clearedDate?: string; transactionId?: string; notes?: string }> {
+  return loadJson<Record<string, { isCleared: boolean; clearedDate?: string; transactionId?: string; notes?: string }>>(STORAGE_KEYS.BANK_RECON, {});
+}
+
+export function saveBankRecon(state: Record<string, { isCleared: boolean; clearedDate?: string; transactionId?: string; notes?: string }>): void {
+  saveJson(STORAGE_KEYS.BANK_RECON, state);
+}
+
+export function updateTransactionReference(refNo: string, transactionId: string, ledgerName?: string) {
+  if (!refNo) return { ok: false, error: 'Reference number required' };
+  const cleanRef = String(refNo).trim();
+  const cleanTxn = String(transactionId || '').trim();
+
+  // 1. Update in Ledger Log
+  let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  let logUpdated = false;
+  logs = logs.map(l => {
+    if (l['Ref No'] === cleanRef && (!ledgerName || l['Ledger Name'] === ledgerName)) {
+      logUpdated = true;
+      return {
+        ...l,
+        transactionId: cleanTxn,
+        'Transaction ID': cleanTxn
+      };
+    }
+    return l;
+  });
+  if (logUpdated) {
+    saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
+  }
+
+  // 2. Update in Vouchers if applicable
+  let vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+  let voucherUpdated = false;
+  vouchers = vouchers.map(v => {
+    if (v.voucherNo === cleanRef) {
+      voucherUpdated = true;
+      return {
+        ...v,
+        transactionId: cleanTxn,
+        bankTxnNo: cleanTxn
+      };
+    }
+    return v;
+  });
+  if (voucherUpdated) {
+    saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
+  }
+
+  // 3. Update in Sales Invoices if applicable
+  let sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+  let saleUpdated = false;
+  sales = sales.map(s => {
+    if (s.invoiceNo === cleanRef) {
+      saleUpdated = true;
+      return {
+        ...s,
+        bankTxnNo: cleanTxn
+      };
+    }
+    return s;
+  });
+  if (saleUpdated) {
+    saveJson(STORAGE_KEYS.SALES_INVOICES, sales);
+  }
+
+  // 4. Update in Purchase Invoices if applicable
+  let purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+  let purchUpdated = false;
+  purchases = purchases.map(p => {
+    if (p.billNo === cleanRef || p.invoiceNo === cleanRef) {
+      purchUpdated = true;
+      return {
+        ...p,
+        bankTxnNo: cleanTxn
+      };
+    }
+    return p;
+  });
+  if (purchUpdated) {
+    saveJson(STORAGE_KEYS.PURCHASE_INVOICES, purchases);
+  }
+
+  return { ok: true };
+}
+

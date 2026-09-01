@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { MultiUnitEditor } from './MultiUnitEditor';
+import { UnitMaster } from './masters/UnitMaster';
 import {
   Config,
   Item,
@@ -765,8 +767,14 @@ export const Masters: React.FC<MastersProps> = ({
         </div>
       )}
 
-      {/* Item Groups, Units, Unit Groups, Ledger Groups */}
-      {['itemgroups', 'units', 'unitgroups', 'ledgergroups'].includes(activeTab) && (
+      {activeTab === 'units' && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+          <UnitMaster units={units} onUpdated={onDataRefresh} />
+        </div>
+      )}
+
+      {/* Item Groups, Unit Groups, Ledger Groups */}
+      {['itemgroups', 'unitgroups', 'ledgergroups'].includes(activeTab) && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <p className="text-xs text-slate-500">System pre-configured groups & units are loaded and active.</p>
         </div>
@@ -774,58 +782,64 @@ export const Masters: React.FC<MastersProps> = ({
 
       {/* Item Modal */}
       {showItemModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900">
-                {editingItemCode ? 'Edit Item' : 'New Item Creation'}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3">
+          <div className="w-full max-w-4xl max-h-[94vh] overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl border border-slate-200 space-y-3">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center pb-2 border-b border-slate-200 bg-white -mx-4 -mt-4 px-4 py-2.5 rounded-t-2xl">
+              <h3 className="text-sm font-bold text-slate-900">
+                {editingItemCode ? 'Edit Item Master' : 'New Item Creation'}
               </h3>
-              <button onClick={() => setShowItemModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="h-5 w-5" />
+              <button onClick={() => setShowItemModal(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer">
+                <X className="h-4.5 w-4.5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-              <div className="sm:col-span-2">
-                <label className="block font-semibold text-slate-600 mb-1">Item Name *</label>
+            {/* Row 1: Identification & Grouping */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
+              {/* Item Name */}
+              <div className="sm:col-span-4">
+                <label className="block font-semibold text-slate-700 mb-0.5">Item Name *</label>
                 <input
                   type="text"
                   value={itemForm['Item Name'] || ''}
                   onChange={e => setItemSearchForm({ ...itemForm, 'Item Name': e.target.value, 'Print Name': e.target.value })}
-                  className="w-full h-9 rounded-xl border border-slate-300 px-3 font-semibold outline-none focus:border-indigo-500"
+                  className="w-full h-8 rounded-lg border border-slate-300 px-2.5 font-semibold text-slate-900 outline-none focus:border-indigo-500 text-xs"
+                  placeholder="Enter item name"
                 />
               </div>
 
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="font-semibold text-slate-600">Barcode</label>
+              {/* Barcode */}
+              <div className="sm:col-span-3">
+                <div className="flex justify-between items-center mb-0.5">
+                  <label className="font-semibold text-slate-700">Barcode</label>
                   <button
                     type="button"
                     onClick={() => setItemSearchForm({ ...itemForm, Barcode: generateBarcode() })}
                     className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
                   >
-                    ⚡ Auto-Generate (6-7 Digit)
+                    ⚡ Auto
                   </button>
                 </div>
                 <input
                   type="text"
-                  placeholder="e.g. 100001 (auto generated if blank)"
+                  placeholder="Barcode / UPC"
                   value={itemForm.Barcode || ''}
                   onChange={e => setItemSearchForm({ ...itemForm, Barcode: e.target.value })}
-                  className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono outline-none focus:border-indigo-500"
+                  className="w-full h-8 rounded-lg border border-slate-300 px-2.5 font-mono text-xs outline-none focus:border-indigo-500"
                 />
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-600 mb-1">Group *</label>
-                <div className="flex gap-1.5">
+              {/* Group */}
+              <div className={showCategory ? "sm:col-span-2" : "sm:col-span-3"}>
+                <label className="block font-semibold text-slate-700 mb-0.5">Group *</label>
+                <div className="flex gap-1">
                   <select
                     value={itemForm.Group || ''}
                     onChange={e => setItemSearchForm({ ...itemForm, Group: e.target.value })}
-                    className="w-full h-9 rounded-xl border border-slate-300 px-2 font-medium outline-none focus:border-indigo-500"
+                    className="w-full h-8 rounded-lg border border-slate-300 px-1.5 font-medium text-xs outline-none focus:border-indigo-500"
                   >
                     {itemGroups.length === 0 ? (
-                      <option value="">No Groups - Click + to Add</option>
+                      <option value="">No Groups</option>
                     ) : (
                       itemGroups.map(g => (
                         <option key={g['Group Name']} value={g['Group Name']}>
@@ -837,24 +851,25 @@ export const Masters: React.FC<MastersProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowQuickGroupModal(true)}
-                    className="flex-shrink-0 h-9 w-9 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center font-bold shadow-xs transition"
-                    title="Quick Add New Item Group"
+                    className="flex-shrink-0 h-8 w-8 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center font-bold shadow-2xs transition cursor-pointer"
+                    title="Quick Add New Group"
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
 
+              {/* Category (Optional) */}
               {showCategory && (
-                <div>
-                  <label className="block font-semibold text-slate-600 mb-1">Category</label>
-                  <div className="flex gap-1.5">
+                <div className="sm:col-span-3">
+                  <label className="block font-semibold text-slate-700 mb-0.5">Category</label>
+                  <div className="flex gap-1">
                     <select
                       value={itemForm.Category || ''}
                       onChange={e => setItemSearchForm({ ...itemForm, Category: e.target.value })}
-                      className="w-full h-9 rounded-xl border border-slate-300 px-2 font-medium outline-none focus:border-indigo-500"
+                      className="w-full h-8 rounded-lg border border-slate-300 px-1.5 font-medium text-xs outline-none focus:border-indigo-500"
                     >
-                      <option value="">-- Select Category --</option>
+                      <option value="">-- Category --</option>
                       {categoryList.map(c => (
                         <option key={c} value={c}>
                           {c}
@@ -864,25 +879,26 @@ export const Masters: React.FC<MastersProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowQuickCategoryModal(true)}
-                      className="flex-shrink-0 h-9 w-9 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center font-bold shadow-xs transition"
-                      title="Quick Add New Category"
+                      className="flex-shrink-0 h-8 w-8 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center font-bold shadow-2xs transition cursor-pointer"
+                      title="Quick Add Category"
                     >
-                      <Plus className="h-4 w-4" />
+                      <Plus className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
               )}
 
-              <div>
-                <label className="block font-semibold text-slate-600 mb-1">Unit *</label>
-                <div className="flex gap-1.5">
+              {/* Primary Unit */}
+              <div className={showCategory ? "sm:col-span-3" : "sm:col-span-2"}>
+                <label className="block font-semibold text-slate-700 mb-0.5">Primary Unit *</label>
+                <div className="flex gap-1">
                   <select
                     value={itemForm.Unit || ''}
                     onChange={e => setItemSearchForm({ ...itemForm, Unit: e.target.value })}
-                    className="w-full h-9 rounded-xl border border-slate-300 px-2 font-medium outline-none focus:border-indigo-500"
+                    className="w-full h-8 rounded-lg border border-slate-300 px-1.5 font-semibold text-xs outline-none focus:border-indigo-500"
                   >
                     {units.length === 0 ? (
-                      <option value="">No Units - Click + to Add</option>
+                      <option value="">No Units</option>
                     ) : (
                       units.map(u => (
                         <option key={u['Unit Name']} value={u['Unit Name']}>
@@ -894,50 +910,66 @@ export const Masters: React.FC<MastersProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowQuickUnitModal(true)}
-                    className="flex-shrink-0 h-9 w-9 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center font-bold shadow-xs transition"
-                    title="Quick Add New Unit"
+                    className="flex-shrink-0 h-8 w-8 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center font-bold shadow-2xs transition cursor-pointer"
+                    title="Quick Add Unit"
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
+            </div>
 
+            {/* Row 2: Rates & Taxation */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
               <div>
-                <label className="block font-semibold text-slate-600 mb-1">Purchase Rate</label>
+                <label className="block font-semibold text-slate-700 mb-0.5">Purchase Rate</label>
                 <input
                   type="number"
                   step="any"
                   value={itemForm['Purchase Rate'] || 0}
                   onChange={e => setItemSearchForm({ ...itemForm, 'Purchase Rate': Number(e.target.value) })}
-                  className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono outline-none"
+                  className="w-full h-8 rounded-lg border border-slate-300 px-2 font-mono text-xs outline-none focus:border-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-600 mb-1">Sale Rate *</label>
+                <label className="block font-semibold text-slate-700 mb-0.5">Sale Rate *</label>
                 <input
                   type="number"
                   step="any"
                   value={itemForm['Sale Rate'] || 0}
                   onChange={e => setItemSearchForm({ ...itemForm, 'Sale Rate': Number(e.target.value) })}
-                  className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono font-bold text-indigo-900 outline-none"
+                  className="w-full h-8 rounded-lg border border-slate-300 px-2 font-mono font-bold text-indigo-900 text-xs outline-none focus:border-indigo-500 bg-indigo-50/20"
                 />
               </div>
 
+              {(config.EnableWholesalePrice !== 'false') && (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-0.5">Wholesale Rate</label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={itemForm['Wholesale Rate'] || 0}
+                    onChange={e => setItemSearchForm({ ...itemForm, 'Wholesale Rate': Number(e.target.value) })}
+                    className="w-full h-8 rounded-lg border border-slate-300 px-2 font-mono font-bold text-emerald-800 text-xs outline-none focus:border-emerald-500 bg-emerald-50/20"
+                  />
+                </div>
+              )}
+
               <div>
-                <label className="block font-semibold text-slate-600 mb-1">MRP</label>
+                <label className="block font-semibold text-slate-700 mb-0.5">MRP</label>
                 <input
                   type="number"
                   step="any"
                   value={itemForm.MRP || 0}
                   onChange={e => setItemSearchForm({ ...itemForm, MRP: Number(e.target.value) })}
-                  className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono outline-none"
+                  className="w-full h-8 rounded-lg border border-slate-300 px-2 font-mono text-xs outline-none focus:border-indigo-500"
                 />
               </div>
 
               {showGst && (
                 <div>
-                  <label className="block font-semibold text-slate-600 mb-1">GST Taxation</label>
+                  <label className="block font-semibold text-slate-700 mb-0.5">GST Taxation</label>
                   <select
                     value={itemForm['Zero Rated (Y/N)'] === 'Y' ? '0' : String(itemForm['GST %'])}
                     onChange={e => {
@@ -948,27 +980,27 @@ export const Masters: React.FC<MastersProps> = ({
                         'Zero Rated (Y/N)': val === '0' ? 'Y' : 'N'
                       });
                     }}
-                    className="w-full h-9 rounded-xl border border-slate-300 px-2 font-medium outline-none"
+                    className="w-full h-8 rounded-lg border border-slate-300 px-1.5 font-medium text-xs outline-none focus:border-indigo-500"
                   >
                     <option value="5">5% GST Taxable</option>
-                    <option value="0">0% Zero-Rated / Exempt</option>
+                    <option value="0">0% Zero-Rated</option>
                   </select>
                 </div>
               )}
+            </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-semibold text-slate-600">Opening Stock</label>
+            {/* Row 3: Stock & Inventory Options */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2 rounded-xl border border-slate-200">
+              <div className="sm:col-span-3">
+                <div className="flex items-center justify-between mb-0.5">
+                  <label className="font-semibold text-slate-700">Opening Stock</label>
                   {showSerials && itemForm['Is Serialized'] === 'Y' && (Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0)) > 0) && (
                     <button
                       type="button"
                       onClick={() => setShowOpeningSerialModal(true)}
-                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline inline-flex items-center gap-0.5 cursor-pointer"
                     >
-                      <KeyRound className="w-3 h-3" />
-                      {(itemForm['Opening Serials'] || '').split(',').map(s => s.trim()).filter(Boolean).length === Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0))
-                        ? `✓ Serials Set (${(itemForm['Opening Serials'] || '').split(',').map(s => s.trim()).filter(Boolean).length}/${Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0))})`
-                        : `⚡ Set Serials (${(itemForm['Opening Serials'] || '').split(',').map(s => s.trim()).filter(Boolean).length}/${Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0))})`}
+                      <KeyRound className="w-3 h-3" /> Serials
                     </button>
                   )}
                 </div>
@@ -978,124 +1010,77 @@ export const Masters: React.FC<MastersProps> = ({
                   step="any"
                   value={itemForm['Opening Stock'] ?? 0}
                   onChange={e => setItemSearchForm({ ...itemForm, 'Opening Stock': Number(e.target.value) || 0 })}
-                  className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono outline-none focus:border-indigo-500"
+                  className="w-full h-7.5 rounded-lg border border-slate-300 px-2 font-mono text-xs outline-none focus:border-indigo-500 bg-white"
                 />
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-600 mb-1">Reorder Level</label>
+              <div className="sm:col-span-3">
+                <label className="block font-semibold text-slate-700 mb-0.5">Reorder Level</label>
                 <input
                   type="number"
                   step="any"
                   value={itemForm['Reorder Level'] || 0}
                   onChange={e => setItemSearchForm({ ...itemForm, 'Reorder Level': Number(e.target.value) })}
-                  className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono outline-none"
+                  className="w-full h-7.5 rounded-lg border border-slate-300 px-2 font-mono text-xs outline-none focus:border-indigo-500 bg-white"
                 />
               </div>
-            </div>
 
-            {/* Maintain Stock Option */}
-            <div className="p-3.5 bg-amber-50/60 border border-amber-200/80 rounded-xl space-y-1">
-              <label className="flex items-center gap-2 text-xs font-bold text-amber-900 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={itemForm['Maintain Stock'] === 'N'}
-                  onChange={e => {
-                    const dontMaintain = e.target.checked;
-                    setItemSearchForm(prev => ({
-                      ...prev,
-                      'Maintain Stock': dontMaintain ? 'N' : 'Y',
-                      'Opening Stock': dontMaintain ? 0 : (prev['Opening Stock'] || 0)
-                    }));
-                  }}
-                  className="rounded border-amber-300 h-4 w-4 text-amber-600 focus:ring-amber-500 cursor-pointer"
-                />
-                <span>Don't maintain inventory stock for this item</span>
-              </label>
-              <p className="text-[11px] text-amber-700/90 ml-6">
-                Use this for services, freight, labor, or charges where GST applies on line items but stock counts are not tracked and won't appear on stock reports.
-              </p>
-            </div>
-
-            {/* Serial Number Tracking Toggle & Opening Serials Management */}
-            {showSerials && itemForm['Maintain Stock'] !== 'N' && (
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
-                <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none">
+              <div className="sm:col-span-6 flex flex-wrap gap-3 items-center pt-3 sm:pt-0">
+                {/* Don't Maintain Stock Checkbox */}
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 cursor-pointer select-none">
                   <input
                     type="checkbox"
-                    checked={itemForm['Is Serialized'] === 'Y'}
+                    checked={itemForm['Maintain Stock'] === 'N'}
                     onChange={e => {
-                      const isChecked = e.target.checked;
-                      const opQty = Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0));
-                      const currentSerials = (itemForm['Opening Serials'] || '').split(',').map(s => s.trim()).filter(Boolean);
+                      const dontMaintain = e.target.checked;
                       setItemSearchForm(prev => ({
                         ...prev,
-                        'Is Serialized': isChecked ? 'Y' : 'N'
+                        'Maintain Stock': dontMaintain ? 'N' : 'Y',
+                        'Opening Stock': dontMaintain ? 0 : (prev['Opening Stock'] || 0)
                       }));
-                      if (isChecked && opQty > 0 && currentSerials.length !== opQty) {
-                        setShowOpeningSerialModal(true);
-                      }
                     }}
-                    className="rounded border-slate-300 h-4 w-4 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    className="rounded border-slate-300 h-3.5 w-3.5 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                   />
-                  <span>Track Serial Numbers for this Item</span>
+                  <span>Don't track stock</span>
                 </label>
 
-                {itemForm['Is Serialized'] === 'Y' && Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0)) > 0 && (
-                  <div className="pt-2.5 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-bold text-slate-700">Opening Stock Serials:</span>
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            (itemForm['Opening Serials'] || '').split(',').map(s => s.trim()).filter(Boolean).length === Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0))
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}
-                        >
-                          {(itemForm['Opening Serials'] || '').split(',').map(s => s.trim()).filter(Boolean).length} of {Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0))} assigned
-                        </span>
-                      </div>
-                      {(itemForm['Opening Serials'] || '').split(',').map(s => s.trim()).filter(Boolean).length > 0 ? (
-                        <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto pr-1">
-                          {(itemForm['Opening Serials'] || '').split(',').map(s => s.trim()).filter(Boolean).map((sn, idx) => (
-                            <span
-                              key={idx}
-                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-white border border-slate-200 text-slate-700 shadow-2xs"
-                            >
-                              <span className="text-slate-400 mr-1">#{idx + 1}</span> {sn}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-[11px] text-amber-700 italic">
-                          No serial numbers assigned yet. Click button to enter serial numbers for opening stock.
-                        </p>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowOpeningSerialModal(true)}
-                      className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-bold transition shrink-0 cursor-pointer shadow-2xs"
-                    >
-                      <KeyRound className="h-3.5 w-3.5" />
-                      <span>
-                        {(itemForm['Opening Serials'] || '').split(',').map(s => s.trim()).filter(Boolean).length === Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0))
-                          ? 'Edit Serials'
-                          : 'Enter Serial Numbers'}
-                      </span>
-                    </button>
-                  </div>
+                {/* Serial Number Tracking Checkbox */}
+                {showSerials && itemForm['Maintain Stock'] !== 'N' && (
+                  <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={itemForm['Is Serialized'] === 'Y'}
+                      onChange={e => {
+                        const isChecked = e.target.checked;
+                        const opQty = Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0));
+                        const currentSerials = (itemForm['Opening Serials'] || '').split(',').map(s => s.trim()).filter(Boolean);
+                        setItemSearchForm(prev => ({
+                          ...prev,
+                          'Is Serialized': isChecked ? 'Y' : 'N'
+                        }));
+                        if (isChecked && opQty > 0 && currentSerials.length !== opQty) {
+                          setShowOpeningSerialModal(true);
+                        }
+                      }}
+                      className="rounded border-slate-300 h-3.5 w-3.5 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <span>Track Serial Nos</span>
+                  </label>
                 )}
               </div>
+            </div>
+
+            {/* Row 4: Alternative Units & Pricing Rates */}
+            {(config.EnableAltUnitPrice !== 'false') && (
+              <MultiUnitEditor itemForm={itemForm} setItemForm={setItemSearchForm} units={units} showWholesalePrice={config.EnableWholesalePrice !== 'false'} />
             )}
 
-            <div className="flex gap-2 justify-end pt-2">
+            {/* Modal Action Footer */}
+            <div className="flex gap-2 justify-end pt-2 border-t border-slate-200 bg-white -mx-4 -mb-4 px-4 py-2.5 rounded-b-2xl">
               <button
                 type="button"
                 onClick={() => setShowItemModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-50 transition cursor-pointer"
+                className="px-4 py-1.5 text-xs font-semibold text-slate-600 rounded-lg border border-slate-200 hover:bg-slate-50 transition cursor-pointer"
               >
                 Cancel
               </button>
@@ -1103,26 +1088,28 @@ export const Masters: React.FC<MastersProps> = ({
                 type="button"
                 disabled={justSavedItem}
                 onClick={handleSaveItem}
-                className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer select-none ${
+                className={`px-5 py-1.5 text-xs font-bold text-white rounded-lg shadow-xs transition-all flex items-center gap-1.5 cursor-pointer select-none ${
                   justSavedItem
                     ? 'bg-emerald-600 shadow-sm ring-2 ring-emerald-300'
-                    : 'bg-orange-600 hover:bg-orange-700 active:bg-orange-800'
+                    : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800'
                 }`}
               >
                 {justSavedItem ? (
                   <>
-                    <Check className="h-4 w-4 stroke-[3]" />
-                    <span>Saved Successfully!</span>
+                    <Check className="h-4 w-4 text-emerald-100 animate-bounce" />
+                    <span>Saved!</span>
                   </>
                 ) : (
                   <>
-                    <Save className="h-4 w-4 text-orange-100" />
+                    <Save className="h-4 w-4 text-indigo-100" />
                     <span>{editingItemCode ? 'Update Item' : 'Save Item'}</span>
                   </>
                 )}
               </button>
             </div>
           </div>
+        </div>
+      )}
 
           {/* Opening Stock Serial Numbers Modal */}
           {showOpeningSerialModal && (
@@ -1144,8 +1131,6 @@ export const Masters: React.FC<MastersProps> = ({
               }}
             />
           )}
-        </div>
-      )}
 
       {/* Ledger Modal */}
       {showLedgerModal && (

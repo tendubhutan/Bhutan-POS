@@ -51,6 +51,10 @@ export interface Config {
   EnableBillDiscount?: string; // "true" | "false"
   IntegrateAccountsWithInventory?: string; // "true" | "false"
   ReportDetailDepth?: 'summary' | 'detailed' | 'super_detailed';
+  EnableBankReconciliation?: string; // "true" | "false"
+  EnableAltUnitPrice?: string; // "true" | "false"
+  EnableBankTxnId?: string; // "true" | "false"
+  EnableWholesalePrice?: string; // "true" | "false"
 }
 
 export type ModuleId = 'pos' | 'purchase' | 'vouchers' | 'masters' | 'barcode' | 'payroll' | 'reports' | 'settings';
@@ -84,6 +88,7 @@ export interface Item {
   Unit: string;
   'Purchase Rate': number;
   'Sale Rate': number;
+  'Wholesale Rate'?: number;
   MRP: number;
   'GST %': number;
   'Zero Rated (Y/N)': 'Y' | 'N';
@@ -94,6 +99,7 @@ export interface Item {
   'Current Stock': number;
   'Reorder Level': number;
   'Opening Serials'?: string;
+  multiUnits?: { unit: string; conversionFactor: number; purchaseRate: number; saleRate: number; wholesaleRate?: number; mrp: number; }[];
   oldCode?: string;
 }
 
@@ -108,6 +114,7 @@ export interface Unit {
   Symbol: string;
   Group: string;
   'Conversion Factor': number;
+  'Base Unit'?: string;
   oldName?: string;
 }
 
@@ -263,6 +270,8 @@ export interface PurchaseInvoice {
   additionalExpenses?: { ledger: string; amount: number }[];
   voucherTypeId?: string;
   voucherTypeName?: string;
+  bankTxnNo?: string;
+  bank2TxnNo?: string;
   items: Array<{
     'Bill No'?: string;
     'Item Code': string;
@@ -311,6 +320,8 @@ export interface LedgerLogEntry {
   Credit?: number;
   'Ref No': string;
   Narration: string;
+  transactionId?: string;
+  'Transaction ID'?: string;
 }
 
 export type VoucherGroupType =
@@ -356,6 +367,7 @@ export interface VoucherLine {
   ledger: string;
   amount: number;
   narration?: string;
+  transactionId?: string;
 }
 
 export interface Voucher {
@@ -369,6 +381,9 @@ export interface Voucher {
   amount: number;
   totalAmount?: number;
   narration: string;
+  transactionId?: string;
+  bankTxnNo?: string;
+  chequeNo?: string;
   status?: 'Active' | 'Cancelled';
   cancelledAt?: string;
   cancellationReason?: string;
@@ -598,5 +613,14 @@ export interface TrashEntry {
   narration?: string;
   originalData?: any;
 }
+
+export interface BankReconEntry {
+  isCleared: boolean;
+  clearedDate?: string;
+  transactionId?: string;
+  notes?: string;
+}
+
+export type BankReconState = Record<string, BankReconEntry>;
 
 export * from './types/assetManagement';

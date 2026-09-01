@@ -15,13 +15,15 @@ interface PhysicalStockEntryProps {
   items: Item[];
   onDataRefresh: () => void;
   onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
+  onNavigateBack?: () => void;
 }
 
 export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
   config,
   items,
   onDataRefresh,
-  onOpenNewItemModal
+  onOpenNewItemModal,
+  onNavigateBack
 }) => {
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
   const [voucherNo, setVoucherNo] = useState(() => (isAutoMode ? peekNextVoucherNo('PHYSICAL_STOCK', config) : ''));

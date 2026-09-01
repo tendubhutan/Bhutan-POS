@@ -310,7 +310,7 @@ export const Reports: React.FC<ReportsProps> = ({
         reportData.filter((i: any) => {
           if (stockFilters.group !== 'ALL' && i.group !== stockFilters.group) return false;
           if (stockFilters.category !== 'ALL' && i.category !== stockFilters.category) return false;
-          if (stockFilters.item && !i.itemName?.toLowerCase().includes(stockFilters.item.toLowerCase())) return false;
+          if (stockFilters.item && stockFilters.item !== 'ALL' && !i.itemName?.toLowerCase().includes(stockFilters.item.toLowerCase())) return false;
           
           const itemStr = JSON.stringify(i).toLowerCase();
           if (stockFilters.supplier && !itemStr.includes(stockFilters.supplier.toLowerCase())) return false;
@@ -374,7 +374,8 @@ export const Reports: React.FC<ReportsProps> = ({
         reportData.filter((s: any) => {
           if (stockFilters.group !== 'ALL' && s.group !== stockFilters.group) return false;
           if (stockFilters.category !== 'ALL' && s.category !== stockFilters.category) return false;
-          if (stockFilters.status !== 'ALL' && s.status !== stockFilters.status) return false;
+                    if (stockFilters.status !== 'ALL' && s.status !== stockFilters.status) return false;
+                    if (stockFilters.item && stockFilters.item !== 'ALL' && s.itemName !== stockFilters.item) return false;
           if (!stockFilters.serial) return true;
           const q = stockFilters.serial.toLowerCase();
           return (
@@ -1568,7 +1569,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       {reportData.filter((i: any) => {
                         if (stockFilters.group !== 'ALL' && i.group !== stockFilters.group) return false;
                         if (stockFilters.category !== 'ALL' && i.category !== stockFilters.category) return false;
-                        if (stockFilters.item && !i.itemName?.toLowerCase().includes(stockFilters.item.toLowerCase())) return false;
+                        if (stockFilters.item && stockFilters.item !== 'ALL' && !i.itemName?.toLowerCase().includes(stockFilters.item.toLowerCase())) return false;
                         
                         const itemStr = JSON.stringify(i).toLowerCase();
                         if (stockFilters.supplier && !itemStr.includes(stockFilters.supplier.toLowerCase())) return false;
@@ -1736,6 +1737,16 @@ export const Reports: React.FC<ReportsProps> = ({
                           <option value="ALL">All Brands</option>
                           {Array.from(new Set(reportData.map((d:any) => d.category).filter(Boolean))).sort().map((c:any) => (
                             <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={stockFilters.item || 'ALL'}
+                          onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
+                          className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[140px] truncate"
+                        >
+                          <option value="ALL">All Items</option>
+                          {Array.from(new Set(reportData.map((d:any) => d.itemName).filter(Boolean))).sort().map((i:any) => (
+                            <option key={i} value={i}>{i}</option>
                           ))}
                         </select>
                         <select

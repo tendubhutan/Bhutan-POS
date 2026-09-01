@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { focusNextOutsideGrid } from '../utils/domUtils';
-import { Config, Item, Ledger, CartLine, BarcodeQueueItem } from '../types';
-import { savePurchaseInvoice, deletePurchaseInvoice, getVoucherDetails, saveLedger } from '../services/storageService';
+import { Config, Item, Ledger, CartLine, Unit, BarcodeQueueItem } from '../types';
+import { BankTransactionIdModal } from './BankTransactionIdModal';
+import { isBankLedger } from '../utils/ledgerUtils';
+import { savePurchaseInvoice, deletePurchaseInvoice, getVoucherDetails, saveLedger, loadJson, STORAGE_KEYS, DEFAULT_UNITS } from '../services/storageService';
 import { Plus, Trash2, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckCircle2, UserPlus, ShoppingBag, Tag, Printer, AlertCircle } from 'lucide-react';
 import { playSaveSound, playWarningTone } from '../utils/audio';
 import { SerialModal } from './SerialModal';
@@ -34,6 +36,8 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
   initialVoucherTarget
 }) => {
   const [supplierName, setSupplierName] = useState('');
+  const [bankTxnNo, setBankTxnNo] = useState<string>('');
+  const [bankTxnModalOpen, setBankTxnModalOpen] = useState(false);
   const [billDate, setBillDate] = useState(new Date().toISOString().split('T')[0]);
   const [billNo, setBillNo] = useState('');
   const [isGstMode, setIsGstMode] = useState(true);
@@ -87,6 +91,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
   }, [initialVoucherTarget]);
 
   const [cart, setCart] = useState<CartLine[]>([]);
+  const units = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
@@ -517,7 +522,12 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
             <SearchableLedgerSelect
               ledgers={ledgers}
               value={supplierName}
-              onChange={setSupplierName}
+              onChange={(val) => {
+                setSupplierName(val);
+                if (isBankLedger(val, ledgers, config)) {
+                  setBankTxnModalOpen(true);
+                }
+              }}
               filterGroups={['Sundry Creditors', 'Cash-in-Hand', 'Bank Accounts']}
               onCreateNew={() => onOpenNewLedgerModal('Sundry Creditors', (name) => setSupplierName(name))}
               onEditLedger={name => {
@@ -699,8 +709,32 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                         className="w-full text-center h-7.5 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
                       />
                     </td>
-                    <td className="py-1 px-1 align-middle text-center font-semibold text-slate-600 text-xs">
-                      {line.unit || 'Pcs'}
+                    <td className="py-1 px-1 align-middle text-center">
+                      <select
+                        value={line.unit || 'Pcs'}
+                        onChange={e => {
+                          const val = e.target.value;
+                          const updated = [...cart];
+                          updated[idx].unit = val;
+                          const item = items.find(i => (i['Item Code'] && i['Item Code'] === updated[idx].itemCode) || i['Item Name'] === updated[idx].itemName);
+                          if (item) {
+                            if (val === item.Unit) {
+                              updated[idx].rate = item['Purchase Rate'] || 0;
+                            } else if (item.multiUnits) {
+                              const mu = item.multiUnits.find(m => m.unit === val);
+                              if (mu && mu.purchaseRate) {
+                                updated[idx].rate = mu.purchaseRate;
+                              }
+                            }
+                          }
+                          setCart(updated);
+                        }}
+                        className="w-full text-center h-7.5 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
+                      >
+                        {units.map(u => (
+                          <option key={u['Unit Name']} value={u['Unit Name']}>{u.Symbol || u['Unit Name']}</option>
+                        ))}
+                      </select>
                     </td>
                     <td className="py-1 px-1 align-middle text-right">
                       <input
@@ -907,6 +941,15 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
           onRefresh={onDataRefresh}
         />
       )}
+
+      {/* Pop-up modal for Bank Transaction ID / UTR when Bank ledger is selected */}
+      <BankTransactionIdModal
+        isOpen={bankTxnModalOpen}
+        bankLedgerName={supplierName || 'Bank Account'}
+        initialValue={bankTxnNo}
+        onSave={(newTxnId) => setBankTxnNo(newTxnId)}
+        onClose={() => setBankTxnModalOpen(false)}
+      />
     </div>
   );
 };

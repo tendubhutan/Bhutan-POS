@@ -11,7 +11,8 @@ import {
   Building,
   Settings,
   Trash2,
-  X
+  X,
+  Landmark
 } from 'lucide-react';
 import { Config } from "../types";
 
@@ -42,6 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'barcode', label: 'Barcode Print', icon: Barcode, shortcut: 'B' },
     ...(config.EnablePayroll !== 'false' ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users }] : []),
     ...(config.EnableAssetManagement !== 'false' ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'A' }] : []),
+    ...(config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'K' }] : []),
     { id: 'reports', label: 'Reports & Audit', icon: BarChart3, shortcut: 'R' },
     { id: 'settings', label: 'Settings', icon: Settings, shortcut: 'S' }
   ];

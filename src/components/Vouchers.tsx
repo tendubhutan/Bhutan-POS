@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Config, Item, Ledger } from '../types';
 import {
   saveVoucher,
@@ -54,6 +54,8 @@ import {
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './vouchers/VoucherSuccessActionModal';
 import { VoucherShareModal, VoucherShareData } from './vouchers/VoucherShareModal';
 import { RegisterShareModal } from './vouchers/RegisterShareModal';
+import { BankTransactionIdModal } from './BankTransactionIdModal';
+import { isBankLedger } from '../utils/ledgerUtils';
 import { CreditNoteEntry } from './vouchers/CreditNoteEntry';
 import { DebitNoteEntry } from './vouchers/DebitNoteEntry';
 import { DeliveryNoteEntry } from './vouchers/DeliveryNoteEntry';
@@ -200,12 +202,41 @@ export const Vouchers: React.FC<VouchersProps> = ({
   const [creditLedger, setCreditLedger] = useState('');
   const [fromAccount, setFromAccount] = useState('');
   const [toAccount, setToAccount] = useState('');
+  const [transactionId, setTransactionId] = useState('');
+  const [bankTxnModal, setBankTxnModal] = useState<{ isOpen: boolean; bankLedgerName: string }>({
+    isOpen: false,
+    bankLedgerName: ''
+  });
+
+  const checkAndPromptBankLedger = (ledgerName: string) => {
+    if (isBankLedger(ledgerName, ledgers, config)) {
+      setBankTxnModal({
+        isOpen: true,
+        bankLedgerName: ledgerName
+      });
+    }
+  };
 
   // Multi mode grid state
   const [lines, setLines] = useState<VoucherGridLine[]>([
     { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
     { id: '2', type: 'Cr', ledger: 'Cash', debit: 0, credit: '', narration: '' }
   ]);
+
+  // Check if bank account is involved in the current voucher
+  const isBankInvolved = useMemo(() => {
+    const bankLedgersSet = new Set(
+      ledgers
+        .filter(l => l.Group === 'Bank Accounts' || l.Group === 'Bank OCC A/c' || l.Group === 'Bank OD A/c' || l['Ledger Name'].toLowerCase().includes('bank') || l['Ledger Name'].toLowerCase().includes('account') || l['Ledger Name'].toLowerCase().includes('bob') || l['Ledger Name'].toLowerCase().includes('bnb'))
+        .map(l => l['Ledger Name'].toLowerCase())
+    );
+    if (entryMode === 'multi') {
+      return lines.some(l => bankLedgersSet.has((l.ledger || '').toLowerCase()));
+    } else {
+      const activeAccounts = [partyLedger, modeLedger, debitLedger, creditLedger, fromAccount, toAccount];
+      return activeAccounts.some(name => bankLedgersSet.has((name || '').toLowerCase()));
+    }
+  }, [ledgers, entryMode, lines, partyLedger, modeLedger, debitLedger, creditLedger, fromAccount, toAccount]);
 
   const linesRef = useRef(lines);
   useEffect(() => {
@@ -766,6 +797,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
   };
 
   const updateGridLine = (id: string, field: keyof VoucherGridLine, value: any) => {
+    if (field === 'ledger' && typeof value === 'string') {
+      checkAndPromptBankLedger(value);
+    }
     setLines(prev =>
       prev.map(l => {
         if (l.id === id) {
@@ -832,6 +866,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
         date: new Date(date).toISOString(),
         narration: narration.trim(),
         totalAmount: totalDr,
+        transactionId: transactionId.trim() || undefined,
+        bankTxnNo: transactionId.trim() || undefined,
         lines: formattedLines
       };
 
@@ -932,7 +968,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
         amount: amt,
         debitLedger: debL,
         creditLedger: credL,
-        narration: narration.trim()
+        narration: narration.trim(),
+        transactionId: transactionId.trim() || undefined,
+        bankTxnNo: transactionId.trim() || undefined
       };
 
       const result = saveVoucher(activeVType as any, vPayload);
@@ -989,6 +1027,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
         }
         setAmount('');
         setNarration('');
+        setTransactionId('');
+        handleVTypeChange(activeVType);
       } else {
         alert(result.error || 'Failed to save voucher');
       }
@@ -1016,6 +1056,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
       }
     }
     setNarration('');
+    setTransactionId('');
     if (isAutoMode && activeVType && ['P', 'R', 'J', 'C'].includes(activeVType)) {
       setVoucherNo(peekNextVoucherNo(activeVType as any, config));
     }
@@ -1491,7 +1532,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
         isOpen={showCatalogModal}
         onClose={() => setShowCatalogModal(false)}
         onSelectVoucher={handleVTypeChange}
-        activeType={activeVType}
+        activeType={activeVType as VoucherActionType}
       />
 
       {/* Render Active View: Voucher Register or Voucher Entry Forms */}
@@ -2270,6 +2311,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                       if (activeVType === 'P' || activeVType === 'R') setPartyLedger(val);
                       else if (activeVType === 'J') setDebitLedger(val);
                       else setToAccount(val);
+                      checkAndPromptBankLedger(val);
                     }}
                     onCreateNew={() => openCreateLedgerModal(undefined, 'single-1')}
                     onEnterNext={() => focusElement('single-ledger-2')}
@@ -2303,6 +2345,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                       if (activeVType === 'P' || activeVType === 'R') setModeLedger(val);
                       else if (activeVType === 'J') setCreditLedger(val);
                       else setFromAccount(val);
+                      checkAndPromptBankLedger(val);
                     }}
                     onCreateNew={() => openCreateLedgerModal(undefined, 'single-2')}
                     onEnterNext={() => focusElement('single-amount')}
@@ -2348,8 +2391,23 @@ export const Vouchers: React.FC<VouchersProps> = ({
           )}
 
           {/* Overall Narration at bottom of voucher entry */}
-          <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs text-xs space-y-1 shrink-0">
-            <label className="block font-bold text-slate-700 text-[11px]">Overall Narration</label>
+          <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs text-xs shrink-0">
+            <div className="flex items-center justify-between mb-1">
+              <label className="block font-bold text-slate-700 text-[11px]">Overall Narration</label>
+              {isBankInvolved && transactionId && (
+                <div 
+                  onClick={() => {
+                    const activeBank = (lines.find(l => isBankLedger(l.ledger, ledgers, config))?.ledger) || partyLedger || modeLedger || 'Bank Account';
+                    setBankTxnModal({ isOpen: true, bankLedgerName: activeBank });
+                  }}
+                  className="cursor-pointer text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-lg border border-indigo-200 flex items-center gap-1 transition"
+                  title="Click to edit Bank Transaction ID"
+                >
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500">Bank Txn Ref:</span>
+                  <span className="font-mono">{transactionId}</span>
+                </div>
+              )}
+            </div>
             <input
               id="v-overall-narration"
               type="text"
@@ -3144,6 +3202,15 @@ export const Vouchers: React.FC<VouchersProps> = ({
         totalAmount={totalFilteredAmount}
         onPrint={printWholeRegister}
         onExportExcel={exportRegisterToExcel}
+      />
+
+      {/* Pop-up modal for Bank Transaction ID / UTR as soon as Bank Ledger is selected */}
+      <BankTransactionIdModal
+        isOpen={bankTxnModal.isOpen}
+        bankLedgerName={bankTxnModal.bankLedgerName}
+        initialValue={transactionId}
+        onSave={(newTxnId) => setTransactionId(newTxnId)}
+        onClose={() => setBankTxnModal({ isOpen: false, bankLedgerName: '' })}
       />
     </div>
   );
