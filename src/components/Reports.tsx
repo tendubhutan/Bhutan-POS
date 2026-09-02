@@ -94,6 +94,10 @@ export const Reports: React.FC<ReportsProps> = ({
   ], [showGst]);
 
   const handleReportsBack = () => {
+    // If a drill modal or floating dialog is active, do not hijack the back/escape action
+    if (document.querySelector('[data-drill-modal="true"]')) {
+      return false;
+    }
     if (isPrintModalOpen) {
       setIsPrintModalOpen(false);
       return true;

@@ -18,15 +18,31 @@ import { AssetManagementModule } from './components/assetManagement/AssetManagem
 import { Reports, ReportTarget } from './components/Reports';
 import { SettingsView } from './components/SettingsView';
 import { BankReconciliation } from './components/BankReconciliation';
-import { DrillModal } from './components/DrillModal';
+import { DrillModal, TargetState } from './components/DrillModal';
 import { TrashModal } from './components/TrashModal';
 import { BulkDeleteModal } from './components/BulkDeleteModal';
+
+interface DrillReturnContext {
+  activeDrill: { type: 'group' | 'stock' | 'ledger' | 'voucher'; targetId: string; fromDate?: string; toDate?: string };
+  drillHistory: TargetState[];
+  fromView: string;
+}
 
 export default function App() {
   const [viewHistory, setViewHistory] = useState<string[]>(['dashboard']);
   const [currentView, setCurrentView] = useState<string>('dashboard');
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+
+  // Drilldown Modal State & History Stack
+  const [drillModal, setDrillModal] = useState<{
+    type: 'group' | 'stock' | 'ledger' | 'voucher' | null;
+    targetId: string | null;
+    fromDate?: string;
+    toDate?: string;
+  }>({ type: null, targetId: null });
+  const [drillInitialHistory, setDrillInitialHistory] = useState<TargetState[]>([]);
+  const [drillReturnContext, setDrillReturnContext] = useState<DrillReturnContext | null>(null);
 
   // Firebase status
   const [firebaseStatus, setFirebaseStatus] = useState<'connected' | 'syncing' | 'offline' | 'error'>('syncing');
@@ -61,18 +77,36 @@ export default function App() {
   };
 
   const navigateBack = () => {
+    // 1. If drilldown modal is open, dispatch app:back so DrillModal steps back sequentially
     if (drillModal?.type) {
-      setDrillModal({ type: null, targetId: null });
+      const backEvent = new CustomEvent('app:back', { cancelable: true });
+      window.dispatchEvent(backEvent);
       return;
     }
 
-    // Allow active sub-screen or modal to handle back navigation first
+    // 2. Allow active sub-screen or modal to handle back navigation first
     const backEvent = new CustomEvent('app:back', { cancelable: true });
     const notPrevented = window.dispatchEvent(backEvent);
     if (!notPrevented) {
       return;
     }
 
+    // 3. If we came from a Drilldown (via Open in Entry), restore the DrillModal with its exact history
+    if (drillReturnContext) {
+      const { activeDrill, drillHistory, fromView } = drillReturnContext;
+      setDrillReturnContext(null);
+      setCurrentView(fromView);
+      setDrillInitialHistory(drillHistory);
+      setDrillModal({
+        type: activeDrill.type,
+        targetId: activeDrill.targetId,
+        fromDate: activeDrill.fromDate,
+        toDate: activeDrill.toDate
+      });
+      return;
+    }
+
+    // 4. Pop standard view history
     setViewHistory(prev => {
       if (prev.length > 1) {
         const updated = [...prev];
@@ -116,12 +150,7 @@ export default function App() {
   const [heldBills, setHeldBills] = useState<HeldBill[]>([]);
 
   // Drilldown Modal
-  const [drillModal, setDrillModal] = useState<{
-    type: 'group' | 'stock' | 'ledger' | 'voucher' | null;
-    targetId: string | null;
-    fromDate?: string;
-    toDate?: string;
-  }>({ type: null, targetId: null });
+  // (State declared above with drillReturnContext)
 
   // Direct Voucher Navigation Target (from drill-down or reports into voucher entry)
   const [voucherTarget, setVoucherTarget] = useState<{ voucherNo: string; timestamp: number } | null>(null);
@@ -269,10 +298,11 @@ export default function App() {
       if (e.key === 'Escape') {
         if (e.defaultPrevented) return;
 
-        // 1. If drilldown modal is open, close drilldown first
+        // 1. If drilldown modal is open, dispatch app:back so DrillModal steps back sequentially
         if (drillModal?.type) {
           e.preventDefault();
-          setDrillModal({ type: null, targetId: null });
+          const backEvent = new CustomEvent('app:back', { cancelable: true });
+          window.dispatchEvent(backEvent);
           return;
         }
 
@@ -291,8 +321,8 @@ export default function App() {
           return;
         }
 
-        // 4. Navigate back to previous screen in history stack
-        if (currentView !== 'dashboard' || viewHistory.length > 1) {
+        // 4. Navigate back to previous screen in history stack or restore drilldown context
+        if (drillReturnContext || currentView !== 'dashboard' || viewHistory.length > 1) {
           e.preventDefault();
           navigateBack();
           return;
@@ -529,23 +559,33 @@ export default function App() {
         config={config}
         type={drillModal.type}
         targetId={drillModal.targetId}
+        initialHistory={drillInitialHistory}
         fromDate={drillModal.fromDate}
         toDate={drillModal.toDate}
-        onClose={() => setDrillModal({ type: null, targetId: null })}
+        onClose={() => {
+          setDrillModal({ type: null, targetId: null });
+          setDrillInitialHistory([]);
+        }}
         onRefresh={refreshData}
         onDrillVoucher={refNo => setDrillModal({ type: 'voucher', targetId: refNo })}
         onDrillLedger={name => setDrillModal({ type: 'ledger', targetId: name })}
         onDrillStock={code => setDrillModal({ type: 'stock', targetId: code })}
-        onOpenVoucherInEntry={(refNo, vType) => {
+        onOpenVoucherInEntry={(refNo, vType, currentActive, currentHistory) => {
+          if (currentActive) {
+            setDrillReturnContext({
+              activeDrill: currentActive,
+              drillHistory: currentHistory || [],
+              fromView: currentView
+            });
+          }
           setDrillModal({ type: null, targetId: null });
+          setDrillInitialHistory([]);
+          setVoucherTarget({ voucherNo: refNo, timestamp: Date.now() });
           if (vType === 'INV' || vType === 'S') {
-            setVoucherTarget({ voucherNo: refNo, timestamp: Date.now() });
             navigateTo('pos');
           } else if (vType === 'PUR') {
-            setVoucherTarget({ voucherNo: refNo, timestamp: Date.now() });
             navigateTo('purchase');
           } else {
-            setVoucherTarget({ voucherNo: refNo, timestamp: Date.now() });
             navigateTo('vouchers');
           }
         }}

@@ -42,6 +42,7 @@ import { ThermalReceiptModal } from './ThermalReceiptModal';
 interface DrillModalProps {
   type: 'group' | 'stock' | 'ledger' | 'voucher' | null;
   targetId: string | null;
+  initialHistory?: TargetState[];
   config?: Config;
   fromDate?: string;
   toDate?: string;
@@ -50,10 +51,10 @@ interface DrillModalProps {
   onDrillVoucher?: (refNo: string) => void;
   onDrillLedger?: (name: string) => void;
   onDrillStock?: (code: string) => void;
-  onOpenVoucherInEntry?: (refNo: string, vType?: string) => void;
+  onOpenVoucherInEntry?: (refNo: string, vType?: string, currentActive?: TargetState, currentHistory?: TargetState[]) => void;
 }
 
-interface TargetState {
+export interface TargetState {
   type: 'group' | 'stock' | 'ledger' | 'voucher';
   targetId: string;
 }
@@ -61,6 +62,7 @@ interface TargetState {
 export const DrillModal: React.FC<DrillModalProps> = ({
   type,
   targetId,
+  initialHistory,
   config,
   fromDate,
   toDate,
@@ -96,15 +98,31 @@ export const DrillModal: React.FC<DrillModalProps> = ({
   // Sync with prop changes when modal opens or target changes from outside
   useEffect(() => {
     if (type && targetId) {
-      setActive({ type, targetId });
-      setHistory([]);
+      setActive(prev => {
+        if (prev && prev.type === type && prev.targetId === targetId) {
+          return prev;
+        }
+        return { type, targetId };
+      });
+
+      if (initialHistory && initialHistory.length > 0) {
+        setHistory(initialHistory);
+      } else {
+        // Only reset history if this is an entirely new modal opening from outside
+        setHistory(prev => {
+          if (active && active.type === type && active.targetId === targetId) {
+            return prev;
+          }
+          return [];
+        });
+      }
       resetActionModals();
     } else {
       setActive(null);
       setHistory([]);
       resetActionModals();
     }
-  }, [type, targetId]);
+  }, [type, targetId, initialHistory]);
 
   const resetActionModals = () => {
     setShowCancelModal(false);
@@ -136,29 +154,51 @@ export const DrillModal: React.FC<DrillModalProps> = ({
     }
   }, [active, fromDate, toDate]);
 
-  // Keyboard Escape Handler (Steps back drilled history, or closes modal)
+  const handleBack = () => {
+    if (history.length > 0) {
+      const previous = history[history.length - 1];
+      setHistory(prev => prev.slice(0, -1));
+      setActive(previous);
+    } else {
+      onClose();
+    }
+  };
+
+  // Listen to app:back event dispatched from Header or App.tsx
+  useEffect(() => {
+    if (!active || !active.type || !active.targetId) return;
+    const handleAppBack = (e: CustomEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (showCancelModal || showDeleteModal || showShareModal || showReceiptModal) {
+        resetActionModals();
+        return;
+      }
+      handleBack();
+    };
+
+    window.addEventListener('app:back' as any, handleAppBack);
+    return () => window.removeEventListener('app:back' as any, handleAppBack);
+  }, [active, history, showCancelModal, showDeleteModal, showShareModal, showReceiptModal, onClose]);
+
+  // Keyboard Escape Handler (Steps back drilled history, or closes modal) - runs in capture phase
   useEffect(() => {
     if (!active || !active.type || !active.targetId) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (showCancelModal || showDeleteModal || showShareModal) {
-          setShowCancelModal(false);
-          setShowDeleteModal(false);
-          setShowShareModal(false);
-          return;
-        }
         e.preventDefault();
         e.stopPropagation();
-        if (history.length > 0) {
-          handleBack();
-        } else {
-          onClose();
+        e.stopImmediatePropagation?.();
+        if (showCancelModal || showDeleteModal || showShareModal || showReceiptModal) {
+          resetActionModals();
+          return;
         }
+        handleBack();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [active, history, showCancelModal, showDeleteModal, showShareModal, onClose]);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [active, history, showCancelModal, showDeleteModal, showShareModal, showReceiptModal, onClose]);
 
   if (!active || !active.type || !active.targetId) return null;
 
@@ -166,16 +206,6 @@ export const DrillModal: React.FC<DrillModalProps> = ({
     if (!nextId) return;
     setHistory(prev => [...prev, active]);
     setActive({ type: nextType, targetId: nextId });
-    if (nextType === 'voucher' && onDrillVoucher) onDrillVoucher(nextId);
-    if (nextType === 'ledger' && onDrillLedger) onDrillLedger(nextId);
-    if (nextType === 'stock' && onDrillStock) onDrillStock(nextId);
-  };
-
-  const handleBack = () => {
-    if (history.length === 0) return;
-    const previous = history[history.length - 1];
-    setHistory(prev => prev.slice(0, -1));
-    setActive(previous);
   };
 
   const formatDateStr = (d: any) => {
@@ -431,7 +461,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+    <div data-drill-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
       <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in duration-150 relative">
         {/* Header with Back button and Close */}
         <div className="flex justify-between items-center pb-2 border-b border-slate-100">
@@ -824,7 +854,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
                     {onOpenVoucherInEntry && !isCancelled && (
                       <button
                         type="button"
-                        onClick={() => onOpenVoucherInEntry(refNo, voucherData.type)}
+                        onClick={() => onOpenVoucherInEntry(refNo, voucherData.type, active, history)}
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition active:scale-95 cursor-pointer"
                         title="Edit / Open in original entry form"
                       >
