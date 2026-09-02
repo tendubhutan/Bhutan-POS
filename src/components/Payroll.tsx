@@ -48,7 +48,7 @@ interface PayrollProps {
 }
 
 export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh }) => {
-  const [activeTab, setActiveTab] = useState<'processing' | 'employees' | 'payheads'>('processing');
+  const [activeTab, setActiveTab] = useState<'processing' | 'employees' | 'payheads' | 'advances'>('processing');
 
   const payrollTabs = [
     { id: 'processing', label: 'Salary Processing', icon: Calendar },
@@ -1145,10 +1145,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
         >
           {toastMsg.type === 'error' ? <AlertCircle className="h-4 w-4" /> : <CheckCircle className="h-4 w-4" />}
           <span>{toastMsg.text}</span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
         </div>
       )}
 
@@ -1157,10 +1154,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
         <div className="flex items-center gap-3">
           <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-black text-white shadow-md">
             <DollarSign className="h-6 w-6 text-white" />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -1168,23 +1162,14 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
                 🇧🇹 Bhutan DRC Compliant
               </span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
               Flexible private company salary processing with customizable pay heads (NPPF, GIS, PIT) & bank transfer advice.
             </p>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
         </div>
 
         {/* Tab Selector Buttons */}
@@ -1218,15 +1203,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               </button>
             );
           })}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
         </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
       </div>
 
       {/* TAB 1: SALARY PROCESSING */}
@@ -1261,10 +1240,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   </option>
                 ))}
               </select>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
 
             <div className="flex items-center gap-2">
@@ -1312,15 +1288,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   )}
                 </>
               )}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
 
           {/* Current Payroll Statistics Cards */}
@@ -1329,98 +1299,59 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
                 <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                   Active Staff Count
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <div className="text-xl font-black text-slate-900">{currentPayroll.entries.length} Staff</div>
                 <div className="text-[11px] text-slate-400 mt-1">Processed for {currentPayroll.monthYear}</div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
                 <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                   Total Gross Earnings
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <div className="text-xl font-black text-indigo-600">
                   {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalGrossPay.toLocaleString('en-IN')}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">Basic + Allowances</div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
                 <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                   Total Statutory Deductions
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <div className="text-xl font-black text-rose-600">
                   {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalDeductions.toLocaleString('en-IN')}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">NPPF (11%) + GIS + PIT</div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-2xl shadow-xs">
                 <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider mb-1">
                   Net Salary Payable
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <div className="text-xl font-black text-emerald-700">
                   {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalNetPay.toLocaleString('en-IN')}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <div className="text-[11px] text-emerald-600 font-medium mt-1">Net Direct Bank Transfer</div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">
               <Calendar className="h-10 w-10 mx-auto mb-2 text-slate-400 stroke-1" />
               <div className="font-bold text-slate-800 text-sm">
                 No processed payroll found for {monthsList.find(m => m.value === selectedMonth)?.label} {selectedYear}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
               <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-4">
                 Click "Process Monthly Payroll" above to automatically calculate Basic Pay, Allowances, NPPF (11%), GIS, and PIT for all active employees.
@@ -1432,10 +1363,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 <DollarSign className="h-4 w-4" />
                 <span>Process Payroll Now</span>
               </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
           )}
 
@@ -1446,18 +1374,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 <div className="font-bold text-xs sm:text-sm flex items-center gap-2">
                   <FileText className="h-4 w-4 text-indigo-400" />
                   <span>Salary Register - {currentPayroll.monthYear}</span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <span className="text-[11px] text-slate-400 font-mono">
                   {currentPayroll.entries.length} Records
                 </span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               <div className="overflow-x-auto">
@@ -1496,10 +1418,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                           <td className="py-2.5 px-3 text-center">
                             <div className="font-mono font-bold text-slate-800">
                               {wDays} / {mDays} Days
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                             </div>
                             {isProrated && (
                               <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-bold px-1.5 py-0.2 rounded-full inline-block mt-0.5">
@@ -1512,10 +1431,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                             {isProrated && (
                               <div className="text-[9px] text-slate-400 line-through font-normal">
                                 Nu. {entry.basicSalary.toLocaleString('en-IN')}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                               </div>
                             )}
                           </td>
@@ -1549,10 +1465,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                                 <Printer className="h-3 w-3" />
                                 <span>Payslip</span>
                               </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                             </div>
                           </td>
                         </tr>
@@ -1560,21 +1473,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     })}
                   </tbody>
                 </table>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
           )}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
         </div>
       )}
 
@@ -1602,10 +1506,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   onChange={e => setEmpSearch(e.target.value)}
                   className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none"
                 />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               {departmentsList.length > 0 && (
@@ -1622,10 +1523,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   ))}
                 </select>
               )}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
 
             <button
@@ -1635,10 +1533,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               <Plus className="h-4 w-4" />
               <span>Add New Employee</span>
             </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
@@ -1679,10 +1574,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         <td className="py-2.5 px-3 text-right">
                           <div className="font-mono font-bold text-slate-900">
                             {config.CurrencySymbol || 'Nu.'} {emp.basicSalary.toLocaleString('en-IN')}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                           </div>
                           <button
                             onClick={() => {
@@ -1727,10 +1619,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                           </div>
                         </td>
                       </tr>
@@ -1738,20 +1627,11 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   )}
                 </tbody>
               </table>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
         </div>
       )}
 
@@ -1775,15 +1655,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 <p className="text-xs text-slate-500">
                   Add, remove, or modify Earnings & Deductions. Statutory Bhutan Heads (NPPF, GIS, PIT) are protected defaults.
                 </p>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
 
             <button
@@ -1793,10 +1667,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               <Plus className="h-4 w-4" />
               <span>Create New Pay Head</span>
             </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1805,10 +1676,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               <div className="px-4 py-3 bg-emerald-700 text-white font-bold text-xs flex items-center justify-between">
                 <span>Earnings (Allowances & Salary Additions)</span>
                 <span>{payHeads.filter(h => h.type === 'Earning').length} Heads</span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
               <div className="divide-y divide-slate-100">
                 {payHeads
@@ -1823,23 +1691,14 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                               Disabled
                             </span>
                           )}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                         </div>
                         <p className="text-[11px] text-slate-500 mt-0.5">{head.description || head.calculationType}</p>
                         <div className="text-[11px] font-mono text-emerald-700 font-semibold mt-1">
                           Rule: {getPayHeadRuleLabel(head)}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                         </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
 
                       <div className="flex items-center gap-1.5">
@@ -1867,26 +1726,14 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         )}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
                   ))}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
 
             {/* Deductions Column */}
@@ -1894,10 +1741,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               <div className="px-4 py-3 bg-rose-700 text-white font-bold text-xs flex items-center justify-between">
                 <span>Deductions (NPPF, GIS, PIT & Recoveries)</span>
                 <span>{payHeads.filter(h => h.type === 'Deduction').length} Heads</span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
               <div className="divide-y divide-slate-100">
                 {payHeads
@@ -1917,23 +1761,14 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                               Disabled
                             </span>
                           )}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                         </div>
                         <p className="text-[11px] text-slate-500 mt-0.5">{head.description || head.calculationType}</p>
                         <div className="text-[11px] font-mono text-rose-700 font-semibold mt-1">
                           Rule: {getPayHeadRuleLabel(head)}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                         </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
 
                       <div className="flex items-center gap-1.5">
@@ -1961,36 +1796,18 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         )}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
                   ))}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
         </div>
       )}
 
@@ -2004,10 +1821,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   {editingEmployee ? `Edit Employee: ${editingEmployee.fullName}` : 'Add New Employee'}
                 </h3>
                 <p className="text-[11px] text-slate-500">Configure personal details, bank account, and custom salary package/allowances.</p>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
               <button
                 onClick={() => setShowEmployeeModal(false)}
@@ -2015,10 +1829,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               >
                 <X className="h-5 w-5" />
               </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
 
             {/* Modal Tabs Navigation */}
@@ -2047,10 +1858,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 <DollarSign className="h-4 w-4 text-emerald-600" />
                 <span>2. Salary Structure (Allowances & Deductions)</span>
               </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
 
             <form onSubmit={handleSaveEmployee} className="space-y-4 text-xs">
@@ -2066,10 +1874,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         onChange={e => setEmployeeForm({ ...employeeForm, empCode: e.target.value })}
                         className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono font-bold focus:border-indigo-500 outline-none"
                       />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
                     <div>
                       <label className="block font-semibold text-slate-700 mb-1">Status</label>
@@ -2081,15 +1886,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         <option value="Active">Active</option>
                         <option value="Inactive">Inactive</option>
                       </select>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
 
                   <div>
@@ -2102,10 +1901,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                       onChange={e => setEmployeeForm({ ...employeeForm, fullName: e.target.value })}
                       className="w-full h-9 rounded-xl border border-slate-300 px-3 font-bold focus:border-indigo-500 outline-none"
                     />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
 
                   <div className="grid grid-cols-3 gap-3">
@@ -2118,10 +1914,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         onChange={e => setEmployeeForm({ ...employeeForm, cidNo: e.target.value })}
                         className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
                       />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
                     <div>
                       <label className="block font-semibold text-slate-700 mb-1">DRC TPN No</label>
@@ -2141,15 +1934,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         onChange={e => setEmployeeForm({ ...employeeForm, nppfNo: e.target.value })}
                         className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
                       />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
                     <div>
                       <label className="block font-semibold text-slate-700 mb-1">Department</label>
@@ -2160,15 +1947,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         onChange={e => setEmployeeForm({ ...employeeForm, department: e.target.value })}
                         className="w-full h-9 rounded-xl border border-slate-300 px-3 font-bold focus:border-indigo-500 outline-none"
                       />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -2181,10 +1962,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         onChange={e => setEmployeeForm({ ...employeeForm, designation: e.target.value })}
                         className="w-full h-9 rounded-xl border border-slate-300 px-3 focus:border-indigo-500 outline-none"
                       />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
                     <div>
                       <label className="block font-semibold text-slate-700 mb-1">Basic Salary ({config.CurrencySymbol || 'Nu.'}) *</label>
@@ -2195,15 +1973,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         onChange={e => setEmployeeForm({ ...employeeForm, basicSalary: Number(e.target.value) })}
                         className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono font-bold text-indigo-700 focus:border-indigo-500 outline-none"
                       />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -2221,10 +1993,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         <option value="BDBL">BDBL</option>
                         <option value="Cash / Hand">Cash Payment</option>
                       </select>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
                     <div>
                       <label className="block font-semibold text-slate-700 mb-1">Bank Account Number</label>
@@ -2235,15 +2004,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         onChange={e => setEmployeeForm({ ...employeeForm, accountNo: e.target.value })}
                         className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
                       />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -2255,10 +2018,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         onChange={e => setEmployeeForm({ ...employeeForm, joiningDate: e.target.value })}
                         className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
                       />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
                     <div>
                       <label className="block font-semibold text-slate-700 mb-1">
@@ -2271,20 +2031,11 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
                       />
                       <p className="text-[10px] text-slate-400 mt-0.5">Leave blank if currently active.</p>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
               )}
 
@@ -2300,10 +2051,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         <span className="font-mono font-extrabold text-sm text-white">
                           {config.CurrencySymbol || 'Nu.'} {summary.basic.toLocaleString('en-IN')}
                         </span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
 
                       <div className="p-2 bg-emerald-950/60 border border-emerald-800/50 rounded-xl">
@@ -2311,10 +2059,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         <span className="font-mono font-extrabold text-sm text-emerald-300">
                           {config.CurrencySymbol || 'Nu.'} {summary.totalEarnings.toLocaleString('en-IN')}
                         </span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
 
                       <div className="p-2 bg-rose-950/60 border border-rose-800/50 rounded-xl">
@@ -2322,10 +2067,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         <span className="font-mono font-extrabold text-sm text-rose-300">
                           {config.CurrencySymbol || 'Nu.'} {summary.totalDeductions.toLocaleString('en-IN')}
                         </span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
 
                       <div className="p-2 bg-indigo-950/80 border border-indigo-700/60 rounded-xl">
@@ -2333,15 +2075,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         <span className="font-mono font-black text-sm text-amber-300">
                           {config.CurrencySymbol || 'Nu.'} {summary.netSalary.toLocaleString('en-IN')}
                         </span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
 
                     <p className="text-[11px] text-slate-500 italic">
@@ -2353,10 +2089,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                       <div className="bg-emerald-700 text-white font-bold px-3.5 py-2 text-xs flex justify-between items-center">
                         <span>Earnings & Allowances</span>
                         <span>{summary.earningsList.filter(e => e.enabled).length} Enabled</span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
 
                       <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
@@ -2380,27 +2113,15 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                                         Custom
                                       </span>
                                     )}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                   </div>
                                   <div className="text-[10px] text-slate-500">
                                     Rule: {getPayHeadRuleLabel(head)}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                   </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                               </div>
 
                               {enabled ? (
@@ -2414,45 +2135,27 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                                       onChange={e => handleSetEmpPayHeadOverride(head.id, e.target.value)}
                                       className="w-24 h-7 rounded-lg border border-slate-300 px-2 text-right font-mono text-xs outline-none focus:border-indigo-500"
                                     />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                   </div>
                                   <div className="w-24 text-right">
                                     <span className="text-[9px] text-slate-400 block font-bold">Monthly Calc</span>
                                     <span className="font-mono font-bold text-xs text-emerald-700">
                                       +{config.CurrencySymbol || 'Nu.'} {amount.toLocaleString('en-IN')}
                                     </span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                   </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                 </div>
                               ) : (
                                 <span className="text-[10px] text-slate-400 font-bold italic">Not Applicable</span>
                               )}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                             </div>
                           );
                         })}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
 
                     {/* Deductions Section */}
@@ -2460,10 +2163,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                       <div className="bg-rose-700 text-white font-bold px-3.5 py-2 text-xs flex justify-between items-center">
                         <span>Deductions & Recoveries</span>
                         <span>{summary.deductionsList.filter(d => d.enabled).length} Enabled</span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
 
                       <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
@@ -2492,27 +2192,15 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                                         Custom
                                       </span>
                                     )}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                   </div>
                                   <div className="text-[10px] text-slate-500">
                                     Rule: {getPayHeadRuleLabel(head)}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                   </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                               </div>
 
                               {enabled ? (
@@ -2526,10 +2214,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                                       onChange={e => handleSetEmpPayHeadOverride(head.id, e.target.value)}
                                       className="w-24 h-7 rounded-lg border border-slate-300 px-2 text-right font-mono text-xs outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                     />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                   </div>
 
                                   <div>
@@ -2541,10 +2226,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                                       className="h-7 rounded-lg border border-slate-300 px-1 font-mono text-[11px] outline-none focus:border-indigo-500"
                                       title="Auto-stops deduction after specified month (e.g., 2026-12)"
                                     />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                   </div>
 
                                   <div className="w-20 text-right">
@@ -2552,40 +2234,22 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                                     <span className="font-mono font-bold text-xs text-rose-700">
                                       -{config.CurrencySymbol || 'Nu.'} {amount.toLocaleString('en-IN')}
                                     </span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                   </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                                 </div>
                               ) : (
                                 <span className="text-[10px] text-slate-400 font-bold italic">Not Applicable</span>
                               )}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                             </div>
                           );
                         })}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
                 );
               })()}
@@ -2609,10 +2273,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                       <span>&larr; Back to Details</span>
                     </button>
                   )}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -2629,26 +2290,14 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   >
                     Save Employee
                   </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
             </form>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
         </div>
       )}
 
@@ -2666,10 +2315,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               >
                 <X className="h-5 w-5" />
               </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
 
             <form onSubmit={handleSavePayHead} className="space-y-3 text-xs">
@@ -2683,10 +2329,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   onChange={e => setPayHeadForm({ ...payHeadForm, name: e.target.value })}
                   className="w-full h-9 rounded-xl border border-slate-300 px-3 font-bold focus:border-indigo-500 outline-none"
                 />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -2700,10 +2343,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     <option value="Earning">Earning (+ Add)</option>
                     <option value="Deduction">Deduction (- Less)</option>
                   </select>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
 
                 <div>
@@ -2718,15 +2358,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     <option value="PercentGross">% of Gross Salary</option>
                     <option value="Manual">Manual / Tax Slab</option>
                   </select>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               <div>
@@ -2740,10 +2374,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   onChange={e => setPayHeadForm({ ...payHeadForm, defaultValue: Number(e.target.value) })}
                   className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono font-bold focus:border-indigo-500 outline-none"
                 />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               <div>
@@ -2755,10 +2386,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   onChange={e => setPayHeadForm({ ...payHeadForm, description: e.target.value })}
                   className="w-full h-9 rounded-xl border border-slate-300 px-3 focus:border-indigo-500 outline-none"
                 />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
@@ -2775,21 +2403,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 >
                   Save Pay Head
                 </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
             </form>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
         </div>
       )}
 
@@ -2801,18 +2420,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               <div>
                 <h3 className="font-bold text-slate-900 text-base">Adjust Employee Salary Line</h3>
                 <p className="text-xs text-slate-500">{editingEntry.fullName} ({editingEntry.empCode})</p>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
               <button onClick={() => setEditingEntry(null)} className="p-1 rounded-lg text-slate-400 hover:text-slate-700">
                 <X className="h-5 w-5" />
               </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
 
             <div className="space-y-4 text-xs">
@@ -2822,15 +2435,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   <div className="font-bold text-indigo-900">Days Worked in Month</div>
                   <div className="text-[10px] text-indigo-700">
                     Full Base Salary: {config.CurrencySymbol || 'Nu.'} {editingEntry.basicSalary.toLocaleString('en-IN')} / month
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <div className="flex items-center gap-1.5 font-mono font-bold">
                   <input
@@ -2872,15 +2479,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     className="w-16 h-8 text-center font-bold text-indigo-900 bg-white border border-indigo-300 rounded-lg outline-none focus:border-indigo-600"
                   />
                   <span className="text-slate-600 font-sans text-xs">/ {editingEntry.monthTotalDays || 30} Days</span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               {/* Earnings Table */}
@@ -2903,21 +2504,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         }}
                         className="w-28 h-8 text-right font-mono font-bold rounded-lg border border-slate-300 px-2 outline-none focus:border-indigo-500"
                       />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
                   ))}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               {/* Deductions Table */}
@@ -2940,21 +2532,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         }}
                         className="w-28 h-8 text-right font-mono font-bold rounded-lg border border-slate-300 px-2 outline-none focus:border-indigo-500"
                       />
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                     </div>
                   ))}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               <div className="p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between font-bold">
@@ -2966,10 +2549,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     editingEntry.deductions.reduce((s, x) => s + x.amount, 0)
                   ).toFixed(2)}
                 </span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
@@ -2985,25 +2565,13 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 >
                   Save Entry
                 </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
         </div>
       )}
 
@@ -3027,15 +2595,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 >
                   <X className="h-5 w-5" />
                 </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
 
             {/* Print Slip Layout */}
@@ -3046,15 +2608,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 <p className="text-[11px] text-slate-500 font-medium">{config.Address}</p>
                 <div className="mt-2 inline-block px-3 py-1 bg-slate-100 rounded-full font-extrabold text-[11px] uppercase tracking-wider text-slate-800">
                   PAYSLIP FOR THE MONTH OF {currentPayroll.monthYear.toUpperCase()}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               {/* Employee Info Box */}
@@ -3063,24 +2619,15 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   <div><span className="font-bold text-slate-500">Employee Name:</span> <strong className="text-slate-900">{payslipModalEntry.fullName}</strong></div>
                   <div><span className="font-bold text-slate-500">Employee Code:</span> <span className="font-mono font-bold">{payslipModalEntry.empCode}</span></div>
                   <div><span className="font-bold text-slate-500">CID Number:</span> <span className="font-mono">{payslipModalEntry.cidNo || '-'}</span></div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <div>
                   <div><span className="font-bold text-slate-500">Designation:</span> <span>{payslipModalEntry.designation}</span></div>
                   <div><span className="font-bold text-slate-500">Department:</span> <span>{payslipModalEntry.department}</span></div>
                   <div><span className="font-bold text-slate-500">Bank A/C:</span> <span className="font-mono">{payslipModalEntry.bankName} ({payslipModalEntry.accountNo})</span></div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               {/* Itemized Table */}
@@ -3089,83 +2636,50 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 <div className="border-r border-slate-300">
                   <div className="bg-emerald-800 text-white font-bold p-2 text-center uppercase text-[10px] tracking-wider">
                     Earnings
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
                   <div className="p-2 space-y-1.5 min-h-[140px]">
                     {payslipModalEntry.earnings.map((item, idx) => (
                       <div key={idx} className="flex justify-between items-center text-[11px]">
                         <span>{item.payHeadName}</span>
                         <span className="font-mono font-bold">{item.amount.toFixed(2)}</span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
                     ))}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
                   <div className="bg-emerald-50 border-t border-slate-300 p-2 flex justify-between font-bold text-emerald-900">
                     <span>Total Gross Pay:</span>
                     <span className="font-mono">{config.CurrencySymbol || 'Nu.'} {payslipModalEntry.grossPay.toFixed(2)}</span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
 
                 {/* Deductions Column */}
                 <div>
                   <div className="bg-rose-800 text-white font-bold p-2 text-center uppercase text-[10px] tracking-wider">
                     Deductions
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
                   <div className="p-2 space-y-1.5 min-h-[140px]">
                     {payslipModalEntry.deductions.map((item, idx) => (
                       <div key={idx} className="flex justify-between items-center text-[11px]">
                         <span>{item.payHeadName}</span>
                         <span className="font-mono font-bold text-rose-700">{item.amount.toFixed(2)}</span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                       </div>
                     ))}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
                   <div className="bg-rose-50 border-t border-slate-300 p-2 flex justify-between font-bold text-rose-900">
                     <span>Total Deductions:</span>
                     <span className="font-mono">{config.CurrencySymbol || 'Nu.'} {payslipModalEntry.totalDeductions.toFixed(2)}</span>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               {/* Net Payable Banner */}
@@ -3174,64 +2688,34 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   <div className="text-[10px] uppercase font-bold text-slate-400">Net Salary Payable:</div>
                   <div className="text-xs font-semibold italic text-slate-300">
                     {numberToWordsBhutan(payslipModalEntry.netPay)}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                   </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <div className="text-lg font-black text-emerald-400 font-mono">
                   {config.CurrencySymbol || 'Nu.'} {payslipModalEntry.netPay.toLocaleString('en-IN')}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               {/* Signatures */}
               <div className="pt-8 grid grid-cols-2 gap-8 text-center text-[10px] text-slate-500 font-bold">
                 <div>
                   <div className="border-t border-slate-400 pt-1">Employer / Authorized Signature</div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <div>
                   <div className="border-t border-slate-400 pt-1">Employee Signature</div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
         </div>
       )}
 
@@ -3255,15 +2739,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 >
                   <X className="h-5 w-5" />
                 </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
 
             <div className="printable-area border border-slate-300 p-6 rounded-xl space-y-4 text-xs font-sans text-slate-900 bg-white">
@@ -3272,15 +2750,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 <p className="text-[11px] text-slate-500">{config.Address}</p>
                 <div className="mt-2 text-xs font-extrabold text-indigo-900 uppercase">
                   SALARY DISBURSAL BANK ADVICE SHEET - {currentPayroll.monthYear.toUpperCase()}
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               <table className="w-full border-collapse text-xs border border-slate-300">
@@ -3319,37 +2791,19 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               <div className="pt-6 grid grid-cols-2 gap-8 text-center text-[10px] text-slate-500 font-bold">
                 <div>
                   <div className="border-t border-slate-400 pt-1">Prepared By (Accountant)</div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
                 <div>
                   <div className="border-t border-slate-400 pt-1">Approved By (Managing Director)</div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
                 </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
         </div>
       )}
 
@@ -3366,10 +2820,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 <p className="text-[11px] text-slate-500">
                   Department of Revenue & Customs (DRC) Monthly TDS & 1% Health Contribution Deposit Schedule for {currentPayroll.monthYear}
                 </p>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
 
               <div className="flex items-center gap-2">
@@ -3390,25 +2841,16 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   <span>Close</span>
                   <kbd className="px-1.5 py-0.5 text-[10px] bg-white rounded border border-slate-300 shadow-2xs text-slate-500 font-mono">Esc</kbd>
                 </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
 
             {/* Printable & Scrollable DRC Schedule Table */}
             <div className="overflow-x-auto border border-slate-300 rounded-xl">
               <div className="bg-yellow-300 text-slate-900 font-bold text-center py-2 text-sm uppercase tracking-wide border-b border-slate-300">
                 FORM IT-1(a) MONTHLY SALARY SCHEDULE
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
               </div>
               <table className="w-full text-xs border-collapse">
                 <thead>
@@ -3511,10 +2953,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   })()}
                 </tbody>
               </table>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
 
             <div className="flex justify-between items-center pt-2 border-t border-slate-200">
@@ -3526,22 +2965,15 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 <X className="h-4 w-4" />
                 <span>Close Schedule (Esc)</span>
               </button>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
             </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
           </div>
-      {/* TAB 4: ADVANCES & LOANS */}
-      {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
-      )}
+      
         </div>
       )}
+      
+    
       {/* TAB 4: ADVANCES & LOANS */}
       {activeTab === "advances" && (
         <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />

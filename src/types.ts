@@ -3,6 +3,9 @@ export interface Config {
   Address: string;
   CompanyGSTNo: string;
   CompanyTPNNo: string;
+  CompanyAddress?: string;
+  CompanyPhone?: string;
+  GSTIN?: string;
   GSTRate: string; // e.g. "5"
   CurrencySymbol: string; // e.g. "Nu."
   Bank1Ledger: string;

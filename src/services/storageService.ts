@@ -73,7 +73,7 @@ export const STORAGE_KEYS = {
   DELETED_LEDGERS: 'deep_pos_deleted_ledgers'
 };
 
-const DEFAULT_CONFIG: Config = {
+export const DEFAULT_CONFIG: Config = {
   CompanyName: 'My Retail Store',
   Address: 'Phuntsholing, Chukha, Bhutan',
   CompanyGSTNo: '30AAAAA0000A1Z5',
@@ -3271,10 +3271,50 @@ export function getItemStockLedger(code: string): StockLedgerEntry[] {
   const it = items.find(i => String(i['Item Code'] || '').trim().toLowerCase() === cleanCode || String(i['Item Name'] || '').trim().toLowerCase() === cleanCode);
   if (it && it['Maintain Stock'] === 'N') return [];
 
-  const logs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
-  return logs
+  const baseOpening = it ? (Number(it['Opening Stock']) || 0) : 0;
+  const rawLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+  const itemLogs = rawLogs
     .filter(r => String(r['Item Code'] || '').trim().toLowerCase() === cleanCode || String(r['Item Name'] || '').trim().toLowerCase() === cleanCode)
     .sort((a, b) => new Date(a.DateIso).getTime() - new Date(b.DateIso).getTime());
+
+  // Check if there is an explicit Opening log entry
+  const hasOpeningEntry = itemLogs.some(r => r.Type === 'Opening' || (r['Ref No'] && r['Ref No'].startsWith('OPENING')));
+
+  const finalLogs: StockLedgerEntry[] = [];
+  if (!hasOpeningEntry && it) {
+    // Prepend Master Opening Balance line
+    finalLogs.push({
+      DateIso: new Date(2025, 0, 1).toISOString(),
+      'Item Code': it['Item Code'],
+      'Item Name': it['Item Name'],
+      Type: 'Opening Balance',
+      'Qty In': baseOpening,
+      'Qty Out': 0,
+      Balance: baseOpening,
+      'Ref No': it['Opening Serials'] && it['Opening Serials'].trim() ? `OPENING (${it['Opening Serials']})` : 'OPENING'
+    });
+  }
+
+  let runningBalance = hasOpeningEntry ? 0 : baseOpening;
+  itemLogs.forEach(r => {
+    const qIn = Number(r['Qty In']) || 0;
+    const qOut = Number(r['Qty Out']) || 0;
+    if (r.Type === 'Opening' || (r['Ref No'] && r['Ref No'].startsWith('OPENING'))) {
+      runningBalance = qIn || baseOpening;
+      finalLogs.push({
+        ...r,
+        Balance: runningBalance
+      });
+    } else {
+      runningBalance += (qIn - qOut);
+      finalLogs.push({
+        ...r,
+        Balance: runningBalance
+      });
+    }
+  });
+
+  return finalLogs;
 }
 
 export function getFullLedgerStatement(name: string) {
@@ -3657,16 +3697,41 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
     const movement = items
       .filter(i => i['Maintain Stock'] !== 'N')
       .map(i => {
-      const c = i['Item Code'], pr = Number(i['Purchase Rate']) || 0, sr = Number(i['Sale Rate']) || 0;
-      let op = 0, inQ = 0, outQ = 0;
-      sLog.filter(l => l['Item Code'] === c).forEach(log => {
-        const d = new Date(log.DateIso).getTime();
-        const li = Number(log['Qty In']) || 0, lo = Number(log['Qty Out']) || 0;
-        if (d < fr) op += (li - lo);
-        else if (d >= fr && d <= toDt) { inQ += li; outQ += lo; }
+        const c = i['Item Code'], pr = Number(i['Purchase Rate']) || 0, sr = Number(i['Sale Rate']) || 0;
+        const opStock = Number(i['Opening Stock']) || 0;
+        let op = opStock;
+        let inQ = 0;
+        let outQ = 0;
+        sLog.filter(l => l['Item Code'] === c).forEach(log => {
+          // If the log is an explicit opening entry, skip it so it doesn't double add to opStock
+          if (log.Type === 'Opening' || (log['Ref No'] && log['Ref No'].startsWith('OPENING'))) {
+            return;
+          }
+          const d = new Date(log.DateIso).getTime();
+          const li = Number(log['Qty In']) || 0;
+          const lo = Number(log['Qty Out']) || 0;
+          if (d < fr) {
+            op += (li - lo);
+          } else if (d >= fr && d <= toDt) {
+            inQ += li;
+            outQ += lo;
+          }
+        });
+        return {
+          name: i['Item Name'],
+          code: c,
+          group: i.Group,
+          category: i.Category,
+          unit: i.Unit,
+          opQty: op,
+          inQty: inQ,
+          outQty: outQ,
+          clQty: op + inQ - outQ,
+          pRate: pr,
+          sRate: sr,
+          valuation: (op + inQ - outQ) * pr
+        };
       });
-      return { name: i['Item Name'], code: c, opQty: op, inQty: inQ, outQty: outQ, clQty: op + inQ - outQ, pRate: pr, sRate: sr };
-    });
     return { movement };
   }
 
@@ -3738,6 +3803,7 @@ export function getFinancialReports(type: string, from: string, to: string) {
     let o = opStock;
     let cl = opStock;
     stockLog.filter(l => l['Item Code'] === c).forEach(l => {
+      if (l.Type === 'Opening' || (l['Ref No'] && l['Ref No'].startsWith('OPENING'))) return;
       const d = new Date(l.DateIso).getTime();
       const df = (Number(l['Qty In']) || 0) - (Number(l['Qty Out']) || 0);
       if (d < fr) { o += df; cl += df; }

@@ -5,7 +5,8 @@ import {
   getVoucherDetails,
   getCategoryLedgerBreakdown,
   cancelVoucherByRef,
-  deleteVoucherPermanentByRef
+  deleteVoucherPermanentByRef,
+  DEFAULT_CONFIG
 } from '../services/storageService';
 import { Config, StockLedgerEntry, LedgerLogEntry } from '../types';
 import {
@@ -248,13 +249,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
   };
 
   const getEffectiveConfig = (): Config => {
-    return (
-      config || {
-        CompanyName: 'BUSINESS STORE',
-        CurrencySymbol: 'Nu.',
-        EnableGST: 'true'
-      }
-    );
+    return config || DEFAULT_CONFIG;
   };
 
   // 1. Print handler

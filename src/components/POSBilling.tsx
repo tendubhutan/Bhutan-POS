@@ -256,7 +256,6 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   const [customerForm, setCustomerForm] = useState<Partial<Ledger>>({
     'Ledger Name': '',
     Group: 'Sundry Debtors',
-    'GST Registration Type': 'Regular',
     'GST Type': 'Regular',
     'GST Exempted': 'N',
     'GST No': '',
@@ -316,7 +315,6 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   const selectedLedger = ledgers.find(l => l['Ledger Name'] === customerName);
   const isCustomerGstExempted = Boolean(
     walkInDetails?.isGSTExempted ||
-    walkInDetails?.gstType === 'Exempted' ||
     selectedLedger?.['GST Exempted'] === 'Y' ||
     selectedLedger?.['GST Type'] === 'Exempted'
   );
@@ -1469,7 +1467,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
             <div className="flex items-center gap-2">
               <h1 className="text-sm sm:text-base font-extrabold text-slate-900 leading-tight">POS Billing / Sale</h1>
               <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded text-[10px] font-bold">
-                {activeVoucherType?.voucherTypeName || 'Sale'}
+                {activeVoucherType?.name || 'Sale'}
               </span>
               {pricingMode === 'wholesale' && (
                 <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded text-[10px] font-extrabold animate-pulse">
@@ -2163,7 +2161,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                   type="number"
                   step="any"
                   min="0"
-                  value={billDiscount === 0 || billDiscount === '0' ? '' : billDiscount}
+                  value={billDiscount === 0 ? '' : billDiscount}
                   placeholder=""
                   onChange={e => {
                     const v = e.target.value;
@@ -2296,7 +2294,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 ref={cashInputRef}
                 type="number"
                 step="any"
-                value={cash === 0 || cash === '0' ? '' : cash}
+                value={cash === 0 ? '' : cash}
                 placeholder=""
                 onChange={e => handleCashInput(e.target.value === '' ? '' : Number(e.target.value))}
                 onFocus={e => e.target.select()}
@@ -2331,7 +2329,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 ref={bank1InputRef}
                 type="number"
                 step="any"
-                value={bank1 === 0 || bank1 === '0' ? '' : bank1}
+                value={bank1 === 0 ? '' : bank1}
                 placeholder=""
                 onChange={e => handleBank1Input(e.target.value === '' ? '' : Number(e.target.value))}
                 onFocus={e => e.target.select()}
@@ -2372,7 +2370,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 ref={bank2InputRef}
                 type="number"
                 step="any"
-                value={bank2 === 0 || bank2 === '0' ? '' : bank2}
+                value={bank2 === 0 ? '' : bank2}
                 placeholder=""
                 onChange={e => handleBank2Input(e.target.value === '' ? '' : Number(e.target.value))}
                 onFocus={e => e.target.select()}
@@ -2531,7 +2529,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                       type="checkbox"
                       id="walkin-gst-exempted"
                       checked={Boolean(walkInDetails?.isGSTExempted)}
-                      onChange={e => setWalkInDetails({ ...(walkInDetails || { name: '', phone: '', address: '' }), isGSTExempted: e.target.checked })}
+                      onChange={e => setWalkInDetails({ ...(walkInDetails || { name: '', phone: '', address: '', gst: '' }), isGSTExempted: e.target.checked })}
                       className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
                     />
                     <label htmlFor="walkin-gst-exempted" className="font-bold text-slate-700 cursor-pointer">

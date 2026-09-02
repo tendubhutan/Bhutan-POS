@@ -333,10 +333,32 @@ export const Reports: React.FC<ReportsProps> = ({
         ];
       } else if (invSubTab === 'mov' && reportData?.movement) {
         reportTitle = 'Stock Movement Statement';
-        headers = ['Item Name', 'Item Code', 'Opening Qty', 'Qty In', 'Qty Out', 'Closing Qty'];
+        headers = ['Item Name', 'Item Code', 'Group', 'Opening Qty', 'Qty In', 'Qty Out', 'Closing Qty'];
+        let totOp = 0;
+        let totIn = 0;
+        let totOut = 0;
+        let totCl = 0;
         reportData.movement.forEach((m: any) => {
-          rows.push([m.name, m.code, Number(m.opQty) || 0, Number(m.inQty) || 0, Number(m.outQty) || 0, Number(m.clQty) || 0]);
+          if (stockFilters.group !== 'ALL' && m.group && m.group !== stockFilters.group) return;
+          if (stockFilters.category !== 'ALL' && m.category && m.category !== stockFilters.category) return;
+          if (stockFilters.item && stockFilters.item !== 'ALL' && !m.name?.toLowerCase().includes(stockFilters.item.toLowerCase())) return;
+          const op = Number(m.opQty) || 0;
+          const inQ = Number(m.inQty) || 0;
+          const outQ = Number(m.outQty) || 0;
+          const cl = Number(m.clQty) || 0;
+          totOp += op;
+          totIn += inQ;
+          totOut += outQ;
+          totCl += cl;
+          rows.push([m.name, m.code, m.group || '', op, inQ, outQ, cl]);
         });
+        totalsRow = ['TOTAL', '', '', totOp, totIn, totOut, totCl];
+        summaryCards = [
+          { label: 'Total Opening Qty', value: totOp },
+          { label: 'Total Inward Qty', value: `+${totIn}` },
+          { label: 'Total Outward Qty', value: `-${totOut}` },
+          { label: 'Total Closing Qty', value: totCl }
+        ];
       } else if (invSubTab === 'prof' && reportData?.profit) {
         reportTitle = 'Item Profitability Analysis';
         headers = ['Item Name', 'Qty Sold', 'Sales Revenue (Nu.)', 'Cost Amount (Nu.)', 'Gross Profit (Nu.)'];
@@ -1606,30 +1628,79 @@ export const Reports: React.FC<ReportsProps> = ({
                   </div>
                 )}
 
-                {invSubTab === 'mov' && reportData?.movement && (
-                  <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                    <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                      <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Opening Qty</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Qty In</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Qty Out</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Closing Qty</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {reportData.movement.map((m: any, idx: number) => (
-                        <tr key={idx} onClick={() => onDrillStock(m.code)} className="hover:bg-slate-50 cursor-pointer">
-                          <td className="py-2 px-3 font-semibold text-slate-800">{m.name}</td>
-                          <td className="py-2 px-3 text-right font-mono">{m.opQty}</td>
-                          <td className="py-2 px-3 text-right font-mono text-emerald-600">+{m.inQty}</td>
-                          <td className="py-2 px-3 text-right font-mono text-rose-600">-{m.outQty}</td>
-                          <td className="py-2 px-3 text-right font-mono font-bold">{m.clQty}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                {invSubTab === 'mov' && reportData?.movement && (() => {
+                  const filteredMovement = reportData.movement.filter((m: any) => {
+                    if (stockFilters.group !== 'ALL' && m.group && m.group !== stockFilters.group) return false;
+                    if (stockFilters.category !== 'ALL' && m.category && m.category !== stockFilters.category) return false;
+                    if (stockFilters.item && stockFilters.item !== 'ALL' && !m.name?.toLowerCase().includes(stockFilters.item.toLowerCase())) return false;
+                    if (stockFilters.serial) {
+                      const q = stockFilters.serial.toLowerCase();
+                      if (!m.name?.toLowerCase().includes(q) && !m.code?.toLowerCase().includes(q)) return false;
+                    }
+                    return true;
+                  });
+                  const totOp = filteredMovement.reduce((acc: number, m: any) => acc + (Number(m.opQty) || 0), 0);
+                  const totIn = filteredMovement.reduce((acc: number, m: any) => acc + (Number(m.inQty) || 0), 0);
+                  const totOut = filteredMovement.reduce((acc: number, m: any) => acc + (Number(m.outQty) || 0), 0);
+                  const totCl = filteredMovement.reduce((acc: number, m: any) => acc + (Number(m.clQty) || 0), 0);
+
+                  return (
+                    <div className="space-y-3">
+                      <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                        <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                          <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Code</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Group</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Opening Qty</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Qty In</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Qty Out</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Closing Qty</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredMovement.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="py-8 text-center text-slate-400 italic">
+                                No stock movement records found for the selected period
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredMovement.map((m: any, idx: number) => (
+                              <tr key={idx} onClick={() => onDrillStock(m.code)} className="hover:bg-indigo-50/50 cursor-pointer transition">
+                                <td className="py-2 px-3 font-semibold text-slate-800">
+                                  {m.name}
+                                  {m.unit && <span className="ml-1 text-[11px] text-slate-400 font-normal">({m.unit})</span>}
+                                </td>
+                                <td className="py-2 px-3 font-mono text-xs text-slate-500">{m.code}</td>
+                                <td className="py-2 px-3 text-slate-600 text-xs">{m.group || '-'}</td>
+                                <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700">{m.opQty}</td>
+                                <td className="py-2 px-3 text-right font-mono font-medium text-emerald-600">
+                                  {m.inQty > 0 ? `+${m.inQty}` : '0'}
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono font-medium text-rose-600">
+                                  {m.outQty > 0 ? `-${m.outQty}` : '0'}
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{m.clQty}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                        {filteredMovement.length > 0 && (
+                          <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                            <tr>
+                              <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={3}>Total ({filteredMovement.length} Items)</td>
+                              <td className="py-2.5 px-3 text-right font-mono text-slate-900">{totOp}</td>
+                              <td className="py-2.5 px-3 text-right font-mono text-emerald-700">+{totIn}</td>
+                              <td className="py-2.5 px-3 text-right font-mono text-rose-700">-{totOut}</td>
+                              <td className="py-2.5 px-3 text-right font-mono text-indigo-900">{totCl}</td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  );
+                })()}
 
                 {invSubTab === 'prof' && reportData?.profit && (
                   <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
@@ -1850,12 +1921,10 @@ export const Reports: React.FC<ReportsProps> = ({
               </div>
             )}
 
-            {/* Financial Statements */}
-            {mainCategory === 'fin' && (
+            {/* Register Views */}
+            {mainCategory === 'reg' && (
               <div className="p-2 space-y-4">
-                {/* Trial Balance */}
-                
-                {mainCategory === 'reg' && regSubTab === 'sales' && Array.isArray(reportData) && (
+                {regSubTab === 'sales' && Array.isArray(reportData) && (
                   <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
                     <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
                       <tr className="bg-slate-50 border-b border-slate-200">
@@ -1900,7 +1969,7 @@ export const Reports: React.FC<ReportsProps> = ({
                   </table>
                 )}
 
-                {mainCategory === 'reg' && regSubTab === 'purchases' && Array.isArray(reportData) && (
+                {regSubTab === 'purchases' && Array.isArray(reportData) && (
                   <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
                     <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
                       <tr className="bg-slate-50 border-b border-slate-200">
@@ -1944,6 +2013,13 @@ export const Reports: React.FC<ReportsProps> = ({
                     </tbody>
                   </table>
                 )}
+              </div>
+            )}
+
+            {/* Financial Statements */}
+            {mainCategory === 'fin' && (
+              <div className="p-2 space-y-4">
+                {/* Trial Balance */}
 
                 {/* Trial Balance Statement */}
                 {finSubTab === 'TB' && reportData?.tb && (
