@@ -470,19 +470,6 @@ function drawReportHeaderBox(
   doc.setLineWidth(0.4);
   doc.roundedRect(margin, startY, headerWidth, headerHeight, 3, 3, 'FD');
 
-  // Mode Pill Badge (Top Right)
-  const modeText = depth === 'summary' ? 'Summary Mode' : depth === 'super_detailed' ? 'Super Detailed' : 'Detailed Mode';
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  const modeWidth = doc.getTextWidth(modeText) + 6;
-  const modeX = pageWidth - margin - 4 - modeWidth;
-  doc.setFillColor(255, 255, 255);
-  doc.setDrawColor(199, 210, 254);
-  doc.setLineWidth(0.3);
-  doc.roundedRect(modeX, startY + 2.5, modeWidth, 4.5, 2.25, 2.25, 'FD');
-  doc.setTextColor(67, 56, 202);
-  doc.text(modeText, modeX + modeWidth / 2, startY + 5.8, { align: 'center' });
-
   // Company Name (Centered)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);

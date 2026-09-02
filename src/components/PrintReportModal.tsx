@@ -568,11 +568,11 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
       <html>
       <head>
         <meta charset="utf-8">
-        <title>${reportTitle} - ${config.CompanyName || 'Store'}</title>
+        <title></title>
         <style>
           @page {
-            size: A4 portrait;
-            margin: 10mm;
+            size: auto;
+            margin: 0mm;
           }
           * {
             box-sizing: border-box;
@@ -583,7 +583,7 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
             color: #0f172a;
             background: #fff;
             margin: 0;
-            padding: 0;
+            padding: 12mm 15mm;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
@@ -751,8 +751,7 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
           </table>
         `}
 
-        <div class="footer-section">
-          <div>Computer Generated Report | ${config.CompanyName || 'Store'}</div>
+        <div class="footer-section" style="justify-content: flex-end;">
           <div class="sig-line">Authorized Signatory</div>
         </div>
       </body>
@@ -988,8 +987,7 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
             )}
 
             {/* Signatures */}
-            <div className="pt-6 flex justify-between items-end text-slate-500 text-[11px]">
-              <div>Computer Generated Report | {config.CompanyName || 'Store'}</div>
+            <div className="pt-6 flex justify-end items-end text-slate-500 text-[11px]">
               <div className="w-40 border-t border-slate-400 text-center pt-1 font-semibold text-slate-700">
                 Authorized Signatory
               </div>
