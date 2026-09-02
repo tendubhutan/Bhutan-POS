@@ -2022,7 +2022,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
             {/* Financial Statements */}
             {mainCategory === 'fin' && (
-              <div className="p-2 space-y-4">
+              <div className="w-full p-2 sm:p-3 space-y-4">
                 {/* Trial Balance */}
 
                 {/* Trial Balance Statement */}
