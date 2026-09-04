@@ -193,7 +193,7 @@ export const RegisterShareModal: React.FC<RegisterShareModalProps> = ({
                 <input
                   type="text"
                   placeholder="Optional phone number (with country code)"
-                  value={customPhone}
+                  value={customPhone || ''}
                   onChange={e => setCustomPhone(e.target.value)}
                   className="w-full h-8 pl-8 pr-2.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 text-xs outline-none focus:border-emerald-600"
                 />

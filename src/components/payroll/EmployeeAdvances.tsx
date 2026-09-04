@@ -259,7 +259,7 @@ export const EmployeeAdvances: React.FC<EmployeeAdvancesProps> = ({ config, ledg
             <form onSubmit={handleIssueAdvance} className="p-5 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Select Employee *</label>
-                <select required value={issueForm.employeeId} onChange={e => setIssueForm({...issueForm, employeeId: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm">
+                <select required value={issueForm.employeeId || ''} onChange={e => setIssueForm({...issueForm, employeeId: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm">
                   <option value="">-- Select Employee --</option>
                   {employees.map(emp => (
                     <option key={emp.id} value={emp.id}>{emp.fullName} - {emp.designation} (CID: {emp.cidNo})</option>
@@ -269,7 +269,7 @@ export const EmployeeAdvances: React.FC<EmployeeAdvancesProps> = ({ config, ledg
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Advance Type *</label>
-                  <select value={issueForm.type} onChange={e => setIssueForm({...issueForm, type: e.target.value as AdvanceType})} className="w-full p-2 border border-slate-300 rounded-lg text-sm font-semibold">
+                  <select value={issueForm.type || 'Local DSA'} onChange={e => setIssueForm({...issueForm, type: e.target.value as AdvanceType})} className="w-full p-2 border border-slate-300 rounded-lg text-sm font-semibold">
                     <option value="Local DSA">Local DSA</option>
                     <option value="Foreign DSA">Foreign DSA</option>
                     <option value="Imprest">Imprest Advance</option>
@@ -279,7 +279,7 @@ export const EmployeeAdvances: React.FC<EmployeeAdvancesProps> = ({ config, ledg
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Issue Date</label>
-                  <input type="date" required value={issueForm.date} onChange={e => setIssueForm({...issueForm, date: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm" />
+                  <input type="date" required value={issueForm.date || ''} onChange={e => setIssueForm({...issueForm, date: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -289,7 +289,7 @@ export const EmployeeAdvances: React.FC<EmployeeAdvancesProps> = ({ config, ledg
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Paying Bank/Cash Ledger *</label>
-                  <select required value={issueForm.bankLedger} onChange={e => setIssueForm({...issueForm, bankLedger: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm">
+                  <select required value={issueForm.bankLedger || ''} onChange={e => setIssueForm({...issueForm, bankLedger: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm">
                     <option value="">-- Select --</option>
                     {ledgers.map(l => <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>)}
                   </select>
@@ -297,7 +297,7 @@ export const EmployeeAdvances: React.FC<EmployeeAdvancesProps> = ({ config, ledg
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Narration / Purpose *</label>
-                <textarea required rows={2} placeholder="e.g. DSA for audit tour to Trashigang..." value={issueForm.narration} onChange={e => setIssueForm({...issueForm, narration: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm resize-none"></textarea>
+                <textarea required rows={2} placeholder="e.g. DSA for audit tour to Trashigang..." value={issueForm.narration || ''} onChange={e => setIssueForm({...issueForm, narration: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm resize-none"></textarea>
               </div>
               <div className="pt-2">
                 <button type="submit" className="w-full bg-indigo-600 text-white p-2.5 rounded-xl font-bold hover:bg-indigo-700">Issue Advance & Post Voucher</button>
@@ -326,17 +326,17 @@ export const EmployeeAdvances: React.FC<EmployeeAdvancesProps> = ({ config, ledg
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Actual Expense / Bills ({config.CurrencySymbol}) *</label>
-                  <input type="number" required min="0" step="0.01" value={settleForm.actualExpense} onChange={e => setSettleForm({...settleForm, actualExpense: Number(e.target.value)})} className="w-full p-2 border border-slate-300 rounded-lg text-sm font-bold text-emerald-700" />
+                  <input type="number" required min="0" step="0.01" value={settleForm.actualExpense !== undefined ? settleForm.actualExpense : 0} onChange={e => setSettleForm({...settleForm, actualExpense: Number(e.target.value)})} className="w-full p-2 border border-slate-300 rounded-lg text-sm font-bold text-emerald-700" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Settlement Date</label>
-                  <input type="date" required value={settleForm.settleDate} onChange={e => setSettleForm({...settleForm, settleDate: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm" />
+                  <input type="date" required value={settleForm.settleDate || ''} onChange={e => setSettleForm({...settleForm, settleDate: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm" />
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Expense Ledger (to charge bills to) *</label>
-                <select required value={settleForm.expenseLedger} onChange={e => setSettleForm({...settleForm, expenseLedger: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm">
+                <select required value={settleForm.expenseLedger || ''} onChange={e => setSettleForm({...settleForm, expenseLedger: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm">
                   <option value="">-- Select Expense Ledger --</option>
                   {ledgers.map(l => <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>)}
                 </select>
@@ -344,7 +344,7 @@ export const EmployeeAdvances: React.FC<EmployeeAdvancesProps> = ({ config, ledg
               
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Narration / Settlement Remarks</label>
-                <textarea rows={2} value={settleForm.narration} onChange={e => setSettleForm({...settleForm, narration: e.target.value})} placeholder="Remarks..." className="w-full p-2 border border-slate-300 rounded-lg text-sm resize-none"></textarea>
+                <textarea rows={2} value={settleForm.narration || ''} onChange={e => setSettleForm({...settleForm, narration: e.target.value})} placeholder="Remarks..." className="w-full p-2 border border-slate-300 rounded-lg text-sm resize-none"></textarea>
               </div>
               {/* Difference logic */}
               {settleForm.actualExpense !== selectedAdvance.amount && (
@@ -363,7 +363,7 @@ export const EmployeeAdvances: React.FC<EmployeeAdvancesProps> = ({ config, ledg
                   </label>
                   
                   {settleForm.reimburseImmediate && (
-                    <select required value={settleForm.bankLedger} onChange={e => setSettleForm({...settleForm, bankLedger: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm mt-1">
+                    <select required value={settleForm.bankLedger || ''} onChange={e => setSettleForm({...settleForm, bankLedger: e.target.value})} className="w-full p-2 border border-slate-300 rounded-lg text-sm mt-1">
                       <option value="">-- Select Bank/Cash Ledger --</option>
                       {ledgers.map(l => <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>)}
                     </select>

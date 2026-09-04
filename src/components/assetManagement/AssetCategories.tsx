@@ -192,7 +192,7 @@ export const AssetCategories: React.FC<AssetCategoriesProps> = ({ ledgers, confi
                     <input
                       type="text"
                       required
-                      value={formData.code}
+                      value={formData.code || ''}
                       onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
                       placeholder="e.g., CMP, FUR, BLD"
@@ -203,7 +203,7 @@ export const AssetCategories: React.FC<AssetCategoriesProps> = ({ ledgers, confi
                     <input
                       type="text"
                       required
-                      value={formData.name}
+                      value={formData.name || ''}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
                       placeholder="e.g., Computers, Furniture, Buildings"
@@ -228,7 +228,7 @@ export const AssetCategories: React.FC<AssetCategoriesProps> = ({ ledgers, confi
                       type="number"
                       min="0"
                       step="any"
-                      value={formData.defaultUsefulLife}
+                      value={formData.defaultUsefulLife ?? 0}
                       onChange={(e) => setFormData({ ...formData, defaultUsefulLife: Number(e.target.value) })}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
                     />
@@ -240,7 +240,7 @@ export const AssetCategories: React.FC<AssetCategoriesProps> = ({ ledgers, confi
                       min="0"
                       max="100"
                       step="any"
-                      value={formData.defaultRate}
+                      value={formData.defaultRate ?? 0}
                       onChange={(e) => setFormData({ ...formData, defaultRate: Number(e.target.value) })}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
                     />

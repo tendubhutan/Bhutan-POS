@@ -29,7 +29,9 @@ import {
   AppUser,
   UserPermission,
   ModuleId,
-  TrashEntry
+  TrashEntry,
+  BillAllocation,
+  BillWiseDetail
 } from '../types';
 import {
   syncConfigToFirestore,
@@ -124,7 +126,8 @@ export const DEFAULT_CONFIG: Config = {
   EnableBankReconciliation: 'true',
   EnableAltUnitPrice: 'true',
   EnableBankTxnId: 'true',
-  EnableWholesalePrice: 'true'
+  EnableWholesalePrice: 'true',
+  EnableBillWiseDetails: 'true'
 };
 
 export const DEFAULT_VOUCHER_TYPES: VoucherType[] = [
@@ -2074,6 +2077,8 @@ export function saveMultiLineVoucher(payload: {
   transactionId?: string;
   bankTxnNo?: string;
   chequeNo?: string;
+  billNo?: string;
+  billAllocations?: BillAllocation[];
   lines: Array<{
     type: 'Dr' | 'Cr';
     ledger: string;
@@ -2124,6 +2129,8 @@ export function saveMultiLineVoucher(payload: {
     transactionId: txnId,
     bankTxnNo: payload.bankTxnNo || txnId,
     chequeNo: payload.chequeNo || '',
+    billNo: payload.billNo,
+    billAllocations: payload.billAllocations,
     lines: payload.lines.map(l => ({
       type: l.type,
       ledger: l.ledger,
@@ -2646,6 +2653,8 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
   transactionId?: string;
   bankTxnNo?: string;
   chequeNo?: string;
+  billNo?: string;
+  billAllocations?: BillAllocation[];
 }) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   
@@ -2688,7 +2697,9 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
     narration: v.narration || '',
     transactionId: txnId,
     bankTxnNo: v.bankTxnNo || txnId,
-    chequeNo: v.chequeNo || ''
+    chequeNo: v.chequeNo || '',
+    billNo: v.billNo,
+    billAllocations: v.billAllocations
   };
   const existIdx = vouchers.findIndex(x => x.voucherNo === no);
   if (existIdx >= 0) {
@@ -2706,6 +2717,155 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
 
   const updatedLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
   return { ok: true, voucherNo: no, ledgers: updatedLedgers };
+}
+
+/**
+ * Retrieve outstanding bills / invoices for a given Sundry Debtor or Sundry Creditor ledger.
+ * Used for maintaining bill-wise details when settling payment or receiving receipts.
+ */
+export function getPartyOutstandingBills(partyLedgerName: string, partyType?: 'debtor' | 'creditor'): BillWiseDetail[] {
+  if (!partyLedgerName || !partyLedgerName.trim()) return [];
+  const cleanParty = partyLedgerName.trim().toLowerCase();
+  const sales = getDeduplicatedSales();
+  const purchases = getDeduplicatedPurchases();
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []).filter(v => v.status !== 'Cancelled');
+  const ledgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
+
+  const results: BillWiseDetail[] = [];
+  const settledMap = new Map<string, number>();
+
+  // Aggregate settlements from existing vouchers
+  vouchers.forEach(v => {
+    if (v.billAllocations && Array.isArray(v.billAllocations)) {
+      v.billAllocations.forEach(alloc => {
+        if (alloc.billNo && alloc.amount) {
+          const key = alloc.billNo.trim().toLowerCase();
+          settledMap.set(key, round2((settledMap.get(key) || 0) + Number(alloc.amount)));
+        }
+      });
+    } else if (v.billNo && v.amount) {
+      const key = v.billNo.trim().toLowerCase();
+      settledMap.set(key, round2((settledMap.get(key) || 0) + Number(v.amount)));
+    }
+  });
+
+  // Automatically determine party type if not passed
+  let pType = partyType;
+  if (!pType) {
+    const lObj = ledgers.find(l => l['Ledger Name']?.trim().toLowerCase() === cleanParty);
+    const grp = (lObj?.Group || '').toLowerCase();
+    if (grp.includes('debtor') || grp.includes('customer')) {
+      pType = 'debtor';
+    } else if (grp.includes('creditor') || grp.includes('supplier') || grp.includes('vendor')) {
+      pType = 'creditor';
+    } else {
+      // Check whether this party appears in sales or purchases
+      const hasSales = sales.some(s => (s.customer?.name || '').trim().toLowerCase() === cleanParty || (s.customer?.ledger || '').trim().toLowerCase() === cleanParty);
+      pType = hasSales ? 'debtor' : 'creditor';
+    }
+  }
+
+  if (pType === 'debtor') {
+    // 1. Credit Sales Invoices
+    sales.forEach(s => {
+      if ((s.status as string) === 'Cancelled') return;
+      const cName = (s.customer?.name || '').trim().toLowerCase();
+      const cLedger = (s.customer?.ledger || '').trim().toLowerCase();
+      if (cName === cleanParty || cLedger === cleanParty) {
+        // Outstanding amount is credit if specified, or total if marked Credit/Partial Credit
+        const originalAmt = Number(s.credit) > 0 
+          ? Number(s.credit) 
+          : (s.status === 'Credit' || s.status === 'Partial Credit' || ((s as any).paymentMode && (s as any).paymentMode !== 'Cash') ? Number(s.total) : 0);
+        if (originalAmt > 0.005) {
+          const billKey = s.invoiceNo.trim().toLowerCase();
+          const alreadySettled = settledMap.get(billKey) || 0;
+          const pending = Math.max(0, round2(originalAmt - alreadySettled));
+          if (pending > 0.005) {
+            results.push({
+              billNo: s.invoiceNo,
+              billDate: s.date,
+              originalAmount: round2(originalAmt),
+              paidAmount: round2(alreadySettled),
+              pendingAmount: pending,
+              billType: 'Sales Invoice',
+              dueDate: (s as any).dueDate
+            });
+          }
+        }
+      }
+    });
+
+    // 2. Debtor Ledger Opening Balance (Dr)
+    const lObj = ledgers.find(l => l['Ledger Name']?.trim().toLowerCase() === cleanParty);
+    if (lObj && lObj['Balance Type (Dr/Cr)'] === 'Dr' && Number(lObj['Opening Balance']) > 0) {
+      const opKey = `op-bal-${cleanParty}`;
+      const opAmt = Number(lObj['Opening Balance']);
+      const alreadySettled = settledMap.get(opKey) || settledMap.get('op-bal') || 0;
+      const pending = Math.max(0, round2(opAmt - alreadySettled));
+      if (pending > 0.005) {
+        results.push({
+          billNo: `OB-${lObj['Ledger Name'].substring(0, 8).toUpperCase()}`,
+          billDate: new Date().toISOString(),
+          originalAmount: round2(opAmt),
+          paidAmount: round2(alreadySettled),
+          pendingAmount: pending,
+          billType: 'Opening Balance'
+        });
+      }
+    }
+  } else {
+    // Creditor
+    // 1. Credit Purchases
+    purchases.forEach(p => {
+      if ((p.status as string) === 'Cancelled') return;
+      const sName = (p.supplier?.name || '').trim().toLowerCase();
+      const sLedger = (p.supplier?.ledger || '').trim().toLowerCase();
+      if (sName === cleanParty || sLedger === cleanParty) {
+        const originalAmt = Number(p.credit) > 0 
+          ? Number(p.credit) 
+          : (p.status === 'Credit' || p.status === 'Partial Credit' || ((p as any).paymentMode && (p as any).paymentMode !== 'Cash') ? Number(p.total) : 0);
+        if (originalAmt > 0.005) {
+          const bNo = p.billNo || p.invoiceNo || p.supplierBillNo || 'PUR-BILL';
+          const billKey = bNo.trim().toLowerCase();
+          const alreadySettled = settledMap.get(billKey) || 0;
+          const pending = Math.max(0, round2(originalAmt - alreadySettled));
+          if (pending > 0.005) {
+            results.push({
+              billNo: bNo,
+              billDate: p.date,
+              originalAmount: round2(originalAmt),
+              paidAmount: round2(alreadySettled),
+              pendingAmount: pending,
+              billType: 'Purchase Bill',
+              dueDate: (p as any).dueDate
+            });
+          }
+        }
+      }
+    });
+
+    // 2. Creditor Ledger Opening Balance (Cr)
+    const lObj = ledgers.find(l => l['Ledger Name']?.trim().toLowerCase() === cleanParty);
+    if (lObj && lObj['Balance Type (Dr/Cr)'] === 'Cr' && Number(lObj['Opening Balance']) > 0) {
+      const opKey = `op-bal-${cleanParty}`;
+      const opAmt = Number(lObj['Opening Balance']);
+      const alreadySettled = settledMap.get(opKey) || settledMap.get('op-bal') || 0;
+      const pending = Math.max(0, round2(opAmt - alreadySettled));
+      if (pending > 0.005) {
+        results.push({
+          billNo: `OB-${lObj['Ledger Name'].substring(0, 8).toUpperCase()}`,
+          billDate: new Date().toISOString(),
+          originalAmount: round2(opAmt),
+          paidAmount: round2(alreadySettled),
+          pendingAmount: pending,
+          billType: 'Opening Balance'
+        });
+      }
+    }
+  }
+
+  // Sort bills by date ascending (FIFO order)
+  return results.sort((a, b) => new Date(a.billDate).getTime() - new Date(b.billDate).getTime());
 }
 
 // -------------------------------------------------------------

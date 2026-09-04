@@ -58,6 +58,24 @@ export interface Config {
   EnableAltUnitPrice?: string; // "true" | "false"
   EnableBankTxnId?: string; // "true" | "false"
   EnableWholesalePrice?: string; // "true" | "false"
+  EnableBillWiseDetails?: string; // "true" | "false"
+}
+
+export interface BillAllocation {
+  billNo: string;
+  billDate?: string;
+  billAmount?: number;
+  amount: number;
+}
+
+export interface BillWiseDetail {
+  billNo: string;
+  billDate: string;
+  originalAmount: number;
+  paidAmount: number;
+  pendingAmount: number;
+  billType: 'Sales Invoice' | 'Purchase Bill' | 'Opening Balance' | 'Debit Note' | 'Credit Note' | 'Journal';
+  dueDate?: string;
 }
 
 export type ModuleId = 'pos' | 'purchase' | 'vouchers' | 'masters' | 'barcode' | 'payroll' | 'reports' | 'settings';
@@ -393,6 +411,8 @@ export interface Voucher {
   lines?: VoucherLine[];
   partyName?: string;
   originalInvoiceRef?: string;
+  billNo?: string;
+  billAllocations?: BillAllocation[];
   items?: Array<{
     itemCode: string;
     itemName: string;

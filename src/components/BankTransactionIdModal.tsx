@@ -52,7 +52,7 @@ export const BankTransactionIdModal: React.FC<BankTransactionIdModalProps> = ({
     }
   };
 
-  const quickPresets = ['mBOB UTR', 'BNB UTR', 'BDBL Ref', 'T-Bank Ref', 'Cheque #'];
+  const quickPresets = ['BOB', 'BNB', 'BDBL', 'T-Bank'];
 
   return (
     <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
@@ -85,20 +85,9 @@ export const BankTransactionIdModal: React.FC<BankTransactionIdModalProps> = ({
 
         {/* Modal Body */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 text-xs text-indigo-950 flex items-start gap-2.5">
-            <Building className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
-            <div className="leading-snug">
-              <span className="font-bold">Bank Ledger Selected: </span>
-              <span className="font-extrabold text-indigo-900">{bankLedgerName || 'Bank Account'}</span>.
-              <p className="text-[11px] text-slate-600 mt-0.5">
-                Please enter the UTR Number, Cheque No, or Online Bank Reference ID for bank reconciliation.
-              </p>
-            </div>
-          </div>
-
           <div>
             <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
-              Transaction ID / UTR / Cheque No <span className="text-rose-500">*</span>
+              Transaction ID / UTR / Cheque No
             </label>
             <input
               ref={inputRef}
@@ -122,8 +111,12 @@ export const BankTransactionIdModal: React.FC<BankTransactionIdModalProps> = ({
                   key={preset}
                   type="button"
                   onClick={() => {
-                    setTxnId(prev => prev ? `${preset} ${prev}` : `${preset} `);
-                    inputRef.current?.focus();
+                    setTxnId(prev => {
+                      if (!prev) return `${preset} `;
+                      if (prev.startsWith(`${preset} `)) return prev;
+                      return `${preset} ${prev}`;
+                    });
+                    setTimeout(() => inputRef.current?.focus(), 10);
                   }}
                   className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 text-xs font-semibold transition cursor-pointer"
                 >

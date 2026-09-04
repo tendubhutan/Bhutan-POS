@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Config, Item, Ledger } from '../types';
 import {
-  getDailyColumnarReport, getGSTReport, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig
+  getDailyColumnarReport, getGSTReport, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig,
+  getPartyOutstandingBills, saveVoucher
 } from '../services/storageService';
 import XLSX from 'xlsx-js-style';
 import {
-  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2
+  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw
 } from 'lucide-react';
 import { PrintReportModal } from './PrintReportModal';
 import { generateReportPDF, shareOrDownloadPDF } from '../utils/pdfExport';
 import { TallyPrimeView, ReportDetailDepth } from './TallyPrimeView';
+import { BillWiseModal } from './BillWiseModal';
 
 export interface ReportTarget {
   category: 'daily' | 'gst' | 'inv' | 'fin' | 'reg';
@@ -65,6 +67,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const [ledgerModeFilter, setLedgerModeFilter] = useState('ALL');
   const [recSearch, setRecSearch] = useState('');
   const [paySearch, setPaySearch] = useState('');
+  const [showBillWise, setShowBillWise] = useState<boolean>(false);
   const [dailySearch, setDailySearch] = useState('');
   const [gstSearch, setGstSearch] = useState('');
   const [invSearch, setInvSearch] = useState('');
@@ -1052,10 +1055,11 @@ export const Reports: React.FC<ReportsProps> = ({
               <div className="flex items-center gap-1.5 pl-1">
                 <span className="font-semibold text-slate-500 text-[11px] whitespace-nowrap">Ledger:</span>
                 <select
-                  value={selectedLedger}
+                  value={selectedLedger || ''}
                   onChange={e => setSelectedLedger(e.target.value)}
                   className="h-8 rounded-xl border border-slate-300 bg-white px-2 font-bold text-slate-800 outline-none w-[120px] sm:w-[160px] truncate"
                 >
+                  <option value="">Select Ledger</option>
                   {ledgers.map(l => (
                     <option key={l['Ledger Name']} value={l['Ledger Name']}>
                       {l['Ledger Name']}
@@ -1065,7 +1069,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
                 {uniqueParties.length > 0 && (
                   <select
-                    value={ledgerPartyFilter}
+                    value={ledgerPartyFilter || 'ALL'}
                     onChange={(e) => setLedgerPartyFilter(e.target.value)}
                     className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[110px] sm:w-[140px] truncate"
                   >
@@ -1080,7 +1084,7 @@ export const Reports: React.FC<ReportsProps> = ({
                   <Search className="absolute left-2.5 top-2.5 h-3 w-3 text-slate-400" />
                   <input
                     type="text"
-                    value={ledgerSearch}
+                    value={ledgerSearch || ''}
                     onChange={(e) => setLedgerSearch(e.target.value)}
                     placeholder="Search..."
                     className="w-full h-8 rounded-xl border border-slate-300 bg-white pl-7 pr-2 text-xs focus:border-indigo-500 focus:outline-hidden"
@@ -1533,13 +1537,13 @@ export const Reports: React.FC<ReportsProps> = ({
                         <input
                           type="text"
                           placeholder="Search Itemwise..."
-                          value={stockFilters.item}
+                          value={stockFilters.item || ''}
                           onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
                           className="bg-transparent text-xs w-full focus:outline-none"
                         />
                       </div>
                       <select
-                        value={stockFilters.group}
+                        value={stockFilters.group || 'ALL'}
                         onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
                         className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2"
                       >
@@ -1549,7 +1553,7 @@ export const Reports: React.FC<ReportsProps> = ({
                         ))}
                       </select>
                       <select
-                        value={stockFilters.category}
+                        value={stockFilters.category || 'ALL'}
                         onChange={e => setStockFilters({ ...stockFilters, category: e.target.value })}
                         className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2"
                       >
@@ -1561,21 +1565,21 @@ export const Reports: React.FC<ReportsProps> = ({
                       <input
                         type="text"
                         placeholder="Supplier..."
-                        value={stockFilters.supplier}
+                        value={stockFilters.supplier || ''}
                         onChange={e => setStockFilters({ ...stockFilters, supplier: e.target.value })}
                         className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2 w-24"
                       />
                       <input
                         type="text"
                         placeholder="Serial No..."
-                        value={stockFilters.serial}
+                        value={stockFilters.serial || ''}
                         onChange={e => setStockFilters({ ...stockFilters, serial: e.target.value })}
                         className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2 w-24"
                       />
                       <input
                         type="text"
                         placeholder="User..."
-                        value={stockFilters.user}
+                        value={stockFilters.user || ''}
                         onChange={e => setStockFilters({ ...stockFilters, user: e.target.value })}
                         className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2 w-20"
                       />
@@ -1795,7 +1799,7 @@ export const Reports: React.FC<ReportsProps> = ({
                     <div className="bg-slate-50 border-b border-slate-200 p-3 flex flex-wrap items-center gap-3 rounded-xl border">
                       <div className="flex flex-wrap items-center gap-2">
                         <select
-                          value={stockFilters.group}
+                          value={stockFilters.group || 'ALL'}
                           onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
                           className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[120px] truncate"
                         >
@@ -1805,7 +1809,7 @@ export const Reports: React.FC<ReportsProps> = ({
                           ))}
                         </select>
                         <select
-                          value={stockFilters.category}
+                          value={stockFilters.category || 'ALL'}
                           onChange={e => setStockFilters({ ...stockFilters, category: e.target.value })}
                           className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[120px] truncate"
                         >
@@ -1825,7 +1829,7 @@ export const Reports: React.FC<ReportsProps> = ({
                           ))}
                         </select>
                         <select
-                          value={stockFilters.status}
+                          value={stockFilters.status || 'ALL'}
                           onChange={e => setStockFilters({ ...stockFilters, status: e.target.value })}
                           className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[120px] truncate"
                         >
@@ -1839,7 +1843,7 @@ export const Reports: React.FC<ReportsProps> = ({
                         <input
                           type="text"
                           placeholder="Filter by serial no, item name, or code..."
-                          value={stockFilters.serial}
+                          value={stockFilters.serial || ''}
                           onChange={e => setStockFilters({ ...stockFilters, serial: e.target.value })}
                           className="bg-transparent text-xs w-full focus:outline-none font-medium"
                         />
@@ -2022,7 +2026,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
             {/* Financial Statements */}
             {mainCategory === 'fin' && (
-              <div className="w-full p-2 sm:p-3 space-y-4">
+              <div className="w-full">
                 {/* Trial Balance */}
 
                 {/* Trial Balance Statement */}
@@ -2070,6 +2074,9 @@ export const Reports: React.FC<ReportsProps> = ({
                   />
                 )}
 
+                {(finSubTab === 'REC' || finSubTab === 'PAY' || finSubTab === 'LED') && (
+                  <div className="w-full p-2 sm:p-3 space-y-4">
+
                 {finSubTab === 'REC' && reportData?.rec && (() => {
                   const filteredRec = reportData.rec.filter((r: any) =>
                     (r.name || '').toLowerCase().includes(recSearch.toLowerCase())
@@ -2077,7 +2084,7 @@ export const Reports: React.FC<ReportsProps> = ({
                   const totalRec = reportData.rec.reduce((sum: number, r: any) => sum + (Number(r.amt) || 0), 0);
 
                   return (
-                    <div className="space-y-2.5">
+                    <div className="space-y-3">
                       {/* Compact Header Strip */}
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 bg-slate-900 text-white px-3.5 py-2.5 rounded-xl text-xs">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -2087,13 +2094,13 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] uppercase font-bold text-slate-400">Total:</span>
+                          <span className="text-[11px] uppercase font-bold text-slate-400">Total Outstanding:</span>
                           <span className="text-sm font-extrabold font-mono text-emerald-300">Nu. {fmt(totalRec)}</span>
                         </div>
                       </div>
 
-                      {/* Search & Counter */}
-                      <div className="flex items-center justify-between gap-4">
+                      {/* Search & Actions */}
+                      <div className="flex items-center justify-between gap-4 flex-wrap">
                         <div className="relative max-w-xs w-full">
                           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
                           <input
@@ -2104,39 +2111,128 @@ export const Reports: React.FC<ReportsProps> = ({
                             className="w-full rounded-xl border border-slate-300 bg-white pl-8 pr-3 py-1.5 text-xs focus:border-indigo-500 focus:outline-hidden"
                           />
                         </div>
-                        <span className="text-xs font-semibold text-slate-500">
-                          Showing {filteredRec.length} of {reportData.rec.length} accounts
-                        </span>
+                        <div className="flex items-center gap-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={showBillWise}
+                              onChange={(e) => setShowBillWise(e.target.checked)}
+                              className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                            />
+                            <span className="text-xs font-semibold text-slate-700">Show Bill-wise Breakdown</span>
+                          </label>
+                          <span className="text-xs font-semibold text-slate-500">
+                            Showing {filteredRec.length} of {reportData.rec.length} accounts
+                          </span>
+                        </div>
                       </div>
 
                       {/* Receivables Table */}
-                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
                           <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Debtor / Customer Name</th>
-                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Outstanding Amount (Nu.)</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Unpaid Invoices</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Outstanding Balance (Nu.)</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {filteredRec.map((r: any, idx: number) => (
-                              <tr
-                                key={idx}
-                                onClick={() => onDrillLedger(r.name)}
-                                className="hover:bg-emerald-50/50 cursor-pointer transition"
-                              >
-                                <td className="py-2.5 px-3 font-semibold text-slate-800 hover:text-indigo-600 transition">
-                                  {r.name}
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700 text-sm">
-                                  {fmt(r.amt)}
-                                </td>
-                              </tr>
-                            ))}
+                            {filteredRec.map((r: any, idx: number) => {
+                              const partyBills = getPartyOutstandingBills(r.name, 'debtor');
+
+                              return (
+                                <React.Fragment key={idx}>
+                                  <tr
+                                    className="hover:bg-emerald-50/40 transition cursor-pointer"
+                                    onClick={() => onDrillLedger(r.name)}
+                                  >
+                                    <td className="py-2.5 px-3 font-semibold text-slate-800 hover:text-indigo-600 transition">
+                                      {r.name}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center">
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                        partyBills.length > 0 ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-slate-100 text-slate-600'
+                                      }`}>
+                                        {partyBills.length} Bill{partyBills.length !== 1 ? 's' : ''} Pending
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700 text-sm">
+                                      {fmt(r.amt)}
+                                    </td>
+                                  </tr>
+
+                                  {/* Expanded Bill-wise Detail Sub-table */}
+                                  {showBillWise && partyBills.length > 0 && (
+                                    <tr className="bg-emerald-50/20">
+                                      <td colSpan={3} className="p-3">
+                                        <div className="bg-white rounded-xl border border-emerald-200/80 p-3 shadow-2xs space-y-2">
+                                          <div className="flex items-center justify-between text-xs font-bold text-emerald-950 pb-1 border-b border-emerald-100">
+                                            <span className="flex items-center gap-1.5">
+                                              <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                                              <span>Bill-wise Outstanding Breakdown — {r.name}</span>
+                                            </span>
+                                            <span className="text-[11px] text-slate-500 font-normal">
+                                              Showing {partyBills.length} reference(s)
+                                            </span>
+                                          </div>
+
+                                          <div className="overflow-x-auto">
+                                            <table className="w-full text-xs text-left border-collapse">
+                                              <thead>
+                                                <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                                                  <th className="py-1.5 px-2">Ref / Bill No</th>
+                                                  <th className="py-1.5 px-2">Bill Date</th>
+                                                  <th className="py-1.5 px-2">Type</th>
+                                                  <th className="py-1.5 px-2 text-right">Original Amount</th>
+                                                  <th className="py-1.5 px-2 text-right">Settled</th>
+                                                  <th className="py-1.5 px-2 text-right">Pending Balance</th>
+                                                  <th className="py-1.5 px-2 text-center">Overdue</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-slate-100 font-mono">
+                                                {partyBills.map((b, bIdx) => {
+                                                  const bDate = b.billDate ? new Date(b.billDate) : null;
+                                                  const daysOverdue = bDate ? Math.max(0, Math.floor((Date.now() - bDate.getTime()) / (86400 * 1000))) : 0;
+
+                                                  return (
+                                                    <tr key={bIdx} className="hover:bg-slate-50">
+                                                      <td className="py-1.5 px-2 font-bold text-indigo-900">{b.billNo}</td>
+                                                      <td className="py-1.5 px-2 font-sans text-slate-600">{bDate ? bDate.toLocaleDateString() : '-'}</td>
+                                                      <td className="py-1.5 px-2 font-sans">
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 font-semibold border text-slate-700">
+                                                          {b.billType || 'Sales Invoice'}
+                                                        </span>
+                                                      </td>
+                                                      <td className="py-1.5 px-2 text-right text-slate-600">Nu. {fmt(b.originalAmount)}</td>
+                                                      <td className="py-1.5 px-2 text-right text-emerald-700">Nu. {fmt(b.paidAmount)}</td>
+                                                      <td className="py-1.5 px-2 text-right font-bold text-rose-700">Nu. {fmt(b.pendingAmount)}</td>
+                                                      <td className="py-1.5 px-2 text-center font-sans">
+                                                        {daysOverdue > 0 ? (
+                                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                                                            {daysOverdue} days
+                                                          </span>
+                                                        ) : (
+                                                          <span className="text-[10px] text-slate-400">Current</span>
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
                           </tbody>
                           <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
                             <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
-                              <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-left font-bold uppercase tracking-wider text-xs">TOTAL RECEIVABLES</td>
+                              <td colSpan={2} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left font-bold uppercase tracking-wider text-xs">TOTAL RECEIVABLES</td>
                               <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-emerald-800 text-base font-extrabold">
                                 Nu. {fmt(totalRec)}
                               </td>
@@ -2155,7 +2251,7 @@ export const Reports: React.FC<ReportsProps> = ({
                   const totalPay = reportData.pay.reduce((sum: number, p: any) => sum + (Number(p.amt) || 0), 0);
 
                   return (
-                    <div className="space-y-2.5">
+                    <div className="space-y-3">
                       {/* Compact Header Strip */}
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 bg-slate-900 text-white px-3.5 py-2.5 rounded-xl text-xs">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -2165,13 +2261,13 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] uppercase font-bold text-slate-400">Total:</span>
+                          <span className="text-[11px] uppercase font-bold text-slate-400">Total Outstanding:</span>
                           <span className="text-sm font-extrabold font-mono text-rose-400">Nu. {fmt(totalPay)}</span>
                         </div>
                       </div>
 
-                      {/* Search & Counter */}
-                      <div className="flex items-center justify-between gap-4">
+                      {/* Search & Actions */}
+                      <div className="flex items-center justify-between gap-4 flex-wrap">
                         <div className="relative max-w-xs w-full">
                           <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
                           <input
@@ -2182,42 +2278,131 @@ export const Reports: React.FC<ReportsProps> = ({
                             className="w-full rounded-xl border border-slate-300 bg-white pl-8 pr-3 py-1.5 text-xs focus:border-indigo-500 focus:outline-hidden"
                           />
                         </div>
-                        <span className="text-xs font-semibold text-slate-500">
-                          Showing {filteredPay.length} of {reportData.pay.length} accounts
-                        </span>
+                        <div className="flex items-center gap-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={showBillWise}
+                              onChange={(e) => setShowBillWise(e.target.checked)}
+                              className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                            />
+                            <span className="text-xs font-semibold text-slate-700">Show Bill-wise Breakdown</span>
+                          </label>
+                          <span className="text-xs font-semibold text-slate-500">
+                            Showing {filteredPay.length} of {reportData.pay.length} accounts
+                          </span>
+                        </div>
                       </div>
 
                       {/* Payables Table */}
-                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
                           <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Creditor / Supplier Name</th>
-                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Outstanding Amount (Nu.)</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Unpaid Bills</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Outstanding Balance (Nu.)</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {filteredPay.map((p: any, idx: number) => (
-                              <tr
-                                key={idx}
-                                onClick={() => onDrillLedger(p.name)}
-                                className="hover:bg-rose-50/50 cursor-pointer transition"
-                              >
-                                <td className="py-2.5 px-3 font-semibold text-slate-800 hover:text-indigo-600 transition">
-                                  {p.name}
-                                </td>
-                                <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-700 text-sm">
-                                  {fmt(p.amt)}
-                                </td>
-                              </tr>
-                            ))}
+                            {filteredPay.map((p: any, idx: number) => {
+                              const partyBills = getPartyOutstandingBills(p.name, 'creditor');
+
+                              return (
+                                <React.Fragment key={idx}>
+                                  <tr
+                                    className="hover:bg-rose-50/40 transition cursor-pointer"
+                                    onClick={() => onDrillLedger(p.name)}
+                                  >
+                                    <td className="py-2.5 px-3 font-semibold text-slate-800 hover:text-indigo-600 transition">
+                                      {p.name}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center">
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                        partyBills.length > 0 ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-slate-100 text-slate-600'
+                                      }`}>
+                                        {partyBills.length} Bill{partyBills.length !== 1 ? 's' : ''} Pending
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-700 text-sm">
+                                      {fmt(p.amt)}
+                                    </td>
+                                  </tr>
+                                  {/* Expanded Bill-wise Detail Sub-table */}
+                                  {showBillWise && partyBills.length > 0 && (
+                                    <tr className="bg-rose-50/20">
+                                      <td colSpan={3} className="p-3">
+                                        <div className="bg-white rounded-xl border border-rose-200/80 p-3 shadow-2xs space-y-2">
+                                          <div className="flex items-center justify-between text-xs font-bold text-rose-950 pb-1 border-b border-rose-100">
+                                            <span className="flex items-center gap-1.5">
+                                              <FileText className="w-3.5 h-3.5 text-rose-600" />
+                                              <span>Bill-wise Outstanding Breakdown — {p.name}</span>
+                                            </span>
+                                            <span className="text-[11px] text-slate-500 font-normal">
+                                              Showing {partyBills.length} reference(s)
+                                            </span>
+                                          </div>
+
+                                          <div className="overflow-x-auto">
+                                            <table className="w-full text-xs text-left border-collapse">
+                                              <thead>
+                                                <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                                                  <th className="py-1.5 px-2">Ref / Bill No</th>
+                                                  <th className="py-1.5 px-2">Bill Date</th>
+                                                  <th className="py-1.5 px-2">Type</th>
+                                                  <th className="py-1.5 px-2 text-right">Original Amount</th>
+                                                  <th className="py-1.5 px-2 text-right">Paid Amount</th>
+                                                  <th className="py-1.5 px-2 text-right">Pending Balance</th>
+                                                  <th className="py-1.5 px-2 text-center">Overdue</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-slate-100 font-mono">
+                                                {partyBills.map((b, bIdx) => {
+                                                  const bDate = b.billDate ? new Date(b.billDate) : null;
+                                                  const daysOverdue = bDate ? Math.max(0, Math.floor((Date.now() - bDate.getTime()) / (86400 * 1000))) : 0;
+
+                                                  return (
+                                                    <tr key={bIdx} className="hover:bg-slate-50">
+                                                      <td className="py-1.5 px-2 font-bold text-indigo-900">{b.billNo}</td>
+                                                      <td className="py-1.5 px-2 font-sans text-slate-600">{bDate ? bDate.toLocaleDateString() : '-'}</td>
+                                                      <td className="py-1.5 px-2 font-sans">
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 font-semibold border text-slate-700">
+                                                          {b.billType || 'Purchase Bill'}
+                                                        </span>
+                                                      </td>
+                                                      <td className="py-1.5 px-2 text-right text-slate-600">Nu. {fmt(b.originalAmount)}</td>
+                                                      <td className="py-1.5 px-2 text-right text-emerald-700">Nu. {fmt(b.paidAmount)}</td>
+                                                      <td className="py-1.5 px-2 text-right font-bold text-rose-700">Nu. {fmt(b.pendingAmount)}</td>
+                                                      <td className="py-1.5 px-2 text-center font-sans">
+                                                        {daysOverdue > 0 ? (
+                                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                                                            {daysOverdue} days
+                                                          </span>
+                                                        ) : (
+                                                          <span className="text-[10px] text-slate-400">Current</span>
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
                           </tbody>
                           <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
                             <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
-                              <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-left font-bold uppercase tracking-wider text-xs">TOTAL PAYABLES</td>
+                              <td colSpan={3} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left font-bold uppercase tracking-wider text-xs">TOTAL PAYABLES</td>
                               <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-rose-800 text-base font-extrabold">
                                 Nu. {fmt(totalPay)}
                               </td>
+                              <td className="bg-slate-100"></td>
                             </tr>
                           </tfoot>
                         </table>
@@ -2380,13 +2565,14 @@ export const Reports: React.FC<ReportsProps> = ({
                     </div>
                   );
                 })()}
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
         </div>
       </div>
-
     </div>
   );
 };

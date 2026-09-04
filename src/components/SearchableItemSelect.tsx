@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Item } from '../types';
-import { Search, Check, ChevronDown, X, Package, Plus } from 'lucide-react';
-import { getActiveUser } from '../services/storageService';
+import { Search, Check, ChevronDown, X, Package, Plus, Hash } from 'lucide-react';
+import { getActiveUser, getSerialNumbersStockReport } from '../services/storageService';
 
 interface SearchableItemSelectProps {
   id?: string;
   valueCode?: string;
-  onSelect: (item: Item) => void;
+  onSelect: (item: Item, scannedSerial?: string) => void;
   onClear?: () => void;
   onEnterNext?: () => void;
   items: Item[];
@@ -142,6 +142,34 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
     }
   }, [selectedItem, isOpen, shouldClearOnSelect]);
 
+  const inStockSerials = useMemo(() => {
+    try {
+      return getSerialNumbersStockReport().filter(s => s.status === 'In Stock');
+    } catch {
+      return [];
+    }
+  }, [isOpen, searchTerm]);
+
+  const matchedSerialMap = useMemo(() => {
+    if (!searchTerm) return new Map<string, string>();
+    const term = searchTerm.trim().toLowerCase();
+    const map = new Map<string, string>();
+    inStockSerials.forEach(s => {
+      if (s.serialNo.toLowerCase().includes(term)) {
+        if (!map.has(s.itemCode)) {
+          map.set(s.itemCode, s.serialNo);
+        }
+      }
+    });
+    return map;
+  }, [inStockSerials, searchTerm]);
+
+  const exactSerialMatch = useMemo(() => {
+    if (!searchTerm) return null;
+    const term = searchTerm.trim().toLowerCase();
+    return inStockSerials.find(s => s.serialNo.toLowerCase() === term);
+  }, [inStockSerials, searchTerm]);
+
   const filteredItems = useMemo(() => {
     if (!searchTerm) return items.slice(0, 100);
     const searchLower = searchTerm.toLowerCase();
@@ -152,19 +180,26 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
         const code = (item['Item Code'] || '').toLowerCase();
         const barcode = (item['Barcode'] || '').toLowerCase();
         const alias = (item['Alias'] || '').toLowerCase();
+        const hasSerial = matchedSerialMap.has(item['Item Code']);
         
         return (
           name.includes(searchLower) ||
           code.includes(searchLower) ||
           barcode === searchLower ||
-          alias.includes(searchLower)
+          alias.includes(searchLower) ||
+          hasSerial
         );
       })
       .sort((a, b) => {
-        const aName = (a['Item Name'] || '').toLowerCase();
-        const bName = (b['Item Name'] || '').toLowerCase();
         const aCode = (a['Item Code'] || '').toLowerCase();
         const bCode = (b['Item Code'] || '').toLowerCase();
+        
+        // Exact serial number match gets top priority
+        const aExactSerial = exactSerialMatch && exactSerialMatch.itemCode === a['Item Code'];
+        const bExactSerial = exactSerialMatch && exactSerialMatch.itemCode === b['Item Code'];
+        if (aExactSerial && !bExactSerial) return -1;
+        if (!aExactSerial && bExactSerial) return 1;
+
         const aBarcode = (a['Barcode'] || '').toLowerCase();
         const bBarcode = (b['Barcode'] || '').toLowerCase();
 
@@ -175,6 +210,15 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
         // Exact code match second
         if (aCode === searchLower && bCode !== searchLower) return -1;
         if (bCode === searchLower && aCode !== searchLower) return 1;
+
+        // Serial substring match
+        const aHasSerial = matchedSerialMap.has(a['Item Code']);
+        const bHasSerial = matchedSerialMap.has(b['Item Code']);
+        if (aHasSerial && !bHasSerial) return -1;
+        if (!aHasSerial && bHasSerial) return 1;
+
+        const aName = (a['Item Name'] || '').toLowerCase();
+        const bName = (b['Item Name'] || '').toLowerCase();
 
         // Exact name match third
         if (aName === searchLower && bName !== searchLower) return -1;
@@ -189,7 +233,7 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
         return 0;
       })
       .slice(0, 100); // Increased slightly for portal
-  }, [items, searchTerm]);
+  }, [items, searchTerm, matchedSerialMap, exactSerialMatch]);
 
   const showEndOfList = (!!onSaveVoucher || !!onEndOfList) && !searchTerm.trim();
   const endOfListIdx = showEndOfList ? 0 : -1;
@@ -229,10 +273,11 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [selectedItem, shouldClearOnSelect]);
 
-  const handleSelect = (item: Item) => {
+  const handleSelect = (item: Item, scannedSerial?: string) => {
     if (disabled) return;
     justSelectedRef.current = true;
-    onSelect(item);
+    const finalSerial = scannedSerial || (exactSerialMatch && exactSerialMatch.itemCode === item['Item Code'] ? exactSerialMatch.serialNo : undefined);
+    onSelect(item, finalSerial);
     
     if (autoClearAfterSelect) {
       setSearchTerm('');
@@ -315,6 +360,14 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
       if (!isOpen) setIsOpen(true);
       else setHighlightedIndex(prev => (prev > (showEndOfList ? endOfListIdx : (onCreateNew ? createNewIdx : itemsOffset)) ? prev - 1 : prev));
     } else if (e.key === 'Enter') {
+      if (exactSerialMatch) {
+        e.preventDefault();
+        const matchedItem = items.find(i => i['Item Code'] === exactSerialMatch.itemCode);
+        if (matchedItem) {
+          handleSelect(matchedItem, exactSerialMatch.serialNo);
+          return;
+        }
+      }
       if (isOpen) {
         e.preventDefault();
         if (showEndOfList && highlightedIndex === endOfListIdx) {
@@ -447,8 +500,16 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
                       : 'text-slate-800 hover:bg-slate-50'
                   }`}
                 >
-                  <div className="flex-[3] min-w-0 pr-2 truncate font-medium">
-                    {item['Item Name']}
+                  <div className="flex-[3] min-w-0 pr-2 truncate font-medium flex items-center gap-1.5">
+                    <span className="truncate">{item['Item Name']}</span>
+                    {matchedSerialMap.has(item['Item Code']) && (
+                      <span className={`shrink-0 inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                        isHighlighted ? 'bg-indigo-700 text-indigo-100' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                      }`}>
+                        <Hash className="h-2.5 w-2.5" />
+                        {matchedSerialMap.get(item['Item Code'])}
+                      </span>
+                    )}
                   </div>
                   
                   <div className={`w-12 text-center shrink-0 pr-2 ${isHighlighted ? 'text-indigo-200' : 'text-slate-500'}`}>

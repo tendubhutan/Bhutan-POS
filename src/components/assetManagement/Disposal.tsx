@@ -130,7 +130,7 @@ export const Disposal: React.FC<DisposalProps> = ({ config, ledgers, onDataRefre
             <div className="md:col-span-2">
               <label className="block text-xs font-bold text-slate-700 mb-1">Select Asset to Dispose *</label>
               <select
-                value={selectedAssetId}
+                value={selectedAssetId || ''}
                 onChange={(e) => setSelectedAssetId(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold outline-none"
               >
@@ -166,7 +166,7 @@ export const Disposal: React.FC<DisposalProps> = ({ config, ledgers, onDataRefre
                   <label className="block text-xs font-bold text-slate-700 mb-1">Disposal Date</label>
                   <input
                     type="date"
-                    value={disposalDate}
+                    value={disposalDate || ''}
                     onChange={(e) => setDisposalDate(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none"
                   />
@@ -174,7 +174,7 @@ export const Disposal: React.FC<DisposalProps> = ({ config, ledgers, onDataRefre
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Disposal Type</label>
                   <select
-                    value={disposalType}
+                    value={disposalType || 'Sale'}
                     onChange={(e) => setDisposalType(e.target.value as any)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none"
                   >
@@ -198,7 +198,7 @@ export const Disposal: React.FC<DisposalProps> = ({ config, ledgers, onDataRefre
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Buyer / Receivable Ledger</label>
                       <select
-                        value={buyerLedger}
+                        value={buyerLedger || ''}
                         onChange={(e) => setBuyerLedger(e.target.value)}
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none"
                       >
@@ -215,7 +215,7 @@ export const Disposal: React.FC<DisposalProps> = ({ config, ledgers, onDataRefre
                   <label className="block text-xs font-bold text-slate-700 mb-1">Remarks</label>
                   <input
                     type="text"
-                    value={remarks}
+                    value={remarks || ''}
                     onChange={(e) => setRemarks(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none"
                     placeholder="Reason for disposal..."

@@ -2495,7 +2495,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                       <span className="font-semibold text-slate-800">{e.payHeadName}</span>
                       <input
                         type="number"
-                        value={e.amount}
+                        value={e.amount !== undefined && e.amount !== null ? e.amount : 0}
                         onChange={ev => {
                           const val = Number(ev.target.value) || 0;
                           const copy = [...editingEntry.earnings];
@@ -2523,7 +2523,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                       <span className="font-semibold text-slate-800">{d.payHeadName}</span>
                       <input
                         type="number"
-                        value={d.amount}
+                        value={d.amount !== undefined && d.amount !== null ? d.amount : 0}
                         onChange={ev => {
                           const val = Number(ev.target.value) || 0;
                           const copy = [...editingEntry.deductions];

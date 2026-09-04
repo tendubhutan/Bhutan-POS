@@ -13,6 +13,7 @@ import {
   deleteSalesInvoice,
   getVoucherDetails,
   saveLedger,
+  getSerialNumbersStockReport,
 } from "../services/storageService";
 import {
   Plus,
@@ -34,6 +35,7 @@ import { SerialModal } from "./SerialModal";
 import { ThermalReceiptModal } from "./ThermalReceiptModal";
 import { SalesInvoice } from "../types";
 import { SearchableLedgerSelect } from "./SearchableLedgerSelect";
+import { AcceptModal } from "./AcceptModal";
 import { SearchableItemSelect } from "./SearchableItemSelect";
 import { handleGridKeyDown } from "../utils/gridKeyboardNav";
 import { QuickItemModal } from "./QuickItemModal";
@@ -293,6 +295,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   }, [initialVoucherTarget]);
 
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [showAcceptModal, setShowAcceptModal] = useState(false);
   const [pricingMode, setPricingMode] = useState<'retail' | 'wholesale'>('retail');
 
   const getItemRate = (item: Item): number => {
@@ -544,7 +547,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     drillModalState,
   ]);
 
-  const selectItem = (item: Item, autoAdd: boolean = true) => {
+  const selectItem = (item: Item, autoAdd: boolean = true, preSelectedSerial?: string) => {
     const qty = 1;
     const rate = getItemRate(item);
 
@@ -560,6 +563,12 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     let targetIndex = existingIdx;
 
     if (existingIdx > -1) {
+      const existingSerials = updatedCart[existingIdx].serials || [];
+      if (preSelectedSerial && existingSerials.some(s => s.toLowerCase() === preSelectedSerial.toLowerCase())) {
+        playWarningTone();
+        alert(`Serial Number "${preSelectedSerial}" is already in the invoice!`);
+        return;
+      }
       updatedCart[existingIdx].qty += qty;
       const gr = updatedCart[existingIdx].qty * updatedCart[existingIdx].rate;
       const z =
@@ -568,6 +577,9 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       updatedCart[existingIdx].gstAmt = z
         ? 0
         : round2((gr * (Number(updatedCart[existingIdx].gstPct) || 0)) / 100);
+      if (preSelectedSerial) {
+        updatedCart[existingIdx].serials = [...existingSerials, preSelectedSerial];
+      }
     } else {
       const newLine: CartLine = {
         itemCode: item["Item Code"],
@@ -580,7 +592,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         zeroRated: item["Zero Rated (Y/N)"] || "N",
         purchaseRate: item["Purchase Rate"] || 0,
         isSerialized: item["Is Serialized"],
-        serials: [],
+        serials: preSelectedSerial ? [preSelectedSerial] : [],
         gstAmt: computedGstAmt,
       };
       updatedCart.push(newLine);
@@ -589,7 +601,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
 
     setCart(updatedCart);
 
-    if (item["Is Serialized"] === "Y" && showSerials) {
+    if (item["Is Serialized"] === "Y" && showSerials && !preSelectedSerial) {
       setActiveSerialIndex(targetIndex);
       setSerialModalOpen(true);
     } else {
@@ -736,6 +748,12 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       return;
     }
 
+    setShowAcceptModal(true);
+  };
+
+  const proceedSaveInvoice = () => {
+    setShowAcceptModal(false);
+
     const customerLedger = ledgers.find(
       (l) => l["Ledger Name"] === customerName,
     );
@@ -795,6 +813,11 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2">
+      <AcceptModal
+        isOpen={showAcceptModal}
+        onConfirm={proceedSaveInvoice}
+        onCancel={() => setShowAcceptModal(false)}
+      />
       {/* Header & Quick Summary Bar */}
       <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xs flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2.5">
@@ -1109,7 +1132,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                         priceType="sale"
                         showPrice={true}
                         onEndOfList={(id) => id && focusNextOutsideGrid(id)}
-                        onSelect={(item) => {
+                        onSelect={(item, scannedSerial) => {
                           const qty = line.qty || 1;
                           const rate = Number(
                             (item as any)["Sale Rate"] ??
@@ -1139,6 +1162,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                             zeroRated: item["Zero Rated (Y/N)"] || "N",
                             purchaseRate: item["Purchase Rate"] || 0,
                             isSerialized: item["Is Serialized"],
+                            serials: scannedSerial ? [scannedSerial] : (updated[idx].serials || []),
                             gstAmt: computedGstAmt,
                           };
                           setCart(updated);
@@ -1165,8 +1189,27 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                         }
                         onSaveVoucher={handleSaveInvoice}
                         onFocusDate={() => billDateRef.current?.focus()}
-                        
                       />
+                      {line.isSerialized === "Y" && showSerials && (
+                        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveSerialIndex(idx);
+                              setSerialModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900 hover:bg-amber-200 border border-amber-300 shadow-2xs cursor-pointer"
+                          >
+                            <Tag className="h-2.5 w-2.5" />
+                            <span>Serials: {line.serials?.length || 0}/{line.qty}</span>
+                          </button>
+                          {line.serials && line.serials.length > 0 && (
+                            <span className="text-[10px] text-slate-600 font-mono truncate max-w-[160px]" title={line.serials.join(", ")}>
+                              ({line.serials.join(", ")})
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="py-1 px-1 align-middle text-center">
                       <input
@@ -1321,7 +1364,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                     priceType="sale"
                     showPrice={true}
                     onEndOfList={(id) => id && focusNextOutsideGrid(id)}
-                    onSelect={(item) => selectItem(item, true)}
+                    onSelect={(item, scannedSerial) => selectItem(item, true, scannedSerial)}
                     autoClearAfterSelect={true}
                     onEnterNext={() => focusNextOutsideGrid("sale-fast-item-picker")}
                     onCreateNew={onOpenNewItemModal}
@@ -1526,13 +1569,17 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
             setCart(updated);
             setSerialModalOpen(false);
             setTimeout(
-              () => document.getElementById("pur-fast-item-picker")?.focus(),
+              () => document.getElementById("sale-fast-item-picker")?.focus(),
               50,
             );
           }}
           requiredQty={cart[activeSerialIndex].qty}
           itemName={cart[activeSerialIndex].itemName}
           initialSerials={cart[activeSerialIndex].serials}
+          mode="select"
+          availableSerials={getSerialNumbersStockReport()
+            .filter(r => r.itemCode === cart[activeSerialIndex]?.itemCode && r.status === "In Stock")
+            .map(r => r.serialNo)}
         />
       )}
 
@@ -1607,8 +1654,19 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         isOpen={bankTxnModalOpen}
         bankLedgerName={customerName || 'Bank Account'}
         initialValue={bankTxnNo}
-        onSave={(newTxnId) => setBankTxnNo(newTxnId)}
-        onClose={() => setBankTxnModalOpen(false)}
+        onSave={(newTxnId) => {
+          setBankTxnNo(newTxnId);
+          setBankTxnModalOpen(false);
+          setTimeout(() => {
+            document.getElementById('sale-fast-item-picker')?.focus();
+          }, 50);
+        }}
+        onClose={() => {
+          setBankTxnModalOpen(false);
+          setTimeout(() => {
+            document.getElementById('sale-fast-item-picker')?.focus();
+          }, 50);
+        }}
       />
     </div>
   );

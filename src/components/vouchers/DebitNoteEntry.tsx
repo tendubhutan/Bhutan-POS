@@ -420,7 +420,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
             <input
               id="dn-voucher-no"
               type="text"
-              value={voucherNo}
+              value={voucherNo || ''}
               onChange={e => setVoucherNo(e.target.value)}
               disabled={isAutoMode}
               onFocus={e => e.target.select()}
@@ -441,7 +441,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
             <input
               id="dn-date"
               type="date"
-              value={date}
+              value={date || ''}
               onChange={e => setDate(e.target.value)}
               onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
@@ -480,7 +480,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
               id="dn-original-ref"
               type="text"
               placeholder="e.g. PUR-1012 or Bill# 582"
-              value={originalBillRef}
+              value={originalBillRef || ''}
               onChange={e => setOriginalBillRef(e.target.value)}
               onFocus={e => e.target.select()}
               onKeyDown={e => {
@@ -503,7 +503,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
             <SearchableLedgerSelect
               id="dn-purchase-return"
               ledgers={ledgers}
-              value={purchaseReturnLedger}
+              value={purchaseReturnLedger || ''}
               onChange={setPurchaseReturnLedger}
               placeholder="Purchase Return or Purchase Account"
               onEnterNext={() => focusElement('dn-narration')}
@@ -520,7 +520,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
               id="dn-narration"
               type="text"
               placeholder="Reason for purchase return or supplier debit..."
-              value={narration}
+              value={narration || ''}
               onChange={e => setNarration(e.target.value)}
               onFocus={e => e.target.select()}
               onKeyDown={e => {
@@ -617,7 +617,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
                         type="number"
                         min="0.01"
                         step="any"
-                        value={line.qty}
+                        value={line.qty !== undefined && line.qty !== null ? line.qty : ''}
                         onFocus={e => e.target.select()}
                         onChange={e =>
                           handleLineChange(
@@ -653,7 +653,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
                         type="number"
                         min="0"
                         step="any"
-                        value={line.rate}
+                        value={line.rate !== undefined && line.rate !== null ? line.rate : ''}
                         onFocus={e => e.target.select()}
                         onChange={e =>
                           handleLineChange(
@@ -690,7 +690,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
                         min="0"
                         max="100"
                         step="any"
-                        value={line.gstPct}
+                        value={line.gstPct !== undefined && line.gstPct !== null ? line.gstPct : 0}
                         onFocus={e => e.target.select()}
                         onChange={e =>
                           handleLineChange(
@@ -757,7 +757,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
                 min="0"
                 step="any"
                 placeholder="0.00"
-                value={lumpSumAmount}
+                value={lumpSumAmount !== undefined && lumpSumAmount !== null ? lumpSumAmount : ''}
                 onFocus={e => e.target.select()}
                 onChange={e =>
                   setLumpSumAmount(e.target.value === '' ? '' : parseFloat(e.target.value))
@@ -785,7 +785,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
                 min="0"
                 step="any"
                 placeholder="0.00"
-                value={lumpSumGst}
+                value={lumpSumGst !== undefined && lumpSumGst !== null ? lumpSumGst : ''}
                 onFocus={e => e.target.select()}
                 onChange={e =>
                   setLumpSumGst(e.target.value === '' ? '' : parseFloat(e.target.value))

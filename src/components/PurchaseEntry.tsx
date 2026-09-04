@@ -12,6 +12,7 @@ import { SearchableItemSelect } from './SearchableItemSelect';
 import { handleGridKeyDown } from '../utils/gridKeyboardNav';
 import { QuickItemModal } from './QuickItemModal';
 import { QuickLedgerModal } from './QuickLedgerModal';
+import { AcceptModal } from './AcceptModal';
 import { DrillModal } from './DrillModal';
 
 interface PurchaseEntryProps {
@@ -91,6 +92,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
   }, [initialVoucherTarget]);
 
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [showAcceptModal, setShowAcceptModal] = useState(false);
   const units = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -307,18 +309,13 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
 
     setCart(updatedCart);
 
-    if (item['Is Serialized'] === 'Y' && showSerials) {
-      setActiveSerialIndex(targetIndex);
-      setSerialModalOpen(true);
-    } else {
-      setTimeout(() => {
-        const qtyEl = document.getElementById(`pur-qty-${targetIndex}`) as HTMLInputElement | null;
-        if (qtyEl) {
-          qtyEl.focus();
-          qtyEl.select();
-        }
-      }, 50);
-    }
+    setTimeout(() => {
+      const qtyEl = document.getElementById(`pur-qty-${targetIndex}`) as HTMLInputElement | null;
+      if (qtyEl) {
+        qtyEl.focus();
+        qtyEl.select();
+      }
+    }, 50);
   };
 
   const updateCartLine = (index: number, field: 'qty' | 'rate' | 'gstAmt' | 'lineDescription', val: any) => {
@@ -332,10 +329,6 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     }
 
     setCart(updated);
-    if (field === 'qty' && updated[index].isSerialized === 'Y' && showSerials) {
-      setActiveSerialIndex(index);
-      setSerialModalOpen(true);
-    }
   };
 
   const removeCartLine = (index: number) => {
@@ -384,6 +377,12 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       showToast('Please select or enter a supplier.', 'error');
       return;
     }
+
+    setShowAcceptModal(true);
+  };
+
+  const proceedSavePurchase = () => {
+    setShowAcceptModal(false);
 
     const supplierLedger = ledgers.find(l => l['Ledger Name'] === supplierName);
     const queueForBarcode = prepareBarcodeQueue();
@@ -434,6 +433,11 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2">
+      <AcceptModal 
+        isOpen={showAcceptModal}
+        onConfirm={proceedSavePurchase}
+        onCancel={() => setShowAcceptModal(false)}
+      />
       {/* Header & Quick Summary Bar */}
       <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xs flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
@@ -742,7 +746,18 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                         step="any"
                         value={line.qty}
                         onFocus={e => e.target.select()}
-                        onKeyDown={e => handleGridKeyDown(e, getGridNavOpts(idx, 'qty'))}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'ArrowRight') {
+                            if (line.isSerialized === 'Y' && showSerials) {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setActiveSerialIndex(idx);
+                              setSerialModalOpen(true);
+                              return;
+                            }
+                          }
+                          handleGridKeyDown(e, getGridNavOpts(idx, 'qty'));
+                        }}
                         onChange={e => updateCartLine(idx, 'qty', Number(e.target.value))}
                         className="w-full text-center h-7.5 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
                       />
@@ -918,13 +933,30 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       {activeSerialIndex > -1 && cart[activeSerialIndex] && (
         <SerialModal
           isOpen={serialModalOpen}
-          onClose={() => setSerialModalOpen(false)}
+          onClose={() => {
+            setSerialModalOpen(false);
+            const targetIdx = activeSerialIndex;
+            setTimeout(() => {
+              const rateEl = document.getElementById(`pur-rate-${targetIdx}`) as HTMLInputElement | null;
+              if (rateEl) {
+                rateEl.focus();
+                rateEl.select();
+              }
+            }, 50);
+          }}
           onConfirm={serials => {
             const updated = [...cart];
             updated[activeSerialIndex].serials = serials;
             setCart(updated);
             setSerialModalOpen(false);
-            setTimeout(() => document.getElementById('pur-fast-item-picker')?.focus(), 50);
+            const targetIdx = activeSerialIndex;
+            setTimeout(() => {
+              const rateEl = document.getElementById(`pur-rate-${targetIdx}`) as HTMLInputElement | null;
+              if (rateEl) {
+                rateEl.focus();
+                rateEl.select();
+              }
+            }, 50);
           }}
           requiredQty={cart[activeSerialIndex].qty}
           itemName={cart[activeSerialIndex].itemName}
@@ -988,8 +1020,19 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         isOpen={bankTxnModalOpen}
         bankLedgerName={supplierName || 'Bank Account'}
         initialValue={bankTxnNo}
-        onSave={(newTxnId) => setBankTxnNo(newTxnId)}
-        onClose={() => setBankTxnModalOpen(false)}
+        onSave={(newTxnId) => {
+          setBankTxnNo(newTxnId);
+          setBankTxnModalOpen(false);
+          setTimeout(() => {
+            document.getElementById('pur-fast-item-picker')?.focus();
+          }, 50);
+        }}
+        onClose={() => {
+          setBankTxnModalOpen(false);
+          setTimeout(() => {
+            document.getElementById('pur-fast-item-picker')?.focus();
+          }, 50);
+        }}
       />
     </div>
   );

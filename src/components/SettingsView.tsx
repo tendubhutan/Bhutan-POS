@@ -4,6 +4,7 @@ import { saveConfig, getUsers, saveUsers, setActiveUser, getActiveUser, loadJson
 import { POSSettings, loadPOSSettings, savePOSSettings, DEFAULT_POS_SETTINGS } from '../types/posSettings';
 import { playSaveSound } from '../utils/audio';
 import { VoucherTypeManager } from './vouchers/VoucherTypeManager';
+import { AcceptModal } from './AcceptModal';
 import { 
   Save, CheckCircle2, Shield, FileText, Image as ImageIcon, PenTool, Plus, Lock, UserCheck, RefreshCw, 
   ShoppingCart, Zap, SlidersHorizontal, AlertTriangle, Keyboard, Percent, CreditCard, RotateCcw,
@@ -33,6 +34,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onDataRefresh
 }) => {
   const [form, setForm] = useState<Config>({ ...config });
+  const [showAcceptModal, setShowAcceptModal] = useState<{ type: string; sectionKey?: string; label?: string; updatedUsers?: AppUser[]; newSettings?: POSSettings } | false>(false);
   const [counters, setCounters] = useState<Record<string, number>>(() => loadJson(STORAGE_KEYS.COUNTERS, {}));
   
   const handleCounterChange = (key: string, value: number) => {
@@ -122,7 +124,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setPosSettings(loadPOSSettings());
   }, [activeTab]);
 
-  const handleSaveConfig = (sectionKey: string, _label = 'Settings') => {
+  const handleSaveConfig = (sectionKey: string, label = 'Settings') => {
+    setShowAcceptModal({ type: 'config', sectionKey, label });
+  };
+
+  const handleSavePOSSettings = (newSettings?: POSSettings) => {
+    setShowAcceptModal({ type: 'pos', newSettings });
+  };
+
+  const handleSaveUsers = (updatedUsers: AppUser[]) => {
+    setShowAcceptModal({ type: 'users', updatedUsers });
+  };
+
+  const executeAccept = () => {
+    if (!showAcceptModal) return;
+    const { type, sectionKey, label, updatedUsers, newSettings } = showAcceptModal;
+    setShowAcceptModal(false);
+    if (type === 'config' && sectionKey) {
+      proceedSaveConfig(sectionKey, label);
+    } else if (type === 'pos') {
+      proceedSavePOSSettings(newSettings);
+    } else if (type === 'users' && updatedUsers) {
+      proceedSaveUsers(updatedUsers);
+    }
+  };
+  const proceedSaveConfig = (sectionKey: string, _label = 'Settings') => {
     setSavingSection(sectionKey);
     try {
       saveConfig(form);
@@ -138,7 +164,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleSavePOSSettings = (newSettings?: POSSettings) => {
+  const proceedSavePOSSettings = (newSettings?: POSSettings) => {
     setSavingSection('pos');
     const toSave = newSettings || posSettings;
     savePOSSettings(toSave);
@@ -158,7 +184,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  const handleSaveUsers = (updatedUsers: AppUser[]) => {
+  const proceedSaveUsers = (updatedUsers: AppUser[]) => {
     setSavingSection('security');
     saveUsers(updatedUsers);
     setUsersList(updatedUsers);
@@ -363,6 +389,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   return (
     <div className="space-y-4 max-w-6xl w-full mx-auto pb-10">
+      <AcceptModal 
+        isOpen={!!showAcceptModal}
+        onConfirm={executeAccept}
+        onCancel={() => setShowAcceptModal(false)}
+      />
       {/* Header Banner */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -527,10 +558,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Primary Bank Ledger (Bank 1)</label>
                 <select
-                  value={form.Bank1Ledger}
+                  value={form.Bank1Ledger || ''}
                   onChange={e => setForm({ ...form, Bank1Ledger: e.target.value })}
                   className="w-full h-9 rounded-xl border border-slate-300 px-3 font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition bg-white"
                 >
+                  <option value="">-- Select Bank Ledger --</option>
                   {ledgers.map(l => (
                     <option key={l['Ledger Name']} value={l['Ledger Name']}>
                       {l['Ledger Name']} ({l['Parent Group'] || 'Bank'})
@@ -542,10 +574,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Secondary Bank Ledger (Bank 2)</label>
                 <select
-                  value={form.Bank2Ledger}
+                  value={form.Bank2Ledger || ''}
                   onChange={e => setForm({ ...form, Bank2Ledger: e.target.value })}
                   className="w-full h-9 rounded-xl border border-slate-300 px-3 font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition bg-white"
                 >
+                  <option value="">-- Select Bank Ledger --</option>
                   {ledgers.map(l => (
                     <option key={l['Ledger Name']} value={l['Ledger Name']}>
                       {l['Ledger Name']} ({l['Parent Group'] || 'Bank'})
@@ -798,6 +831,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div>
                     <span className="font-extrabold text-slate-900 text-xs">Integrate Accounts with Inventory</span>
                     <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Automatically calculate and display Opening Stock & Closing Stock in Profit & Loss and Balance Sheet statements.</p>
+                  </div>
+                </label>
+
+                {/* Maintain Bill-wise Details for Debtors & Creditors */}
+                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition col-span-1 sm:col-span-2">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                      checked={form.EnableBillWiseDetails !== 'false'}
+                      onChange={e => setForm({ ...form, EnableBillWiseDetails: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Maintain Bill-wise Details for Debtors & Creditors</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Show outstanding bills list to select and settle invoices against payments to creditors and receipts from debtors.</p>
                   </div>
                 </label>
 
@@ -1477,7 +1526,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <input
                     type="text"
                     placeholder="e.g. 1. 100% advance payment required. 2. Delivery within 7 working days."
-                    value={newTermInput}
+                    value={newTermInput || ''}
                     onChange={e => setNewTermInput(e.target.value)}
                     onKeyDown={e => {
                       if (e.key === 'Enter' && newTermInput.trim()) {
@@ -1598,7 +1647,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <label className="block font-bold text-slate-700 mb-1">User Full Name</label>
                     <input
                       type="text"
-                      value={selectedUser.fullName}
+                      value={selectedUser.fullName || ''}
                       onChange={e => {
                         const updated = usersList.map(x => x.id === selectedUser.id ? { ...x, fullName: e.target.value } : x);
                         handleSaveUsers(updated);
@@ -1611,7 +1660,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">Assigned Role</label>
                     <select
-                      value={selectedUser.role}
+                      value={selectedUser.role || 'Staff'}
                       onChange={e => {
                         const r = e.target.value as any;
                         const updated = usersList.map(x => x.id === selectedUser.id ? { ...x, role: r } : x);

@@ -1333,15 +1333,28 @@ export function generateVoucherSlipPDF(voucher: any, config: Config): jsPDF {
   });
 
   const finalY = (doc as any).lastAutoTable.finalY + 6;
+  let currentY = finalY;
+
+  if (voucher.billNo || (voucher.billAllocations && voucher.billAllocations.length > 0)) {
+    const billText = voucher.billAllocations && voucher.billAllocations.length > 0
+      ? voucher.billAllocations.map((b: any) => `${b.billNo} (${b.amount.toFixed(2)})`).join(', ')
+      : voucher.billNo;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(79, 70, 229);
+    doc.text(`Agst Ref / Bill Settlement: ${billText}`, margin, currentY);
+    currentY += 5;
+  }
+
   if (voucher.narration) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(30, 41, 59);
-    doc.text('Narration:', margin, finalY);
+    doc.text('Narration:', margin, currentY);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
     const narr = doc.splitTextToSize(voucher.narration, pageWidth - margin * 2);
-    doc.text(narr, margin, finalY + 4);
+    doc.text(narr, margin, currentY + 4);
   }
 
   // Signatures

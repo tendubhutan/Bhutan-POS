@@ -732,43 +732,77 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       return;
     }
     const searchLower = q.toLowerCase();
+
+    // Look up serial numbers in stock matching query
+    let serialMatches: { itemCode: string; serialNo: string }[] = [];
+    try {
+      const serialReport = getSerialNumbersStockReport();
+      serialMatches = serialReport
+        .filter(s => s.status === 'In Stock' && s.serialNo.toLowerCase().includes(searchLower))
+        .map(s => ({ itemCode: s.itemCode, serialNo: s.serialNo }));
+    } catch {}
+
+    const serialItemCodes = new Set(serialMatches.map(s => s.itemCode));
+    const exactSerialMatch = serialMatches.find(s => s.serialNo.toLowerCase() === searchLower);
+
     const matched = items
       .filter(item => {
         const name = (item['Item Name'] || '').toLowerCase();
         const code = (item['Item Code'] || '').toLowerCase();
         const barcode = (item['Barcode'] || '').toString().toLowerCase();
         const alias = (item['Alias'] || '').toLowerCase();
+        const hasSerial = serialItemCodes.has(item['Item Code']);
 
         return (
           name.includes(searchLower) ||
           code.includes(searchLower) ||
           barcode.includes(searchLower) ||
-          alias.includes(searchLower)
+          alias.includes(searchLower) ||
+          hasSerial
         );
       })
+      .map(item => {
+        const sm = serialMatches.find(s => s.itemCode === item['Item Code']);
+        return {
+          ...item,
+          matchedSerial: sm ? sm.serialNo : undefined
+        };
+      })
       .sort((a, b) => {
-        const aName = (a['Item Name'] || '').toLowerCase();
-        const bName = (b['Item Name'] || '').toLowerCase();
-        const aCode = (a['Item Code'] || '').toLowerCase();
-        const bCode = (b['Item Code'] || '').toLowerCase();
+        // Exact serial number match first!
+        const aExactSerial = exactSerialMatch && exactSerialMatch.itemCode === a['Item Code'];
+        const bExactSerial = exactSerialMatch && exactSerialMatch.itemCode === b['Item Code'];
+        if (aExactSerial && !bExactSerial) return -1;
+        if (!aExactSerial && bExactSerial) return 1;
+
         const aBarcode = (a['Barcode'] || '').toString().toLowerCase();
         const bBarcode = (b['Barcode'] || '').toString().toLowerCase();
-        const aAlias = (a['Alias'] || '').toLowerCase();
-        const bAlias = (b['Alias'] || '').toLowerCase();
 
         // Exact barcode match first
         if (aBarcode === searchLower && bBarcode !== searchLower) return -1;
         if (bBarcode === searchLower && aBarcode !== searchLower) return 1;
 
         // Exact code match second
+        const aCode = (a['Item Code'] || '').toLowerCase();
+        const bCode = (b['Item Code'] || '').toLowerCase();
         if (aCode === searchLower && bCode !== searchLower) return -1;
         if (bCode === searchLower && aCode !== searchLower) return 1;
 
+        // Serial substring match
+        const aHasSerial = serialItemCodes.has(a['Item Code']);
+        const bHasSerial = serialItemCodes.has(b['Item Code']);
+        if (aHasSerial && !bHasSerial) return -1;
+        if (!aHasSerial && bHasSerial) return 1;
+
         // Exact name match third
+        const aName = (a['Item Name'] || '').toLowerCase();
+        const bName = (b['Item Name'] || '').toLowerCase();
         if (aName === searchLower && bName !== searchLower) return -1;
         if (bName === searchLower && aName !== searchLower) return 1;
 
         // Exact alias match fourth
+        const aAlias = (a['Alias'] || '').toLowerCase();
+        const bAlias = (b['Alias'] || '').toLowerCase();
         if (aAlias === searchLower && bAlias !== searchLower) return -1;
         if (bAlias === searchLower && aAlias !== searchLower) return 1;
 
@@ -782,12 +816,12 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       })
       .slice(0, 10);
 
-    setSearchResults(matched);
+    setSearchResults(matched as any);
     setShowDropdown(matched.length > 0);
   };
 
   // Add Item to Cart (Direct or Step-by-Step, matching B2B rate & GST logic)
-  const addItemDirectlyToCart = (item: Item, customQty = 1, customRate?: number, customDisc = 0) => {
+  const addItemDirectlyToCart = (item: Item, customQty = 1, customRate?: number, customDisc = 0, preSelectedSerial?: string) => {
     const qty = customQty > 0 ? customQty : 1;
     const rate = customRate !== undefined ? customRate : getItemRate(item);
     const discount = showItemDiscount ? customDisc : 0;
@@ -801,19 +835,28 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     let targetIndex = existingIdx;
 
     if (existingIdx > -1 && posSettings.autoIncrementQty) {
+      const existingSerials = updatedCart[existingIdx].serials || [];
+      if (preSelectedSerial && existingSerials.some(s => s.toLowerCase() === preSelectedSerial.toLowerCase())) {
+        if (posSettings.enableSoundFeedback) playWarningTone();
+        alert(`Serial Number "${preSelectedSerial}" is already added to the cart!`);
+        return;
+      }
+
       const newQty = updatedCart[existingIdx].qty + qty;
       const newRate = customRate !== undefined ? rate : updatedCart[existingIdx].rate;
       const newDisc = customDisc > 0 ? updatedCart[existingIdx].discount + discount : updatedCart[existingIdx].discount;
       const newIsZ = isCustomerGstExempted || String(updatedCart[existingIdx].zeroRated).toUpperCase() === 'Y';
       const newGrossDisc = config.ItemDiscountType === 'percent' ? ((newQty * newRate) * newDisc / 100) : newDisc;
       const newGstAmt = newIsZ ? 0 : round2(((newQty * newRate - newGrossDisc) * (Number(updatedCart[existingIdx].gstPct) || 0)) / 100);
+      const newSerials = preSelectedSerial ? [...existingSerials, preSelectedSerial] : existingSerials;
 
       updatedCart[existingIdx] = {
         ...updatedCart[existingIdx],
         qty: newQty,
         rate: newRate,
         discount: newDisc,
-        gstAmt: newGstAmt
+        gstAmt: newGstAmt,
+        serials: newSerials
       };
     } else {
       const newLine: CartLine = {
@@ -827,7 +870,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         zeroRated: item['Zero Rated (Y/N)'] || 'N',
         purchaseRate: Number(item['Purchase Rate']) || 0,
         isSerialized: item['Is Serialized'],
-        serials: [],
+        serials: preSelectedSerial ? [preSelectedSerial] : [],
         gstAmt: computedGstAmt
       };
       updatedCart.push(newLine);
@@ -854,8 +897,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     setEntryDisc('');
     setShowDropdown(false);
 
-    // If serialized item, prompt serials
-    if (item['Is Serialized'] === 'Y' && showSerials) {
+    // If serialized item and NO preSelectedSerial provided, prompt serials modal
+    if (item['Is Serialized'] === 'Y' && showSerials && !preSelectedSerial) {
       setActiveSerialIndex(targetIndex);
       setSerialModalOpen(true);
     } else {
@@ -866,11 +909,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   };
 
   // Selecting an Item
-  const selectItem = (item: Item) => {
+  const selectItem = (item: Item, preSelectedSerial?: string) => {
     const selectedRate = getItemRate(item);
-    if (posSettings.itemAddMode === 'direct') {
-      // ⚡ Direct Quick-Add Mode: Instantly add to cart and keep focus on search
-      addItemDirectlyToCart(item, 1, selectedRate);
+    if (posSettings.itemAddMode === 'direct' || preSelectedSerial) {
+      // ⚡ Direct Quick-Add Mode: Instantly add to cart with preSelectedSerial and keep focus on search
+      addItemDirectlyToCart(item, 1, selectedRate, 0, preSelectedSerial);
     } else {
       // 🎯 Step-by-Step Prompt Mode: Focus Qty -> Rate -> Disc -> Enter to add
       setEntrySearch(item['Item Name']);
@@ -933,15 +976,34 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      const q = entrySearch.trim();
+      const searchLower = q.toLowerCase();
+
+      // Check Serial Number Scan FIRST!
+      if (q) {
+        try {
+          const serialReport = getSerialNumbersStockReport();
+          const matchedSerial = serialReport.find(s => s.serialNo.toLowerCase() === searchLower && s.status === 'In Stock');
+          if (matchedSerial) {
+            const item = items.find(i => i['Item Code'] === matchedSerial.itemCode);
+            if (item) {
+              selectItem(item, matchedSerial.serialNo);
+              return;
+            }
+          }
+        } catch (err) {
+          console.error('Error scanning serial number in POS:', err);
+        }
+      }
+
       if (showDropdown && selectedIndex > -1 && searchResults[selectedIndex]) {
-        selectItem(searchResults[selectedIndex]);
+        const itemResult = searchResults[selectedIndex] as any;
+        selectItem(itemResult, itemResult.matchedSerial);
       } else if (entryCode && posSettings.itemAddMode === 'prompt') {
         qtyInputRef.current?.focus();
         qtyInputRef.current?.select();
       } else {
-        const q = entrySearch.trim();
         if (!q) return;
-        const searchLower = q.toLowerCase();
         const matchedExact = items.filter(i => 
           String(i.Barcode).toLowerCase() === searchLower || 
           String(i['Item Code']).toLowerCase() === searchLower ||
@@ -950,7 +1012,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         if (matchedExact.length >= 1) {
           selectItem(matchedExact[0]);
         } else if (searchResults.length > 0) {
-          selectItem(searchResults[0]);
+          const firstResult = searchResults[0] as any;
+          selectItem(firstResult, firstResult.matchedSerial);
         } else {
           // If no match found, warn
           if (posSettings.enableSoundFeedback) playWarningTone();
@@ -1614,16 +1677,24 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                     )}
                     {searchResults.map((item, idx) => {
                       const isZeroStk = item['Maintain Stock'] !== 'N' && Number(item['Current Stock']) <= 0;
+                      const matchedSn = (item as any).matchedSerial;
                       return (
                         <div
                           key={item['Item Code']}
-                          onClick={() => selectItem(item)}
+                          onClick={() => selectItem(item, matchedSn)}
                           className={`px-2.5 py-1 text-xs cursor-pointer flex justify-between items-center transition ${
                             idx === selectedIndex ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-50 text-slate-800'
                           }`}
                         >
                           <div className="min-w-0 flex-1 flex items-center gap-1.5 pr-2">
                             <span className="font-bold truncate">{item['Item Name']}</span>
+                            {matchedSn && (
+                              <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold shrink-0 ${
+                                idx === selectedIndex ? 'bg-indigo-800 text-indigo-100' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                              }`}>
+                                SN: {matchedSn}
+                              </span>
+                            )}
                             {item.Unit && (
                               <span className={`text-[10px] font-normal shrink-0 ${idx === selectedIndex ? 'text-indigo-200' : 'text-slate-400'}`}>
                                 ({item.Unit})

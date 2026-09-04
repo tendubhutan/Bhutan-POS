@@ -159,3 +159,46 @@ export function playWarningTone() {
     // Ignore audio errors
   }
 }
+
+/**
+ * Play a soothing prompt sound (e.g., when the Accept Yes/No modal opens)
+ */
+export function playPromptSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    
+    // Bold, brave attention tone
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'square'; // Stronger waveform
+    osc1.frequency.setValueAtTime(220.00, now); // Lower frequency (A3)
+    
+    gain1.gain.setValueAtTime(0.001, now);
+    gain1.gain.exponentialRampToValueAtTime(0.25, now + 0.05);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(329.63, now); // E4 (perfect fifth)
+    
+    gain2.gain.setValueAtTime(0.001, now);
+    gain2.gain.exponentialRampToValueAtTime(0.3, now + 0.05);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    
+    osc1.start(now);
+    osc1.stop(now + 0.5);
+    osc2.start(now);
+    osc2.stop(now + 0.5);
+  } catch {
+    // Ignore audio errors
+  }
+}

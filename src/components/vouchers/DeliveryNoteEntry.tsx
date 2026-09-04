@@ -526,7 +526,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                 <input
                   id="dn-challan-no"
                   type="text"
-                  value={noteNo}
+                  value={noteNo || ''}
                   onChange={e => setNoteNo(e.target.value)}
                   disabled={isAutoMode}
                   onFocus={e => e.target.select()}
@@ -547,7 +547,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                 <input
                   id="dn-dispatch-date"
                   type="date"
-                  value={date}
+                  value={date || ''}
                   onChange={e => setDate(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
@@ -586,7 +586,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                   id="dn-order-ref"
                   type="text"
                   placeholder="e.g. PO-8923 or Verbal"
-                  value={orderRefNo}
+                  value={orderRefNo || ''}
                   onChange={e => setOrderRefNo(e.target.value)}
                   onFocus={e => e.target.select()}
                   onKeyDown={e => {
@@ -611,7 +611,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                   id="dn-vehicle-no"
                   type="text"
                   placeholder="e.g. BP-1-A1234"
-                  value={vehicleNo}
+                  value={vehicleNo || ''}
                   onChange={e => setVehicleNo(e.target.value)}
                   onFocus={e => e.target.select()}
                   onKeyDown={e => {
@@ -633,7 +633,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                   id="dn-dispatch-through"
                   type="text"
                   placeholder="e.g. Store Van, Courier, Self"
-                  value={dispatchThrough}
+                  value={dispatchThrough || ''}
                   onChange={e => setDispatchThrough(e.target.value)}
                   onFocus={e => e.target.select()}
                   onKeyDown={e => {
@@ -655,7 +655,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                   id="dn-destination"
                   type="text"
                   placeholder="e.g. Warehouse Site 2, Thimphu"
-                  value={destination}
+                  value={destination || ''}
                   onChange={e => setDestination(e.target.value)}
                   onFocus={e => e.target.select()}
                   onKeyDown={e => {
@@ -801,7 +801,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                           type="number"
                           min="0.01"
                           step="any"
-                          value={line.qty}
+                          value={line.qty !== undefined && line.qty !== null ? line.qty : ''}
                           onFocus={e => e.target.select()}
                           onKeyDown={e => handleGridKeyDown(e, getGridNavOpts(idx, 'qty'))}
                           onChange={e =>
@@ -823,7 +823,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                           id={`dn-rate-${idx}`}
                           type="number"
                           step="any"
-                          value={line.rate}
+                          value={line.rate !== undefined && line.rate !== null ? line.rate : ''}
                           onFocus={e => e.target.select()}
                           onKeyDown={e => handleGridKeyDown(e, getGridNavOpts(idx, 'rate'))}
                           onChange={e => {

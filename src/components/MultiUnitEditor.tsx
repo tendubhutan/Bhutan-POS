@@ -64,7 +64,7 @@ export const MultiUnitEditor: React.FC<MultiUnitEditorProps> = ({ itemForm, setI
                 <tr key={idx} className="hover:bg-slate-50/60">
                   <td className="py-1 px-2">
                     <select
-                      value={mu.unit}
+                      value={mu.unit || ''}
                       onChange={e => handleUpdate(idx, 'unit', e.target.value)}
                       className="w-full h-7 rounded border border-slate-300 px-1 font-semibold text-slate-800 outline-none focus:border-indigo-500 text-xs"
                     >
@@ -79,7 +79,7 @@ export const MultiUnitEditor: React.FC<MultiUnitEditorProps> = ({ itemForm, setI
                       <span className="text-slate-400 font-bold text-[11px]">=</span>
                       <input
                         type="number" step="any" min="0.0001"
-                        value={mu.conversionFactor}
+                        value={mu.conversionFactor !== undefined && mu.conversionFactor !== null ? mu.conversionFactor : ''}
                         onChange={e => handleUpdate(idx, 'conversionFactor', Number(e.target.value))}
                         className="w-12 h-7 rounded border border-slate-300 px-1 text-center font-mono font-bold outline-none focus:border-indigo-500 text-xs"
                       />

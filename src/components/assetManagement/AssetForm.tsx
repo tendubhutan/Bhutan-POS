@@ -216,7 +216,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
                 <input
                   type="text"
                   readOnly
-                  value={formData.assetId}
+                  value={formData.assetId || ''}
                   className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-lg text-sm font-mono text-slate-600 outline-none"
                 />
               </div>
@@ -225,7 +225,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
                 <input
                   type="text"
                   required
-                  value={formData.name}
+                  value={formData.name || ''}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none font-semibold"
                   placeholder="e.g., MacBook Pro 16-inch"
@@ -259,7 +259,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Status</label>
                 <select
-                  value={formData.status}
+                  value={formData.status || 'Draft'}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none font-bold text-indigo-700"
                 >
@@ -431,7 +431,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">Calculation Basis</label>
                 <select
-                  value={formData.depreciationBasis}
+                  value={formData.depreciationBasis || 'Rate'}
                   onChange={(e) => setFormData({ ...formData, depreciationBasis: e.target.value as any })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none bg-white"
                 >
@@ -474,7 +474,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
                   <input
                     type="date"
                     required
-                    value={formData.depreciationStartDate}
+                    value={formData.depreciationStartDate || ''}
                     onChange={(e) => setFormData({ ...formData, depreciationStartDate: e.target.value })}
                     className="w-full pl-8 pr-3 py-2 border border-indigo-200 bg-indigo-50 rounded-lg text-sm focus:border-indigo-500 outline-none font-medium text-indigo-900"
                   />

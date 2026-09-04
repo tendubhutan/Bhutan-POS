@@ -400,7 +400,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
                 <input
                   id="ps-doc-no"
                   type="text"
-                  value={voucherNo}
+                  value={voucherNo || ''}
                   onChange={e => setVoucherNo(e.target.value)}
                   disabled={isAutoMode}
                   onFocus={e => e.target.select()}
@@ -421,7 +421,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
                 <input
                   id="ps-date"
                   type="date"
-                  value={date}
+                  value={date || ''}
                   onChange={e => setDate(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
@@ -442,7 +442,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
                   id="ps-auditor"
                   type="text"
                   placeholder="e.g. Storekeeper"
-                  value={verifiedBy}
+                  value={verifiedBy || ''}
                   onChange={e => setVerifiedBy(e.target.value)}
                   onFocus={e => e.target.select()}
                   onKeyDown={e => {
@@ -464,7 +464,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
                   id="ps-remarks"
                   type="text"
                   placeholder="e.g. Month-end warehouse audit"
-                  value={remarks}
+                  value={remarks || ''}
                   onChange={e => setRemarks(e.target.value)}
                   onFocus={e => e.target.select()}
                   onKeyDown={e => {
@@ -593,7 +593,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
                             id={`ps-qty-${line.itemCode}`}
                             type="number"
                             step="any"
-                            value={line.physicalQty}
+                            value={line.physicalQty !== undefined && line.physicalQty !== null ? line.physicalQty : ''}
                             onFocus={e => e.target.select()}
                             onChange={e =>
                               handlePhysicalQtyChange(

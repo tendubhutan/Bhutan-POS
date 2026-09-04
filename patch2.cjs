@@ -1,31 +1,31 @@
 const fs = require('fs');
-let code = fs.readFileSync('src/components/PurchaseEntry.tsx', 'utf8');
+let content = fs.readFileSync('src/components/SettingsView.tsx', 'utf8');
 
-const startStr = "              {/* Search input with auto-dropdown */}";
-const endStr = "            </div>\n          </div>\n        </div>\n\n        {/* Populated Table Below */}";
+content = content.replace(
+`  const handleSaveConfig = (sectionKey: string, _label = 'Settings') => {
+    setSavingSection(sectionKey);
+    try {`,
+`  const proceedSaveConfig = (sectionKey: string, _label = 'Settings') => {
+    setSavingSection(sectionKey);
+    try {`
+);
 
-const startIndex = code.indexOf(startStr);
-const endIndex = code.indexOf(endStr);
+content = content.replace(
+`  const handleSavePOSSettings = (newSettings?: POSSettings) => {
+    setSavingSection('pos');
+    const toSave = newSettings || posSettings;`,
+`  const proceedSavePOSSettings = (newSettings?: POSSettings) => {
+    setSavingSection('pos');
+    const toSave = newSettings || posSettings;`
+);
 
-if (startIndex === -1 || endIndex === -1) {
-  console.log("Could not find start or end index");
-  process.exit(1);
-}
+content = content.replace(
+`  const handleSaveUsers = (updatedUsers: AppUser[]) => {
+    setSavingSection('security');
+    saveUsers(updatedUsers);`,
+`  const proceedSaveUsers = (updatedUsers: AppUser[]) => {
+    setSavingSection('security');
+    saveUsers(updatedUsers);`
+);
 
-const replacement = `              {/* Search input with auto-dropdown */}
-              <div className="sm:col-span-12 relative">
-                <SearchableItemSelect
-                  id="pur-fast-item-picker"
-                  items={items}
-                  placeholder="Search Item / Barcode (Auto-Add on Select)..."
-                  currencySymbol={config.CurrencySymbol || 'Nu.'}
-                  onSelect={item => selectItem(item, true)}
-                  autoClearAfterSelect={true}
-                  onCreateNew={onOpenNewItemModal}
-                />
-              </div>
-`;
-
-code = code.substring(0, startIndex) + replacement + code.substring(endIndex);
-fs.writeFileSync('src/components/PurchaseEntry.tsx', code);
-console.log("Patched UI successfully");
+fs.writeFileSync('src/components/SettingsView.tsx', content);

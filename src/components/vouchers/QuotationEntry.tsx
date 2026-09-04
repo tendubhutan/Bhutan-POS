@@ -585,7 +585,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                 <input
                   id="qt-quote-no"
                   type="text"
-                  value={quotationNo}
+                  value={quotationNo || ''}
                   onChange={e => setQuotationNo(e.target.value)}
                   disabled={isAutoMode}
                   onFocus={e => e.target.select()}
@@ -606,7 +606,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                 <input
                   id="qt-date"
                   type="date"
-                  value={date}
+                  value={date || ''}
                   onChange={e => setDate(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
@@ -626,7 +626,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                 <input
                   id="qt-valid-until"
                   type="date"
-                  value={validUntil}
+                  value={validUntil || ''}
                   onChange={e => setValidUntil(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
@@ -668,7 +668,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                   id="qt-phone"
                   type="text"
                   placeholder="e.g. +975 17123456"
-                  value={contactNo}
+                  value={contactNo || ''}
                   onChange={e => setContactNo(e.target.value)}
                   onFocus={e => e.target.select()}
                   onKeyDown={e => {
@@ -690,7 +690,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                   id="qt-gstin"
                   type="text"
                   placeholder="Tax ID / TPN"
-                  value={gstin}
+                  value={gstin || ''}
                   onChange={e => setGstin(e.target.value)}
                   onFocus={e => e.target.select()}
                   onKeyDown={e => {
@@ -712,7 +712,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                   id="qt-address"
                   type="text"
                   placeholder="Address..."
-                  value={address}
+                  value={address || ''}
                   onChange={e => setAddress(e.target.value)}
                   onFocus={e => e.target.select()}
                   onKeyDown={e => {
@@ -866,7 +866,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                           type="number"
                           min="0.01"
                           step="any"
-                          value={line.qty}
+                          value={line.qty !== undefined && line.qty !== null ? line.qty : ''}
                           onFocus={e => e.target.select()}
                           onKeyDown={e => handleGridKeyDown(e, getGridNavOpts(idx, 'qty'))}
                           onChange={e =>
@@ -890,7 +890,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                           type="number"
                           min="0"
                           step="any"
-                          value={line.rate}
+                          value={line.rate !== undefined && line.rate !== null ? line.rate : ''}
                           onFocus={e => e.target.select()}
                           onKeyDown={e => handleGridKeyDown(e, getGridNavOpts(idx, 'rate'))}
                           onChange={e =>
@@ -911,7 +911,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                           min="0"
                           max="100"
                           step="any"
-                          value={line.discount}
+                          value={line.discount !== undefined && line.discount !== null ? line.discount : 0}
                           onFocus={e => e.target.select()}
                           onKeyDown={e => handleGridKeyDown(e, getGridNavOpts(idx, 'disc'))}
                           onChange={e =>
@@ -932,7 +932,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                           min="0"
                           max="100"
                           step="any"
-                          value={line.gstPct}
+                          value={line.gstPct !== undefined && line.gstPct !== null ? line.gstPct : 0}
                           onFocus={e => e.target.select()}
                           onKeyDown={e => handleGridKeyDown(e, getGridNavOpts(idx, 'gst'))}
                           onChange={e =>
@@ -1024,7 +1024,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
               <textarea
                 id="qt-terms"
                 rows={2}
-                value={termsAndConditions}
+                value={termsAndConditions || ''}
                 onChange={e => setTermsAndConditions(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -1134,7 +1134,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         <select
-                          value={q.status}
+                          value={q.status || 'Draft'}
                           onChange={e => handleStatusChange(q.quotationNo, e.target.value as any)}
                           className={`rounded-lg border px-2 py-0.5 text-[11px] font-bold outline-none ${
                             q.status === 'Accepted'

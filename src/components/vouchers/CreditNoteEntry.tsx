@@ -420,7 +420,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
             <input
               id="cn-voucher-no"
               type="text"
-              value={voucherNo}
+              value={voucherNo || ''}
               onChange={e => setVoucherNo(e.target.value)}
               disabled={isAutoMode}
               onKeyDown={e => {
@@ -440,7 +440,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
             <input
               id="cn-date"
               type="date"
-              value={date}
+              value={date || ''}
               onChange={e => setDate(e.target.value)}
               onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === 'ArrowRight') {
@@ -460,7 +460,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
             <SearchableLedgerSelect
               id="cn-customer"
               ledgers={ledgers}
-              value={partyLedger}
+              value={partyLedger || ''}
               onChange={setPartyLedger}
               filterGroups={['Sundry Debtors', 'Cash-in-Hand', 'Bank Accounts']}
               onCreateNew={() => onOpenQuickLedger('Sundry Debtors')}
@@ -478,7 +478,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
               id="cn-original-ref"
               type="text"
               placeholder="e.g. INV-1002"
-              value={originalInvoiceRef}
+              value={originalInvoiceRef || ''}
               onChange={e => setOriginalInvoiceRef(e.target.value)}
               onFocus={e => e.target.select()}
               onKeyDown={e => {
@@ -501,7 +501,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
             <SearchableLedgerSelect
               id="cn-sales-return"
               ledgers={ledgers}
-              value={salesReturnLedger}
+              value={salesReturnLedger || ''}
               onChange={setSalesReturnLedger}
               placeholder="Sales Return or Sales Account"
               onEnterNext={() => focusElement('cn-narration')}
@@ -517,7 +517,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
               id="cn-narration"
               type="text"
               placeholder="Reason for return or credit note..."
-              value={narration}
+              value={narration || ''}
               onChange={e => setNarration(e.target.value)}
               onFocus={e => e.target.select()}
               onKeyDown={e => {
@@ -607,7 +607,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
                         type="number"
                         min="0.01"
                         step="any"
-                        value={line.qty}
+                        value={line.qty !== undefined && line.qty !== null ? line.qty : ''}
                         onChange={e =>
                           handleLineChange(
                             line.id,
@@ -624,7 +624,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
                         type="number"
                         min="0"
                         step="any"
-                        value={line.rate}
+                        value={line.rate !== undefined && line.rate !== null ? line.rate : ''}
                         onChange={e =>
                           handleLineChange(
                             line.id,
@@ -642,7 +642,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
                         min="0"
                         max="100"
                         step="any"
-                        value={line.gstPct}
+                        value={line.gstPct !== undefined && line.gstPct !== null ? line.gstPct : 0}
                         onChange={e =>
                           handleLineChange(
                             line.id,
@@ -686,7 +686,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
                 min="0"
                 step="any"
                 placeholder="0.00"
-                value={lumpSumAmount}
+                value={lumpSumAmount !== undefined && lumpSumAmount !== null ? lumpSumAmount : ''}
                 onChange={e =>
                   setLumpSumAmount(e.target.value === '' ? '' : parseFloat(e.target.value))
                 }
@@ -703,7 +703,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
                 min="0"
                 step="any"
                 placeholder="0.00"
-                value={lumpSumGst}
+                value={lumpSumGst !== undefined && lumpSumGst !== null ? lumpSumGst : ''}
                 onChange={e =>
                   setLumpSumGst(e.target.value === '' ? '' : parseFloat(e.target.value))
                 }

@@ -46,6 +46,7 @@ import {
 } from 'lucide-react';
 import XLSX from 'xlsx-js-style';
 import { SearchableLedgerSelect } from './SearchableLedgerSelect';
+import { AcceptModal } from './AcceptModal';
 import {
   VoucherCatalogModal,
   VoucherActionType,
@@ -67,6 +68,9 @@ import {
   shareOrDownloadPDF
 } from '../utils/pdfExport';
 import { playSaveSound } from '../utils/audio';
+import { BillWiseModal } from './BillWiseModal';
+import { BillAllocation } from '../types';
+import { getPartyOutstandingBills } from '../services/storageService';
 
 interface VouchersProps {
   config: Config;
@@ -87,6 +91,7 @@ interface VoucherGridLine {
   debit: number | '';
   credit: number | '';
   narration: string;
+  billAllocations?: BillAllocation[];
 }
 
 const DEFAULT_GROUPS = [
@@ -197,22 +202,41 @@ export const Vouchers: React.FC<VouchersProps> = ({
   // Single mode state
   const [amount, setAmount] = useState<number | ''>('');
   const [partyLedger, setPartyLedger] = useState('');
-  const [modeLedger, setModeLedger] = useState('Cash');
+  const [modeLedger, setModeLedger] = useState('');
   const [debitLedger, setDebitLedger] = useState('');
   const [creditLedger, setCreditLedger] = useState('');
   const [fromAccount, setFromAccount] = useState('');
   const [toAccount, setToAccount] = useState('');
   const [transactionId, setTransactionId] = useState('');
-  const [bankTxnModal, setBankTxnModal] = useState<{ isOpen: boolean; bankLedgerName: string }>({
+  const [bankTxnModal, setBankTxnModal] = useState<{
+    isOpen: boolean;
+    bankLedgerName: string;
+    focusNextElementId?: string;
+  }>({
     isOpen: false,
-    bankLedgerName: ''
+    bankLedgerName: '',
+    focusNextElementId: undefined
   });
 
-  const checkAndPromptBankLedger = (ledgerName: string) => {
+  // Bill-wise Allocation State
+  const [billAllocations, setBillAllocations] = useState<BillAllocation[]>([]);
+  const [billModalOpen, setBillModalOpen] = useState(false);
+  const [showAcceptModal, setShowAcceptModal] = useState<'save' | 'share' | false>(false);
+  const [billModalParty, setBillModalParty] = useState('');
+  const [billModalTargetLineId, setBillModalTargetLineId] = useState<string | null>(null);
+
+  const partyOutstandingBills = useMemo(() => {
+    if (config.EnableBillWiseDetails === 'false') return [];
+    if (!partyLedger || (activeVType !== 'P' && activeVType !== 'R')) return [];
+    return getPartyOutstandingBills(partyLedger, activeVType === 'P' ? 'creditor' : 'debtor');
+  }, [partyLedger, activeVType, config.EnableBillWiseDetails]);
+
+  const checkAndPromptBankLedger = (ledgerName: string, focusNextElementId?: string) => {
     if (isBankLedger(ledgerName, ledgers, config)) {
       setBankTxnModal({
         isOpen: true,
-        bankLedgerName: ledgerName
+        bankLedgerName: ledgerName,
+        focusNextElementId
       });
     }
   };
@@ -220,7 +244,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
   // Multi mode grid state
   const [lines, setLines] = useState<VoucherGridLine[]>([
     { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
-    { id: '2', type: 'Cr', ledger: 'Cash', debit: 0, credit: '', narration: '' }
+    { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
   ]);
 
   // Check if bank account is involved in the current voucher
@@ -295,24 +319,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
 
   // Sync initial ledgers into fields
   useEffect(() => {
-    if (ledgers.length > 0) {
-      if (!partyLedger) setPartyLedger(ledgers[0]['Ledger Name']);
-      if (!debitLedger) setDebitLedger(ledgers[0]['Ledger Name']);
-      if (!creditLedger) setCreditLedger(ledgers[0]['Ledger Name']);
-      if (!fromAccount) setFromAccount(ledgers[0]['Ledger Name']);
-      if (!toAccount) setToAccount(ledgers[0]['Ledger Name']);
-
-      // Pre-fill multi-line empty ledgers
-      setLines(prev =>
-        prev.map((l, idx) => {
-          if (!l.ledger) {
-            if (idx === 0) return { ...l, ledger: ledgers[0]['Ledger Name'] };
-            if (idx === 1) return { ...l, ledger: 'Cash' };
-          }
-          return l;
-        })
-      );
-    }
+    // Intentionally left blank to avoid auto-filling ledgers
   }, [ledgers]);
 
   // Handle voucher type switch
@@ -358,24 +365,23 @@ export const Vouchers: React.FC<VouchersProps> = ({
 
     if (type === 'P') { // Payment
       setLines([
-        { id: '1', type: 'Dr', ledger: expenseOrParty, debit: '', credit: 0, narration: '' },
-        { id: '2', type: 'Cr', ledger: cashOrBank, debit: 0, credit: '', narration: '' }
+        { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
+        { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
       ]);
     } else if (type === 'R') { // Receipt
       setLines([
-        { id: '1', type: 'Cr', ledger: incomeOrParty, debit: 0, credit: '', narration: '' },
-        { id: '2', type: 'Dr', ledger: cashOrBank, debit: '', credit: 0, narration: '' }
+        { id: '1', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' },
+        { id: '2', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' }
       ]);
     } else if (type === 'J') { // Journal
       setLines([
-        { id: '1', type: 'Dr', ledger: expenseOrParty, debit: '', credit: 0, narration: '' },
-        { id: '2', type: 'Cr', ledger: incomeOrParty, debit: 0, credit: '', narration: '' }
+        { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
+        { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
       ]);
     } else if (type === 'C') { // Contra
-      const bankLedger = ledgers.find(l => l.Group === 'Bank Accounts')?.['Ledger Name'] || 'BOB Account';
       setLines([
-        { id: '1', type: 'Dr', ledger: bankLedger, debit: '', credit: 0, narration: '' },
-        { id: '2', type: 'Cr', ledger: 'Cash', debit: 0, credit: '', narration: '' }
+        { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
+        { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
       ]);
     }
   };
@@ -386,6 +392,11 @@ export const Vouchers: React.FC<VouchersProps> = ({
   };
 
   const handleVoucherBack = () => {
+    if (billModalOpen) {
+      setBillModalOpen(false);
+      setBillModalTargetLineId(null);
+      return true;
+    }
     if (showShareRegisterModal) {
       setShowShareRegisterModal(false);
       return true;
@@ -758,6 +769,29 @@ export const Vouchers: React.FC<VouchersProps> = ({
     focusElement(`grid-${actualField}-${rowIndex}`, true);
   };
 
+  const checkBillWiseSettlement = (ledgerName: string | undefined, amt: number | string | undefined, lineId?: string): boolean => {
+    if (config.EnableBillWiseDetails === 'false') return false;
+    if (!ledgerName || !amt || Number(amt) <= 0) return false;
+    
+    // Only trigger in Payment or Receipt for simplicity, or Journal if needed
+    if (!['P', 'R', 'J'].includes(activeVType)) return false;
+
+    // Prevent re-triggering if the modal is already open
+    if (billModalOpen) return true;
+
+    const lObj = ledgers.find(l => l['Ledger Name'] === ledgerName);
+    if (!lObj) return false;
+    
+    const g = (lObj.Group || '').toLowerCase().trim();
+    if (g === 'sundry creditors' || g === 'sundry debtors' || g.includes('creditor') || g.includes('debtor') || g.includes('supplier') || g.includes('customer')) {
+      setBillModalParty(ledgerName);
+      setBillModalTargetLineId(lineId || null);
+      setBillModalOpen(true);
+      return true;
+    }
+    return false;
+  };
+
   // Multi-line Grid Helpers
   const addGridRow = () => {
     const defaultLedger = ledgers[0]?.['Ledger Name'] || '';
@@ -785,7 +819,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
       {
         id: String(Date.now()),
         type: nextType,
-        ledger: defaultLedger,
+        ledger: '',
         debit: defaultDebit,
         credit: defaultCredit,
         narration: ''
@@ -807,12 +841,18 @@ export const Vouchers: React.FC<VouchersProps> = ({
 
   const updateGridLine = (id: string, field: keyof VoucherGridLine, value: any) => {
     if (field === 'ledger' && typeof value === 'string') {
-      checkAndPromptBankLedger(value);
+      const idx = lines.findIndex(l => l.id === id);
+      const line = idx >= 0 ? lines[idx] : undefined;
+      const targetId = idx >= 0 ? (line?.type === 'Dr' ? `grid-debit-${idx}` : `grid-credit-${idx}`) : undefined;
+      checkAndPromptBankLedger(value, targetId);
     }
-    setLines(prev =>
-      prev.map(l => {
+    setLines(prev => {
+      const newLines = prev.map(l => {
         if (l.id === id) {
           const updated = { ...l, [field]: value };
+          if (field === 'ledger' && l.ledger !== value) {
+            updated.billAllocations = [];
+          }
           if (field === 'type') {
             if (value === 'Dr') {
               updated.credit = 0;
@@ -825,8 +865,34 @@ export const Vouchers: React.FC<VouchersProps> = ({
           return updated;
         }
         return l;
-      })
-    );
+      });
+
+      // Auto-catch figure in Dr/Cr if there are exactly 2 lines
+      if (newLines.length === 2 && (field === 'debit' || field === 'credit')) {
+        const editedIdx = newLines.findIndex(l => l.id === id);
+        const otherIdx = editedIdx === 0 ? 1 : 0;
+        const editedLine = newLines[editedIdx];
+        const otherLine = newLines[otherIdx];
+
+        // If the other line's amount is zero or empty, we auto-fill it
+        const otherAmt = otherLine.type === 'Dr' ? Number(otherLine.debit) || 0 : Number(otherLine.credit) || 0;
+        
+        // Also auto-update if the other amount was exactly matching the OLD amount of the edited line
+        const oldEditedAmt = prev[editedIdx].type === 'Dr' ? Number(prev[editedIdx].debit) || 0 : Number(prev[editedIdx].credit) || 0;
+        
+        const newEditedAmt = editedLine.type === 'Dr' ? Number(editedLine.debit) || 0 : Number(editedLine.credit) || 0;
+
+        if (otherAmt === 0 || (otherAmt === oldEditedAmt && oldEditedAmt !== 0)) {
+           if (otherLine.type === 'Cr') {
+             otherLine.credit = newEditedAmt || '';
+           } else {
+             otherLine.debit = newEditedAmt || '';
+           }
+        }
+      }
+
+      return newLines;
+    });
   };
 
   // Calculations for Multi-Line Grid
@@ -836,9 +902,42 @@ export const Vouchers: React.FC<VouchersProps> = ({
   const isBalanced = Math.abs(totalDr - totalCr) < 0.001 && totalDr > 0;
 
   // Submit Financial Voucher
-  const handleSubmit = (e?: React.FormEvent) => {
+  const handleSubmit = (e?: React.FormEvent, action: 'save' | 'share' = 'save') => {
     if (e) e.preventDefault();
+    if (billModalOpen) return;
+    
+    // Quick validation before showing accept modal
+    if (entryMode === 'multi') {
+      if (lines.length < 2) {
+        showToast('Please add at least 2 ledger entries.', 'error');
+        return;
+      }
+      if (!isBalanced) {
+        setMismatchModal({ totalDr, totalCr, diff: difference });
+        return;
+      }
+    } else {
+      if (!amount || amount <= 0) {
+        showToast('Please enter a valid amount.', 'error');
+        return;
+      }
+      if (!partyLedger) {
+        showToast('Please select the party / income ledger.', 'error');
+        return;
+      }
+      if (!modeLedger) {
+        showToast('Please select the cash / bank ledger.', 'error');
+        return;
+      }
+    }
 
+    setShowAcceptModal(action);
+  };
+
+  const proceedSubmit = () => {
+    const action = showAcceptModal;
+    setShowAcceptModal(false);
+    
     if (entryMode === 'multi') {
       if (lines.length < 2) {
         showToast('Please add at least 2 ledger entries.', 'error');
@@ -866,8 +965,16 @@ export const Vouchers: React.FC<VouchersProps> = ({
         type: l.type,
         ledger: l.ledger,
         amount: l.type === 'Dr' ? Number(l.debit) : Number(l.credit),
-        narration: l.narration
+        narration: l.narration,
+        billAllocations: l.billAllocations
       }));
+
+      const allBillAllocations: BillAllocation[] = [];
+      lines.forEach(l => {
+        if (l.billAllocations && l.billAllocations.length > 0) {
+          allBillAllocations.push(...l.billAllocations);
+        }
+      });
 
       const vPayload: any = {
         voucherNo: voucherNo.trim() || undefined,
@@ -877,6 +984,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
         totalAmount: totalDr,
         transactionId: transactionId.trim() || undefined,
         bankTxnNo: transactionId.trim() || undefined,
+        billAllocations: allBillAllocations.length > 0 ? allBillAllocations : undefined,
+        billNo: allBillAllocations.length > 0 ? allBillAllocations.map(b => b.billNo).join(', ') : undefined,
         lines: formattedLines
       };
 
@@ -934,6 +1043,10 @@ export const Vouchers: React.FC<VouchersProps> = ({
         }
         setNarration('');
         handleVTypeChange(activeVType);
+        
+        if (action === 'share') {
+          setViewVoucher(savedObj);
+        }
       }
     } else {
       // Single Mode Submit
@@ -979,7 +1092,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
         creditLedger: credL,
         narration: narration.trim(),
         transactionId: transactionId.trim() || undefined,
-        bankTxnNo: transactionId.trim() || undefined
+        bankTxnNo: transactionId.trim() || undefined,
+        billAllocations: billAllocations.length > 0 ? billAllocations : undefined,
+        billNo: billAllocations.length > 0 ? billAllocations.map(b => b.billNo).join(', ') : undefined
       };
 
       const result = saveVoucher(activeVType as any, vPayload);
@@ -988,6 +1103,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
         showToast(`Voucher ${result.voucherNo} recorded successfully!`, 'success');
         onDataRefresh();
         loadRecentVouchers();
+        setBillAllocations([]);
 
         const vTypeLabel =
           activeVType === 'P'
@@ -1038,6 +1154,10 @@ export const Vouchers: React.FC<VouchersProps> = ({
         setNarration('');
         setTransactionId('');
         handleVTypeChange(activeVType);
+        
+        if (action === 'share') {
+          setViewVoucher(savedObj);
+        }
       } else {
         alert(result.error || 'Failed to save voucher');
       }
@@ -1047,22 +1167,18 @@ export const Vouchers: React.FC<VouchersProps> = ({
   // Helper to Reset / Cancel current voucher entry form
   const handleCancelOrResetEntry = () => {
     if (entryMode === 'multi') {
-      const cashOrBank = ledgers.find(l => l.Group === 'Cash-in-Hand' || l.Group === 'Bank Accounts')?.['Ledger Name'] || 'Cash';
-      const defaultParty = ledgers[0]?.['Ledger Name'] || '';
       setLines([
-        { id: '1', type: 'Dr', ledger: defaultParty, debit: '', credit: 0, narration: '' },
-        { id: '2', type: 'Cr', ledger: cashOrBank, debit: 0, credit: '', narration: '' }
+        { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
+        { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
       ]);
     } else {
       setAmount('');
-      if (ledgers.length > 0) {
-        setPartyLedger(ledgers[0]['Ledger Name']);
-        setModeLedger('Cash');
-        setDebitLedger(ledgers[0]['Ledger Name']);
-        setCreditLedger('Cash');
-        setFromAccount(ledgers[0]['Ledger Name']);
-        setToAccount('Cash');
-      }
+      setPartyLedger('');
+      setModeLedger('');
+      setDebitLedger('');
+      setCreditLedger('');
+      setFromAccount('');
+      setToAccount('');
     }
     setNarration('');
     setTransactionId('');
@@ -1117,7 +1233,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
 
   // Save and immediately open share dialog
   const handleSaveAndShare = () => {
-    handleSubmit();
+    handleSubmit(undefined, 'share');
   };
 
   // Cancel Voucher (Void with ledger reversal and audit reason)
@@ -1355,6 +1471,12 @@ export const Vouchers: React.FC<VouchersProps> = ({
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2">
+      <AcceptModal 
+        isOpen={!!showAcceptModal} 
+        onConfirm={proceedSubmit} 
+        onCancel={() => setShowAcceptModal(false)} 
+      />
+
       {/* Toast Notification */}
       {toastMsg && (
         <div
@@ -1997,7 +2119,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                 <input
                   id="v-voucher-no"
                   type="text"
-                  value={voucherNo}
+                  value={voucherNo || ''}
                   onChange={e => setVoucherNo(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter') {
@@ -2017,7 +2139,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                 <input
                   id="v-date"
                   type="date"
-                  value={date}
+                  value={date || ''}
                   onChange={e => setDate(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
@@ -2127,7 +2249,37 @@ export const Vouchers: React.FC<VouchersProps> = ({
                                 onArrowDown={() => index < lines.length - 1 && focusGridField(index + 1, 'ledger')}
                                 placeholder="Select Ledger Account"
                               />
+                              {config.EnableBillWiseDetails !== 'false' && line.billAllocations && line.billAllocations.length > 0 && (
+                                <div className="mt-0.5 flex items-center gap-1 text-[9px] font-mono text-emerald-800">
+                                  <span className="font-bold">✓ Bills:</span>
+                                  <span className="truncate max-w-[200px]" title={line.billAllocations.map(a => `${a.billNo} (${a.amount})`).join(', ')}>
+                                    {line.billAllocations.map(a => a.billNo).join(', ')}
+                                  </span>
+                                </div>
+                              )}
                             </div>
+                            {config.EnableBillWiseDetails !== 'false' && line.ledger && (
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => {
+                                  setBillModalParty(line.ledger);
+                                  setBillModalTargetLineId(line.id);
+                                  setBillModalOpen(true);
+                                }}
+                                className={`p-1.5 rounded-lg border text-xs shrink-0 flex items-center gap-1 transition ${
+                                  line.billAllocations && line.billAllocations.length > 0
+                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-700 font-bold'
+                                    : 'border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-indigo-600'
+                                }`}
+                                title={line.billAllocations && line.billAllocations.length > 0 ? `${line.billAllocations.length} bill(s) allocated` : 'Allocate against Bills (Agst Ref)'}
+                              >
+                                <FileText className="h-3.5 w-3.5" />
+                                {line.billAllocations && line.billAllocations.length > 0 && (
+                                  <span className="text-[10px]">{line.billAllocations.length}</span>
+                                )}
+                              </button>
+                            )}
                             <button
                               type="button"
                               tabIndex={-1}
@@ -2147,7 +2299,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                             min="0"
                             step="any"
                             disabled={line.type === 'Cr'}
-                            value={line.type === 'Dr' ? line.debit : ''}
+                            value={line.type === 'Dr' ? (line.debit !== undefined && line.debit !== null ? line.debit : '') : ''}
                             onFocus={e => e.target.select()}
                             onChange={e =>
                               updateGridLine(
@@ -2156,15 +2308,22 @@ export const Vouchers: React.FC<VouchersProps> = ({
                                 e.target.value === '' ? '' : parseFloat(e.target.value)
                               )
                             }
+                            onBlur={() => {
+                              if (line.type === 'Dr' && line.debit && line.debit > 0) {
+                                checkBillWiseSettlement(line.ledger, line.debit, line.id);
+                              }
+                            }}
                             onKeyDown={e => {
                               if (e.key === 'Enter' || e.key === 'Tab') {
                                 e.preventDefault();
-                                if (index < lines.length - 1) {
-                                  focusGridField(index + 1, 'ledger');
-                                } else if (!isBalanced) {
-                                  addGridRow();
-                                } else {
-                                  focusElement('v-overall-narration');
+                                if (!checkBillWiseSettlement(line.ledger, line.debit, line.id)) {
+                                  if (index < lines.length - 1) {
+                                    focusGridField(index + 1, 'ledger');
+                                  } else if (!isBalanced) {
+                                    addGridRow();
+                                  } else {
+                                    focusElement('v-overall-narration');
+                                  }
                                 }
                               } else if (e.key === 'ArrowLeft') {
                                 e.preventDefault();
@@ -2199,7 +2358,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                             min="0"
                             step="any"
                             disabled={line.type === 'Dr'}
-                            value={line.type === 'Cr' ? line.credit : ''}
+                            value={line.type === 'Cr' ? (line.credit !== undefined && line.credit !== null ? line.credit : '') : ''}
                             onFocus={e => e.target.select()}
                             onChange={e =>
                               updateGridLine(
@@ -2208,15 +2367,22 @@ export const Vouchers: React.FC<VouchersProps> = ({
                                 e.target.value === '' ? '' : parseFloat(e.target.value)
                               )
                             }
+                            onBlur={() => {
+                              if (line.type === 'Cr' && line.credit && line.credit > 0) {
+                                checkBillWiseSettlement(line.ledger, line.credit, line.id);
+                              }
+                            }}
                             onKeyDown={e => {
                               if (e.key === 'Enter' || e.key === 'Tab') {
                                 e.preventDefault();
-                                if (index < lines.length - 1) {
-                                  focusGridField(index + 1, 'ledger');
-                                } else if (!isBalanced) {
-                                  addGridRow();
-                                } else {
-                                  focusElement('v-overall-narration');
+                                if (!checkBillWiseSettlement(line.ledger, line.credit, line.id)) {
+                                  if (index < lines.length - 1) {
+                                    focusGridField(index + 1, 'ledger');
+                                  } else if (!isBalanced) {
+                                    addGridRow();
+                                  } else {
+                                    focusElement('v-overall-narration');
+                                  }
                                 }
                               } else if (e.key === 'ArrowLeft') {
                                 e.preventDefault();
@@ -2317,10 +2483,13 @@ export const Vouchers: React.FC<VouchersProps> = ({
                         : toAccount
                     }
                     onChange={val => {
-                      if (activeVType === 'P' || activeVType === 'R') setPartyLedger(val);
+                      if (activeVType === 'P' || activeVType === 'R') {
+                        setPartyLedger(val);
+                        setBillAllocations([]);
+                      }
                       else if (activeVType === 'J') setDebitLedger(val);
                       else setToAccount(val);
-                      checkAndPromptBankLedger(val);
+                      checkAndPromptBankLedger(val, 'single-ledger-2');
                     }}
                     onCreateNew={() => openCreateLedgerModal(undefined, 'single-1')}
                     onEnterNext={() => focusElement('single-ledger-2')}
@@ -2328,6 +2497,56 @@ export const Vouchers: React.FC<VouchersProps> = ({
                     onArrowDown={() => focusElement('single-ledger-2')}
                     placeholder="Select Ledger Account"
                   />
+
+                  {/* Bill-wise Details (Pending Invoices Settlement) Info */}
+                  {config.EnableBillWiseDetails !== 'false' && (activeVType === 'P' || activeVType === 'R') && partyLedger && (
+                    <div className="mt-1.5 space-y-1">
+                      {partyOutstandingBills.length > 0 && (
+                        <div className="flex items-center justify-between bg-indigo-50/80 border border-indigo-200 rounded-lg px-2.5 py-1 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                            <span className="text-slate-700 font-medium">
+                              {partyOutstandingBills.length} Bill{partyOutstandingBills.length > 1 ? 's' : ''} Due:
+                            </span>
+                            <span className="font-mono font-bold text-indigo-950">
+                              {currencySymbol}{partyOutstandingBills.reduce((s, b) => s + b.pendingAmount, 0).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {partyOutstandingBills.length === 0 && (
+                        <div className="flex items-center justify-between px-1">
+                          <span className="text-[10px] text-slate-400">No unpaid credit invoices pending</span>
+                        </div>
+                      )}
+
+                      {billAllocations.length > 0 && (
+                        <div className="p-2 bg-emerald-50/80 border border-emerald-200 rounded-lg text-xs space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-emerald-900 flex items-center gap-1 text-[11px]">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>Allocated against {billAllocations.length} bill{billAllocations.length > 1 ? 's' : ''}:</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setBillAllocations([])}
+                              className="text-slate-400 hover:text-rose-600 text-[10px] font-semibold cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {billAllocations.map(a => (
+                              <span key={a.billNo} className="px-1.5 py-0.5 bg-white border border-emerald-300 text-emerald-800 rounded font-mono text-[10px] font-bold shadow-2xs">
+                                {a.billNo}: {currencySymbol}{a.amount.toLocaleString()}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="sm:col-span-5">
@@ -2354,7 +2573,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                       if (activeVType === 'P' || activeVType === 'R') setModeLedger(val);
                       else if (activeVType === 'J') setCreditLedger(val);
                       else setFromAccount(val);
-                      checkAndPromptBankLedger(val);
+                      checkAndPromptBankLedger(val, 'single-amount');
                     }}
                     onCreateNew={() => openCreateLedgerModal(undefined, 'single-2')}
                     onEnterNext={() => focusElement('single-amount')}
@@ -2374,13 +2593,20 @@ export const Vouchers: React.FC<VouchersProps> = ({
                     min="0.01"
                     step="any"
                     placeholder="0.00"
-                    value={amount}
+                    value={amount !== undefined && amount !== null ? amount : ''}
                     onFocus={e => e.target.select()}
                     onChange={e => setAmount(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                    onBlur={(e) => {
+                      if (amount && amount > 0) {
+                        checkBillWiseSettlement(partyLedger, amount);
+                      }
+                    }}
                     onKeyDown={e => {
                       if (e.key === 'Enter' || e.key === 'Tab') {
                         e.preventDefault();
-                        focusElement('v-overall-narration');
+                        if (!checkBillWiseSettlement(partyLedger, amount)) {
+                          focusElement('v-overall-narration');
+                        }
                       } else if (e.key === 'ArrowLeft') {
                         e.preventDefault();
                         focusElement('single-ledger-2');
@@ -2421,7 +2647,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
               id="v-overall-narration"
               type="text"
               placeholder="e.g. Paid office rent for the month"
-              value={narration}
+              value={narration || ''}
               onFocus={e => e.target.select()}
               onChange={e => setNarration(e.target.value)}
               onKeyDown={e => {
@@ -2670,7 +2896,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                   type="text"
                   required
                   placeholder="e.g. Karma Office Supplies"
-                  value={newLedgerName}
+                  value={newLedgerName || ''}
                   onChange={e => setNewLedgerName(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 p-2.5 font-bold text-slate-900 outline-none focus:border-indigo-600"
                 />
@@ -2679,7 +2905,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Account Group *</label>
                 <select
-                  value={newLedgerGroup}
+                  value={newLedgerGroup || ''}
                   onChange={e => setNewLedgerGroup(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 p-2.5 font-bold text-slate-900 outline-none focus:border-indigo-600"
                 >
@@ -2697,7 +2923,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                   <input
                     type="number"
                     step="any"
-                    value={newOpBalance}
+                    value={newOpBalance !== undefined && newOpBalance !== null ? newOpBalance : ''}
                     onChange={e =>
                       setNewOpBalance(e.target.value === '' ? '' : parseFloat(e.target.value))
                     }
@@ -2707,7 +2933,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Type</label>
                   <select
-                    value={newBalanceType}
+                    value={newBalanceType || 'Dr'}
                     onChange={e => setNewBalanceType(e.target.value as 'Dr' | 'Cr')}
                     className="w-full rounded-xl border border-slate-300 p-2.5 font-bold text-slate-900 outline-none focus:border-indigo-600"
                   >
@@ -2728,7 +2954,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                       <input
                         type="text"
                         placeholder="Phone number"
-                        value={newContactNo}
+                        value={newContactNo || ''}
                         onChange={e => setNewContactNo(e.target.value)}
                         className="w-full rounded-xl border border-slate-300 p-2 text-slate-900 bg-white outline-none focus:border-indigo-600"
                       />
@@ -2738,7 +2964,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                       <input
                         type="text"
                         placeholder="Tax ID / TPN"
-                        value={newTpnNo}
+                        value={newTpnNo || ''}
                         onChange={e => setNewTpnNo(e.target.value)}
                         className="w-full rounded-xl border border-slate-300 p-2 text-slate-900 bg-white outline-none focus:border-indigo-600"
                       />
@@ -2844,6 +3070,22 @@ export const Vouchers: React.FC<VouchersProps> = ({
                   {currencySymbol} {Number(viewVoucher.totalAmount || viewVoucher.total || 0).toFixed(2)}
                 </span>
               </div>
+              {(viewVoucher.billAllocations && viewVoucher.billAllocations.length > 0) || viewVoucher.billNo ? (
+                <div className="flex justify-between items-center pt-1 border-t border-slate-200">
+                  <span className="text-slate-500 font-semibold">Settled Bills / Ref:</span>
+                  <div className="flex items-center gap-1 flex-wrap justify-end">
+                    {viewVoucher.billAllocations && viewVoucher.billAllocations.length > 0 ? (
+                      viewVoucher.billAllocations.map((ba: any) => (
+                        <span key={ba.billNo} className="px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-200 font-mono text-[10px] font-bold text-indigo-900">
+                          {ba.billNo} ({currencySymbol}{Number(ba.amount).toFixed(2)})
+                        </span>
+                      ))
+                    ) : (
+                      <span className="font-mono font-bold text-indigo-700">{viewVoucher.billNo}</span>
+                    )}
+                  </div>
+                </div>
+              ) : null}
               {viewVoucher.narration && (
                 <div className="pt-2 border-t border-slate-200">
                   <span className="text-slate-500 font-semibold">Narration:</span>
@@ -3043,7 +3285,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
               <input
                 type="text"
                 placeholder="e.g. Customer requested revision, duplicate entry, incorrect amount"
-                value={cancelReason}
+                value={cancelReason || ''}
                 onChange={e => setCancelReason(e.target.value)}
                 className="w-full rounded-xl border border-slate-300 bg-white p-2.5 font-medium text-slate-900 outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-100"
               />
@@ -3218,8 +3460,87 @@ export const Vouchers: React.FC<VouchersProps> = ({
         isOpen={bankTxnModal.isOpen}
         bankLedgerName={bankTxnModal.bankLedgerName}
         initialValue={transactionId}
-        onSave={(newTxnId) => setTransactionId(newTxnId)}
-        onClose={() => setBankTxnModal({ isOpen: false, bankLedgerName: '' })}
+        onSave={(newTxnId) => {
+          setTransactionId(newTxnId);
+          const targetId = bankTxnModal.focusNextElementId || (entryMode === 'single' ? 'single-amount' : undefined);
+          setBankTxnModal({ isOpen: false, bankLedgerName: '', focusNextElementId: undefined });
+          if (targetId) {
+            focusElement(targetId);
+          }
+        }}
+        onClose={() => {
+          const targetId = bankTxnModal.focusNextElementId || (entryMode === 'single' ? 'single-amount' : undefined);
+          setBankTxnModal({ isOpen: false, bankLedgerName: '', focusNextElementId: undefined });
+          if (targetId) {
+            focusElement(targetId);
+          }
+        }}
+      />
+
+      {/* Bill-wise Details Allocation Modal (Agst Ref) */}
+      <BillWiseModal
+        isOpen={billModalOpen}
+        partyName={billModalParty}
+        voucherType={activeVType}
+        voucherAmount={
+          billModalTargetLineId
+            ? (lines.find(l => l.id === billModalTargetLineId)?.type === 'Dr'
+                ? lines.find(l => l.id === billModalTargetLineId)?.debit || ''
+                : lines.find(l => l.id === billModalTargetLineId)?.credit || '')
+            : amount
+        }
+        currencySymbol={currencySymbol}
+        initialAllocations={
+          billModalTargetLineId
+            ? lines.find(l => l.id === billModalTargetLineId)?.billAllocations
+            : billAllocations
+        }
+        onConfirm={(allocs, totalAllocated) => {
+          if (billModalTargetLineId) {
+            setLines(prev =>
+              prev.map(l => {
+                if (l.id === billModalTargetLineId) {
+                  const updatedLine = { ...l, billAllocations: allocs };
+                  if (totalAllocated > 0) {
+                    if (l.type === 'Dr') {
+                      updatedLine.debit = totalAllocated;
+                    } else {
+                      updatedLine.credit = totalAllocated;
+                    }
+                  }
+                  return updatedLine;
+                }
+                return l;
+              })
+            );
+          } else {
+            setBillAllocations(allocs);
+            if ((!amount || Number(amount) === 0) && totalAllocated > 0) {
+              setAmount(totalAllocated);
+            }
+          }
+        }}
+        onClose={() => {
+          setBillModalOpen(false);
+          const wasMulti = !!billModalTargetLineId;
+          const targetId = billModalTargetLineId;
+          setBillModalTargetLineId(null);
+          
+          setTimeout(() => {
+            if (entryMode === 'single') {
+              focusElement('v-overall-narration');
+            } else if (wasMulti) {
+              const idx = lines.findIndex(l => l.id === targetId);
+              if (idx < lines.length - 1) {
+                focusGridField(idx + 1, 'ledger');
+              } else if (!isBalanced) {
+                addGridRow();
+              } else {
+                focusElement('v-overall-narration');
+              }
+            }
+          }, 50);
+        }}
       />
     </div>
   );

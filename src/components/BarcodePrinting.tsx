@@ -670,7 +670,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                             <input
                               type="number"
                               min="1"
-                              value={q.qty}
+                              value={q.qty !== undefined && q.qty !== null ? q.qty : 1}
                               onChange={e => updateQty(q.itemCode, Number(e.target.value))}
                               className="w-16 h-8 text-center rounded-lg border border-slate-300 font-bold text-xs outline-none focus:border-indigo-500"
                             />
