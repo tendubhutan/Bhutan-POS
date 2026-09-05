@@ -61,8 +61,8 @@ export default function App() {
       handleOpenPOSBilling();
       return;
     }
-    if (view === 'reports' && reportTargetOverride === undefined) {
-      setReportTarget(null);
+    if (view === 'reports' && reportTargetOverride !== undefined) {
+      setReportTarget(reportTargetOverride);
     }
     if (view === currentView && view !== 'reports') return;
     setCurrentView(view);
@@ -289,8 +289,9 @@ export default function App() {
       if (e.altKey && (e.key === 'F2' || e.code === 'F2' || rawKey === 'd' || e.code === 'KeyD')) {
         e.preventDefault();
         e.stopPropagation();
-        setReportTarget({ category: 'daily', openChangePeriod: true, timestamp: Date.now() });
-        navigateTo('reports');
+        const t = { category: 'daily' as const, openChangePeriod: true, timestamp: Date.now() };
+        setReportTarget(t);
+        navigateTo('reports', t);
         window.dispatchEvent(new CustomEvent('app:open-change-period'));
         return;
       }
@@ -299,18 +300,21 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && !e.altKey) {
         if (rawKey === 'd' || e.code === 'KeyD') {
           e.preventDefault();
-          setReportTarget({ category: 'daily', timestamp: Date.now() });
-          navigateTo('reports');
+          const t = { category: 'daily' as const, timestamp: Date.now() };
+          setReportTarget(t);
+          navigateTo('reports', t);
           return;
         } else if (rawKey === 'g' || e.code === 'KeyG') {
           e.preventDefault();
-          setReportTarget({ category: 'gst', timestamp: Date.now() });
-          navigateTo('reports');
+          const t = { category: 'gst' as const, timestamp: Date.now() };
+          setReportTarget(t);
+          navigateTo('reports', t);
           return;
         } else if (rawKey === 'l' || e.code === 'KeyL') {
           e.preventDefault();
-          setReportTarget({ category: 'fin', finSubTab: 'LED', openQuickLedgerSearch: true, timestamp: Date.now() });
-          navigateTo('reports');
+          const t = { category: 'fin' as const, finSubTab: 'LED' as const, openQuickLedgerSearch: true, timestamp: Date.now() };
+          setReportTarget(t);
+          navigateTo('reports', t);
           window.dispatchEvent(new CustomEvent('app:open-ledger-search'));
           return;
         }
@@ -427,8 +431,9 @@ export default function App() {
               onDrillGroup={grp => setDrillModal({ type: 'group', targetId: grp })}
               onDrillVoucher={refNo => setDrillModal({ type: 'voucher', targetId: refNo })}
               onDrillReport={target => {
-                setReportTarget({ ...target, timestamp: Date.now() });
-                navigateTo('reports');
+                const t = { ...target, timestamp: Date.now() };
+                setReportTarget(t);
+                navigateTo('reports', t);
               }}
             />
           )}

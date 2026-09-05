@@ -320,6 +320,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPurchasePrice, setShowPurchasePrice] = useState(false);
   const [securityAlert, setSecurityAlert] = useState(false);
+  const [changeModalData, setChangeModalData] = useState<{
+    billAmount: number;
+    cashTendered: number;
+    changeReturn: number;
+  } | null>(null);
 
   // Refs for Field-to-Field Navigation
   const itemInputRef = useRef<HTMLInputElement>(null);
@@ -418,6 +423,13 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       // ESC closes open modals
       if (e.key === 'Escape') { if (e.defaultPrevented) return;
+        if (changeModalData) {
+          e.preventDefault();
+          setCash(changeModalData.billAmount);
+          setChangeModalData(null);
+          setTimeout(() => cashInputRef.current?.focus(), 50);
+          return;
+        }
         if (showSettingsModal) {
           e.preventDefault();
           setShowSettingsModal(false);
@@ -610,6 +622,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   ]);
 
   const handlePosBack = (): boolean => {
+    if (changeModalData) {
+      setCash(changeModalData.billAmount);
+      setChangeModalData(null);
+      return true;
+    }
     if (receiptModalOpen) {
       setReceiptModalOpen(false);
       return true;
@@ -987,6 +1004,13 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       return;
     }
 
+    if (e.key === 'Tab' && !entrySearch.trim()) {
+      e.preventDefault();
+      cashInputRef.current?.focus();
+      cashInputRef.current?.select();
+      return;
+    }
+
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (showDropdown && searchResults.length > 0) {
@@ -1035,7 +1059,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         qtyInputRef.current?.focus();
         qtyInputRef.current?.select();
       } else {
-        if (!q) return;
+        if (!q) {
+          cashInputRef.current?.focus();
+          cashInputRef.current?.select();
+          return;
+        }
         const matchedExact = items.filter(i => 
           String(i.Barcode).toLowerCase() === searchLower || 
           String(i['Item Code']).toLowerCase() === searchLower ||
@@ -2434,7 +2462,14 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
-              <label className="block text-[11px] font-bold text-slate-600 mb-0.5">Cash Paid</label>
+              <div className="flex items-center justify-between mb-0.5">
+                <label className="text-[11px] font-bold text-slate-600">Cash Paid</label>
+                {Number(cash) > totals.total && totals.total > 0 && (
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1 rounded border border-emerald-200">
+                    Change: {(Number(cash) - totals.total).toFixed(2)}
+                  </span>
+                )}
+              </div>
               <input
                 ref={cashInputRef}
                 type="number"
@@ -2445,7 +2480,19 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 onFocus={e => e.target.select()}
                 onBlur={handleFieldBlurReturnToSearch}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') handleCheckout();
+                  if (e.key === 'Enter') {
+                    const cashVal = Number(cash) || 0;
+                    if (cashVal > totals.total && totals.total > 0) {
+                      e.preventDefault();
+                      setChangeModalData({
+                        billAmount: totals.total,
+                        cashTendered: cashVal,
+                        changeReturn: round2(cashVal - totals.total)
+                      });
+                    } else {
+                      handleCheckout();
+                    }
+                  }
                 }}
                 className="w-full h-8 rounded-lg border border-slate-300 px-2.5 font-mono text-xs font-bold focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none bg-white"
               />
@@ -2922,6 +2969,72 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         }}
         onClose={() => setBankTxnModalOpen(false)}
       />
+
+      {/* Floating Modal for Cash Tendered & Change Return */}
+      {changeModalData && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-6 text-center space-y-4">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 mb-1">
+              <Coins className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-slate-900">Change Return Calculator</h3>
+              <p className="text-xs text-slate-500 font-medium">Customer Paid Cash Tendered</p>
+            </div>
+            
+            <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-2 text-xs">
+              <div className="flex justify-between text-slate-600">
+                <span>Bill Total:</span>
+                <span className="font-mono font-bold text-slate-900">{config.CurrencySymbol || 'Nu.'} {changeModalData.billAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Cash Received:</span>
+                <span className="font-mono font-bold text-slate-900">{config.CurrencySymbol || 'Nu.'} {changeModalData.cashTendered.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="bg-emerald-50 rounded-2xl p-4 border border-emerald-200">
+              <div className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-1">Change to Return</div>
+              <div className="text-3xl font-black font-mono text-emerald-600">
+                {config.CurrencySymbol || 'Nu.'} {changeModalData.changeReturn.toFixed(2)}
+              </div>
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => {
+                  const billAmt = changeModalData.billAmount;
+                  setCash(billAmt);
+                  setChangeModalData(null);
+                  setTimeout(() => {
+                    handleCheckout('print');
+                  }, 50);
+                }}
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition cursor-pointer text-xs"
+              >
+                Accept & Print (Enter)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const billAmt = changeModalData.billAmount;
+                  setCash(billAmt);
+                  setChangeModalData(null);
+                  setTimeout(() => {
+                    cashInputRef.current?.focus();
+                    cashInputRef.current?.select();
+                  }, 50);
+                }}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer text-xs"
+              >
+                Adjust Cash (Esc)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AcceptModal
         isOpen={Boolean(showAcceptModal)}
