@@ -3593,71 +3593,109 @@ export function getItemStockLedger(code: string): StockLedgerEntry[] {
   return finalLogs;
 }
 
-export function getFullLedgerStatement(name: string) {
+export function getFullLedgerStatement(name: string, fromDate?: string, toDate?: string) {
   syncPayrollToAccounting();
   const ledgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
   const cleanTarget = (name || '').trim().toLowerCase();
   const l = ledgers.find(x => (x['Ledger Name'] || '').trim().toLowerCase() === cleanTarget);
-  const op = l ? (Number(l['Opening Balance']) || 0) * (l['Balance Type (Dr/Cr)'] === 'Cr' ? -1 : 1) : 0;
+  const masterOp = l ? (Number(l['Opening Balance']) || 0) * (l['Balance Type (Dr/Cr)'] === 'Cr' ? -1 : 1) : 0;
   const logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
   const sales = getDeduplicatedSales();
   const purchases = getDeduplicatedPurchases();
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
 
-  const rows = logs
+  // Filter logs for this ledger and sort chronologically
+  const targetLogs = logs
     .filter(r => (r['Ledger Name'] || '').trim().toLowerCase() === cleanTarget)
-    .sort((a, b) => new Date(a.DateIso).getTime() - new Date(b.DateIso).getTime())
-    .map(r => {
-      let party = '';
-      let paymentMode = '';
-      let voucherStatus = '';
-      const ref = r['Ref No'] || '';
+    .sort((a, b) => new Date(a.DateIso).getTime() - new Date(b.DateIso).getTime());
 
-      const sale = sales.find(s => s.invoiceNo === ref);
-      if (sale) {
-        party = typeof sale.customer === 'object' ? (sale.customer.name || sale.customer.ledger) : (sale.customer || '');
-        const modes: string[] = [];
-        if (Number(sale.cash) > 0) modes.push('Cash');
-        if (Number(sale.bank1) > 0) modes.push(sale.paymentDetails?.bank1Ledger || 'Bank (BOB)');
-        if (Number(sale.bank2) > 0) modes.push(sale.paymentDetails?.bank2Ledger || 'Bank (BNBL)');
-        if (Number(sale.credit) > 0) modes.push('Credit / Due');
-        paymentMode = modes.join(', ') || (sale.status === 'Paid' ? 'Cash' : 'Credit');
-        voucherStatus = sale.status || '';
+  let periodOpBal = masterOp;
+  const periodLogs: typeof targetLogs = [];
+
+  targetLogs.forEach(r => {
+    let logDateStr = '';
+    if (r.DateIso) {
+      const dt = new Date(r.DateIso);
+      if (!isNaN(dt.getTime())) {
+        const y = dt.getFullYear();
+        const m = String(dt.getMonth() + 1).padStart(2, '0');
+        const d = String(dt.getDate()).padStart(2, '0');
+        logDateStr = `${y}-${m}-${d}`;
+      } else if (typeof r.DateIso === 'string') {
+        logDateStr = r.DateIso.split('T')[0];
       }
+    }
 
-      const pur = purchases.find(p => p.billNo === ref || p.invoiceNo === ref);
-      if (pur) {
-        party = typeof pur.supplier === 'object' ? (pur.supplier.name || (pur.supplier as any).ledger) : (pur.supplier || '');
-        const modes: string[] = [];
-        if (Number(pur.cash) > 0) modes.push('Cash');
-        if (Number(pur.bank1) > 0) modes.push(pur.paymentDetails?.bank1Ledger || 'Bank (BOB)');
-        if (Number(pur.bank2) > 0) modes.push(pur.paymentDetails?.bank2Ledger || 'Bank (BNBL)');
-        if (Number(pur.credit) > 0) modes.push('Credit / Due');
-        paymentMode = modes.join(', ') || (pur.status === 'Paid' ? 'Cash' : 'Credit');
-        voucherStatus = pur.status || '';
+    const ref = r['Ref No'] || '';
+    const sale = sales.find(s => s.invoiceNo === ref);
+    const pur = purchases.find(p => p.billNo === ref || p.invoiceNo === ref);
+    const v = vouchers.find(v => v.voucherNo === ref);
+    const isCancelled = (sale?.status === 'Cancelled') || (pur?.status === 'Cancelled') || ((v as any)?.status === 'Cancelled');
+
+    if (fromDate && logDateStr && logDateStr < fromDate) {
+      if (!isCancelled) {
+        const dr = Number(r.Debit) || 0;
+        const cr = Number(r.Credit) || 0;
+        periodOpBal += (dr - cr);
       }
+    } else if (toDate && logDateStr && logDateStr > toDate) {
+      // Entry is beyond period end date
+    } else {
+      periodLogs.push(r);
+    }
+  });
 
-      const v = vouchers.find(v => v.voucherNo === ref);
-      if (v) {
-        party = v.lines?.find(l => (l.ledger || '').trim().toLowerCase() !== cleanTarget)?.ledger || (v.debitLedger === name ? v.creditLedger : v.debitLedger) || '';
-        paymentMode = (v as any).mode || (v.type === 'P' || v.type === 'R' ? 'Cash / Bank' : 'Journal');
-        voucherStatus = (v as any).status || '';
-      }
+  const rows = periodLogs.map(r => {
+    let party = '';
+    let paymentMode = '';
+    let voucherStatus = '';
+    const ref = r['Ref No'] || '';
 
-      const isCancelled = voucherStatus === 'Cancelled';
+    const sale = sales.find(s => s.invoiceNo === ref);
+    if (sale) {
+      party = typeof sale.customer === 'object' ? (sale.customer.name || sale.customer.ledger) : (sale.customer || '');
+      const modes: string[] = [];
+      if (Number(sale.cash) > 0) modes.push('Cash');
+      if (Number(sale.bank1) > 0) modes.push(sale.paymentDetails?.bank1Ledger || 'Bank (BOB)');
+      if (Number(sale.bank2) > 0) modes.push(sale.paymentDetails?.bank2Ledger || 'Bank (BNBL)');
+      if (Number(sale.credit) > 0) modes.push('Credit / Due');
+      paymentMode = modes.join(', ') || (sale.status === 'Paid' ? 'Cash' : 'Credit');
+      voucherStatus = sale.status || '';
+    }
 
-      return {
-        ...r,
-        Party: party,
-        PaymentMode: paymentMode,
-        Status: voucherStatus || (isCancelled ? 'Cancelled' : 'Active'),
-        isCancelled,
-        Debit: isCancelled ? 0 : r.Debit,
-        Credit: isCancelled ? 0 : r.Credit
-      };
-    });
+    const pur = purchases.find(p => p.billNo === ref || p.invoiceNo === ref);
+    if (pur) {
+      party = typeof pur.supplier === 'object' ? (pur.supplier.name || (pur.supplier as any).ledger) : (pur.supplier || '');
+      const modes: string[] = [];
+      if (Number(pur.cash) > 0) modes.push('Cash');
+      if (Number(pur.bank1) > 0) modes.push(pur.paymentDetails?.bank1Ledger || 'Bank (BOB)');
+      if (Number(pur.bank2) > 0) modes.push(pur.paymentDetails?.bank2Ledger || 'Bank (BNBL)');
+      if (Number(pur.credit) > 0) modes.push('Credit / Due');
+      paymentMode = modes.join(', ') || (pur.status === 'Paid' ? 'Cash' : 'Credit');
+      voucherStatus = pur.status || '';
+    }
 
-  return { openingBalance: op, rows };
+    const v = vouchers.find(v => v.voucherNo === ref);
+    if (v) {
+      party = v.lines?.find(l => (l.ledger || '').trim().toLowerCase() !== cleanTarget)?.ledger || (v.debitLedger === name ? v.creditLedger : v.debitLedger) || '';
+      paymentMode = (v as any).mode || (v.type === 'P' || v.type === 'R' ? 'Cash / Bank' : 'Journal');
+      voucherStatus = (v as any).status || '';
+    }
+
+    const isCancelled = voucherStatus === 'Cancelled';
+
+    return {
+      ...r,
+      Party: party,
+      PaymentMode: paymentMode,
+      Status: voucherStatus || (isCancelled ? 'Cancelled' : 'Active'),
+      isCancelled,
+      Debit: isCancelled ? 0 : r.Debit,
+      Credit: isCancelled ? 0 : r.Credit
+    };
+  });
+
+  return { openingBalance: periodOpBal, rows };
 }
 
 export function getDeduplicatedSales(): SalesInvoice[] {

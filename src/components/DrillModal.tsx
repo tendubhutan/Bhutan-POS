@@ -147,7 +147,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
       const data = getItemStockLedger(active.targetId);
       setStockLogs(data);
     } else if (active.type === 'ledger') {
-      const data = getFullLedgerStatement(active.targetId);
+      const data = getFullLedgerStatement(active.targetId, fromDate, toDate);
       setLedgerLog(data);
     } else if (active.type === 'voucher') {
       const data = getVoucherDetails(active.targetId);

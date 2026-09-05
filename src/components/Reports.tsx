@@ -6,7 +6,7 @@ import {
 } from '../services/storageService';
 import XLSX from 'xlsx-js-style';
 import {
-  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw
+  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { PrintReportModal } from './PrintReportModal';
 import { generateReportPDF, shareOrDownloadPDF } from '../utils/pdfExport';
@@ -21,6 +21,8 @@ export interface ReportTarget {
   itemWise?: boolean;
   fromDate?: string;
   toDate?: string;
+  openQuickLedgerSearch?: boolean;
+  openChangePeriod?: boolean;
   timestamp?: number;
 }
 
@@ -28,6 +30,7 @@ interface ReportsProps {
   config: Config;
   items: Item[];
   ledgers: Ledger[];
+  onBack?: () => void;
   onDrillVoucher: (refNo: string) => void;
   onDrillLedger: (name: string) => void;
   onDrillStock: (code: string) => void;
@@ -35,10 +38,89 @@ interface ReportsProps {
   initialReportTarget?: ReportTarget | null;
 }
 
+export function parseSmartDate(inputStr: string): string | null {
+  if (!inputStr) return null;
+  const trimmed = inputStr.trim();
+  const currentYear = new Date().getFullYear();
+
+  // If already standard ISO YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Handle formats like "08-Aug-2026" or "8-Aug-2026"
+  const monthNames: Record<string, number> = {
+    jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+    jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+  };
+  const namedMatch = trimmed.match(/^(\d{1,2})[-/\s]+([a-zA-Z]{3,})[-/\s]*(\d{2,4})?$/);
+  if (namedMatch) {
+    const d = parseInt(namedMatch[1], 10);
+    const mStr = namedMatch[2].toLowerCase().substring(0, 3);
+    const m = monthNames[mStr];
+    let y = namedMatch[3] ? parseInt(namedMatch[3], 10) : currentYear;
+    if (y < 100) y += 2000;
+    if (m && d >= 1 && d <= 31) {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${y}-${pad(m)}-${pad(d)}`;
+    }
+  }
+
+  // Replace dots, slashes, dashes, spaces with /
+  const clean = trimmed.replace(/[.\-\s/]+/g, '/');
+  const parts = clean.split('/').filter(Boolean);
+
+  let day: number | null = null;
+  let month: number | null = null;
+  let year: number = currentYear;
+
+  if (parts.length === 1) {
+    // e.g. "0808" -> 08 Aug
+    if (/^\d{4}$/.test(parts[0])) {
+      day = parseInt(parts[0].substring(0, 2), 10);
+      month = parseInt(parts[0].substring(2, 4), 10);
+    } else if (/^\d{1,2}$/.test(parts[0])) {
+      day = parseInt(parts[0], 10);
+      month = new Date().getMonth() + 1;
+    }
+  } else if (parts.length === 2) {
+    // "8/8", "8.8", "8-8", "8 8" -> 8th Aug
+    day = parseInt(parts[0], 10);
+    month = parseInt(parts[1], 10);
+  } else if (parts.length >= 3) {
+    // "8/8/25" or "8.8.2025"
+    day = parseInt(parts[0], 10);
+    month = parseInt(parts[1], 10);
+    let y = parseInt(parts[2], 10);
+    if (y < 100) {
+      y = y + 2000;
+    }
+    year = y;
+  }
+
+  if (day !== null && month !== null && !isNaN(day) && !isNaN(month) && !isNaN(year)) {
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${year}-${pad(month)}-${pad(day)}`;
+    }
+  }
+
+  return null;
+}
+
+export function formatDisplayDate(isoStr: string): string {
+  if (!isoStr || !/^\d{4}-\d{2}-\d{2}$/.test(isoStr)) return isoStr || '';
+  const [y, m, d] = isoStr.split('-').map(Number);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthName = months[m - 1] || 'Jan';
+  return `${String(d).padStart(2, '0')}-${monthName}-${y}`;
+}
+
 export const Reports: React.FC<ReportsProps> = ({
   config,
   items,
   ledgers,
+  onBack,
   onDrillVoucher,
   onDrillLedger,
   onDrillStock,
@@ -60,6 +142,155 @@ export const Reports: React.FC<ReportsProps> = ({
   const [isControlsCollapsed, setIsControlsCollapsed] = useState(false);
   const [gstOnly, setGstOnly] = useState(false);
   const [selectedLedger, setSelectedLedger] = useState('');
+
+  // Change Period Modal state (Alt+F2 / Alt+D)
+  const [showChangePeriodModal, setShowChangePeriodModal] = useState(false);
+  const [tempFromDate, setTempFromDate] = useState(fromDate);
+  const [tempToDate, setTempToDate] = useState(toDate);
+  const [fromInputText, setFromInputText] = useState(formatDisplayDate(fromDate));
+  const [toInputText, setToInputText] = useState(formatDisplayDate(toDate));
+  const periodFromInputRef = React.useRef<HTMLInputElement>(null);
+  const periodToInputRef = React.useRef<HTMLInputElement>(null);
+
+  const openChangePeriod = () => {
+    setTempFromDate(fromDate);
+    setTempToDate(toDate);
+    setFromInputText(formatDisplayDate(fromDate));
+    setToInputText(formatDisplayDate(toDate));
+    setShowChangePeriodModal(true);
+    setTimeout(() => {
+      periodFromInputRef.current?.focus();
+      periodFromInputRef.current?.select();
+    }, 60);
+  };
+
+  const applyPreset = (preset: 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_month' | 'this_quarter' | 'this_fy') => {
+    const now = new Date();
+    const formatYMD = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    let startStr = todayStr;
+    let endStr = todayStr;
+
+    if (preset === 'today') {
+      startStr = formatYMD(now);
+      endStr = formatYMD(now);
+    } else if (preset === 'yesterday') {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      startStr = formatYMD(y);
+      endStr = formatYMD(y);
+    } else if (preset === 'this_week') {
+      const curr = new Date(now);
+      const first = curr.getDate() - curr.getDay() + (curr.getDay() === 0 ? -6 : 1);
+      const monday = new Date(curr.setDate(first));
+      const sunday = new Date(monday);
+      sunday.setDate(sunday.getDate() + 6);
+      startStr = formatYMD(monday);
+      endStr = formatYMD(sunday);
+    } else if (preset === 'this_month') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      startStr = formatYMD(start);
+      endStr = formatYMD(end);
+    } else if (preset === 'last_month') {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0);
+      startStr = formatYMD(start);
+      endStr = formatYMD(end);
+    } else if (preset === 'this_quarter') {
+      const qMonth = Math.floor(now.getMonth() / 3) * 3;
+      const start = new Date(now.getFullYear(), qMonth, 1);
+      const end = new Date(now.getFullYear(), qMonth + 3, 0);
+      startStr = formatYMD(start);
+      endStr = formatYMD(end);
+    } else if (preset === 'this_fy') {
+      // Bhutan Financial Year: January 1 to December 31
+      const year = now.getFullYear();
+      startStr = `${year}-01-01`;
+      endStr = `${year}-12-31`;
+    }
+
+    setFromDate(startStr);
+    setToDate(endStr);
+    setTempFromDate(startStr);
+    setTempToDate(endStr);
+    setFromInputText(formatDisplayDate(startStr));
+    setToInputText(formatDisplayDate(endStr));
+  };
+
+  const shiftMonth = (delta: number) => {
+    const d1 = new Date(fromDate || todayStr);
+    d1.setMonth(d1.getMonth() + delta);
+    const startOfMonth = new Date(d1.getFullYear(), d1.getMonth(), 1);
+    const endOfMonth = new Date(d1.getFullYear(), d1.getMonth() + 1, 0);
+
+    const formatYMD = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    setFromDate(formatYMD(startOfMonth));
+    setToDate(formatYMD(endOfMonth));
+  };
+
+  useEffect(() => {
+    const handlePeriodEvent = () => openChangePeriod();
+    window.addEventListener('app:open-change-period' as any, handlePeriodEvent);
+    return () => window.removeEventListener('app:open-change-period' as any, handlePeriodEvent);
+  }, [fromDate, toDate]);
+
+  useEffect(() => {
+    if (initialReportTarget?.openChangePeriod) {
+      openChangePeriod();
+    }
+  }, [initialReportTarget]);
+
+  // Quick Search Ledger Modal state (Ctrl+L)
+  const [showQuickLedgerModal, setShowQuickLedgerModal] = useState(false);
+  const [ledgerSearchQuery, setLedgerSearchQuery] = useState('');
+  const [focusedLedgerIdx, setFocusedLedgerIdx] = useState(0);
+  const quickLedgerInputRef = React.useRef<HTMLInputElement>(null);
+
+  const openLedgerSearch = () => {
+    setShowQuickLedgerModal(true);
+    setLedgerSearchQuery('');
+    setFocusedLedgerIdx(0);
+    setTimeout(() => {
+      quickLedgerInputRef.current?.focus();
+      quickLedgerInputRef.current?.select();
+    }, 60);
+  };
+
+  useEffect(() => {
+    const handleLedgerSearchEvent = () => {
+      openLedgerSearch();
+    };
+    window.addEventListener('app:open-ledger-search' as any, handleLedgerSearchEvent);
+    return () => window.removeEventListener('app:open-ledger-search' as any, handleLedgerSearchEvent);
+  }, []);
+
+  useEffect(() => {
+    if (initialReportTarget?.openQuickLedgerSearch) {
+      openLedgerSearch();
+    }
+  }, [initialReportTarget]);
+
+  const filteredQuickLedgers = useMemo(() => {
+    const q = ledgerSearchQuery.trim().toLowerCase();
+    if (!q) return ledgers;
+    return ledgers.filter(l => {
+      const name = (l['Ledger Name'] || '').toLowerCase();
+      const grp = (l['Group'] || l['Under Group'] || '').toLowerCase();
+      return name.includes(q) || grp.includes(q);
+    });
+  }, [ledgers, ledgerSearchQuery]);
   const [tbSearch, setTbSearch] = useState('');
   const [tbViewMode, setTbViewMode] = useState<'ledger' | 'group'>('ledger');
   const [ledgerSearch, setLedgerSearch] = useState('');
@@ -97,6 +328,14 @@ export const Reports: React.FC<ReportsProps> = ({
   ], [showGst]);
 
   const handleReportsBack = () => {
+    if (showChangePeriodModal) {
+      setShowChangePeriodModal(false);
+      return true;
+    }
+    if (showQuickLedgerModal) {
+      setShowQuickLedgerModal(false);
+      return true;
+    }
     // If a drill modal or floating dialog is active, do not hijack the back/escape action
     if (document.querySelector('[data-drill-modal="true"]')) {
       return false;
@@ -109,16 +348,28 @@ export const Reports: React.FC<ReportsProps> = ({
       setShowReportCatalog(false);
       return true;
     }
-    if (mainCategory !== 'daily') {
-      setMainCategory('daily');
-      return true;
-    }
     return false;
   };
 
-  // Keyboard navigation and shortcuts (Escape, Alt+Left / Alt+Right)
+  // Keyboard navigation and shortcuts (Escape, Ctrl+L, Alt+F2, Alt+Left / Alt+Right)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Direct Alt+F2 or Alt+D shortcut for Change Period anywhere in Reports
+      if (e.altKey && (e.key === 'F2' || e.code === 'F2' || e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        e.stopPropagation();
+        openChangePeriod();
+        return;
+      }
+
+      // Direct Ctrl+L shortcut for opening Quick Ledger Search anywhere in Reports
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'l' || e.key === 'L' || e.code === 'KeyL')) {
+        e.preventDefault();
+        e.stopPropagation();
+        openLedgerSearch();
+        return;
+      }
+
       if (e.key === 'Escape') { if (e.defaultPrevented) return;
         const handled = handleReportsBack();
         if (handled) {
@@ -183,7 +434,7 @@ export const Reports: React.FC<ReportsProps> = ({
   // React to initial or keyboard shortcut triggered targets
   useEffect(() => {
     if (initialReportTarget) {
-      setMainCategory(initialReportTarget.category);
+      setMainCategory(initialReportTarget.category || 'daily');
       if (initialReportTarget.finSubTab) {
         setFinSubTab(initialReportTarget.finSubTab);
       }
@@ -203,6 +454,8 @@ export const Reports: React.FC<ReportsProps> = ({
         setToDate(initialReportTarget.toDate);
       }
       setShowReportCatalog(false);
+    } else {
+      setMainCategory('daily');
     }
   }, [initialReportTarget]);
 
@@ -235,11 +488,16 @@ export const Reports: React.FC<ReportsProps> = ({
         setReportData(data);
       } else if (mainCategory === 'fin') {
         if (finSubTab === 'LED') {
-          if (!selectedLedger && ledgers.length > 0) {
-            setSelectedLedger(ledgers[0]['Ledger Name']);
+          let activeLedger = selectedLedger;
+          if (!activeLedger && ledgers.length > 0) {
+            const defaultLedger = ledgers.find(l => l['Ledger Name']?.trim().toLowerCase() === 'cash')?.['Ledger Name']
+              || ledgers.find(l => (l.Group || '').toLowerCase() === 'cash-in-hand')?.['Ledger Name']
+              || ledgers[0]['Ledger Name'];
+            activeLedger = defaultLedger;
+            setSelectedLedger(defaultLedger);
           }
-          if (selectedLedger) {
-            const data = getFullLedgerStatement(selectedLedger);
+          if (activeLedger) {
+            const data = getFullLedgerStatement(activeLedger, fromDate, toDate);
             setReportData(data);
           }
         } else {
@@ -1103,8 +1361,25 @@ export const Reports: React.FC<ReportsProps> = ({
         {/* Universal Compact Report Navigation & Filter Bar */}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-2.5 sm:p-3 shadow-xs flex flex-wrap items-center justify-between gap-2.5 text-xs">
-        {/* Left Section: Report Switcher & Direct Dropdown */}
+        {/* Left Section: Back Button, Report Switcher & Direct Dropdown */}
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              if (onBack) {
+                onBack();
+              } else {
+                const backEvent = new CustomEvent('app:back', { cancelable: true });
+                window.dispatchEvent(backEvent);
+              }
+            }}
+            className="inline-flex items-center gap-1 bg-amber-400 hover:bg-amber-300 text-slate-950 border border-amber-500 px-2.5 py-1.5 rounded-xl text-xs font-black shadow-xs transition active:scale-95 cursor-pointer"
+            title="Go Back to Dashboard (Esc)"
+          >
+            <ChevronLeft className="h-4 w-4 stroke-[3]" />
+            <span>Back</span>
+          </button>
+
           <button
             onClick={() => setShowReportCatalog(!showReportCatalog)}
             className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 font-bold transition shadow-2xs ${
@@ -1182,10 +1457,21 @@ export const Reports: React.FC<ReportsProps> = ({
             return (
               <div className="flex items-center gap-1.5 pl-1">
                 <span className="font-semibold text-slate-500 text-[11px] whitespace-nowrap">Ledger:</span>
+                <button
+                  type="button"
+                  onClick={openLedgerSearch}
+                  className="h-8 rounded-xl border border-indigo-300 bg-indigo-50/90 hover:bg-indigo-100 px-2.5 font-bold text-xs text-indigo-950 flex items-center gap-1.5 transition-all shadow-2xs max-w-[180px] sm:max-w-[220px] truncate cursor-pointer"
+                  title="Click or press Ctrl+L to type and search ledger"
+                >
+                  <Search className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                  <span className="truncate">{selectedLedger || 'Type / Search Ledger'}</span>
+                  <kbd className="hidden sm:inline-block text-[9px] bg-white border border-indigo-200 text-indigo-700 px-1 py-0.2 rounded font-mono font-bold shrink-0">Ctrl+L</kbd>
+                </button>
+
                 <select
                   value={selectedLedger || ''}
                   onChange={e => setSelectedLedger(e.target.value)}
-                  className="h-8 rounded-xl border border-slate-300 bg-white px-2 font-bold text-slate-800 outline-none w-[120px] sm:w-[160px] truncate"
+                  className="h-8 rounded-xl border border-slate-300 bg-white px-2 font-bold text-xs text-slate-800 outline-none w-[110px] sm:w-[150px] truncate"
                 >
                   <option value="">Select Ledger</option>
                   {ledgers.map(l => (
@@ -1283,6 +1569,28 @@ export const Reports: React.FC<ReportsProps> = ({
 
         {/* Right Section: Date Controls & Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap ml-auto">
+          {/* Month Step Buttons */}
+          <div className="flex items-center bg-slate-100 border border-slate-200 rounded-xl p-0.5 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => shiftMonth(-1)}
+              className="px-1.5 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 rounded-lg transition text-xs font-bold flex items-center gap-0.5 cursor-pointer"
+              title="Previous Month"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              <span className="hidden xl:inline text-[10px]">Prev Mth</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => shiftMonth(1)}
+              className="px-1.5 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 rounded-lg transition text-xs font-bold flex items-center gap-0.5 cursor-pointer"
+              title="Next Month"
+            >
+              <span className="hidden xl:inline text-[10px]">Next Mth</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
           <div className="flex items-center gap-1.5">
             <span className="font-semibold text-slate-500 text-[11px]">From:</span>
             <input
@@ -1303,15 +1611,37 @@ export const Reports: React.FC<ReportsProps> = ({
             />
           </div>
 
-          <button
-            onClick={() => {
-              setFromDate(todayStr);
-              setToDate(todayStr);
+          {/* Quick Presets Dropdown */}
+          <select
+            onChange={(e) => {
+              if (e.target.value) {
+                applyPreset(e.target.value as any);
+                e.target.value = '';
+              }
             }}
-            className="rounded-xl border border-slate-300 bg-slate-50 px-2.5 py-1.5 font-semibold text-slate-700 hover:bg-slate-100"
-            title="Set date range to today"
+            defaultValue=""
+            className="h-8 rounded-xl border border-indigo-200 bg-indigo-50/80 px-2 font-bold text-xs text-indigo-900 outline-none cursor-pointer hover:bg-indigo-100 transition"
+            title="Quick Date Range Presets"
           >
-            Today
+            <option value="" disabled>Presets ▾</option>
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="this_week">This Week</option>
+            <option value="this_month">This Month</option>
+            <option value="last_month">Last Month</option>
+            <option value="this_quarter">This Quarter</option>
+            <option value="this_fy">Financial Year (FY)</option>
+          </select>
+
+          {/* Change Period Button (Alt+F2) */}
+          <button
+            onClick={openChangePeriod}
+            className="h-8 inline-flex items-center gap-1 rounded-xl border border-indigo-300 bg-indigo-600 px-2.5 font-bold text-xs text-white hover:bg-indigo-700 transition shadow-2xs cursor-pointer"
+            title="Change Date Period (Alt+F2 / Alt+D)"
+          >
+            <Calendar className="h-3.5 w-3.5 text-indigo-100" />
+            <span>Period</span>
+            <kbd className="hidden sm:inline-block text-[9px] bg-indigo-800/80 border border-indigo-400 text-indigo-100 px-1 py-0.2 rounded font-mono font-bold">Alt+F2</kbd>
           </button>
 
           <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2">
@@ -2073,7 +2403,7 @@ export const Reports: React.FC<ReportsProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {reportData.map((inv: any, i) => (
-                        <tr key={i} className={`hover:bg-slate-50/80 transition cursor-pointer ${inv.isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
+                        <tr key={i} className={`cursor-pointer transition hover:bg-indigo-50/60 ${inv.isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
                            if (inv.invoiceNo) {
                              onDrillVoucher(inv.invoiceNo);
                            }
@@ -2118,7 +2448,7 @@ export const Reports: React.FC<ReportsProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {reportData.map((inv: any, i) => (
-                        <tr key={i} className={`hover:bg-slate-50/80 transition cursor-pointer ${inv.isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
+                        <tr key={i} className={`cursor-pointer transition hover:bg-indigo-50/60 ${inv.isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
                            if (inv.billNo) {
                              onDrillVoucher(inv.billNo);
                            }
@@ -2647,7 +2977,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               <tr
                                 key={idx}
                                 onClick={() => r['Ref No'] && onDrillVoucher(r['Ref No'])}
-                                className={`hover:bg-indigo-50/50 cursor-pointer transition ${r.isCancelled ? 'bg-red-50/30' : ''}`}
+                                className={`cursor-pointer transition hover:bg-indigo-50/60 ${r.isCancelled ? 'bg-red-50/30' : ''}`}
                               >
                                 <td className="py-2.5 px-3 text-center font-mono text-slate-600">{formatDateStr(r.DateIso)}</td>
                                 <td className="py-2.5 px-3">
@@ -2701,6 +3031,361 @@ export const Reports: React.FC<ReportsProps> = ({
         )}
         </div>
       </div>
+
+      {/* Quick Search Ledger Modal (Ctrl+L) */}
+      {showQuickLedgerModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center pt-12 sm:pt-20 p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setShowQuickLedgerModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header Input */}
+            <div className="relative border-b border-slate-200 bg-slate-50/90 p-3 flex items-center gap-2">
+              <Search className="h-5 w-5 text-indigo-600 ml-1.5 shrink-0" />
+              <input
+                ref={quickLedgerInputRef}
+                type="text"
+                value={ledgerSearchQuery}
+                onChange={(e) => {
+                  setLedgerSearchQuery(e.target.value);
+                  setFocusedLedgerIdx(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setFocusedLedgerIdx((prev) => Math.min(prev + 1, Math.max(0, filteredQuickLedgers.length - 1)));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setFocusedLedgerIdx((prev) => Math.max(prev - 1, 0));
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (filteredQuickLedgers[focusedLedgerIdx]) {
+                      const sel = filteredQuickLedgers[focusedLedgerIdx]['Ledger Name'];
+                      setSelectedLedger(sel);
+                      setMainCategory('fin');
+                      setFinSubTab('LED');
+                      setShowQuickLedgerModal(false);
+                      setShowReportCatalog(false);
+                    }
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setShowQuickLedgerModal(false);
+                  }
+                }}
+                placeholder="Type ledger name (e.g. Cash, Sales, Dorji Traders)..."
+                className="w-full bg-transparent text-slate-900 font-bold text-base placeholder-slate-400 outline-none pr-8"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setShowQuickLedgerModal(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Subheader info */}
+            <div className="px-4 py-2 bg-slate-100/80 border-b border-slate-200 flex items-center justify-between text-xs text-slate-600 font-medium">
+              <span>Found <strong className="text-slate-900 font-bold">{filteredQuickLedgers.length}</strong> ledger{filteredQuickLedgers.length !== 1 ? 's' : ''}</span>
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
+                <span><kbd className="bg-white border border-slate-300 rounded px-1 py-0.5 font-bold shadow-2xs">↑↓</kbd> navigate</span>
+                <span><kbd className="bg-white border border-slate-300 rounded px-1 py-0.5 font-bold shadow-2xs">↵</kbd> select</span>
+                <span><kbd className="bg-white border border-slate-300 rounded px-1 py-0.5 font-bold shadow-2xs">ESC</kbd> close</span>
+              </div>
+            </div>
+
+            {/* Results List */}
+            <div className="overflow-y-auto max-h-[380px] p-2 space-y-1">
+              {filteredQuickLedgers.length === 0 ? (
+                <div className="py-10 text-center text-slate-400 text-sm font-medium">
+                  No ledgers found matching "<span className="font-semibold text-slate-700">{ledgerSearchQuery}</span>"
+                </div>
+              ) : (
+                filteredQuickLedgers.map((l: any, idx: number) => {
+                  const isSelected = idx === focusedLedgerIdx;
+                  const ledgerName = l['Ledger Name'] || '';
+                  const groupName = l['Group'] || l['Under Group'] || 'General Ledger';
+                  const isCurrentlyViewed = selectedLedger === ledgerName;
+
+                  return (
+                    <div
+                      key={ledgerName || idx}
+                      onClick={() => {
+                        setSelectedLedger(ledgerName);
+                        setMainCategory('fin');
+                        setFinSubTab('LED');
+                        setShowQuickLedgerModal(false);
+                        setShowReportCatalog(false);
+                      }}
+                      onMouseEnter={() => setFocusedLedgerIdx(idx)}
+                      className={`p-3 rounded-xl cursor-pointer flex items-center justify-between transition-colors ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white shadow-md'
+                          : isCurrentlyViewed
+                          ? 'bg-indigo-50 border border-indigo-200 text-indigo-900'
+                          : 'hover:bg-slate-100 text-slate-800'
+                      }`}
+                    >
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm ${isSelected ? 'text-white font-black' : 'text-slate-900 font-bold'}`}>
+                            {ledgerName}
+                          </span>
+                          {isCurrentlyViewed && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${isSelected ? 'bg-indigo-700 text-indigo-100' : 'bg-indigo-100 text-indigo-700'}`}>
+                              ACTIVE
+                            </span>
+                          )}
+                        </div>
+                        <span className={`text-xs ${isSelected ? 'text-indigo-100 font-medium' : 'text-slate-500 font-medium'}`}>
+                          {groupName}
+                        </span>
+                      </div>
+                      <span className={`text-xs font-mono font-bold px-2 py-1 rounded-lg shrink-0 ${
+                        isSelected ? 'bg-indigo-700 text-white shadow-2xs' : 'bg-slate-100 text-slate-600 border border-slate-200'
+                      }`}>
+                        Select ↵
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Change Period Modal (Alt+F2 / Alt+D) */}
+      {showChangePeriodModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setShowChangePeriodModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-indigo-400" />
+                <h3 className="font-bold text-base">Change Report Period</h3>
+                <kbd className="text-[10px] bg-slate-800 border border-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono font-bold">Alt+F2</kbd>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChangePeriodModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5 space-y-4">
+              {/* Preset Chips */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  1-Click Presets
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: 'today', label: 'Today' },
+                    { id: 'yesterday', label: 'Yesterday' },
+                    { id: 'this_week', label: 'This Week' },
+                    { id: 'this_month', label: 'This Month' },
+                    { id: 'last_month', label: 'Last Month' },
+                    { id: 'this_quarter', label: 'This Quarter' },
+                    { id: 'this_fy', label: 'Financial Year (FY)' },
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        applyPreset(p.id as any);
+                        setShowChangePeriodModal(false);
+                      }}
+                      className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <hr className="border-slate-200" />
+
+              {/* Custom Date Inputs */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Custom Period Dates
+                  </label>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    Type e.g. <strong className="text-indigo-600 font-bold">8/8</strong> or <strong className="text-indigo-600 font-bold">8.8</strong>
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* From Date */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">From Date</label>
+                      {(() => {
+                        const parsed = parseSmartDate(fromInputText);
+                        return parsed ? (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                            ✓ {formatDisplayDate(parsed)}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-amber-600 font-medium">Type 8/8 or 8.8</span>
+                        );
+                      })()}
+                    </div>
+                    <div className="relative flex items-center">
+                      <input
+                        ref={periodFromInputRef}
+                        type="text"
+                        value={fromInputText}
+                        onChange={(e) => setFromInputText(e.target.value)}
+                        onBlur={() => {
+                          const parsed = parseSmartDate(fromInputText);
+                          if (parsed) {
+                            setTempFromDate(parsed);
+                            setFromInputText(formatDisplayDate(parsed));
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const parsed = parseSmartDate(fromInputText);
+                            if (parsed) {
+                              setTempFromDate(parsed);
+                              setFromInputText(formatDisplayDate(parsed));
+                            }
+                            periodToInputRef.current?.focus();
+                            periodToInputRef.current?.select();
+                          }
+                        }}
+                        placeholder="e.g. 8/8, 8.8"
+                        className="w-full h-10 rounded-xl border border-slate-300 pl-3 pr-8 font-bold text-slate-900 text-sm focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 outline-none"
+                      />
+                      <label className="absolute right-2 text-slate-400 hover:text-indigo-600 cursor-pointer p-1" title="Pick from Calendar">
+                        <Calendar className="h-4 w-4" />
+                        <input
+                          type="date"
+                          value={tempFromDate}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              setTempFromDate(e.target.value);
+                              setFromInputText(formatDisplayDate(e.target.value));
+                            }
+                          }}
+                          className="sr-only"
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* To Date */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-700">To Date</label>
+                      {(() => {
+                        const parsed = parseSmartDate(toInputText);
+                        return parsed ? (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                            ✓ {formatDisplayDate(parsed)}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-amber-600 font-medium">Type 15/8 or 15.8</span>
+                        );
+                      })()}
+                    </div>
+                    <div className="relative flex items-center">
+                      <input
+                        ref={periodToInputRef}
+                        type="text"
+                        value={toInputText}
+                        onChange={(e) => setToInputText(e.target.value)}
+                        onBlur={() => {
+                          const parsed = parseSmartDate(toInputText);
+                          if (parsed) {
+                            setTempToDate(parsed);
+                            setToInputText(formatDisplayDate(parsed));
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const pFrom = parseSmartDate(fromInputText) || tempFromDate;
+                            const pTo = parseSmartDate(toInputText) || tempToDate;
+                            if (pFrom && pTo) {
+                              setFromDate(pFrom);
+                              setToDate(pTo);
+                              setShowChangePeriodModal(false);
+                            }
+                          }
+                        }}
+                        placeholder="e.g. 15/8, 15.8"
+                        className="w-full h-10 rounded-xl border border-slate-300 pl-3 pr-8 font-bold text-slate-900 text-sm focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 outline-none"
+                      />
+                      <label className="absolute right-2 text-slate-400 hover:text-indigo-600 cursor-pointer p-1" title="Pick from Calendar">
+                        <Calendar className="h-4 w-4" />
+                        <input
+                          type="date"
+                          value={tempToDate}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              setTempToDate(e.target.value);
+                              setToInputText(formatDisplayDate(e.target.value));
+                            }
+                          }}
+                          className="sr-only"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-slate-50 border-t border-slate-200 p-3 px-5 flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-mono">Press <kbd className="bg-white border border-slate-300 rounded px-1 py-0.5 font-bold shadow-2xs text-slate-700">Enter</kbd> to Apply</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowChangePeriodModal(false)}
+                  className="px-3 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-bold text-xs transition cursor-pointer"
+                >
+                  Cancel (Esc)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const pFrom = parseSmartDate(fromInputText) || tempFromDate;
+                    const pTo = parseSmartDate(toInputText) || tempToDate;
+                    if (pFrom && pTo) {
+                      setFromDate(pFrom);
+                      setToDate(pTo);
+                      setShowChangePeriodModal(false);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-md cursor-pointer"
+                >
+                  Apply Period ↵
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -52,7 +52,7 @@ export default function App() {
   const [selectedSaleVoucherType, setSelectedSaleVoucherType] = useState<VoucherType | null>(null);
 
   // Sequential Navigation Functions
-  const navigateTo = (view: string) => {
+  const navigateTo = (view: string, reportTargetOverride?: any) => {
     if (view === 'trash') {
       setShowTrashModal(true);
       return;
@@ -61,7 +61,10 @@ export default function App() {
       handleOpenPOSBilling();
       return;
     }
-    if (view === currentView) return;
+    if (view === 'reports' && reportTargetOverride === undefined) {
+      setReportTarget(null);
+    }
+    if (view === currentView && view !== 'reports') return;
     setCurrentView(view);
     setViewHistory(prev => {
       if (prev[prev.length - 1] === view) return prev;
@@ -203,22 +206,30 @@ export default function App() {
         if (e.detail.view === 'reports') {
           // parse the report target
           const r = e.detail.report?.toLowerCase() || '';
-          const target: any = { timestamp: Date.now() };
-          
-          if (e.detail.fromDate) target.fromDate = e.detail.fromDate;
-          if (e.detail.toDate) target.toDate = e.detail.toDate;
+          if (!r && !e.detail.ledgerName && !e.detail.category) {
+            setReportTarget(null);
+            navigateTo('reports', null);
+          } else {
+            const target: any = { timestamp: Date.now() };
+            
+            if (e.detail.fromDate) target.fromDate = e.detail.fromDate;
+            if (e.detail.toDate) target.toDate = e.detail.toDate;
 
-          if (r.includes('sales')) target.category = 'daily';
-          else if (r.includes('stock')) target.category = 'inv';
-          else if (r.includes('gst')) target.category = 'gst';
-          else if (r.includes('ledger')) { target.category = 'fin'; target.finSubTab = 'LED'; target.ledgerName = e.detail.ledgerName; }
-          else if (r.includes('trial')) { target.category = 'fin'; target.finSubTab = 'TB'; }
-          else if (r.includes('profit')) { target.category = 'fin'; target.finSubTab = 'PNL'; }
-          else if (r.includes('balance')) { target.category = 'fin'; target.finSubTab = 'BS'; }
-          
-          setReportTarget(target);
+            if (r.includes('sales')) target.category = 'daily';
+            else if (r.includes('stock')) target.category = 'inv';
+            else if (r.includes('gst')) target.category = 'gst';
+            else if (r.includes('ledger')) { target.category = 'fin'; target.finSubTab = 'LED'; target.ledgerName = e.detail.ledgerName; }
+            else if (r.includes('trial')) { target.category = 'fin'; target.finSubTab = 'TB'; }
+            else if (r.includes('profit')) { target.category = 'fin'; target.finSubTab = 'PNL'; }
+            else if (r.includes('balance')) { target.category = 'fin'; target.finSubTab = 'BS'; }
+            else if (e.detail.category) target.category = e.detail.category;
+            
+            setReportTarget(target);
+            navigateTo('reports', target);
+          }
+        } else {
+          navigateTo(e.detail.view);
         }
-        navigateTo(e.detail.view);
       }
     };
     const handleOpenTrash = () => setShowTrashModal(true);
@@ -274,6 +285,16 @@ export default function App() {
         return;
       }
 
+      // Change Report Period Shortcut (Alt+F2 / Alt+D)
+      if (e.altKey && (e.key === 'F2' || e.code === 'F2' || rawKey === 'd' || e.code === 'KeyD')) {
+        e.preventDefault();
+        e.stopPropagation();
+        setReportTarget({ category: 'daily', openChangePeriod: true, timestamp: Date.now() });
+        navigateTo('reports');
+        window.dispatchEvent(new CustomEvent('app:open-change-period'));
+        return;
+      }
+
       // Report Shortcuts (Ctrl+D, Ctrl+G, Ctrl+L)
       if ((e.ctrlKey || e.metaKey) && !e.altKey) {
         if (rawKey === 'd' || e.code === 'KeyD') {
@@ -288,8 +309,9 @@ export default function App() {
           return;
         } else if (rawKey === 'l' || e.code === 'KeyL') {
           e.preventDefault();
-          setReportTarget({ category: 'fin', finSubTab: 'LED', timestamp: Date.now() });
+          setReportTarget({ category: 'fin', finSubTab: 'LED', openQuickLedgerSearch: true, timestamp: Date.now() });
           navigateTo('reports');
+          window.dispatchEvent(new CustomEvent('app:open-ledger-search'));
           return;
         }
       }
@@ -509,6 +531,7 @@ export default function App() {
               items={items}
               ledgers={ledgers}
               initialReportTarget={reportTarget}
+              onBack={navigateBack}
               onDrillVoucher={refNo => setDrillModal({ type: 'voucher', targetId: refNo })}
               onDrillLedger={name => setDrillModal({ type: 'ledger', targetId: name })}
               onDrillStock={code => setDrillModal({ type: 'stock', targetId: code })}
