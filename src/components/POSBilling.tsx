@@ -2488,17 +2488,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 onBlur={handleFieldBlurReturnToSearch}
                 onKeyDown={e => {
                   if (e.key === 'Enter') {
-                    const cashVal = Number(cash) || 0;
-                    if (cashVal > totals.total && totals.total > 0) {
-                      e.preventDefault();
-                      setChangeModalData({
-                        billAmount: totals.total,
-                        cashTendered: cashVal,
-                        changeReturn: round2(cashVal - totals.total)
-                      });
-                    } else {
-                      handleCheckout();
-                    }
+                    handleCheckout();
                   }
                 }}
                 className="w-full h-8 rounded-lg border border-slate-300 px-2.5 font-mono text-xs font-bold focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none bg-white"
