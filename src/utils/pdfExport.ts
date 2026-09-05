@@ -95,8 +95,7 @@ export async function shareOrDownloadPDF(
     if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
       await navigator.share({
         files: [pdfFile],
-        title: title,
-        text: fallbackText || title
+        title: title
       });
       return { success: true, method: 'shared' };
     } else {
@@ -137,7 +136,7 @@ function drawReportHeaderBox(
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 12;
   const headerWidth = pageWidth - margin * 2;
-  const headerHeight = 28;
+  const headerHeight = 31;
   const startY = 10;
   
   doc.setFillColor(248, 250, 252);
@@ -146,15 +145,15 @@ function drawReportHeaderBox(
   doc.roundedRect(margin, startY, headerWidth, headerHeight, 3, 3, 'FD');
 
   let textCenterX = pageWidth / 2;
-  let textStartY = startY + 8.5;
+  let textStartY = startY + 9.5;
 
   const logo = config.CompanyLogo || config.ReceiptHeaderImage;
   if (logo) {
     try {
       const imgProps = doc.getImageProperties(logo);
-      const maxLogoHeight = headerHeight - 6;
+      const maxLogoHeight = headerHeight - 9;
       const logoWidth = (imgProps.width * maxLogoHeight) / imgProps.height;
-      doc.addImage(logo, logo.includes('png') ? 'PNG' : 'JPEG', margin + 4, startY + 3, logoWidth, maxLogoHeight);
+      doc.addImage(logo, logo.includes('png') ? 'PNG' : 'JPEG', margin + 4, startY + 4.5, logoWidth, maxLogoHeight);
     } catch (e) {}
   }
 
@@ -185,11 +184,11 @@ function drawReportHeaderBox(
   const periodX = (pageWidth - periodWidth) / 2;
   doc.setFillColor(224, 231, 255);
   doc.setDrawColor(199, 210, 254);
-  doc.roundedRect(periodX, startY + 20.5, periodWidth, 4.5, 2.25, 2.25, 'FD');
+  doc.roundedRect(periodX, startY + 22.5, periodWidth, 5, 2.5, 2.5, 'FD');
   doc.setTextColor(55, 48, 163);
-  doc.text(periodStr, textCenterX, startY + 23.8, { align: 'center' });
+  doc.text(periodStr, textCenterX, startY + 26, { align: 'center' });
 
-  return startY + headerHeight + 5;
+  return startY + headerHeight + 6;
 }
 
 export function drawVoucherHeader(doc: jsPDF, config: Config, title: string, meta: {label: string, value: string}[], margin: number = 14): number {
@@ -394,7 +393,7 @@ export function generateReportPDF(
       body: tradingRows,
       foot: [ ['TOTAL', fmt(totalTradingLeft), 'TOTAL', fmt(totalTradingRight)] ],
       theme: 'plain',
-      headStyles: { fillColor: [248, 250, 252], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8, cellPadding: 2, lineWidth: { top: 0.5, bottom: 0.5 }, lineColor: [15, 23, 42] },
+      headStyles: { fillColor: [14, 116, 144], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.5, halign: 'left' },
       columnStyles: {
         0: { cellWidth: 63 },
         1: { cellWidth: 28, halign: 'right' },
@@ -404,6 +403,9 @@ export function generateReportPDF(
       bodyStyles: { fontSize: 8, textColor: [15, 23, 42], cellPadding: 1.8 },
       footStyles: { fillColor: [255, 255, 255], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.2, lineWidth: { top: 0.5, bottom: 1.5 }, lineColor: [15, 23, 42] },
       didParseCell: (data) => {
+        if (data.section === 'head' && (data.column.index === 1 || data.column.index === 3)) {
+          data.cell.styles.halign = 'right';
+        }
         if (data.section === 'body') {
           const row = tradingRows[data.row.index];
           if (!row) return;
@@ -510,7 +512,7 @@ export function generateReportPDF(
       body: pnlRows,
       foot: [ ['TOTAL', fmt(totalPnlLeft), 'TOTAL', fmt(totalPnlRight)] ],
       theme: 'plain',
-      headStyles: { fillColor: [248, 250, 252], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8, cellPadding: 2, lineWidth: { top: 0.5, bottom: 0.5 }, lineColor: [15, 23, 42] },
+      headStyles: { fillColor: [14, 116, 144], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.5, halign: 'left' },
       columnStyles: {
         0: { cellWidth: 63 },
         1: { cellWidth: 28, halign: 'right' },
@@ -520,6 +522,9 @@ export function generateReportPDF(
       bodyStyles: { fontSize: 8, textColor: [15, 23, 42], cellPadding: 1.8 },
       footStyles: { fillColor: [255, 255, 255], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.2, lineWidth: { top: 0.5, bottom: 1.5 }, lineColor: [15, 23, 42] },
       didParseCell: (data) => {
+        if (data.section === 'head' && (data.column.index === 1 || data.column.index === 3)) {
+          data.cell.styles.halign = 'right';
+        }
         if (data.section === 'body') {
           const row = pnlRows[data.row.index];
           if (!row) return;
@@ -604,16 +609,6 @@ export function generateReportPDF(
     const totalLiab = cap + netProfit + loans + cl;
     const totalAssets = fa + ca + stockVal;
 
-    // BALANCE SHEET Section Header
-    doc.setFillColor(224, 231, 255);
-    doc.setDrawColor(199, 210, 254);
-    doc.roundedRect(14, currentY, pageWidth - 28, 6.5, 1, 1, 'FD');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(55, 48, 163);
-    doc.text('BALANCE SHEET', 18, currentY + 4.5);
-    currentY += 8;
-
     const leftBs: { label: string; amt: string }[] = [];
     const rightBs: { label: string; amt: string }[] = [];
 
@@ -661,7 +656,7 @@ export function generateReportPDF(
       body: bsRows,
       foot: [ ['TOTAL LIABILITIES', fmt(totalLiab), 'TOTAL ASSETS', fmt(totalAssets)] ],
       theme: 'plain',
-      headStyles: { fillColor: [248, 250, 252], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8, cellPadding: 2, lineWidth: { top: 0.5, bottom: 0.5 }, lineColor: [15, 23, 42] },
+      headStyles: { fillColor: [14, 116, 144], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.5, halign: 'left' },
       columnStyles: {
         0: { cellWidth: 63 },
         1: { cellWidth: 28, halign: 'right' },
@@ -671,6 +666,9 @@ export function generateReportPDF(
       bodyStyles: { fontSize: 8, textColor: [15, 23, 42], cellPadding: 1.8 },
       footStyles: { fillColor: [255, 255, 255], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.2, lineWidth: { top: 0.5, bottom: 1.5 }, lineColor: [15, 23, 42] },
       didParseCell: (data) => {
+        if (data.section === 'head' && (data.column.index === 1 || data.column.index === 3)) {
+          data.cell.styles.halign = 'right';
+        }
         if (data.section === 'body') {
           const row = bsRows[data.row.index];
           if (!row) return;
@@ -797,7 +795,7 @@ export function generateReportPDF(
       body: tbRows,
       foot: [ ['CARRIED OVER / GRAND TOTAL', fmt(totalDr), fmt(totalCr)] ],
       theme: 'plain',
-      headStyles: { fillColor: [248, 250, 252], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2, lineWidth: { top: 0.5, bottom: 0.5 }, lineColor: [15, 23, 42] },
+      headStyles: { fillColor: [14, 116, 144], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.5, halign: 'left' },
       columnStyles: {
         0: { cellWidth: 102 },
         1: { cellWidth: 40, halign: 'right' },
@@ -806,6 +804,9 @@ export function generateReportPDF(
       bodyStyles: { fontSize: 8, textColor: [15, 23, 42], cellPadding: 1.8 },
       footStyles: { fillColor: [255, 255, 255], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.2, lineWidth: { top: 0.5, bottom: 1.5 }, lineColor: [15, 23, 42] },
       didParseCell: (data) => {
+        if (data.section === 'head' && (data.column.index === 1 || data.column.index === 2)) {
+          data.cell.styles.halign = 'right';
+        }
         if (data.section === 'body') {
           const isGrp = isGroupRowIndex[data.row.index];
           if (isGrp) {

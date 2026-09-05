@@ -3614,15 +3614,21 @@ export function getFullLedgerStatement(name: string, fromDate?: string, toDate?:
 
   targetLogs.forEach(r => {
     let logDateStr = '';
-    if (r.DateIso) {
-      const dt = new Date(r.DateIso);
+    const rawDate = r.DateIso || (r as any).Date || (r as any).date || '';
+    if (rawDate) {
+      const dt = new Date(rawDate);
       if (!isNaN(dt.getTime())) {
         const y = dt.getFullYear();
         const m = String(dt.getMonth() + 1).padStart(2, '0');
         const d = String(dt.getDate()).padStart(2, '0');
         logDateStr = `${y}-${m}-${d}`;
-      } else if (typeof r.DateIso === 'string') {
-        logDateStr = r.DateIso.split('T')[0];
+      } else if (typeof rawDate === 'string') {
+        // Handle YYYYMMDD if possible
+        if (rawDate.length === 8 && !rawDate.includes('-')) {
+            logDateStr = `${rawDate.substring(0,4)}-${rawDate.substring(4,6)}-${rawDate.substring(6,8)}`;
+        } else {
+            logDateStr = rawDate.split('T')[0];
+        }
       }
     }
 
@@ -3632,13 +3638,23 @@ export function getFullLedgerStatement(name: string, fromDate?: string, toDate?:
     const v = vouchers.find(v => v.voucherNo === ref);
     const isCancelled = (sale?.status === 'Cancelled') || (pur?.status === 'Cancelled') || ((v as any)?.status === 'Cancelled');
 
-    if (fromDate && logDateStr && logDateStr < fromDate) {
+    if (!logDateStr) {
+      // If no valid date, we can't accurately filter. Assume it belongs to the period so it's visible, 
+      // but maybe it should be opening balance. Let's treat it as opening balance to hide it from period if dates are required.
+      if (!isCancelled && fromDate) {
+        const dr = Number(r.Debit) || 0;
+        const cr = Number(r.Credit) || 0;
+        periodOpBal += (dr - cr);
+      } else if (!fromDate) {
+        periodLogs.push(r);
+      }
+    } else if (fromDate && logDateStr < fromDate) {
       if (!isCancelled) {
         const dr = Number(r.Debit) || 0;
         const cr = Number(r.Credit) || 0;
         periodOpBal += (dr - cr);
       }
-    } else if (toDate && logDateStr && logDateStr > toDate) {
+    } else if (toDate && logDateStr > toDate) {
       // Entry is beyond period end date
     } else {
       periodLogs.push(r);

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, TrendingUp, TrendingDown, Scale, PieChart, Layers, ArrowUpRight, ArrowDownRight, RefreshCw } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, ChevronUp, CheckCircle2, AlertTriangle, TrendingUp, TrendingDown, Scale, PieChart, Layers, ArrowUpRight, ArrowDownRight, RefreshCw } from 'lucide-react';
 
 export type ReportDetailDepth = 'summary' | 'detailed' | 'super_detailed';
 
@@ -13,6 +13,8 @@ interface FinancialStatementViewProps {
   onDrillLedger?: (ledgerName: string) => void;
   onDrillGroup?: (groupName: string, from?: string, to?: string) => void;
   config?: any;
+  isControlsCollapsed?: boolean;
+  onToggleControls?: () => void;
 }
 
 interface GroupNode {
@@ -40,7 +42,9 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
   onDepthChange,
   onDrillLedger,
   onDrillGroup,
-  config
+  config,
+  isControlsCollapsed,
+  onToggleControls
 }) => {
   const [depth, setDepth] = useState<ReportDetailDepth>(initialDepth);
   const [searchTerm, setSearchTerm] = useState('');
@@ -302,73 +306,72 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
       {/* 1. TRIAL BALANCE VIEW */}
       {reportType === 'TB' && (
         <div className="w-full space-y-0">
-          {/* Header & Controls Strip */}
-          <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 bg-slate-900 text-white px-4 sm:px-6 py-3 border-b border-slate-800">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="p-2 rounded-lg bg-indigo-600/30 border border-indigo-500/30 text-indigo-400">
-                <Scale className="h-5 w-5" />
+          {/* Stunning Header & Controls Strip */}
+          <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-4 sm:px-6 py-2.5 border-b border-indigo-500/30 rounded-t-xl shadow-lg relative overflow-hidden">
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
+            
+            <div className="flex items-center gap-3 flex-wrap relative z-10">
+              <div className="p-2 rounded-xl bg-white/10 border border-white/20 backdrop-blur-md shadow-sm">
+                <Scale className="h-5 w-5 text-indigo-300" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-sm sm:text-base text-white tracking-wide uppercase">Trial Balance Statement</span>
-                  <span className="text-[11px] text-slate-300 font-medium bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-700">
-                    {fromDate} to {toDate}
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="font-black text-base sm:text-lg text-white tracking-wider uppercase drop-shadow-sm leading-none">Trial Balance</h2>
+                <div className="flex items-center gap-1.5 ml-1">
+                  <span className="text-[9px] font-bold text-indigo-200 bg-black/20 px-2 py-0.5 rounded border border-white/10 uppercase tracking-widest">
+                    Period
                   </span>
+                  <span className="text-[10px] text-slate-300 font-mono tracking-wide">{fromDate} <span className="text-indigo-400">to</span> {toDate}</span>
                 </div>
-                <p className="text-[11px] text-slate-400">Summary of all debit and credit ledger balances</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 flex-wrap">
-              {/* Depth Selector Pills */}
-              <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs">
-                <button
-                  type="button"
-                  onClick={() => handleDepthSelect('summary')}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition ${depth === 'summary' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                >
-                  Summary
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDepthSelect('detailed')}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition ${depth === 'detailed' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                >
-                  Detailed
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDepthSelect('super_detailed')}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition ${depth === 'super_detailed' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                >
-                  Super Detailed
-                </button>
-              </div>
-
+            <div className="flex items-center gap-3 flex-wrap relative z-10 ml-auto md:ml-0">
               {/* Search Box */}
               <div className="relative min-w-[180px] sm:min-w-[220px]">
-                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+                <Search className="absolute left-3 top-2 h-4 w-4 text-slate-400" />
                 <input
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search group / ledger..."
-                  className="w-full rounded-xl border border-slate-700 bg-slate-800/90 pl-8 pr-3 py-1 text-xs text-white placeholder-slate-400 focus:border-indigo-400 focus:outline-hidden"
+                  placeholder="Search ledger..."
+                  className="w-full rounded-xl border border-white/20 bg-black/20 pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-400 focus:border-indigo-400 focus:bg-black/40 focus:outline-hidden backdrop-blur-sm shadow-inner transition-colors"
                 />
               </div>
 
               {/* Total Badge */}
-              <div className="hidden lg:flex items-center gap-2 bg-slate-800 px-3 py-1 rounded-xl border border-slate-700">
-                <span className="text-[10px] text-slate-400 uppercase font-bold">Total:</span>
-                <span className="text-xs font-bold font-mono text-emerald-400">{curSymbol} {fmt(tbTotals.closingDr)}</span>
+              <div className="hidden lg:flex items-center gap-2 bg-black/20 px-4 py-1.5 rounded-xl border border-white/10 shadow-inner backdrop-blur-sm">
+                <span className="text-[10px] text-indigo-300 uppercase font-bold tracking-widest">Total:</span>
+                <span className="text-sm font-bold font-mono text-white">{curSymbol} {fmt(tbTotals.closingDr)}</span>
               </div>
+
+              {onToggleControls && (
+                !isControlsCollapsed ? (
+                  <button
+                    type="button"
+                    onClick={onToggleControls}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm"
+                    title="Collapse Filters & Expand Table"
+                  >
+                    Collapse <ChevronUp className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onToggleControls}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-indigo-500 text-white hover:bg-indigo-400 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm"
+                    title="Expand Filters"
+                  >
+                    Expand <ChevronDown className="h-4 w-4" />
+                  </button>
+                )
+              )}
             </div>
           </div>
 
           {/* Full Screen Table */}
-          <div className="w-full overflow-x-auto bg-white">
+          <div className="w-full bg-white">
             <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-              <thead className="sticky top-0 z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+              <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
                 <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                   <th className="bg-slate-100 bg-clip-padding py-3 px-4 sm:px-6 text-left">Particulars / Account Head</th>
                   <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left w-56 hidden md:table-cell">Account Group</th>
@@ -502,65 +505,71 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
       {/* 2. PROFIT & LOSS ACCOUNT VIEW */}
       {reportType === 'PNL' && pnlData && (
         <div className="w-full space-y-0">
-          {/* Header Summary Strip */}
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 bg-slate-900 text-white px-4 sm:px-6 py-3 border-b border-slate-800">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="p-2 rounded-lg bg-emerald-600/30 border border-emerald-500/30 text-emerald-400">
-                <TrendingUp className="h-5 w-5" />
+          {/* Stunning Header Summary Strip */}
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 px-4 sm:px-6 py-2.5 border-b border-emerald-500/30 rounded-t-xl shadow-lg relative overflow-hidden">
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
+
+            <div className="flex items-center gap-3 flex-wrap relative z-10">
+              <div className="p-2 rounded-xl bg-white/10 border border-white/20 backdrop-blur-md shadow-sm">
+                <TrendingUp className="h-5 w-5 text-emerald-300" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-sm sm:text-base text-white tracking-wide uppercase">Profit & Loss Account</span>
-                  <span className="text-[11px] text-slate-300 font-medium bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-700">
-                    Period: {fromDate} to {toDate}
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="font-black text-base sm:text-lg text-white tracking-wider uppercase drop-shadow-sm leading-none">Profit & Loss Account</h2>
+                <div className="flex items-center gap-1.5 ml-1">
+                  <span className="text-[9px] font-bold text-emerald-200 bg-black/20 px-2 py-0.5 rounded border border-white/10 uppercase tracking-widest">
+                    Period
                   </span>
+                  <span className="text-[10px] text-slate-300 font-mono tracking-wide">{fromDate} <span className="text-emerald-400">to</span> {toDate}</span>
                 </div>
-                <p className="text-[11px] text-slate-400">Trading Statement, Cost of Goods Sold & Operating Net Profit</p>
               </div>
             </div>
 
             {/* Live KPI Metric Pills */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-              <div className="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
-                <span className="text-[10px] text-slate-400 uppercase font-semibold block">Turnover (Sales)</span>
-                <span className="font-bold font-mono text-white">{curSymbol} {fmt(pnlData.turnover)}</span>
+            <div className="flex items-center gap-3 flex-wrap relative z-10 ml-auto lg:ml-0 mt-2 lg:mt-0">
+              <div className="bg-black/20 px-3 py-1 rounded-xl border border-white/10 shadow-inner backdrop-blur-sm">
+                <span className="text-[9px] text-slate-400 uppercase font-bold tracking-widest block">Turnover (Sales)</span>
+                <span className="font-bold font-mono text-white text-xs sm:text-sm">{curSymbol} {fmt(pnlData.turnover)}</span>
               </div>
 
-              <div className="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
-                <span className="text-[10px] text-slate-400 uppercase font-semibold block">Gross Profit</span>
-                <span className={`font-bold font-mono ${pnlData.grossProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {curSymbol} {fmt(pnlData.grossProfit)} <span className="text-[10px] font-sans">({pnlData.grossMarginPct}%)</span>
+              <div className="bg-black/20 px-3 py-1 rounded-xl border border-white/10 shadow-inner backdrop-blur-sm">
+                <span className="text-[9px] text-slate-400 uppercase font-bold tracking-widest block">Gross Profit</span>
+                <span className={`font-bold font-mono text-xs sm:text-sm ${pnlData.grossProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {curSymbol} {fmt(pnlData.grossProfit)} <span className="text-[9px] font-sans text-slate-500">({pnlData.grossMarginPct}%)</span>
                 </span>
               </div>
 
-              <div className={`px-3 py-1.5 rounded-xl border text-xs font-bold ${
+              <div className={`px-3 py-1 rounded-xl border font-bold backdrop-blur-sm shadow-inner ${
                 pnlData.netProfit >= 0 
-                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700' 
-                  : 'bg-rose-950/80 text-rose-300 border-rose-700'
+                  ? 'bg-emerald-900/40 text-emerald-300 border-emerald-500/30' 
+                  : 'bg-rose-900/40 text-rose-300 border-rose-500/30'
               }`}>
-                <span className="text-[10px] uppercase block font-semibold">Nett {pnlData.netProfit >= 0 ? 'Profit' : 'Loss'}</span>
-                <span className="font-mono text-sm">
-                  {curSymbol} {fmt(pnlData.netProfit)} <span className="text-[10px] font-sans">({pnlData.netMarginPct}%)</span>
+                <span className="text-[9px] uppercase block font-bold tracking-widest text-inherit opacity-80">Nett {pnlData.netProfit >= 0 ? 'Profit' : 'Loss'}</span>
+                <span className="font-mono text-xs sm:text-sm">
+                  {curSymbol} {fmt(pnlData.netProfit)} <span className="text-[9px] font-sans opacity-70">({pnlData.netMarginPct}%)</span>
                 </span>
               </div>
 
-              {/* Depth Selector Pills */}
-              <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs ml-auto">
-                <button
-                  type="button"
-                  onClick={() => handleDepthSelect('summary')}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition ${depth === 'summary' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                >
-                  Summary
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDepthSelect('detailed')}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition ${depth === 'detailed' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                >
-                  Detailed
-                </button>
-              </div>
+              {onToggleControls && (
+                !isControlsCollapsed ? (
+                  <button
+                    type="button"
+                    onClick={onToggleControls}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm ml-2"
+                    title="Collapse Filters & Expand Table"
+                  >
+                    Collapse <ChevronUp className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onToggleControls}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-emerald-600 text-white hover:bg-emerald-500 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm ml-2"
+                    title="Expand Filters"
+                  >
+                    Expand <ChevronDown className="h-4 w-4" />
+                  </button>
+                )
+              )}
             </div>
           </div>
 
@@ -568,7 +577,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
           <div className="w-full bg-white">
             {/* 2.1 TRADING ACCOUNT SECTION */}
             <div className="border-b-2 border-slate-300">
-              <div className="bg-slate-100 px-4 sm:px-6 py-2 text-slate-800 font-extrabold text-xs uppercase tracking-wider border-b border-slate-200 flex items-center justify-between">
+              <div className="sticky top-0 z-30 bg-slate-100 px-4 sm:px-6 py-2 text-slate-800 font-extrabold text-xs uppercase tracking-wider border-b border-slate-200 flex items-center justify-between shadow-sm">
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
                   1. Trading Account (Gross Margin)
@@ -649,7 +658,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t-2 border-slate-900 font-extrabold flex justify-between items-center text-slate-900 text-xs sm:text-sm">
+                  <div className="sticky bottom-0 z-30 bg-white/95 backdrop-blur-xs py-3 mt-4 border-t-2 border-slate-900 font-extrabold flex justify-between items-center text-slate-900 text-xs sm:text-sm shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                     <span className="uppercase tracking-wider">Trading Total</span>
                     <span className="font-mono font-extrabold text-sm sm:text-base">
                       {curSymbol} {fmt(pnlData.os + pnlData.pur + pnlData.de + Math.max(0, pnlData.grossProfit))}
@@ -721,7 +730,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t-2 border-slate-900 font-extrabold flex justify-between items-center text-slate-900 text-xs sm:text-sm">
+                  <div className="sticky bottom-0 z-30 bg-white/95 backdrop-blur-xs py-3 mt-4 border-t-2 border-slate-900 font-extrabold flex justify-between items-center text-slate-900 text-xs sm:text-sm shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                     <span className="uppercase tracking-wider">Trading Total</span>
                     <span className="font-mono font-extrabold text-sm sm:text-base">
                       {curSymbol} {fmt(pnlData.s + pnlData.cs + pnlData.di + Math.max(0, -pnlData.grossProfit))}
@@ -733,7 +742,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
 
             {/* 2.2 PROFIT & LOSS SECTION */}
             <div>
-              <div className="bg-slate-100 px-4 sm:px-6 py-2 text-slate-800 font-extrabold text-xs uppercase tracking-wider border-b border-slate-200 flex items-center justify-between">
+              <div className="sticky top-0 z-30 bg-slate-100 px-4 sm:px-6 py-2 text-slate-800 font-extrabold text-xs uppercase tracking-wider border-b border-slate-200 flex items-center justify-between shadow-sm">
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
                   2. Operating & Net Profit / Loss Statement
@@ -850,72 +859,78 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
       {/* 3. BALANCE SHEET VIEW */}
       {reportType === 'BS' && bsData && (
         <div className="w-full space-y-0">
-          {/* Header Summary Strip */}
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 bg-slate-900 text-white px-4 sm:px-6 py-3 border-b border-slate-800">
-            <div className="flex items-center gap-3 flex-wrap">
-              <div className="p-2 rounded-lg bg-indigo-600/30 border border-indigo-500/30 text-indigo-400">
-                <PieChart className="h-5 w-5" />
+          {/* Stunning Header Summary Strip */}
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 bg-gradient-to-r from-slate-900 via-slate-800 to-sky-950 px-4 sm:px-6 py-2.5 border-b border-sky-500/30 rounded-t-xl shadow-lg relative overflow-hidden">
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
+
+            <div className="flex items-center gap-3 flex-wrap relative z-10">
+              <div className="p-2 rounded-xl bg-white/10 border border-white/20 backdrop-blur-md shadow-sm">
+                <PieChart className="h-5 w-5 text-sky-300" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-sm sm:text-base text-white tracking-wide uppercase">Balance Sheet Statement</span>
-                  <span className="text-[11px] text-slate-300 font-medium bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-700">
-                    As at: {toDate}
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="font-black text-base sm:text-lg text-white tracking-wider uppercase drop-shadow-sm leading-none">Balance Sheet</h2>
+                <div className="flex items-center gap-1.5 ml-1">
+                  <span className="text-[9px] font-bold text-sky-200 bg-black/20 px-2 py-0.5 rounded border border-white/10 uppercase tracking-widest">
+                    As at
                   </span>
+                  <span className="text-[10px] text-slate-300 font-mono tracking-wide">{toDate}</span>
                 </div>
-                <p className="text-[11px] text-slate-400">Financial position, capital, assets and liabilities</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap relative z-10 ml-auto lg:ml-0 mt-2 lg:mt-0">
               {/* Working Capital Pill */}
-              <div className="bg-slate-800/90 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
-                <span className="text-[10px] text-slate-400 uppercase font-semibold block">Working Capital</span>
-                <span className="font-bold font-mono text-indigo-300">{curSymbol} {fmt(bsData.workingCapital)}</span>
+              <div className="bg-black/20 px-3 py-1 rounded-xl border border-white/10 shadow-inner backdrop-blur-sm">
+                <span className="text-[9px] text-slate-400 uppercase font-bold tracking-widest block">Working Capital</span>
+                <span className="font-bold font-mono text-sky-400 text-xs sm:text-sm">{curSymbol} {fmt(bsData.workingCapital)}</span>
               </div>
 
               {/* Balanced Status Pill */}
-              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold font-mono ${
+              <div className={`flex items-center gap-2 px-3 py-1 rounded-xl border font-bold backdrop-blur-sm shadow-inner ${
                 bsData.isBalanced 
-                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700' 
-                  : 'bg-rose-950/80 text-rose-300 border-rose-700'
+                  ? 'bg-emerald-900/40 text-emerald-300 border-emerald-500/30' 
+                  : 'bg-rose-900/40 text-rose-300 border-rose-500/30'
               }`}>
                 {bsData.isBalanced ? (
                   <>
                     <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
                     <div>
-                      <span className="text-[10px] uppercase block font-semibold">Status</span>
-                      <span>Balanced: {curSymbol} {fmt(bsData.totalAssets)}</span>
+                      <span className="text-[9px] uppercase block font-bold tracking-widest text-inherit opacity-80">Status</span>
+                      <span className="text-xs sm:text-sm font-mono">Balanced: {curSymbol} {fmt(bsData.totalAssets)}</span>
                     </div>
                   </>
                 ) : (
                   <>
                     <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" />
                     <div>
-                      <span className="text-[10px] uppercase block font-semibold">Imbalance</span>
-                      <span>Diff: {curSymbol} {fmt(Math.abs(bsData.diff))}</span>
+                      <span className="text-[9px] uppercase block font-bold tracking-widest text-inherit opacity-80">Imbalance</span>
+                      <span className="text-xs sm:text-sm font-mono">Diff: {curSymbol} {fmt(Math.abs(bsData.diff))}</span>
                     </div>
                   </>
                 )}
               </div>
 
-              {/* Depth Selector Pills */}
-              <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 text-xs ml-auto">
-                <button
-                  type="button"
-                  onClick={() => handleDepthSelect('summary')}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition ${depth === 'summary' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                >
-                  Summary
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDepthSelect('detailed')}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition ${depth === 'detailed' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                >
-                  Detailed
-                </button>
-              </div>
+              {onToggleControls && (
+                !isControlsCollapsed ? (
+                  <button
+                    type="button"
+                    onClick={onToggleControls}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm ml-2"
+                    title="Collapse Filters & Expand Table"
+                  >
+                    Collapse <ChevronUp className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onToggleControls}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-sky-600 text-white hover:bg-sky-500 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm ml-2"
+                    title="Expand Filters"
+                  >
+                    Expand <ChevronDown className="h-4 w-4" />
+                  </button>
+                )
+              )}
             </div>
           </div>
 
@@ -1006,7 +1021,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                   </div>
                 </div>
 
-                <div className="pt-3.5 border-t-2 border-slate-900 font-extrabold flex justify-between items-center text-slate-900 text-xs sm:text-sm">
+                <div className="sticky bottom-0 z-30 bg-white/95 backdrop-blur-xs py-3 mt-4 px-4 sm:px-6 border-t-2 border-slate-900 font-extrabold flex justify-between items-center text-slate-900 text-xs sm:text-sm shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                   <span className="uppercase tracking-wider">TOTAL LIABILITIES</span>
                   <span className="font-mono text-sm sm:text-base font-extrabold">
                     {curSymbol} {fmt(bsData.totalLiab)}
@@ -1069,7 +1084,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                   </div>
                 </div>
 
-                <div className="pt-3.5 border-t-2 border-slate-900 font-extrabold flex justify-between items-center text-slate-900 text-xs sm:text-sm">
+                <div className="sticky bottom-0 z-30 bg-white/95 backdrop-blur-xs py-3 mt-4 px-4 sm:px-6 border-t-2 border-slate-900 font-extrabold flex justify-between items-center text-slate-900 text-xs sm:text-sm shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
                   <span className="uppercase tracking-wider">TOTAL ASSETS</span>
                   <span className="font-mono text-sm sm:text-base font-extrabold">
                     {curSymbol} {fmt(bsData.totalAssets)}

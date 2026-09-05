@@ -492,7 +492,8 @@ export const Reports: React.FC<ReportsProps> = ({
           if (!activeLedger && ledgers.length > 0) {
             const defaultLedger = ledgers.find(l => l['Ledger Name']?.trim().toLowerCase() === 'cash')?.['Ledger Name']
               || ledgers.find(l => (l.Group || '').toLowerCase() === 'cash-in-hand')?.['Ledger Name']
-              || ledgers[0]['Ledger Name'];
+              || ledgers.find(l => l['Ledger Name']?.toLowerCase().includes('cash'))?.['Ledger Name']
+              || '';
             activeLedger = defaultLedger;
             setSelectedLedger(defaultLedger);
           }
@@ -698,7 +699,7 @@ export const Reports: React.FC<ReportsProps> = ({
         const diff = Math.abs(totDr - totCr);
 
         if (detailDepth === 'summary') {
-          reportTitle = 'Trial Balance Statement (Grouped Summary)';
+          reportTitle = 'Trial Balance Statement';
           headers = ['Primary Account Group', 'Nature', 'Debit Amount (Dr) (Nu.)', 'Credit Amount (Cr) (Nu.)'];
           const grpMap: Record<string, { nat: string; dr: number; cr: number }> = {};
           reportData.tb.forEach((l: any) => {
@@ -712,7 +713,7 @@ export const Reports: React.FC<ReportsProps> = ({
           });
         } else {
           const isSuper = detailDepth === 'super_detailed';
-          reportTitle = `Trial Balance Statement (${isSuper ? 'Super Detailed Master View' : 'Detailed Group View'})`;
+          reportTitle = 'Trial Balance Statement';
           headers = ['Particulars (Group / Master Ledger)', 'Opening Dr/Cr', 'Period Dr (Nu.)', 'Period Cr (Nu.)', 'Closing Dr (Nu.)', 'Closing Cr (Nu.)'];
 
           const grpMap: Record<string, any[]> = {};
@@ -1063,12 +1064,20 @@ export const Reports: React.FC<ReportsProps> = ({
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet(aoa);
 
+      // Merge main headers across all columns
+      const maxColIdx = headers.length > 0 ? headers.length - 1 : 0;
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: maxColIdx } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: maxColIdx } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: maxColIdx } },
+      ];
+
       // Company Name Style (Row 0)
       const companyRef = XLSX.utils.encode_cell({ r: 0, c: 0 });
       if (ws[companyRef]) {
         ws[companyRef].s = {
           font: { name: 'Calibri', sz: 16, bold: true, color: { rgb: '1E1B4B' } },
-          alignment: { vertical: 'center' }
+          alignment: { vertical: 'center', horizontal: 'center' }
         };
       }
 
@@ -1077,7 +1086,7 @@ export const Reports: React.FC<ReportsProps> = ({
       if (ws[titleRef]) {
         ws[titleRef].s = {
           font: { name: 'Calibri', sz: 13, bold: true, color: { rgb: '3730A3' } },
-          alignment: { vertical: 'center' }
+          alignment: { vertical: 'center', horizontal: 'center' }
         };
       }
 
@@ -1086,7 +1095,7 @@ export const Reports: React.FC<ReportsProps> = ({
       if (ws[periodRef]) {
         ws[periodRef].s = {
           font: { name: 'Calibri', sz: 10, italic: true, color: { rgb: '64748B' } },
-          alignment: { vertical: 'center' }
+          alignment: { vertical: 'center', horizontal: 'center' }
         };
       }
 
@@ -1098,7 +1107,7 @@ export const Reports: React.FC<ReportsProps> = ({
           ws[cellRef].s = {
             font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: 'FFFFFF' } },
             fill: { fgColor: { rgb: '1E293B' } },
-            alignment: { vertical: 'center', horizontal: colIdx === 0 ? 'left' : 'center', wrapText: true },
+            alignment: { vertical: 'center', horizontal: 'center', wrapText: true },
             border: {
               top: { style: 'medium', color: { rgb: '0F172A' } },
               bottom: { style: 'medium', color: { rgb: '0F172A' } },
@@ -1134,7 +1143,9 @@ export const Reports: React.FC<ReportsProps> = ({
               alignment: { vertical: 'center', horizontal: 'left' },
               border: {
                 top: { style: 'thin', color: { rgb: 'A5B4FC' } },
-                bottom: { style: 'thin', color: { rgb: 'A5B4FC' } }
+                bottom: { style: 'thin', color: { rgb: 'A5B4FC' } },
+                left: { style: 'thin', color: { rgb: 'A5B4FC' } },
+                right: { style: 'thin', color: { rgb: 'A5B4FC' } }
               }
             };
           } else if (isTotalRow) {
@@ -1144,7 +1155,9 @@ export const Reports: React.FC<ReportsProps> = ({
               alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left' },
               border: {
                 top: { style: 'thin', color: { rgb: '0F172A' } },
-                bottom: { style: 'double', color: { rgb: '0F172A' } }
+                bottom: { style: 'double', color: { rgb: '0F172A' } },
+                left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+                right: { style: 'thin', color: { rgb: 'CBD5E1' } }
               }
             };
           } else {
@@ -1155,11 +1168,12 @@ export const Reports: React.FC<ReportsProps> = ({
             ws[cellRef].s = {
               font: { name: 'Calibri', sz: isSub ? 10 : 10.5, italic: isSub, bold: !isSub || isProfit, color: { rgb: textColor } },
               fill: { fgColor: { rgb: isEven ? 'FFFFFF' : 'F8FAFC' } },
-              alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left' },
+              alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left', wrapText: true },
               border: {
-                bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
-                left: { style: 'thin', color: { rgb: 'F1F5F9' } },
-                right: { style: 'thin', color: { rgb: 'F1F5F9' } }
+                top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+                bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+                left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+                right: { style: 'thin', color: { rgb: 'CBD5E1' } }
               }
             };
           }
@@ -1176,23 +1190,27 @@ export const Reports: React.FC<ReportsProps> = ({
             ws[cellRef].s = {
               font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: '0F172A' } },
               fill: { fgColor: { rgb: 'F1F5F9' } },
-              alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left' },
+              alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left', wrapText: true },
               border: {
                 top: { style: 'thin', color: { rgb: '0F172A' } },
-                bottom: { style: 'double', color: { rgb: '0F172A' } }
+                bottom: { style: 'double', color: { rgb: '0F172A' } },
+                left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+                right: { style: 'thin', color: { rgb: 'CBD5E1' } }
               }
             };
           }
         });
       }
 
-      // Auto-calculate generous column widths with extra padding/margin (+8 chars margin)
-      const colWidths: { wch: number }[] = headers.map(() => ({ wch: 20 }));
-      aoa.forEach(row => {
+      // Auto-calculate generous column widths based strictly on data (ignore headers to force wrapping)
+      const colWidths: { wch: number }[] = headers.map(() => ({ wch: 15 }));
+      aoa.forEach((row, rowIdx) => {
+        if (rowIdx <= 4) return; // Skip headers when calculating column width to force long headers to wrap!
         row.forEach((val, colIdx) => {
           const strLen = val !== null && val !== undefined ? String(val).length : 0;
+          const maxColWidth = colIdx === 0 ? 45 : 22; // First column can be wider, others clamp to keep print-ready
           if (!colWidths[colIdx] || strLen > colWidths[colIdx].wch) {
-            colWidths[colIdx] = { wch: Math.min(Math.max(strLen + 8, 20), 65) };
+            colWidths[colIdx] = { wch: Math.min(Math.max(strLen + 4, 15), maxColWidth) };
           }
         });
       });
@@ -1344,19 +1362,7 @@ export const Reports: React.FC<ReportsProps> = ({
         />
       )}
 
-      {/* Controls Toggle Button when collapsed */}
-      {isControlsCollapsed && (
-        <div className="flex justify-end mb-2">
-          <button 
-            onClick={() => setIsControlsCollapsed(false)}
-            className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 px-3 py-1.5 rounded-lg shadow-sm transition-colors"
-          >
-            <span>Show Report Filters & Controls</span>
-            <ChevronDown className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
+      {/* Filter and Content Sections below Header */}
       <div className={`space-y-4 transition-all duration-300 ${isControlsCollapsed ? 'hidden' : 'block'}`}>
         {/* Universal Compact Report Navigation & Filter Bar */}
 
@@ -1820,24 +1826,72 @@ export const Reports: React.FC<ReportsProps> = ({
       </div>
       
       {/* Report Container */}
+      {(() => {
+        const isTallyPrime = mainCategory === 'fin' && (finSubTab === 'TB' || finSubTab === 'PNL' || finSubTab === 'BS');
+        
+        let reportTitle = 'Report View';
+        if (mainCategory === 'daily') reportTitle = 'Daily Sales Report';
+        if (mainCategory === 'gst') reportTitle = 'GST/Tax Report';
+        if (mainCategory === 'fin') {
+          if (finSubTab === 'TB') reportTitle = 'Trial Balance Statement';
+          if (finSubTab === 'PNL') reportTitle = 'Profit & Loss Account';
+          if (finSubTab === 'BS') reportTitle = 'Balance Sheet Statement';
+          if (finSubTab === 'REC') reportTitle = 'Outstanding Receivables Report';
+          if (finSubTab === 'PAY') reportTitle = 'Outstanding Payables Report';
+          if (finSubTab === 'LED') reportTitle = `Ledger Statement - ${selectedLedger || ''}`;
+        }
+        if (mainCategory === 'reg') {
+          if (regSubTab === 'sales') reportTitle = 'Sales Register';
+          if (regSubTab === 'purchases') reportTitle = 'Purchase Register';
+        }
+        if (mainCategory === 'inv') {
+           reportTitle = 'Inventory Report';
+        }
 
-      <div className="bg-white border-y border-slate-200 shadow-xs -mx-3 sm:-mx-6 mb-[-1.5rem] lg:mb-[-2rem]">
-        {!isControlsCollapsed && (
-          <div className="px-4 sm:px-6 py-2 border-b border-slate-200 bg-slate-50 flex flex-wrap justify-between items-center gap-2">
-            <h2 className="font-bold text-slate-700 text-xs uppercase tracking-wider flex items-center gap-2">
-              <span>Report View</span>
-            </h2>
-            <button 
-                onClick={() => setIsControlsCollapsed(true)}
-                className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 uppercase tracking-wide flex items-center gap-1 bg-white border border-slate-300 px-2 py-1 rounded shadow-sm hover:bg-slate-50 transition-colors"
-            >
-                <span>Collapse Filters & Expand Table</span>
-                <ChevronUp className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
-        <div className="p-0">
-        {loading ? (
+        return (
+          <div className="bg-white border-y border-slate-200 shadow-xs -mx-3 sm:-mx-6 mb-[-1.5rem] lg:mb-[-2rem]">
+            {!isTallyPrime && (
+              <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-4 sm:px-6 py-4 border-b border-indigo-500/30 rounded-t-xl shadow-lg relative overflow-hidden">
+                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
+                
+                <div className="flex items-center gap-4 flex-wrap relative z-10">
+                  <div className="p-2.5 rounded-xl bg-white/10 border border-white/20 backdrop-blur-md shadow-sm">
+                    <FileText className="h-6 w-6 text-indigo-300" />
+                  </div>
+                  <div>
+                    <h2 className="font-black text-lg sm:text-xl text-white tracking-wider uppercase drop-shadow-sm">{reportTitle}</h2>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] font-bold text-indigo-200 bg-black/20 px-2.5 py-0.5 rounded-full border border-white/10 uppercase tracking-widest">
+                        Period
+                      </span>
+                      <span className="text-[11px] text-slate-300 font-mono tracking-wide">{fromDate} <span className="text-indigo-400">to</span> {toDate}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="relative z-10 flex items-center">
+                  {!isControlsCollapsed ? (
+                    <button 
+                        onClick={() => setIsControlsCollapsed(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm"
+                        title="Collapse Filters & Expand Table"
+                    >
+                        Collapse <ChevronUp className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button 
+                        onClick={() => setIsControlsCollapsed(false)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-indigo-500 text-white hover:bg-indigo-400 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm"
+                        title="Expand Filters"
+                    >
+                        Expand <ChevronDown className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="p-0">
+            {loading ? (
           <div className="py-12 text-center text-slate-400">Loading report data...</div>
         ) : !reportData ? (
           <div className="py-12 text-center text-slate-400">No data available for selected criteria</div>
@@ -2586,7 +2640,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       </div>
 
                       {/* Receivables Table */}
-                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
                           <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
@@ -2753,7 +2807,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       </div>
 
                       {/* Payables Table */}
-                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
                           <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
@@ -2868,6 +2922,23 @@ export const Reports: React.FC<ReportsProps> = ({
                     </div>
                   );
                 })()}
+
+                {finSubTab === 'LED' && !reportData?.rows && (
+                  <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-slate-200 shadow-sm mt-4">
+                    <Search className="h-12 w-12 text-indigo-200 mb-4" />
+                    <h2 className="text-xl font-bold text-slate-800">Select a Ledger</h2>
+                    <p className="text-sm text-slate-500 max-w-md text-center mt-2">
+                      Please select or search for a ledger account from the top control bar (or press Ctrl+L) to view its transaction statement.
+                    </p>
+                    <button
+                      onClick={openLedgerSearch}
+                      className="mt-6 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition-colors cursor-pointer flex items-center gap-2"
+                    >
+                      <Search className="h-4 w-4" />
+                      Search Ledger
+                    </button>
+                  </div>
+                )}
 
                 {finSubTab === 'LED' && reportData?.rows && (() => {
                   const opBal = Number(reportData.openingBalance) || 0;
@@ -3031,6 +3102,8 @@ export const Reports: React.FC<ReportsProps> = ({
         )}
         </div>
       </div>
+      );
+      })()}
 
       {/* Quick Search Ledger Modal (Ctrl+L) */}
       {showQuickLedgerModal && (

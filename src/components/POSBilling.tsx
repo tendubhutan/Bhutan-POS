@@ -1192,7 +1192,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         cartDiscRefs.current[idx]?.focus();
         cartDiscRefs.current[idx]?.select();
       } else {
-        itemInputRef.current?.focus();
+        cashInputRef.current?.focus();
+        cashInputRef.current?.select();
       }
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -1200,7 +1201,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         cartRateRefs.current[idx + 1]?.focus();
         cartRateRefs.current[idx + 1]?.select();
       } else {
-        itemInputRef.current?.focus();
+        cashInputRef.current?.focus();
+        cashInputRef.current?.select();
       }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
@@ -1221,7 +1223,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       e.preventDefault();
       cartRateRefs.current[idx]?.focus();
       cartRateRefs.current[idx]?.select();
-    } else if (e.key === 'Enter' || e.key === 'Escape') {
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      cashInputRef.current?.focus();
+      cashInputRef.current?.select();
+    } else if (e.key === 'Escape') {
       e.preventDefault();
       itemInputRef.current?.focus();
     } else if (e.key === 'ArrowDown') {
@@ -1230,7 +1236,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         cartDiscRefs.current[idx + 1]?.focus();
         cartDiscRefs.current[idx + 1]?.select();
       } else {
-        itemInputRef.current?.focus();
+        cashInputRef.current?.focus();
+        cashInputRef.current?.select();
       }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
