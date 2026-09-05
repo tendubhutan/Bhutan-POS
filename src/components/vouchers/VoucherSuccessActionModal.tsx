@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { GlowButton } from '../common/GlowButton';
 import {
   CheckCircle2,
   Printer,
@@ -52,6 +53,7 @@ export const VoucherSuccessActionModal: React.FC<VoucherSuccessActionModalProps>
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation?.();
         onClose();
       } else if (e.key.toLowerCase() === 'p' && (e.ctrlKey || e.metaKey)) {
         // Ctrl+P -> Print
@@ -184,48 +186,44 @@ export const VoucherSuccessActionModal: React.FC<VoucherSuccessActionModalProps>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               {/* Share PDF Button */}
               {onShare && (
-                <button
-                  ref={shareBtnRef}
+                <GlowButton
                   type="button"
-                  onClick={() => {
-                    onShare();
-                  }}
-                  className="py-3 px-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs flex flex-col items-center justify-center gap-1.5 shadow-md shadow-indigo-200 hover:shadow-lg transition cursor-pointer"
+                  onClick={onShare}
+                  variant="purple"
+                  size="md"
+                  icon={Share2}
+                  fullWidth
                 >
-                  <Share2 className="w-5 h-5" />
-                  <span>Share PDF</span>
-                  <span className="text-[10px] font-normal text-indigo-200">Mobile / WhatsApp</span>
-                </button>
+                  Share PDF
+                </GlowButton>
               )}
 
               {/* Print Slip Button */}
               {onPrint && (
-                <button
+                <GlowButton
                   type="button"
-                  onClick={() => {
-                    onPrint();
-                  }}
-                  className="py-3 px-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs flex flex-col items-center justify-center gap-1.5 shadow-md shadow-slate-200 hover:shadow-lg transition cursor-pointer"
+                  onClick={onPrint}
+                  variant="blue"
+                  size="md"
+                  icon={Printer}
+                  fullWidth
                 >
-                  <Printer className="w-5 h-5" />
-                  <span>Print Slip</span>
-                  <span className="text-[10px] font-normal text-slate-300">A4 / A5 Voucher</span>
-                </button>
+                  Print Slip
+                </GlowButton>
               )}
 
               {/* Download PDF Button */}
               {onDownload && (
-                <button
+                <GlowButton
                   type="button"
-                  onClick={() => {
-                    onDownload();
-                  }}
-                  className="py-3 px-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 font-extrabold text-xs flex flex-col items-center justify-center gap-1.5 transition cursor-pointer"
+                  onClick={onDownload}
+                  variant="cyan"
+                  size="md"
+                  icon={Download}
+                  fullWidth
                 >
-                  <Download className="w-5 h-5 text-slate-600" />
-                  <span>Save PDF</span>
-                  <span className="text-[10px] font-normal text-slate-500">Download File</span>
-                </button>
+                  Save PDF
+                </GlowButton>
               )}
             </div>
           </div>

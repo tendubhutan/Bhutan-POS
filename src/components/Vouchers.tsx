@@ -65,7 +65,8 @@ import { QuotationEntry } from './vouchers/QuotationEntry';
 import {
   generateVoucherSlipPDF,
   generateVoucherRegisterPDF,
-  shareOrDownloadPDF
+  shareOrDownloadPDF,
+  printPdfDoc
 } from '../utils/pdfExport';
 import { playSaveSound } from '../utils/audio';
 import { BillWiseModal } from './BillWiseModal';
@@ -133,17 +134,34 @@ export const Vouchers: React.FC<VouchersProps> = ({
 
   // Voucher Numbering State (Auto in sequence from settings vs Manual Entry)
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
+  const [editingVoucherNo, setEditingVoucherNo] = useState<string | null>(null);
   const [voucherNo, setVoucherNo] = useState(() => (isAutoMode ? peekNextVoucherNo('P', config) : ''));
 
   // Method to load an existing voucher or report record directly into Entry screen
   const loadVoucherIntoEntry = (v: any) => {
     if (!v) return;
-    const vType = v.type || (v.voucherNo?.startsWith('PV-') ? 'P' : v.voucherNo?.startsWith('RV-') ? 'R' : v.voucherNo?.startsWith('JV-') ? 'J' : v.voucherNo?.startsWith('CV-') ? 'C' : '');
+    const rawType = v.type || (
+      v.voucherNo?.startsWith('PV-') ? 'P' :
+      v.voucherNo?.startsWith('RV-') ? 'R' :
+      v.voucherNo?.startsWith('JV-') ? 'J' :
+      v.voucherNo?.startsWith('CV-') ? 'C' :
+      v.voucherNo?.startsWith('CN-') ? 'CN' :
+      v.voucherNo?.startsWith('DN-') ? 'DN' :
+      v.voucherNo?.startsWith('DLV-') || v.noteNo ? 'DEL_NOTE' :
+      v.voucherNo?.startsWith('QT-') || v.quotationNo ? 'QUOTATION' :
+      v.voucherNo?.startsWith('PS-') ? 'PHYSICAL_STOCK' : ''
+    );
+
+    let vType = rawType;
+    if (rawType === 'DLV') vType = 'DEL_NOTE';
+    if (rawType === 'PHY') vType = 'PHYSICAL_STOCK';
+    if (rawType === 'QTN') vType = 'QUOTATION';
 
     if (['P', 'R', 'J', 'C'].includes(vType)) {
       setMainTab('entry');
       setActiveCategory('financial');
       setActiveVType(vType as any);
+      setEditingVoucherNo(v.voucherNo || null);
       setVoucherNo(v.voucherNo || '');
       if (v.date) {
         setDate(new Date(v.date).toISOString().split('T')[0]);
@@ -153,30 +171,58 @@ export const Vouchers: React.FC<VouchersProps> = ({
       if (v.lines && Array.isArray(v.lines) && v.lines.length > 0) {
         setEntryMode('multi');
         setLines(
-          v.lines.map((l: any, idx: number) => ({
-            id: String(idx + 1),
-            type: l.type || (l.debit ? 'Dr' : 'Cr'),
-            ledger: l.ledger || '',
-            debit: l.debit !== undefined ? l.debit : (l.type === 'Dr' ? l.total : ''),
-            credit: l.credit !== undefined ? l.credit : (l.type === 'Cr' ? l.total : ''),
-            narration: l.narration || ''
-          }))
+          v.lines.map((l: any, idx: number) => {
+            const isDr = l.type ? (l.type === 'Dr') : (Number(l.debit) > 0 || !l.credit);
+            const rawAmt = l.amount !== undefined ? l.amount : (isDr ? (l.debit ?? l.total) : (l.credit ?? l.total));
+            return {
+              id: String(idx + 1),
+              type: isDr ? 'Dr' : 'Cr',
+              ledger: l.ledger || '',
+              debit: isDr ? (rawAmt !== undefined && rawAmt !== null && rawAmt !== '' ? Number(rawAmt) : '') : '',
+              credit: !isDr ? (rawAmt !== undefined && rawAmt !== null && rawAmt !== '' ? Number(rawAmt) : '') : '',
+              narration: l.narration || ''
+            };
+          })
         );
       } else {
         setEntryMode('single');
-        setAmount(v.total || v.totalAmount || '');
-        setPartyLedger(v.partyLedger || v.debitLedger || '');
-        setModeLedger(v.modeLedger || v.creditLedger || 'Cash');
-        setDebitLedger(v.debitLedger || '');
-        setCreditLedger(v.creditLedger || '');
-        setFromAccount(v.fromAccount || '');
-        setToAccount(v.toAccount || '');
+        const totalVal = v.amount ?? v.total ?? v.totalAmount ?? '';
+        setAmount(totalVal !== '' ? Number(totalVal) : '');
+
+        if (vType === 'P') { // Payment: Debit Expense/Party, Credit Mode (Cash/Bank)
+          setPartyLedger(v.partyLedger || v.debitLedger || '');
+          setModeLedger(v.modeLedger || v.creditLedger || 'Cash');
+        } else if (vType === 'R') { // Receipt: Credit Customer/Income, Debit Mode (Cash/Bank)
+          setPartyLedger(v.partyLedger || v.creditLedger || '');
+          setModeLedger(v.modeLedger || v.debitLedger || 'Cash');
+        } else if (vType === 'J') { // Journal
+          setDebitLedger(v.debitLedger || '');
+          setCreditLedger(v.creditLedger || '');
+        } else if (vType === 'C') { // Contra
+          setFromAccount(v.fromAccount || v.creditLedger || '');
+          setToAccount(v.toAccount || v.debitLedger || '');
+        }
       }
-    } else if (vType === 'CN' || vType === 'DN' || vType === 'DEL_NOTE' || vType === 'PHYSICAL_STOCK' || vType === 'QUOTATION') {
+    } else if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION'].includes(vType)) {
       setMainTab('entry');
-      handleVTypeChange(vType);
+      handleVTypeChange(vType as any);
     } else if (vType === 'INV' || vType === 'S') {
-      if (onNavigateTo) onNavigateTo('pos');
+      const details = getVoucherDetails(v.voucherNo || v.invoiceNo);
+      const inv = details?.header || v;
+      const isNormalSale = inv && (
+        inv.isPOS === false || 
+        inv.voucherTypeId === 'VT-SALE-NORMAL' || 
+        inv.invoiceNo?.startsWith('SAL-') || 
+        inv.invoiceNo?.startsWith('INV-B2B-') || 
+        Boolean(inv.orderNo) || 
+        Boolean(inv.deliveryNoteNo) || 
+        Boolean(inv.termsAndConditions)
+      );
+      if (isNormalSale && onNavigateTo) {
+        onNavigateTo('normalsale');
+      } else if (onNavigateTo) {
+        onNavigateTo('pos');
+      }
     } else if (vType === 'PUR') {
       if (onNavigateTo) onNavigateTo('purchase');
     }
@@ -194,10 +240,11 @@ export const Vouchers: React.FC<VouchersProps> = ({
 
   // Sync voucher number with type / config if auto mode
   useEffect(() => {
+    if (editingVoucherNo) return; // Do not overwrite voucher number while editing an existing voucher
     if (isAutoMode && activeVType && ['P', 'R', 'J', 'C'].includes(activeVType)) {
       setVoucherNo(peekNextVoucherNo(activeVType as any, config));
     }
-  }, [activeVType, config, isAutoMode]);
+  }, [activeVType, config, isAutoMode, editingVoucherNo]);
 
   // Single mode state
   const [amount, setAmount] = useState<number | ''>('');
@@ -499,7 +546,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
   // Global Keyboard Shortcuts (F4, F5, F6, F7, F8, F9, F10, F2, Alt+C, Alt+A, Escape)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape') { if (e.defaultPrevented) return;
         const handled = handleVoucherBack();
         if (handled) {
           e.preventDefault();
@@ -976,8 +1023,10 @@ export const Vouchers: React.FC<VouchersProps> = ({
         }
       });
 
+      const isEditingThis = Boolean(editingVoucherNo && voucherNo.trim() && editingVoucherNo.toLowerCase() === voucherNo.trim().toLowerCase());
       const vPayload: any = {
         voucherNo: voucherNo.trim() || undefined,
+        isEdit: isEditingThis,
         type: activeVType as 'P' | 'R' | 'J' | 'C',
         date: new Date(date).toISOString(),
         narration: narration.trim(),
@@ -992,6 +1041,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
       const result = saveMultiLineVoucher(vPayload);
       if (result.ok) {
         playSaveSound();
+        setEditingVoucherNo(null);
         showToast(`Voucher ${result.voucherNo} posted successfully!`, 'success');
         onDataRefresh();
         loadRecentVouchers();
@@ -1021,7 +1071,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
           totalItems: formattedLines.length,
           currencySymbol,
           onPrint: () => {
-            setViewVoucher(savedObj);
+            const doc = generateVoucherSlipPDF(savedObj, config);
+            printPdfDoc(doc);
           },
           onShare: () => {
             const doc = generateVoucherSlipPDF(savedObj, config);
@@ -1083,8 +1134,10 @@ export const Vouchers: React.FC<VouchersProps> = ({
         return;
       }
 
+      const isEditingThis = Boolean(editingVoucherNo && voucherNo.trim() && editingVoucherNo.toLowerCase() === voucherNo.trim().toLowerCase());
       const vPayload: any = {
         voucherNo: voucherNo.trim() || undefined,
+        isEdit: isEditingThis,
         type: activeVType as 'P' | 'R' | 'J' | 'C',
         date: new Date(date).toISOString(),
         amount: amt,
@@ -1100,6 +1153,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
       const result = saveVoucher(activeVType as any, vPayload);
       if (result.ok) {
         playSaveSound();
+        setEditingVoucherNo(null);
         showToast(`Voucher ${result.voucherNo} recorded successfully!`, 'success');
         onDataRefresh();
         loadRecentVouchers();
@@ -1130,7 +1184,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
           totalItems: 2,
           currencySymbol,
           onPrint: () => {
-            setViewVoucher(savedObj);
+            const doc = generateVoucherSlipPDF(savedObj, config);
+            printPdfDoc(doc);
           },
           onShare: () => {
             const doc = generateVoucherSlipPDF(savedObj, config);
@@ -1473,6 +1528,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
     <div className="flex flex-col h-full min-h-0 space-y-2">
       <AcceptModal 
         isOpen={!!showAcceptModal} 
+        title={editingVoucherNo ? `Save changes to ${editingVoucherNo}?` : `Save ${activeVType === 'P' ? 'Payment' : activeVType === 'R' ? 'Receipt' : activeVType === 'J' ? 'Journal' : activeVType === 'C' ? 'Contra' : 'Voucher'}?`}
         onConfirm={proceedSubmit} 
         onCancel={() => setShowAcceptModal(false)} 
       />
@@ -2051,6 +2107,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
           items={items}
           ledgers={ledgers}
           onDataRefresh={onDataRefresh}
+          initialVoucherTarget={initialVoucherTarget}
           onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
           onOpenNewItemModal={onOpenNewItemModal}
           onNavigateBack={() => {
@@ -2064,6 +2121,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
           items={items}
           ledgers={ledgers}
           onDataRefresh={onDataRefresh}
+          initialVoucherTarget={initialVoucherTarget}
           onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
           onOpenNewItemModal={onOpenNewItemModal}
           onNavigateBack={() => {
@@ -2077,6 +2135,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
           items={items}
           ledgers={ledgers}
           onDataRefresh={onDataRefresh}
+          initialVoucherTarget={initialVoucherTarget}
           onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
           onOpenNewItemModal={onOpenNewItemModal}
           onNavigateBack={() => {
@@ -2089,6 +2148,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
           config={config}
           items={items}
           onDataRefresh={onDataRefresh}
+          initialVoucherTarget={initialVoucherTarget}
           onOpenNewItemModal={onOpenNewItemModal}
           onNavigateBack={() => {
             setActiveVType('P');
@@ -2101,6 +2161,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
           items={items}
           ledgers={ledgers}
           onDataRefresh={onDataRefresh}
+          initialVoucherTarget={initialVoucherTarget}
           onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
           onOpenNewItemModal={onOpenNewItemModal}
           onNavigateBack={() => {
@@ -2111,6 +2172,31 @@ export const Vouchers: React.FC<VouchersProps> = ({
       ) : activeVType && ['P', 'R', 'J', 'C'].includes(activeVType) ? (
         /* Financial Vouchers (Payment, Receipt, Journal, Contra) */
         <div className="flex-1 min-h-0 flex flex-col space-y-2">
+          {/* Editing Voucher Indicator */}
+          {editingVoucherNo && (
+            <div className="flex items-center justify-between px-3 py-2 bg-amber-50 border border-amber-300/80 rounded-xl text-amber-900 text-xs shadow-2xs">
+              <div className="flex items-center gap-2 font-medium">
+                <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                <span>Editing Voucher: <strong className="font-mono font-bold text-amber-950 text-sm">{editingVoucherNo}</strong></span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingVoucherNo(null);
+                  if (isAutoMode) {
+                    setVoucherNo(peekNextVoucherNo(activeVType as any, config));
+                  } else {
+                    setVoucherNo('');
+                  }
+                  handleCancelOrResetEntry();
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 font-bold text-[11px] hover:bg-amber-100 transition cursor-pointer shadow-2xs"
+              >
+                <span>Discard Edit &amp; New Voucher</span>
+              </button>
+            </div>
+          )}
+
           {/* Form Header Info with Voucher Type selector in 3rd column */}
           <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs space-y-2 text-xs">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -2127,9 +2213,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
                       focusElement('v-date');
                     }
                   }}
-                  disabled={isAutoMode}
+                  disabled={Boolean(isAutoMode || editingVoucherNo)}
                   className={`w-full rounded-lg border px-2.5 py-1.5 font-mono font-bold text-slate-900 outline-none text-xs ${
-                    isAutoMode ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-300 focus:border-indigo-600'
+                    (isAutoMode || editingVoucherNo) ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-300 focus:border-indigo-600'
                   }`}
                 />
               </div>
@@ -3182,7 +3268,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                   type="button"
                   onClick={() => {
                     const doc = generateVoucherSlipPDF(viewVoucher, config);
-                    shareOrDownloadPDF(doc, `Voucher_${viewVoucher.voucherNo}.pdf`, `Voucher ${viewVoucher.voucherNo}`);
+                    printPdfDoc(doc);
                   }}
                   className="px-3.5 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 border border-slate-200 cursor-pointer shadow-2xs"
                 >

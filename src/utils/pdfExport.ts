@@ -1,16 +1,15 @@
+
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Config, SalesInvoice, PurchaseInvoice, DeliveryNote, Quotation, Voucher } from '../types';
 import { getLedgers } from '../services/storageService';
 
 export function resolveBankDetailsForPrint(config: Config): string {
-  if (config.PrintBankDetailsOnInvoice === 'false') {
-    return '';
-  }
+  if (config.PrintBankDetailsOnInvoice === 'false') return '';
   if (config.SelectedBankLedgerForPrint) {
     try {
       const ledgers = getLedgers();
-      const bLedger = ledgers.find(l => l['Ledger Name'] === config.SelectedBankLedgerForPrint);
+      const bLedger = ledgers.find((l: any) => l['Ledger Name'] === config.SelectedBankLedgerForPrint);
       if (bLedger && (bLedger['Bank Name'] || bLedger['Account No'])) {
         const parts: string[] = [];
         if (bLedger['Bank Name']) parts.push(`Bank: ${bLedger['Bank Name']}`);
@@ -28,22 +27,14 @@ export function resolveBankDetailsForPrint(config: Config): string {
 export function resolveTermsForPrint(config: Config, option?: string): string {
   if (option === 'none') return '';
   if (option === 'primary') return config.FooterTerms || '';
-  if (option === 'secondary') return config.SecondaryTerms || '';
-  if (option === 'both') {
-    return [config.FooterTerms, config.SecondaryTerms].filter(Boolean).join('\n\n');
-  }
-  return [config.FooterTerms, config.SecondaryTerms].filter(Boolean).join('\n\n');
+  if (option === 'secondary') return (config as any).SecondaryFooterTerms || '';
+  return config.FooterTerms || '';
 }
 
-export function addSignatureToPdf(
-  doc: jsPDF,
-  config: Config,
-  xRight: number,
-  yFooterLine: number,
-  width: number = 32,
-  height: number = 12
-) {
-  if (config.ReceiptSignatureImage && config.ReceiptSignatureImage.trim()) {
+export function addSignatureToPdf(doc: jsPDF, config: Config, xRight: number, yFooterLine: number) {
+  if (config.ReceiptSignatureImage) {
+    const width = 35;
+    const height = 15;
     try {
       const imgX = xRight - width;
       const imgY = yFooterLine - height - 1;
@@ -60,10 +51,8 @@ export function printPdfDoc(doc: jsPDF) {
     doc.autoPrint();
     const blob = doc.output('blob');
     const blobUrl = URL.createObjectURL(blob);
-
     const oldIframe = document.getElementById('print-pdf-iframe');
     if (oldIframe) oldIframe.remove();
-
     const iframe = document.createElement('iframe');
     iframe.id = 'print-pdf-iframe';
     iframe.style.position = 'fixed';
@@ -73,9 +62,7 @@ export function printPdfDoc(doc: jsPDF) {
     iframe.style.height = '1px';
     iframe.style.border = 'none';
     iframe.src = blobUrl;
-
     document.body.appendChild(iframe);
-
     iframe.onload = () => {
       setTimeout(() => {
         try {
@@ -96,357 +83,46 @@ export function printPdfDoc(doc: jsPDF) {
   }
 }
 
+export async function shareOrDownloadPDF(
+  doc: jsPDF,
+  filename: string,
+  title: string,
+  fallbackText?: string
+): Promise<{ success: boolean; method: 'shared' | 'downloaded' }> {
+  try {
+    const pdfBlob = doc.output('blob');
+    const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+      await navigator.share({
+        files: [pdfFile],
+        title: title,
+        text: fallbackText || title
+      });
+      return { success: true, method: 'shared' };
+    } else {
+      doc.save(filename);
+      return { success: true, method: 'downloaded' };
+    }
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      return { success: true, method: 'shared' };
+    }
+    doc.save(filename);
+    return { success: true, method: 'downloaded' };
+  }
+}
+
 function drawCancelledWatermark(doc: jsPDF, pageWidth: number, pageHeight: number) {
   doc.saveGraphicsState();
   doc.setGState(new (doc as any).GState({ opacity: 0.15 }));
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(60);
-  doc.setTextColor(220, 38, 38); // red-600
-  
-  // Draw diagonal text
+  doc.setTextColor(220, 38, 38);
   doc.text('CANCELLED', pageWidth / 2, pageHeight / 2, {
     align: 'center',
     angle: 45
   });
-  
   doc.restoreGraphicsState();
-}
-
-/**
- * Generate a professional A4 Tax Invoice PDF
- */
-export function generateInvoicePDF(
-  invoice: SalesInvoice,
-  config: Config,
-  options?: { customTerms?: string; customBankDetails?: string }
-): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  });
-
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 14;
-  const currency = config.CurrencySymbol || 'Nu.';
-  const showGst = String(config.EnableGST) !== 'false';
-
-  if (invoice.status === 'Cancelled') {
-    drawCancelledWatermark(doc, pageWidth, pageHeight);
-  }
-
-  // --- Header ---
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(30, 41, 59); // slate-800
-  doc.text(config.CompanyName || 'RETAIL STORE', margin, 20);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139); // slate-500
-
-  let headerY = 25;
-  if (config.Address) {
-    doc.text(config.Address, margin, headerY);
-    headerY += 4.5;
-  }
-  if (showGst && (config.CompanyGSTNo || config.CompanyTPNNo)) {
-    doc.text(`GSTIN / TPN: ${config.CompanyGSTNo || config.CompanyTPNNo}`, margin, headerY);
-    headerY += 4.5;
-  }
-
-  // --- Right side: Invoice Title & Meta ---
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(79, 70, 229); // indigo-600
-  doc.text('TAX INVOICE', pageWidth - margin, 20, { align: 'right' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(51, 65, 85);
-  doc.text(`Invoice No: ${invoice.invoiceNo}`, pageWidth - margin, 26, { align: 'right' });
-  doc.text(`Date: ${new Date(invoice.date).toLocaleDateString()}`, pageWidth - margin, 31, { align: 'right' });
-  doc.text(`Time: ${new Date(invoice.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, pageWidth - margin, 36, { align: 'right' });
-
-  // Divider line
-  const dividerY = Math.max(headerY + 2, 42);
-  doc.setDrawColor(226, 232, 240); // slate-200
-  doc.setLineWidth(0.5);
-  doc.line(margin, dividerY, pageWidth - margin, dividerY);
-
-  // --- Bill To Section ---
-  const billToY = dividerY + 6;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(30, 41, 59);
-  doc.text('BILL TO:', margin, billToY);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(71, 85, 105);
-
-  let custY = billToY + 5;
-  const custName = invoice.customer?.name || 'Walk-in Cash Customer';
-  doc.setFont('helvetica', 'bold');
-  doc.text(custName, margin, custY);
-  doc.setFont('helvetica', 'normal');
-  custY += 4.5;
-
-  if (invoice.customer?.phone) {
-    doc.text(`Contact: ${invoice.customer.phone}`, margin, custY);
-    custY += 4.5;
-  }
-  if (invoice.customer?.address) {
-    doc.text(`Address: ${invoice.customer.address}`, margin, custY);
-    custY += 4.5;
-  }
-  if (invoice.customer?.gstNo || invoice.customer?.tpnNo) {
-    doc.text(`GSTIN / TPN: ${invoice.customer.gstNo || invoice.customer.tpnNo}`, margin, custY);
-    custY += 4.5;
-  }
-
-  // --- Items Table ---
-  const tableStartY = Math.max(custY + 3, billToY + 22);
-
-  const tableHeaders = [
-    '#',
-    'Item',
-    'Qty',
-    'Unit',
-    `Rate (${currency})`,
-    `Sale Amt (${currency})`,
-    showGst ? 'GST' : '',
-    `Total Amt (${currency})`
-  ].filter(Boolean);
-
-  const tableRows = invoice.items.map((item, idx) => {
-    const saleAmt = Number(
-      item['Taxable Value'] !== undefined
-        ? item['Taxable Value']
-        : (Number(item.Qty) || 0) * (Number(item.Rate) || 0) - (Number(item.Discount) || 0)
-    ).toFixed(2);
-
-    const gstAmount = Number(
-      item['GST Amount'] !== undefined
-        ? item['GST Amount']
-        : (item['Zero Rated (Y/N)'] === 'Y' ? 0 : ((Number(item['Taxable Value'] || 0) * (Number(item['GST %']) || 0)) / 100))
-    ).toFixed(2);
-
-    const itemDesc = (item as any)['Item Description'] || (item as any).description || (item as any).Description;
-    const itemDescPart = itemDesc ? `\nDesc: ${itemDesc}` : '';
-    const itemSerialPart = item['Serial Numbers'] ? `\nSN: ${item['Serial Numbers']}` : '';
-    const itemNameFormatted = item['Item Name'] + itemDescPart + itemSerialPart;
-
-    const row = [
-      String(idx + 1),
-      itemNameFormatted,
-      String(item.Qty),
-      item.Unit || 'Pcs',
-      Number(item.Rate).toFixed(2),
-      saleAmt,
-      showGst ? gstAmount : '',
-      Number(item['Line Total']).toFixed(2)
-    ].filter((val, i) => showGst || i !== 6);
-    return row;
-  });
-
-  autoTable(doc, {
-    startY: tableStartY,
-    head: [tableHeaders],
-    body: tableRows,
-    margin: { left: margin, right: margin },
-    theme: 'grid',
-    headStyles: {
-      fillColor: [79, 70, 229], // indigo-600
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      fontSize: 8.5,
-      halign: 'left'
-    },
-    bodyStyles: {
-      fontSize: 8,
-      textColor: [51, 65, 85]
-    },
-    columnStyles: showGst
-      ? {
-          0: { cellWidth: 8, halign: 'center' },
-          1: { cellWidth: 'auto' },
-          2: { cellWidth: 14, halign: 'center' },
-          3: { cellWidth: 14, halign: 'center' },
-          4: { cellWidth: 22, halign: 'right' },
-          5: { cellWidth: 24, halign: 'right' },
-          6: { cellWidth: 24, halign: 'right' },
-          7: { cellWidth: 26, halign: 'right', fontStyle: 'bold' }
-        }
-      : {
-          0: { cellWidth: 8, halign: 'center' },
-          1: { cellWidth: 'auto' },
-          2: { cellWidth: 16, halign: 'center' },
-          3: { cellWidth: 16, halign: 'center' },
-          4: { cellWidth: 26, halign: 'right' },
-          5: { cellWidth: 28, halign: 'right' },
-          6: { cellWidth: 28, halign: 'right', fontStyle: 'bold' }
-        },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252] // slate-50
-    }
-  });
-
-  // Calculate position after table
-  const finalY = (doc as any).lastAutoTable.finalY + 6;
-
-  // --- Summary & Tax Breakdown Box ---
-  const summaryBoxWidth = 80;
-  const summaryBoxX = pageWidth - margin - summaryBoxWidth;
-  let summaryY = finalY;
-
-  doc.setFontSize(8.5);
-
-  if (showGst) {
-    // Taxable Sale
-    doc.setTextColor(100, 116, 139);
-    doc.text('Taxable Sale:', summaryBoxX, summaryY);
-    doc.setTextColor(30, 41, 59);
-    doc.text(`${currency} ${invoice.taxable.toFixed(2)}`, pageWidth - margin, summaryY, { align: 'right' });
-    summaryY += 5;
-
-    // Exempted Sale
-    doc.setTextColor(100, 116, 139);
-    doc.text('Exempted Sale:', summaryBoxX, summaryY);
-    doc.setTextColor(30, 41, 59);
-    doc.text(`${currency} ${invoice.zeroRated.toFixed(2)}`, pageWidth - margin, summaryY, { align: 'right' });
-    summaryY += 5;
-
-    // GST Amount
-    doc.setTextColor(100, 116, 139);
-    doc.text('GST Amount:', summaryBoxX, summaryY);
-    doc.setTextColor(30, 41, 59);
-    doc.text(`${currency} ${invoice.gstAmt.toFixed(2)}`, pageWidth - margin, summaryY, { align: 'right' });
-    summaryY += 5;
-  }
-
-  if (invoice.additionalExpenses && invoice.additionalExpenses.length > 0) {
-    invoice.additionalExpenses.forEach((exp: any) => {
-      doc.setTextColor(100, 116, 139);
-      doc.text(`Addl (${exp.ledger}):`, summaryBoxX, summaryY);
-      doc.setTextColor(30, 41, 59);
-      doc.text(`${currency} ${Number(exp.amount).toFixed(2)}`, pageWidth - margin, summaryY, { align: 'right' });
-      summaryY += 5;
-    });
-  }
-
-  if (invoice.discount && invoice.discount > 0) {
-    // Gross Subtotal
-    doc.setTextColor(100, 116, 139);
-    doc.text('Subtotal:', summaryBoxX, summaryY);
-    doc.setTextColor(30, 41, 59);
-    doc.text(`${currency} ${(invoice.subtotal || (invoice.total + invoice.discount)).toFixed(2)}`, pageWidth - margin, summaryY, { align: 'right' });
-    summaryY += 5;
-
-    // Bill Discount
-    doc.setTextColor(220, 38, 38); // red-600
-    doc.text('Bill Discount:', summaryBoxX, summaryY);
-    doc.text(`-${currency} ${invoice.discount.toFixed(2)}`, pageWidth - margin, summaryY, { align: 'right' });
-    summaryY += 5;
-  }
-
-  // Divider inside summary
-  doc.setDrawColor(203, 213, 225);
-  doc.line(summaryBoxX, summaryY, pageWidth - margin, summaryY);
-  summaryY += 4.5;
-
-  // Grand Total Highlight
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(79, 70, 229);
-  doc.text('Grand Total:', summaryBoxX, summaryY);
-  doc.text(`${currency} ${invoice.total.toFixed(2)}`, pageWidth - margin, summaryY, { align: 'right' });
-  summaryY += 6;
-
-  // Payment Breakdown
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(100, 116, 139);
-  const paidParts: string[] = [];
-  if (invoice.cash > 0) paidParts.push(`Cash: ${currency} ${invoice.cash.toFixed(2)}`);
-  if (invoice.bank1 + invoice.bank2 > 0) paidParts.push(`Bank: ${currency} ${(invoice.bank1 + invoice.bank2).toFixed(2)}`);
-  if (invoice.credit > 0) paidParts.push(`Due: ${currency} ${invoice.credit.toFixed(2)}`);
-  
-  if (paidParts.length > 0) {
-    doc.text(paidParts.join('  |  '), summaryBoxX, summaryY);
-  }
-
-  // --- Left Box: Bank Details & Notes ---
-  let notesY = finalY;
-  if (invoice.narration) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text('Narration:', margin, notesY);
-    notesY += 4.5;
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(71, 85, 105);
-    const narrationLines = doc.splitTextToSize(invoice.narration, summaryBoxWidth - 10);
-    doc.text(narrationLines, margin, notesY);
-    notesY += (narrationLines.length * 4) + 2;
-  }
-
-  const bankDetailsToPrint = options?.customBankDetails !== undefined
-    ? options.customBankDetails
-    : resolveBankDetailsForPrint(config);
-
-  if (bankDetailsToPrint && bankDetailsToPrint.trim()) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text('Bank & Payment Details:', margin, notesY);
-    notesY += 4.5;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
-    const bankLines = doc.splitTextToSize(bankDetailsToPrint, 85);
-    doc.text(bankLines, margin, notesY);
-    notesY += (bankLines.length * 3.8) + 3;
-  }
-
-  const termsToDisplay = options?.customTerms !== undefined
-    ? options.customTerms
-    : (invoice.termsAndConditions || resolveTermsForPrint(config));
-
-  if (termsToDisplay && termsToDisplay.trim()) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text('Terms & Conditions:', margin, notesY);
-    notesY += 4.5;
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.8);
-    doc.setTextColor(71, 85, 105);
-    const termsLines = doc.splitTextToSize(termsToDisplay, 85);
-    doc.text(termsLines, margin, notesY);
-  }
-
-  // --- Footer ---
-  const footerY = doc.internal.pageSize.getHeight() - 14;
-  doc.setDrawColor(226, 232, 240);
-  doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
-
-  addSignatureToPdf(doc, config, pageWidth - margin, footerY);
-
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(8);
-  doc.setTextColor(148, 163, 184);
-  doc.text(
-    `Thank you for doing business with ${config.CompanyName || 'us'}!`,
-    margin,
-    footerY
-  );
-  doc.text(config.SignatoryTitle || 'Authorized Signatory', pageWidth - margin, footerY, { align: 'right' });
-
-  return doc;
 }
 
 function drawReportHeaderBox(
@@ -463,38 +139,45 @@ function drawReportHeaderBox(
   const headerWidth = pageWidth - margin * 2;
   const headerHeight = 28;
   const startY = 10;
-
-  // Outer Box
+  
   doc.setFillColor(248, 250, 252);
   doc.setDrawColor(226, 232, 240);
   doc.setLineWidth(0.4);
   doc.roundedRect(margin, startY, headerWidth, headerHeight, 3, 3, 'FD');
 
-  // Company Name (Centered)
+  let textCenterX = pageWidth / 2;
+  let textStartY = startY + 8.5;
+
+  const logo = config.CompanyLogo || config.ReceiptHeaderImage;
+  if (logo) {
+    try {
+      const imgProps = doc.getImageProperties(logo);
+      const maxLogoHeight = headerHeight - 6;
+      const logoWidth = (imgProps.width * maxLogoHeight) / imgProps.height;
+      doc.addImage(logo, logo.includes('png') ? 'PNG' : 'JPEG', margin + 4, startY + 3, logoWidth, maxLogoHeight);
+    } catch (e) {}
+  }
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
   doc.setTextColor(15, 23, 42);
-  doc.text(config.CompanyName || 'Store Name', pageWidth / 2, startY + 8.5, { align: 'center' });
-
-  // Address & GSTIN (Centered)
+  doc.text(config.CompanyName || 'Store Name', textCenterX, textStartY, { align: 'center' });
+  
   const addr = config.Address || (config as any).CompanyAddress || '';
   const gstin = config.CompanyGSTNo || (config as any).GSTIN || '';
   const metaStr = [addr, gstin ? `GSTIN: ${gstin}` : ''].filter(Boolean).join(' • ');
-
   if (metaStr) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    doc.text(metaStr, pageWidth / 2, startY + 13, { align: 'center' });
+    doc.text(metaStr, textCenterX, textStartY + 4.5, { align: 'center' });
   }
 
-  // Report Title (Centered, Dark Navy Uppercase)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(30, 27, 75);
-  doc.text(reportTitle.toUpperCase(), pageWidth / 2, startY + 18, { align: 'center' });
+  doc.text(reportTitle.toUpperCase(), textCenterX, textStartY + 9.5, { align: 'center' });
 
-  // Period Badge Pill (Centered)
   const periodStr = reportType === 'BS' ? `As at: ${toDate}` : `Period: ${fromDate} to ${toDate}`;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
@@ -504,36 +187,116 @@ function drawReportHeaderBox(
   doc.setDrawColor(199, 210, 254);
   doc.roundedRect(periodX, startY + 20.5, periodWidth, 4.5, 2.25, 2.25, 'FD');
   doc.setTextColor(55, 48, 163);
-  doc.text(periodStr, pageWidth / 2, startY + 23.8, { align: 'center' });
+  doc.text(periodStr, textCenterX, startY + 23.8, { align: 'center' });
 
   return startY + headerHeight + 5;
 }
 
-/**
- * Generate a clean PDF for any Report
- */
+export function drawVoucherHeader(doc: jsPDF, config: Config, title: string, meta: {label: string, value: string}[], margin: number = 14): number {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  let startX = margin;
+  let textStartY = 16;
+  
+  const logo = config.CompanyLogo || config.ReceiptHeaderImage;
+  if (logo) {
+    try {
+      const imgProps = doc.getImageProperties(logo);
+      const maxLogoHeight = 18;
+      const logoWidth = (imgProps.width * maxLogoHeight) / imgProps.height;
+      doc.addImage(logo, logo.includes('png') ? 'PNG' : 'JPEG', startX, 10, logoWidth, maxLogoHeight);
+      startX += logoWidth + 7;
+      textStartY = 15;
+    } catch (e) {
+      console.warn('Failed to draw print logo', e);
+    }
+  }
+
+  // Company / Store Name
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(15, 23, 42);
+  doc.text(config.CompanyName || 'RETAIL STORE', startX, textStartY);
+  
+  // Store Details & Subtitles
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(100, 116, 139);
+  
+  let currentY = textStartY + 4.8;
+  const addr = config.Address || (config as any).CompanyAddress;
+  if (addr) {
+    doc.text(addr, startX, currentY);
+    currentY += 4.2;
+  }
+  
+  const gst = config.CompanyGSTNo || config.CompanyTPNNo || (config as any).GSTIN;
+  const showGst = String(config.EnableGST) !== 'false';
+  if (showGst && gst) {
+    doc.text(`GSTIN / TPN: ${gst}`, startX, currentY);
+    currentY += 4.2;
+  }
+  if (config.CompanyPhone) {
+    doc.text(`Phone: ${config.CompanyPhone}`, startX, currentY);
+    currentY += 4.2;
+  }
+
+  // Draw Right Side (Title & Meta)
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(37, 99, 235); // Vibrant Royal Blue (#2563EB)
+  doc.text(title.toUpperCase(), pageWidth - margin, 15, { align: 'right' });
+  
+  let metaY = 21;
+  for (const m of meta) {
+    if (m.value) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(m.value, pageWidth - margin, metaY, { align: 'right' });
+      
+      const valWidth = doc.getTextWidth(m.value);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`${m.label}: `, pageWidth - margin - valWidth, metaY, { align: 'right' });
+      metaY += 4.5;
+    }
+  }
+
+  const hasLogo = Boolean(config.CompanyLogo || config.ReceiptHeaderImage);
+  const dividerY = Math.max(currentY + 3, metaY + 2, hasLogo ? 32 : 0, 38);
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.4);
+  doc.line(margin, dividerY, pageWidth - margin, dividerY);
+  
+  return dividerY;
+}
+
 export function generateReportPDF(
   reportTitle: string,
   config: Config,
   fromDate: string,
   toDate: string,
   headers: string[],
-  rows: any[][],
-  totals?: any[],
-  summaryCards?: { label: string; value: string | number }[],
-  reportType?: 'TB' | 'PNL' | 'BS' | null,
-  reportData?: any,
+  rows: string[][],
+  totals: string[],
+  summaryCards: Array<{ title?: string; label?: string; value: string | number; color?: string }> = [],
+  reportType: string = '',
+  reportData: any = null,
   depth: 'summary' | 'detailed' | 'super_detailed' = 'detailed'
 ): jsPDF {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
   const currency = config.CurrencySymbol || 'Nu.';
-  const fmtNum = (val: number) => (Number(val) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const startY = drawReportHeaderBox(doc, config, reportTitle, fromDate, toDate, depth, reportType as any);
+  
+  let currentY = startY;
+  const isFinancialReport = reportType === 'PNL' || reportType === 'BS' || reportType === 'TB';
 
-  // 1. FINANCIAL REPORT: PROFIT & LOSS ACCOUNT
+  const fmt = (val: number) => (Number(val) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // 1. Specialized rendering for Profit & Loss Statement (PNL)
   if (reportType === 'PNL' && reportData?.pnl) {
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 12;
-
     const p = reportData.pnl;
     const s = Number(p.s) || 0;
     const di = Number(p.di) || 0;
@@ -560,13 +323,8 @@ export function generateReportPDF(
       return isIncome ? Math.abs((Number(l.cr) || 0) - (Number(l.dr) || 0)) : Math.max(0, (Number(l.dr) || 0) - (Number(l.cr) || 0));
     };
 
-    const mapPnlLedger = (l: any, isIncome: boolean) => ({
-      ...l,
-      amount: getPnlAmt(l, isIncome)
-    });
-
     const filterPnlLedgers = (ledgers: any[], isIncome: boolean) => {
-      const mapped = ledgers.map(l => mapPnlLedger(l, isIncome));
+      const mapped = ledgers.map(l => ({ ...l, amount: getPnlAmt(l, isIncome) }));
       if (depth === 'detailed') {
         return mapped.filter(l => l.amount > 0);
       }
@@ -580,126 +338,256 @@ export function generateReportPDF(
     const indirectIncLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Indirect Income')), true);
 
     const totalTradingLeft = os + pur + de + Math.max(0, grossProfit);
-    const totalTradingRight = s + di + cs;
+    const totalTradingRight = s + di + cs + (grossProfit < 0 ? Math.abs(grossProfit) : 0);
 
-    // Header Banner
-    let startY = drawReportHeaderBox(doc, config, 'PROFIT & LOSS ACCOUNT', fromDate, toDate, depth, 'PNL');
-
-    // Trading Account Section Header
+    // TRADING ACCOUNT Section Header
     doc.setFillColor(224, 231, 255);
-    doc.rect(margin, startY, pageWidth - margin * 2, 5.5, 'F');
+    doc.setDrawColor(199, 210, 254);
+    doc.roundedRect(14, currentY, pageWidth - 28, 6.5, 1, 1, 'FD');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(55, 48, 163);
-    doc.text('TRADING ACCOUNT', margin + 3, startY + 4);
+    doc.text('TRADING ACCOUNT', 18, currentY + 4.5);
+    currentY += 8;
 
-    startY += 5.5;
+    const leftTrading: { label: string; amt: string }[] = [];
+    const rightTrading: { label: string; amt: string }[] = [];
 
-    const tradingRows: any[] = [];
-    tradingRows.push(['Opening Stock', fmtNum(os), 'Sales Accounts', fmtNum(s)]);
+    leftTrading.push({ label: 'Opening Stock', amt: fmt(os) });
+    leftTrading.push({ label: 'Purchase Accounts', amt: fmt(pur) });
     if (depth !== 'summary') {
-      salesLedgers.forEach((l: any) => tradingRows.push(['', '', `  ${l.name}`, fmtNum(l.amount)]));
-    }
-    tradingRows.push(['Purchase Accounts', fmtNum(pur), 'Closing Stock Valuation', fmtNum(cs)]);
-    if (depth !== 'summary') {
-      purchLedgers.forEach((l: any) => tradingRows.push([`  ${l.name}`, fmtNum(l.amount), '', '']));
+      purchLedgers.forEach(l => leftTrading.push({ label: `  ${l.name}`, amt: fmt(l.amount) }));
     }
     if (de > 0) {
-      tradingRows.push(['Direct Expenses', fmtNum(de), '', '']);
+      leftTrading.push({ label: 'Direct Expenses', amt: fmt(de) });
       if (depth !== 'summary') {
-        directExpLedgers.forEach((l: any) => tradingRows.push([`  ${l.name}`, fmtNum(l.amount), '', '']));
+        directExpLedgers.forEach(l => leftTrading.push({ label: `  ${l.name}`, amt: fmt(l.amount) }));
       }
     }
     if (grossProfit >= 0) {
-      tradingRows.push(['Gross Profit c/o', fmtNum(grossProfit), '', '']);
-    } else {
-      tradingRows.push(['', '', 'Gross Loss c/o', fmtNum(Math.abs(grossProfit))]);
+      leftTrading.push({ label: 'Gross Profit c/o', amt: fmt(grossProfit) });
+    }
+
+    rightTrading.push({ label: 'Sales Accounts', amt: fmt(s) });
+    if (depth !== 'summary') {
+      salesLedgers.forEach(l => rightTrading.push({ label: `  ${l.name}`, amt: fmt(l.amount) }));
+    }
+    if (di > 0) {
+      rightTrading.push({ label: 'Direct Incomes', amt: fmt(di) });
+    }
+    rightTrading.push({ label: 'Closing Stock Valuation', amt: fmt(cs) });
+    if (grossProfit < 0) {
+      rightTrading.push({ label: 'Gross Loss c/o', amt: fmt(Math.abs(grossProfit)) });
+    }
+
+    const tradingRows: any[][] = [];
+    const maxTradingRows = Math.max(leftTrading.length, rightTrading.length);
+    for (let i = 0; i < maxTradingRows; i++) {
+      const l = leftTrading[i] || { label: '', amt: '' };
+      const r = rightTrading[i] || { label: '', amt: '' };
+      tradingRows.push([l.label, l.amt, r.label, r.amt]);
     }
 
     autoTable(doc, {
-      startY: startY,
-      head: [['Particulars (Debit)', `Amount (${currency})`, 'Particulars (Credit)', `Amount (${currency})`]],
+      startY: currentY,
+      head: [ ['P a r t i c u l a r s', `Amount (${currency})`, 'P a r t i c u l a r s', `Amount (${currency})`] ],
       body: tradingRows,
-      foot: [['TOTAL', fmtNum(totalTradingLeft), 'TOTAL', fmtNum(totalTradingRight)]],
-      margin: { left: margin, right: margin },
-      theme: 'grid',
-      headStyles: { fillColor: [55, 48, 163], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
-      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8 },
-      bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
+      foot: [ ['TOTAL', fmt(totalTradingLeft), 'TOTAL', fmt(totalTradingRight)] ],
+      theme: 'plain',
+      headStyles: { fillColor: [248, 250, 252], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8, cellPadding: 2, lineWidth: { top: 0.5, bottom: 0.5 }, lineColor: [15, 23, 42] },
       columnStyles: {
-        0: { cellWidth: (pageWidth - margin * 2) * 0.35 },
-        1: { cellWidth: (pageWidth - margin * 2) * 0.15, halign: 'right' },
-        2: { cellWidth: (pageWidth - margin * 2) * 0.35 },
-        3: { cellWidth: (pageWidth - margin * 2) * 0.15, halign: 'right' }
-      }
+        0: { cellWidth: 63 },
+        1: { cellWidth: 28, halign: 'right' },
+        2: { cellWidth: 63 },
+        3: { cellWidth: 28, halign: 'right' }
+      },
+      bodyStyles: { fontSize: 8, textColor: [15, 23, 42], cellPadding: 1.8 },
+      footStyles: { fillColor: [255, 255, 255], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.2, lineWidth: { top: 0.5, bottom: 1.5 }, lineColor: [15, 23, 42] },
+      didParseCell: (data) => {
+        if (data.section === 'body') {
+          const row = tradingRows[data.row.index];
+          if (!row) return;
+          const isLeftSub = (row[0] || '').startsWith('  ');
+          const isRightSub = (row[2] || '').startsWith('  ');
+          if (data.column.index === 0 || data.column.index === 1) {
+            if ((row[0] || '').includes('Gross Profit')) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.textColor = [22, 101, 52];
+            } else if (isLeftSub) {
+              data.cell.styles.fontStyle = 'italic';
+              data.cell.styles.textColor = [51, 65, 85];
+            } else if ((row[0] || '').trim().length > 0) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.textColor = [0, 0, 0];
+              if (data.column.index === 1 && row[1]) {
+                data.cell.styles.lineWidth = { top: 0.2, bottom: 0.2 };
+                data.cell.styles.lineColor = [100, 116, 139];
+              }
+            }
+          }
+          if (data.column.index === 2 || data.column.index === 3) {
+            if ((row[2] || '').includes('Gross Profit')) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.textColor = [22, 101, 52];
+            } else if (isRightSub) {
+              data.cell.styles.fontStyle = 'italic';
+              data.cell.styles.textColor = [51, 65, 85];
+            } else if ((row[2] || '').trim().length > 0) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.textColor = [0, 0, 0];
+              if (data.column.index === 3 && row[3]) {
+                data.cell.styles.lineWidth = { top: 0.2, bottom: 0.2 };
+                data.cell.styles.lineColor = [100, 116, 139];
+              }
+            }
+          }
+        }
+      },
+      margin: { left: 14, right: 14 }
     });
 
-    startY = (doc as any).lastAutoTable.finalY + 5;
+    const tradingStart = currentY - 8;
+    const tradingEnd = (doc as any).lastAutoTable.finalY;
+    doc.setDrawColor(15, 23, 42);
+    doc.setLineWidth(0.6);
+    doc.rect(14, tradingStart, pageWidth - 28, tradingEnd - tradingStart);
+    doc.setLineWidth(0.3);
+    doc.line(14 + (pageWidth - 28) / 2, tradingStart, 14 + (pageWidth - 28) / 2, tradingEnd);
 
-    // P&L Section Header
+    currentY = tradingEnd + 6;
+
+    // PROFIT & LOSS ACCOUNT Section Header
     doc.setFillColor(224, 231, 255);
-    doc.rect(margin, startY, pageWidth - margin * 2, 5.5, 'F');
+    doc.setDrawColor(199, 210, 254);
+    doc.roundedRect(14, currentY, pageWidth - 28, 6.5, 1, 1, 'FD');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(55, 48, 163);
-    doc.text('PROFIT & LOSS ACCOUNT', margin + 3, startY + 4);
+    doc.text('PROFIT & LOSS ACCOUNT', 18, currentY + 4.5);
+    currentY += 8;
 
-    startY += 5.5;
+    const leftPnl: { label: string; amt: string }[] = [];
+    const rightPnl: { label: string; amt: string }[] = [];
 
-    const pnlRows: any[] = [];
     if (grossProfit < 0) {
-      pnlRows.push(['Gross Loss b/f', fmtNum(Math.abs(grossProfit)), '', '']);
-    } else {
-      pnlRows.push(['', '', 'Gross Profit b/f', fmtNum(grossProfit)]);
+      leftPnl.push({ label: 'Gross Loss b/f', amt: fmt(Math.abs(grossProfit)) });
     }
-
-    pnlRows.push(['Indirect Expenses', fmtNum(ie), 'Indirect Incomes', fmtNum(ii)]);
+    leftPnl.push({ label: 'Indirect Expenses', amt: fmt(ie) });
     if (depth !== 'summary') {
-      indirectExpLedgers.forEach((l: any) => pnlRows.push([`  ${l.name}`, fmtNum(l.amount), '', '']));
-      indirectIncLedgers.forEach((l: any) => pnlRows.push(['', '', `  ${l.name}`, fmtNum(l.amount)]));
+      indirectExpLedgers.forEach(l => leftPnl.push({ label: `  ${l.name}`, amt: fmt(l.amount) }));
+    }
+    if (netProfit >= 0) {
+      leftPnl.push({ label: 'Nett Profit', amt: fmt(netProfit) });
     }
 
-    if (netProfit >= 0) {
-      pnlRows.push(['Nett Profit', fmtNum(netProfit), '', '']);
-    } else {
-      pnlRows.push(['', '', 'Nett Loss', fmtNum(Math.abs(netProfit))]);
+    if (grossProfit >= 0) {
+      rightPnl.push({ label: 'Gross Profit b/f', amt: fmt(grossProfit) });
+    }
+    if (ii > 0) {
+      rightPnl.push({ label: 'Indirect Incomes', amt: fmt(ii) });
+      if (depth !== 'summary') {
+        indirectIncLedgers.forEach(l => rightPnl.push({ label: `  ${l.name}`, amt: fmt(l.amount) }));
+      }
+    }
+    if (netProfit < 0) {
+      rightPnl.push({ label: 'Nett Loss', amt: fmt(Math.abs(netProfit)) });
+    }
+
+    const pnlRows: any[][] = [];
+    const maxPnlRows = Math.max(leftPnl.length, rightPnl.length);
+    for (let i = 0; i < maxPnlRows; i++) {
+      const l = leftPnl[i] || { label: '', amt: '' };
+      const r = rightPnl[i] || { label: '', amt: '' };
+      pnlRows.push([l.label, l.amt, r.label, r.amt]);
     }
 
     const totalPnlLeft = ie + (grossProfit < 0 ? Math.abs(grossProfit) : 0) + Math.max(0, netProfit);
-    const totalPnlRight = ii + (grossProfit >= 0 ? grossProfit : 0) + (netProfit < 0 ? Math.abs(netProfit) : 0);
+    const totalPnlRight = Math.max(0, grossProfit) + ii + (netProfit < 0 ? Math.abs(netProfit) : 0);
 
     autoTable(doc, {
-      startY: startY,
-      head: [['Particulars (Debit)', `Amount (${currency})`, 'Particulars (Credit)', `Amount (${currency})`]],
+      startY: currentY,
+      head: [ ['P a r t i c u l a r s', `Amount (${currency})`, 'P a r t i c u l a r s', `Amount (${currency})`] ],
       body: pnlRows,
-      foot: [['TOTAL', fmtNum(totalPnlLeft), 'TOTAL', fmtNum(totalPnlRight)]],
-      margin: { left: margin, right: margin },
-      theme: 'grid',
-      headStyles: { fillColor: [55, 48, 163], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
-      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8 },
-      bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
+      foot: [ ['TOTAL', fmt(totalPnlLeft), 'TOTAL', fmt(totalPnlRight)] ],
+      theme: 'plain',
+      headStyles: { fillColor: [248, 250, 252], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8, cellPadding: 2, lineWidth: { top: 0.5, bottom: 0.5 }, lineColor: [15, 23, 42] },
       columnStyles: {
-        0: { cellWidth: (pageWidth - margin * 2) * 0.35 },
-        1: { cellWidth: (pageWidth - margin * 2) * 0.15, halign: 'right' },
-        2: { cellWidth: (pageWidth - margin * 2) * 0.35 },
-        3: { cellWidth: (pageWidth - margin * 2) * 0.15, halign: 'right' }
-      }
+        0: { cellWidth: 63 },
+        1: { cellWidth: 28, halign: 'right' },
+        2: { cellWidth: 63 },
+        3: { cellWidth: 28, halign: 'right' }
+      },
+      bodyStyles: { fontSize: 8, textColor: [15, 23, 42], cellPadding: 1.8 },
+      footStyles: { fillColor: [255, 255, 255], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.2, lineWidth: { top: 0.5, bottom: 1.5 }, lineColor: [15, 23, 42] },
+      didParseCell: (data) => {
+        if (data.section === 'body') {
+          const row = pnlRows[data.row.index];
+          if (!row) return;
+          const isLeftSub = (row[0] || '').startsWith('  ');
+          const isRightSub = (row[2] || '').startsWith('  ');
+          if (data.column.index === 0 || data.column.index === 1) {
+            if ((row[0] || '').includes('Nett Profit')) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.textColor = [22, 101, 52];
+            } else if (isLeftSub) {
+              data.cell.styles.fontStyle = 'italic';
+              data.cell.styles.textColor = [51, 65, 85];
+            } else if ((row[0] || '').trim().length > 0) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.textColor = [0, 0, 0];
+              if (data.column.index === 1 && row[1]) {
+                data.cell.styles.lineWidth = { top: 0.2, bottom: 0.2 };
+                data.cell.styles.lineColor = [100, 116, 139];
+              }
+            }
+          }
+          if (data.column.index === 2 || data.column.index === 3) {
+            if ((row[2] || '').includes('Nett Profit')) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.textColor = [22, 101, 52];
+            } else if (isRightSub) {
+              data.cell.styles.fontStyle = 'italic';
+              data.cell.styles.textColor = [51, 65, 85];
+            } else if ((row[2] || '').trim().length > 0) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.textColor = [0, 0, 0];
+              if (data.column.index === 3 && row[3]) {
+                data.cell.styles.lineWidth = { top: 0.2, bottom: 0.2 };
+                data.cell.styles.lineColor = [100, 116, 139];
+              }
+            }
+          }
+        }
+      },
+      margin: { left: 14, right: 14 }
     });
+
+    const pnlStart = currentY - 8;
+    const pnlEnd = (doc as any).lastAutoTable.finalY;
+    doc.setDrawColor(15, 23, 42);
+    doc.setLineWidth(0.6);
+    doc.rect(14, pnlStart, pageWidth - 28, pnlEnd - pnlStart);
+    doc.setLineWidth(0.3);
+    doc.line(14 + (pageWidth - 28) / 2, pnlStart, 14 + (pageWidth - 28) / 2, pnlEnd);
+
+    const finalY = (doc as any).lastAutoTable.finalY || currentY + 30;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(51, 65, 85);
+    doc.setDrawColor(148, 163, 184);
+    doc.setLineWidth(0.3);
+    doc.line(pageWidth - 60, finalY + 22, pageWidth - 14, finalY + 22);
+    doc.text('Authorized Signatory', pageWidth - 37, finalY + 26, { align: 'center' });
 
     return doc;
   }
 
-  // 2. FINANCIAL REPORT: BALANCE SHEET
+  // 2. Specialized rendering for Balance Sheet (BS)
   if (reportType === 'BS' && reportData?.bs && reportData?.pnl) {
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 12;
-
     const p = reportData.pnl;
     const netProfit = (Number(p.s) || 0) + (Number(p.di) || 0) - ((Number(p.os) || 0) + (Number(p.p) || 0) + (Number(p.de) || 0) - (Number(p.cs) || 0)) + (Number(p.ii) || 0) - (Number(p.ie) || 0);
 
     const cap = Number(reportData.bs.cap) || 0;
-    const netEquity = cap + netProfit;
     const loans = Number(reportData.bs.ln) || 0;
     const cl = Number(reportData.bs.cl) || 0;
     const fa = Number(reportData.bs.fa) || 0;
@@ -713,1440 +601,818 @@ export function generateReportPDF(
     const fixedAssetLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Fixed Asset'));
     const currentAssetLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Current Asset') || (l.grp || '').includes('Debtor') || (l.grp || '').includes('Bank') || (l.grp || '').includes('Cash'));
 
-    const totalLiab = netEquity + loans + cl;
+    const totalLiab = cap + netProfit + loans + cl;
     const totalAssets = fa + ca + stockVal;
 
-    // Header Banner
-    const startY = drawReportHeaderBox(doc, config, 'BALANCE SHEET', fromDate, toDate, depth, 'BS');
+    // BALANCE SHEET Section Header
+    doc.setFillColor(224, 231, 255);
+    doc.setDrawColor(199, 210, 254);
+    doc.roundedRect(14, currentY, pageWidth - 28, 6.5, 1, 1, 'FD');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(55, 48, 163);
+    doc.text('BALANCE SHEET', 18, currentY + 4.5);
+    currentY += 8;
 
-    const bsRows: any[] = [];
-    bsRows.push(['Capital Account', fmtNum(cap), 'Fixed Assets', fmtNum(fa)]);
+    const leftBs: { label: string; amt: string }[] = [];
+    const rightBs: { label: string; amt: string }[] = [];
+
+    leftBs.push({ label: 'Capital Account', amt: fmt(cap) });
     if (depth !== 'summary') {
-      capitalLedgers.forEach((l: any) => bsRows.push([`  ${l.name}`, fmtNum(l.cr || l.dr), '', '']));
-      fixedAssetLedgers.forEach((l: any) => bsRows.push(['', '', `  ${l.name}`, fmtNum(l.dr || l.cr)]));
+      capitalLedgers.forEach(l => leftBs.push({ label: `  ${l.name}`, amt: fmt(l.cr || l.dr) }));
     }
-    bsRows.push(['  Add: Nett Profit / (Loss)', fmtNum(netProfit), 'Current Assets', fmtNum(ca)]);
-    if (depth !== 'summary') {
-      currentAssetLedgers.forEach((l: any) => bsRows.push(['', '', `  ${l.name}`, fmtNum(l.dr || l.cr)]));
+    leftBs.push({ label: '  Add: Nett Profit / (Loss)', amt: fmt(netProfit) });
+
+    if (loans > 0) {
+      leftBs.push({ label: 'Loans (Liability)', amt: fmt(loans) });
+      if (depth !== 'summary') {
+        loanLedgers.forEach(l => leftBs.push({ label: `  ${l.name}`, amt: fmt(l.cr || l.dr) }));
+      }
     }
-    bsRows.push(['Loans (Liability)', fmtNum(loans), 'Closing Stock Valuation', fmtNum(stockVal)]);
+
+    leftBs.push({ label: 'Current Liabilities & Payables', amt: fmt(cl) });
     if (depth !== 'summary') {
-      loanLedgers.forEach((l: any) => bsRows.push([`  ${l.name}`, fmtNum(l.cr || l.dr), '', '']));
+      currentLiabLedgers.forEach(l => leftBs.push({ label: `  ${l.name}`, amt: fmt(l.cr || l.dr) }));
     }
-    bsRows.push(['Current Liabilities & Payables', fmtNum(cl), '', '']);
+
+    rightBs.push({ label: 'Fixed Assets', amt: fmt(fa) });
     if (depth !== 'summary') {
-      currentLiabLedgers.forEach((l: any) => bsRows.push([`  ${l.name}`, fmtNum(l.cr || l.dr), '', '']));
+      fixedAssetLedgers.forEach(l => rightBs.push({ label: `  ${l.name}`, amt: fmt(l.dr || l.cr) }));
+    }
+
+    rightBs.push({ label: 'Current Assets', amt: fmt(ca) });
+    if (depth !== 'summary') {
+      currentAssetLedgers.forEach(l => rightBs.push({ label: `  ${l.name}`, amt: fmt(l.dr || l.cr) }));
+    }
+
+    rightBs.push({ label: 'Closing Stock Valuation', amt: fmt(stockVal) });
+
+    const bsRows: any[][] = [];
+    const maxBsRows = Math.max(leftBs.length, rightBs.length);
+    for (let i = 0; i < maxBsRows; i++) {
+      const l = leftBs[i] || { label: '', amt: '' };
+      const r = rightBs[i] || { label: '', amt: '' };
+      bsRows.push([l.label, l.amt, r.label, r.amt]);
     }
 
     autoTable(doc, {
-      startY: startY,
-      head: [['LIABILITIES & EQUITY', `Amount (${currency})`, 'ASSETS & PROPERTIES', `Amount (${currency})`]],
+      startY: currentY,
+      head: [ ['L I A B I L I T I E S', `Amount (${currency})`, 'A S S E T S', `Amount (${currency})`] ],
       body: bsRows,
-      foot: [['TOTAL LIABILITIES', fmtNum(totalLiab), 'TOTAL ASSETS', fmtNum(totalAssets)]],
-      margin: { left: margin, right: margin },
-      theme: 'grid',
-      headStyles: { fillColor: [55, 48, 163], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
-      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8 },
-      bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
+      foot: [ ['TOTAL LIABILITIES', fmt(totalLiab), 'TOTAL ASSETS', fmt(totalAssets)] ],
+      theme: 'plain',
+      headStyles: { fillColor: [248, 250, 252], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8, cellPadding: 2, lineWidth: { top: 0.5, bottom: 0.5 }, lineColor: [15, 23, 42] },
       columnStyles: {
-        0: { cellWidth: (pageWidth - margin * 2) * 0.35 },
-        1: { cellWidth: (pageWidth - margin * 2) * 0.15, halign: 'right' },
-        2: { cellWidth: (pageWidth - margin * 2) * 0.35 },
-        3: { cellWidth: (pageWidth - margin * 2) * 0.15, halign: 'right' }
-      }
+        0: { cellWidth: 63 },
+        1: { cellWidth: 28, halign: 'right' },
+        2: { cellWidth: 63 },
+        3: { cellWidth: 28, halign: 'right' }
+      },
+      bodyStyles: { fontSize: 8, textColor: [15, 23, 42], cellPadding: 1.8 },
+      footStyles: { fillColor: [255, 255, 255], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.2, lineWidth: { top: 0.5, bottom: 1.5 }, lineColor: [15, 23, 42] },
+      didParseCell: (data) => {
+        if (data.section === 'body') {
+          const row = bsRows[data.row.index];
+          if (!row) return;
+          const isLeftSub = (row[0] || '').startsWith('  ');
+          const isRightSub = (row[2] || '').startsWith('  ');
+          if (data.column.index === 0 || data.column.index === 1) {
+            if ((row[0] || '').includes('Nett Profit')) {
+              data.cell.styles.fontStyle = 'italic';
+              data.cell.styles.textColor = [22, 101, 52];
+            } else if (isLeftSub) {
+              data.cell.styles.fontStyle = 'italic';
+              data.cell.styles.textColor = [51, 65, 85];
+            } else if ((row[0] || '').trim().length > 0) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.textColor = [0, 0, 0];
+              if (data.column.index === 1 && row[1]) {
+                data.cell.styles.lineWidth = { top: 0.2, bottom: 0.2 };
+                data.cell.styles.lineColor = [100, 116, 139];
+              }
+            }
+          }
+          if (data.column.index === 2 || data.column.index === 3) {
+            if (isRightSub) {
+              data.cell.styles.fontStyle = 'italic';
+              data.cell.styles.textColor = [51, 65, 85];
+            } else if ((row[2] || '').trim().length > 0) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.textColor = [0, 0, 0];
+              if (data.column.index === 3 && row[3]) {
+                data.cell.styles.lineWidth = { top: 0.2, bottom: 0.2 };
+                data.cell.styles.lineColor = [100, 116, 139];
+              }
+            }
+          }
+        }
+      },
+      margin: { left: 14, right: 14 }
     });
+
+    const bsStart = currentY - 8;
+    const bsEnd = (doc as any).lastAutoTable.finalY;
+    doc.setDrawColor(15, 23, 42);
+    doc.setLineWidth(0.6);
+    doc.rect(14, bsStart, pageWidth - 28, bsEnd - bsStart);
+    doc.setLineWidth(0.3);
+    doc.line(14 + (pageWidth - 28) / 2, bsStart, 14 + (pageWidth - 28) / 2, bsEnd);
+
+    const finalY = bsEnd || currentY + 30;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(51, 65, 85);
+    doc.setDrawColor(148, 163, 184);
+    doc.setLineWidth(0.3);
+    doc.line(pageWidth - 60, finalY + 22, pageWidth - 14, finalY + 22);
+    doc.text('Authorized Signatory', pageWidth - 37, finalY + 26, { align: 'center' });
 
     return doc;
   }
 
-  // 3. FINANCIAL REPORT: TRIAL BALANCE
+  // 3. Specialized rendering for Trial Balance (TB)
   if (reportType === 'TB' && reportData?.tb) {
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 12;
+    const rawTb: any[] = reportData.tb;
+    const primaryGroupOrder = [
+      'Capital Account', 'Loans (Liability)', 'Current Liabilities',
+      'Fixed Assets', 'Investments', 'Current Assets', 'Branch / Divisions',
+      'Sales Accounts', 'Direct Incomes', 'Indirect Incomes',
+      'Purchase Accounts', 'Direct Expenses', 'Indirect Expenses'
+    ];
 
-    const rawTb = reportData.tb || [];
+    const grouped: Record<string, { name: string; dr: number; cr: number; ledgers: any[] }> = {};
     let totalDr = 0;
     let totalCr = 0;
 
-    const tbRows: any[] = [];
-    rawTb.forEach((l: any) => {
+    rawTb.forEach(l => {
+      const grp = l.grp || 'Other Accounts';
+      if (!grouped[grp]) {
+        grouped[grp] = { name: grp, dr: 0, cr: 0, ledgers: [] };
+      }
       const dr = Number(l.dr) || 0;
       const cr = Number(l.cr) || 0;
+      grouped[grp].dr += dr;
+      grouped[grp].cr += cr;
+      grouped[grp].ledgers.push(l);
       totalDr += dr;
       totalCr += cr;
-      tbRows.push([l.name || l.grp || 'Ledger Account', dr > 0 ? fmtNum(dr) : '-', cr > 0 ? fmtNum(cr) : '-']);
     });
 
-    // Header Banner
-    const startY = drawReportHeaderBox(doc, config, 'TRIAL BALANCE', fromDate, toDate, depth, 'TB');
+    const groupKeys = Object.keys(grouped).sort((a, b) => {
+      const idxA = primaryGroupOrder.indexOf(a);
+      const idxB = primaryGroupOrder.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
 
-    autoTable(doc, {
-      startY: startY,
-      head: [['Particulars / Account Groups', `Closing Debit (${currency})`, `Closing Credit (${currency})`]],
-      body: tbRows,
-      foot: [['CARRIED OVER / GRAND TOTAL', fmtNum(totalDr), fmtNum(totalCr)]],
-      margin: { left: margin, right: margin },
-      theme: 'grid',
-      headStyles: { fillColor: [55, 48, 163], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
-      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8 },
-      bodyStyles: { fontSize: 7.5, textColor: [30, 41, 59] },
-      columnStyles: {
-        0: { cellWidth: (pageWidth - margin * 2) * 0.6 },
-        1: { cellWidth: (pageWidth - margin * 2) * 0.2, halign: 'right' },
-        2: { cellWidth: (pageWidth - margin * 2) * 0.2, halign: 'right' }
+    const tbRows: any[][] = [];
+    const isGroupRowIndex: boolean[] = [];
+
+    groupKeys.forEach(grpKey => {
+      const g = grouped[grpKey];
+      const net = g.dr - g.cr;
+      const isDr = net >= 0;
+      const absVal = Math.abs(net);
+
+      // Group Header Row
+      isGroupRowIndex[tbRows.length] = true;
+      tbRows.push([g.name, isDr && absVal > 0 ? fmt(absVal) : '', !isDr && absVal > 0 ? fmt(absVal) : '']);
+
+      if (depth !== 'summary') {
+        g.ledgers.forEach(l => {
+          const lNet = (Number(l.dr) || 0) - (Number(l.cr) || 0);
+          const lIsDr = lNet >= 0;
+          const lAbs = Math.abs(lNet);
+          isGroupRowIndex[tbRows.length] = false;
+          tbRows.push([`    ${l.name}`, lIsDr && lAbs > 0 ? fmt(lAbs) : '', !lIsDr && lAbs > 0 ? fmt(lAbs) : '']);
+        });
       }
     });
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [ ['P a r t i c u l a r s', `Closing Debit (${currency})`, `Closing Credit (${currency})`] ],
+      body: tbRows,
+      foot: [ ['CARRIED OVER / GRAND TOTAL', fmt(totalDr), fmt(totalCr)] ],
+      theme: 'plain',
+      headStyles: { fillColor: [248, 250, 252], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2, lineWidth: { top: 0.5, bottom: 0.5 }, lineColor: [15, 23, 42] },
+      columnStyles: {
+        0: { cellWidth: 102 },
+        1: { cellWidth: 40, halign: 'right' },
+        2: { cellWidth: 40, halign: 'right' }
+      },
+      bodyStyles: { fontSize: 8, textColor: [15, 23, 42], cellPadding: 1.8 },
+      footStyles: { fillColor: [255, 255, 255], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.2, lineWidth: { top: 0.5, bottom: 1.5 }, lineColor: [15, 23, 42] },
+      didParseCell: (data) => {
+        if (data.section === 'body') {
+          const isGrp = isGroupRowIndex[data.row.index];
+          if (isGrp) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.textColor = [0, 0, 0];
+            data.cell.styles.fontSize = 8.5;
+            if (data.column.index > 0 && data.cell.text && data.cell.text[0]) {
+              data.cell.styles.lineWidth = { top: 0.2, bottom: 0.2 };
+              data.cell.styles.lineColor = [100, 116, 139];
+            }
+          } else {
+            data.cell.styles.fontStyle = 'italic';
+            data.cell.styles.textColor = [51, 65, 85];
+            data.cell.styles.fontSize = 8;
+          }
+        }
+      },
+      margin: { left: 14, right: 14 }
+    });
+
+    const finalY = (doc as any).lastAutoTable.finalY || currentY + 30;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(51, 65, 85);
+    doc.setDrawColor(148, 163, 184);
+    doc.setLineWidth(0.3);
+    doc.line(pageWidth - 60, finalY + 22, pageWidth - 14, finalY + 22);
+    doc.text('Authorized Signatory', pageWidth - 37, finalY + 26, { align: 'center' });
 
     return doc;
   }
 
-  // 4. FALLBACK GENERAL REPORT TABLE EXPORT
-  const isWide = headers.length > 6;
-  const doc = new jsPDF({
-    orientation: isWide ? 'landscape' : 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  });
-
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 12;
-  const nowStr = new Date().toLocaleString();
-
-  // --- Title & Header ---
-  const currentY = drawReportHeaderBox(doc, config, reportTitle, fromDate, toDate, depth, reportType);
-
-  // --- Data Table ---
-  const bodyData = rows.map(r => r.map(c => (c !== undefined && c !== null ? String(c) : '')));
-
-  if (totals && totals.length > 0) {
-    const totalsFormatted = totals.map(t => (t !== undefined && t !== null ? String(t) : ''));
-    bodyData.push(totalsFormatted);
-  }
+  // Fallback for generic non-financial reports
+  const headData = [headers];
+  const footData = totals && totals.length > 0 ? [totals] : [];
 
   autoTable(doc, {
     startY: currentY,
-    head: [headers],
-    body: bodyData,
-    margin: { left: margin, right: margin },
+    head: headData,
+    body: rows,
+    foot: footData,
     theme: 'grid',
-    headStyles: {
-      fillColor: [79, 70, 229],
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      fontSize: 8.5
-    },
-    bodyStyles: {
-      fontSize: 8,
-      textColor: [51, 65, 85]
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252]
-    },
-    didParseCell: function (data) {
-      // Highlight the totals row if present
-      if (totals && totals.length > 0 && data.row.index === bodyData.length - 1) {
-        data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.fillColor = [241, 245, 249];
-        data.cell.styles.textColor = [30, 41, 59];
-      }
-    }
+    headStyles: { fillColor: [37, 99, 235], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5, cellPadding: 2.5 },
+    bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
+    alternateRowStyles: { fillColor: [240, 245, 255] },
+    footStyles: { fillColor: [239, 246, 255], textColor: [30, 58, 138], fontStyle: 'bold', fontSize: 8 },
+    styles: { cellPadding: 2 }
   });
 
-  // Footer page numbers
-  const pageCount = (doc.internal as any).getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(148, 163, 184);
-    doc.text(
-      `Page ${i} of ${pageCount} • ${config.CompanyName || 'POS'}`,
-      pageWidth / 2,
-      doc.internal.pageSize.getHeight() - 8,
-      { align: 'center' }
-    );
-  }
-
-  return doc;
-}
-
-/**
- * Generate a professional Delivery Note / Outward Challan PDF
- */
-export function generateDeliveryNotePDF(note: DeliveryNote, config: Config): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  });
-
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 14;
-  const currency = config.CurrencySymbol || 'Nu.';
-
-  // Header
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(30, 41, 59);
-  doc.text(config.CompanyName || 'RETAIL STORE', margin, 20);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
-
-  let headerY = 25;
-  if (config.Address) {
-    doc.text(config.Address, margin, headerY);
-    headerY += 4.5;
-  }
-  if (config.CompanyGSTNo || config.CompanyTPNNo) {
-    doc.text(`GSTIN / TPN: ${config.CompanyGSTNo || config.CompanyTPNNo}`, margin, headerY);
-    headerY += 4.5;
-  }
-
-  // Right side Title
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(14, 116, 144); // cyan-700
-  doc.text('DELIVERY CHALLAN / NOTE', pageWidth - margin, 20, { align: 'right' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(51, 65, 85);
-  doc.text(`Challan No: ${note.noteNo}`, pageWidth - margin, 26, { align: 'right' });
-  doc.text(`Date: ${new Date(note.date).toLocaleDateString()}`, pageWidth - margin, 31, { align: 'right' });
-  if (note.orderRefNo) {
-    doc.text(`Order Ref: ${note.orderRefNo}`, pageWidth - margin, 36, { align: 'right' });
-  }
-
-  // Divider line
-  const dividerY = Math.max(headerY + 2, 42);
-  doc.setDrawColor(207, 250, 254);
-  doc.setLineWidth(0.6);
-  doc.line(margin, dividerY, pageWidth - margin, dividerY);
-
-  // Consignee / Transport Details Section
-  const infoY = dividerY + 6;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(30, 41, 59);
-  doc.text('CONSIGNEE / DELIVER TO:', margin, infoY);
-  doc.text('TRANSPORT & DISPATCH:', pageWidth / 2 + 10, infoY);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(71, 85, 105);
-
-  let custY = infoY + 5;
-  const custName = note.customer?.name || (note.customer as any)?.ledger || 'Customer';
-  doc.setFont('helvetica', 'bold');
-  doc.text(custName, margin, custY);
-  doc.setFont('helvetica', 'normal');
-  custY += 4.5;
-
-  if (note.customer?.phone) {
-    doc.text(`Contact: ${note.customer.phone}`, margin, custY);
-    custY += 4.5;
-  }
-  if (note.customer?.address) {
-    doc.text(`Address: ${note.customer.address}`, margin, custY);
-    custY += 4.5;
-  }
-  if (note.destination && note.destination !== note.customer?.address) {
-    doc.text(`Destination: ${note.destination}`, margin, custY);
-    custY += 4.5;
-  }
-
-  // Transport details
-  let transY = infoY + 5;
-  if (note.vehicleNo) {
-    doc.text(`Vehicle No: ${note.vehicleNo}`, pageWidth / 2 + 10, transY);
-    transY += 4.5;
-  }
-  if (note.dispatchThrough) {
-    doc.text(`Dispatched via: ${note.dispatchThrough}`, pageWidth / 2 + 10, transY);
-    transY += 4.5;
-  }
-  doc.text(`Status: ${note.status || 'Dispatched'}`, pageWidth / 2 + 10, transY);
-
-  // Items Table
-  const tableStartY = Math.max(custY, transY) + 4;
-  const tableHeaders = ['#', 'Item Code', 'Description of Goods', 'Quantity', 'Unit', `Valuation (${currency})`];
-
-  let totalQty = 0;
-  let totalVal = 0;
-
-  const tableBody = (note.items || []).map((it, idx) => {
-    const qty = Number(it.qty) || 0;
-    const amt = Number(it.amount) || qty * (Number(it.rate) || 0);
-    totalQty += qty;
-    totalVal += amt;
-    return [
-      idx + 1,
-      it.itemCode || '-',
-      it.itemName || '',
-      qty,
-      it.unit || 'Pcs',
-      amt > 0 ? amt.toFixed(2) : '-'
-    ];
-  });
-
-  // Append totals row
-  tableBody.push(['', '', 'Total Goods Dispatched', `${totalQty} units`, '', totalVal > 0 ? totalVal.toFixed(2) : '-']);
-
-  autoTable(doc, {
-    startY: tableStartY,
-    head: [tableHeaders],
-    body: tableBody,
-    theme: 'grid',
-    headStyles: {
-      fillColor: [14, 116, 144], // cyan-700
-      textColor: [255, 255, 255],
-      fontSize: 8.5,
-      fontStyle: 'bold'
-    },
-    styles: {
-      fontSize: 8.5,
-      textColor: [51, 65, 85],
-      cellPadding: 2.8
-    },
-    columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 28, fontStyle: 'bold' },
-      2: { cellWidth: 'auto' },
-      3: { cellWidth: 24, halign: 'center', fontStyle: 'bold' },
-      4: { cellWidth: 20, halign: 'center' },
-      5: { cellWidth: 32, halign: 'right', fontStyle: 'bold' }
-    },
-    didParseCell: function (data) {
-      if (data.row.index === tableBody.length - 1) {
-        data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.fillColor = [236, 254, 255];
-        data.cell.styles.textColor = [14, 116, 144];
-      }
-    }
-  });
-
-  const finalY = (doc as any).lastAutoTable.finalY + 8;
-  if (note.remarks) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text('Remarks / Instructions:', margin, finalY);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(71, 85, 105);
-    doc.text(note.remarks, margin, finalY + 4.5);
-  }
-
-  // Footer Signatures
-  const footerY = doc.internal.pageSize.getHeight() - 18;
-  doc.setDrawColor(226, 232, 240);
-  doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
-
-  addSignatureToPdf(doc, config, pageWidth - margin, footerY);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(100, 116, 139);
-  doc.text("Receiver's Signature & Seal", margin, footerY);
-  doc.text("Carrier / Driver's Signature", pageWidth / 2, footerY, { align: 'center' });
-  doc.text(config.SignatoryTitle || 'Authorized Signatory', pageWidth - margin, footerY, { align: 'right' });
-
-  return doc;
-}
-
-/**
- * Generate a professional Quotation / Price Estimate PDF
- */
-export function generateQuotationPDF(quote: Quotation, config: Config): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  });
-
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 14;
-  const currency = config.CurrencySymbol || 'Nu.';
-
-  // Header
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(30, 41, 59);
-  doc.text(config.CompanyName || 'RETAIL STORE', margin, 20);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
-
-  let headerY = 25;
-  if (config.Address) {
-    doc.text(config.Address, margin, headerY);
-    headerY += 4.5;
-  }
-  if (config.CompanyGSTNo || config.CompanyTPNNo) {
-    doc.text(`GSTIN / TPN: ${config.CompanyGSTNo || config.CompanyTPNNo}`, margin, headerY);
-    headerY += 4.5;
-  }
-
-  // Right side Title
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(109, 40, 217); // violet-700
-  doc.text('COMMERCIAL QUOTATION', pageWidth - margin, 20, { align: 'right' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(51, 65, 85);
-  doc.text(`Quotation No: ${quote.quotationNo}`, pageWidth - margin, 26, { align: 'right' });
-  doc.text(`Date: ${new Date(quote.date).toLocaleDateString()}`, pageWidth - margin, 31, { align: 'right' });
-  if (quote.validUntil) {
-    doc.text(`Valid Until: ${new Date(quote.validUntil).toLocaleDateString()}`, pageWidth - margin, 36, { align: 'right' });
-  }
-
-  // Divider line
-  const dividerY = Math.max(headerY + 2, 42);
-  doc.setDrawColor(237, 233, 254);
-  doc.setLineWidth(0.6);
-  doc.line(margin, dividerY, pageWidth - margin, dividerY);
-
-  // Client Details
-  const billToY = dividerY + 6;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(30, 41, 59);
-  doc.text('PROPOSAL PREPARED FOR:', margin, billToY);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(71, 85, 105);
-
-  let custY = billToY + 5;
-  const custName = quote.customer?.name || (quote.customer as any)?.ledger || 'Prospective Client';
-  doc.setFont('helvetica', 'bold');
-  doc.text(custName, margin, custY);
-  doc.setFont('helvetica', 'normal');
-  custY += 4.5;
-
-  if (quote.customer?.phone) {
-    doc.text(`Contact: ${quote.customer.phone}`, margin, custY);
-    custY += 4.5;
-  }
-  if (quote.customer?.address) {
-    doc.text(`Address: ${quote.customer.address}`, margin, custY);
-    custY += 4.5;
-  }
-
-  // Table
-  const tableStartY = custY + 3;
-  const tableHeaders = ['#', 'Item / Service', 'Qty', 'Unit', `Rate (${currency})`, 'Disc', `Net Total (${currency})`];
-
-  const tableBody = (quote.items || []).map((it, idx) => [
-    idx + 1,
-    it.itemName || it.itemCode || '',
-    it.qty,
-    it.unit || 'Pcs',
-    (Number(it.rate) || 0).toFixed(2),
-    it.discount > 0 ? `${it.discount.toFixed(2)}` : '-',
-    (Number(it.lineTotal) || 0).toFixed(2)
-  ]);
-
-  autoTable(doc, {
-    startY: tableStartY,
-    head: [tableHeaders],
-    body: tableBody,
-    theme: 'grid',
-    headStyles: {
-      fillColor: [109, 40, 217],
-      textColor: [255, 255, 255],
-      fontSize: 8.5,
-      fontStyle: 'bold'
-    },
-    styles: {
-      fontSize: 8.5,
-      textColor: [51, 65, 85],
-      cellPadding: 2.6
-    },
-    columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 'auto' },
-      2: { cellWidth: 18, halign: 'center', fontStyle: 'bold' },
-      3: { cellWidth: 16, halign: 'center' },
-      4: { cellWidth: 26, halign: 'right' },
-      5: { cellWidth: 20, halign: 'right' },
-      6: { cellWidth: 32, halign: 'right', fontStyle: 'bold' }
-    }
-  });
-
-  const finalY = (doc as any).lastAutoTable.finalY + 6;
-
-  // Grand Total Box
-  const summaryBoxX = pageWidth - margin - 80;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(109, 40, 217);
-  doc.text('Grand Quotation Total:', summaryBoxX, finalY + 4);
-  doc.text(`${currency} ${Number(quote.total).toFixed(2)}`, pageWidth - margin, finalY + 4, { align: 'right' });
-
-  let termsY = finalY + 12;
-  if (quote.paymentTerms || quote.remarks) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text('Terms & Conditions:', margin, termsY);
-    termsY += 4.5;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
-    const terms = quote.paymentTerms || quote.remarks || '';
-    const splitTerms = doc.splitTextToSize(terms, 120);
-    doc.text(splitTerms, margin, termsY);
-  }
-
-  // Footer
-  const footerY = doc.internal.pageSize.getHeight() - 14;
-  doc.setDrawColor(226, 232, 240);
-  doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
-  addSignatureToPdf(doc, config, pageWidth - margin, footerY);
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(8);
-  doc.setTextColor(148, 163, 184);
-  doc.text('This is a commercial quotation, not a tax invoice.', margin, footerY);
-  doc.text(config.SignatoryTitle || 'Authorized Signatory', pageWidth - margin, footerY, { align: 'right' });
-
-  return doc;
-}
-
-/**
- * Generate a professional Financial Voucher Slip PDF (Payment, Receipt, Journal, Contra)
- */
-export function generateVoucherSlipPDF(voucher: any, config: Config): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a5' // A5 is perfect for accounting voucher slips
-  });
-
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 12;
-  const currency = config.CurrencySymbol || 'Nu.';
-
-  const vTypeLabel =
-    voucher.type === 'P'
-      ? 'PAYMENT VOUCHER'
-      : voucher.type === 'R'
-      ? 'RECEIPT VOUCHER'
-      : voucher.type === 'J'
-      ? 'JOURNAL VOUCHER'
-      : voucher.type === 'C'
-      ? 'CONTRA VOUCHER'
-      : 'ACCOUNTING VOUCHER';
-
-  // Company Header
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(30, 41, 59);
-  doc.text(config.CompanyName || 'BUSINESS ACCOUNTING', margin, 16);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(100, 116, 139);
-  if (config.Address) {
-    doc.text(config.Address, margin, 21);
-  }
-
-  // Right Title
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(79, 70, 229);
-  doc.text(vTypeLabel, pageWidth - margin, 16, { align: 'right' });
-
+  const finalY = (doc as any).lastAutoTable?.finalY || currentY + 30;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(51, 65, 85);
-  doc.text(`Voucher No: ${voucher.voucherNo}`, pageWidth - margin, 21, { align: 'right' });
-  doc.text(`Date: ${new Date(voucher.date).toLocaleDateString()}`, pageWidth - margin, 26, { align: 'right' });
-
-  doc.setDrawColor(226, 232, 240);
-  doc.line(margin, 30, pageWidth - margin, 30);
-
-  // Table of entries
-  let tableHeaders = ['Type', 'Ledger Account', `Debit (${currency})`, `Credit (${currency})`];
-  let tableBody: any[] = [];
-  let totalDr = 0;
-  let totalCr = 0;
-
-  if (voucher.lines && voucher.lines.length > 0) {
-    voucher.lines.forEach((l: any) => {
-      const isDr = l.type === 'Dr';
-      const amt = Number(l.amount) || 0;
-      if (isDr) totalDr += amt;
-      else totalCr += amt;
-      tableBody.push([
-        l.type,
-        l.ledger,
-        isDr ? amt.toFixed(2) : '-',
-        !isDr ? amt.toFixed(2) : '-'
-      ]);
-    });
-  } else {
-    const amt = Number(voucher.amount) || 0;
-    totalDr = amt;
-    totalCr = amt;
-    tableBody = [
-      ['Dr', voucher.debitLedger || 'Debit Account', amt.toFixed(2), '-'],
-      ['Cr', voucher.creditLedger || 'Credit Account', '-', amt.toFixed(2)]
-    ];
-  }
-
-  // Totals row
-  tableBody.push(['', 'Total Amount', totalDr.toFixed(2), totalCr.toFixed(2)]);
-
-  autoTable(doc, {
-    startY: 34,
-    head: [tableHeaders],
-    body: tableBody,
-    theme: 'grid',
-    headStyles: {
-      fillColor: [79, 70, 229],
-      textColor: [255, 255, 255],
-      fontSize: 8.5,
-      fontStyle: 'bold'
-    },
-    styles: {
-      fontSize: 8,
-      textColor: [51, 65, 85],
-      cellPadding: 2.2
-    },
-    columnStyles: {
-      0: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
-      1: { cellWidth: 'auto', fontStyle: 'bold' },
-      2: { cellWidth: 26, halign: 'right' },
-      3: { cellWidth: 26, halign: 'right' }
-    },
-    didParseCell: function (data) {
-      if (data.row.index === tableBody.length - 1) {
-        data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.fillColor = [241, 245, 249];
-      }
-    }
-  });
-
-  const finalY = (doc as any).lastAutoTable.finalY + 6;
-  let currentY = finalY;
-
-  if (voucher.billNo || (voucher.billAllocations && voucher.billAllocations.length > 0)) {
-    const billText = voucher.billAllocations && voucher.billAllocations.length > 0
-      ? voucher.billAllocations.map((b: any) => `${b.billNo} (${b.amount.toFixed(2)})`).join(', ')
-      : voucher.billNo;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(79, 70, 229);
-    doc.text(`Agst Ref / Bill Settlement: ${billText}`, margin, currentY);
-    currentY += 5;
-  }
-
-  if (voucher.narration) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(30, 41, 59);
-    doc.text('Narration:', margin, currentY);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(71, 85, 105);
-    const narr = doc.splitTextToSize(voucher.narration, pageWidth - margin * 2);
-    doc.text(narr, margin, currentY + 4);
-  }
-
-  // Signatures
-  const footerY = doc.internal.pageSize.getHeight() - 12;
-  doc.setDrawColor(226, 232, 240);
-  doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Prepared By', margin, footerY);
-  doc.text('Checked / Verified', pageWidth / 2, footerY, { align: 'center' });
-  doc.text('Authorized Signatory', pageWidth - margin, footerY, { align: 'right' });
+  doc.setDrawColor(148, 163, 184);
+  doc.setLineWidth(0.3);
+  doc.line(pageWidth - 60, finalY + 22, pageWidth - 14, finalY + 22);
+  doc.text('Authorized Signatory', pageWidth - 37, finalY + 26, { align: 'center' });
 
   return doc;
 }
 
-/**
- * Generate a professional Credit Note PDF
- */
-export function generateCreditNotePDF(creditNote: any, config: Config): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  });
-
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 14;
-  const currency = config.CurrencySymbol || 'Nu.';
-
-  // Header
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(30, 41, 59);
-  doc.text(config.CompanyName || 'BUSINESS STORE', margin, 20);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
-  let headerY = 25;
-  if (config.Address) {
-    doc.text(config.Address, margin, headerY);
-    headerY += 4.5;
-  }
-  if (config.CompanyGSTNo || config.CompanyTPNNo) {
-    doc.text(`GSTIN / TPN: ${config.CompanyGSTNo || config.CompanyTPNNo}`, margin, headerY);
-    headerY += 4.5;
-  }
-
-  // Right Title
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(126, 34, 206); // purple-700
-  doc.text('CREDIT NOTE', pageWidth - margin, 20, { align: 'right' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(51, 65, 85);
-  doc.text(`Doc No: ${creditNote.voucherNo}`, pageWidth - margin, 26, { align: 'right' });
-  doc.text(`Date: ${new Date(creditNote.date).toLocaleDateString()}`, pageWidth - margin, 31, { align: 'right' });
-  if (creditNote.originalInvoiceRef) {
-    doc.text(`Orig Invoice: ${creditNote.originalInvoiceRef}`, pageWidth - margin, 36, { align: 'right' });
-  }
-
-  const dividerY = Math.max(headerY + 2, 42);
-  doc.setDrawColor(243, 232, 255);
-  doc.setLineWidth(0.6);
-  doc.line(margin, dividerY, pageWidth - margin, dividerY);
-
-  // Customer info
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(30, 41, 59);
-  doc.text('CREDIT ISSUED TO (CUSTOMER):', margin, dividerY + 6);
+export function drawTotalSummaryBox(doc: jsPDF, label: string, amountStr: string, finalY: number, margin: number, pageWidth: number): number {
+  const boxW = 80;
+  const boxX = pageWidth - margin - boxW;
   
-  let cnY = dividerY + 11;
+  doc.setFillColor(239, 246, 255); // Soft blue tint fill (#EFF6FF)
+  doc.setDrawColor(191, 219, 254); // Soft blue border (#BFDBFE)
+  doc.roundedRect(boxX, finalY, boxW, 11, 2, 2, 'FD');
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text(creditNote.partyLedger || 'Customer Account', margin, cnY);
-  doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
-  doc.setTextColor(71, 85, 105);
-  cnY += 4.5;
-
-  if (creditNote.partyPhone) {
-    doc.text(`Contact: ${creditNote.partyPhone}`, margin, cnY);
-    cnY += 4.5;
-  }
-  if (creditNote.partyAddress) {
-    doc.text(`Address: ${creditNote.partyAddress}`, margin, cnY);
-    cnY += 4.5;
-  }
-  if (creditNote.partyGstNo) {
-    doc.text(`GSTIN / TPN: ${creditNote.partyGstNo}`, margin, cnY);
-    cnY += 4.5;
-  }
-
-  // Items or lines
-  let tableHeaders = ['#', 'Item / Particulars', 'Qty', `Rate (${currency})`, `Amount (${currency})`];
-  let tableBody: any[] = [];
-  if (creditNote.items && creditNote.items.length > 0) {
-    tableBody = creditNote.items.map((it: any, idx: number) => [
-      idx + 1,
-      it.itemName || it.itemCode,
-      it.qty,
-      (Number(it.rate) || 0).toFixed(2),
-      (Number(it.amount) || 0).toFixed(2)
-    ]);
-  } else {
-    tableBody = [[1, 'Sales Return / Credit Adjustment', 1, (Number(creditNote.amount) || 0).toFixed(2), (Number(creditNote.amount) || 0).toFixed(2)]];
-  }
-
-  autoTable(doc, {
-    startY: Math.max(cnY + 2, dividerY + 16),
-    head: [tableHeaders],
-    body: tableBody,
-    theme: 'grid',
-    headStyles: {
-      fillColor: [126, 34, 206],
-      textColor: [255, 255, 255],
-      fontSize: 8.5,
-      fontStyle: 'bold'
-    },
-    styles: {
-      fontSize: 8.5,
-      textColor: [51, 65, 85],
-      cellPadding: 2.5
-    },
-    columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 'auto' },
-      2: { cellWidth: 20, halign: 'center' },
-      3: { cellWidth: 30, halign: 'right' },
-      4: { cellWidth: 35, halign: 'right', fontStyle: 'bold' }
-    }
-  });
-
-  const finalY = (doc as any).lastAutoTable.finalY + 6;
-  const grandTotal = Number(creditNote.totalAmount || creditNote.amount || 0);
+  doc.setTextColor(30, 58, 138); // Deep royal blue label
+  doc.text(label, boxX + 4, finalY + 7);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.setTextColor(126, 34, 206);
-  doc.text(`Total Credited: ${currency} ${grandTotal.toFixed(2)}`, pageWidth - margin, finalY + 4, { align: 'right' });
+  doc.setTextColor(29, 78, 216); // Vibrant royal blue amount
+  doc.text(amountStr, boxX + boxW - 4, finalY + 7, { align: 'right' });
 
-  if (creditNote.narration) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text('Narration / Reason:', margin, finalY + 12);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
-    doc.text(creditNote.narration, margin, finalY + 17);
-  }
-
-  const footerY = doc.internal.pageSize.getHeight() - 14;
-  doc.setDrawColor(226, 232, 240);
-  doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Prepared By', margin, footerY);
-  doc.text('Approved By', pageWidth / 2, footerY, { align: 'center' });
-  doc.text(config.SignatoryTitle || 'Authorized Signatory', pageWidth - margin, footerY, { align: 'right' });
-
-  return doc;
+  return finalY + 15;
 }
 
-/**
- * Generate a professional Debit Note PDF
- */
-export function generateDebitNotePDF(debitNote: any, config: Config): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
+export function extractInvoiceTotals(invoice: any) {
+  let taxable = Number(invoice.taxable ?? invoice.taxableAmount ?? invoice.taxableValue);
+  let zeroRated = Number(invoice.zeroRated ?? invoice.exempted ?? invoice.zeroRatedAmount);
+  let gstAmt = Number(invoice.gstAmt ?? invoice.gstAmount ?? invoice.taxAmount ?? invoice.totalGst);
+  let total = Number(invoice.total ?? invoice.totalAmount ?? invoice.invoiceAmount ?? invoice.netAmount ?? invoice.amount ?? 0);
+  let discount = Number(invoice.discount ?? invoice.billDiscount ?? 0);
+
+  const items = Array.isArray(invoice.items) ? invoice.items : [];
+
+  if (isNaN(taxable) || isNaN(zeroRated) || isNaN(gstAmt) || (!taxable && !zeroRated && items.length > 0)) {
+    let calcTaxable = 0;
+    let calcZero = 0;
+    let calcGst = 0;
+    const isCustomerExempt = Boolean(invoice.customer?.isGSTExempted);
+
+    items.forEach((it: any) => {
+      const qty = Number(it.qty ?? it.Qty ?? 0);
+      const rate = Number(it.rate ?? it.Rate ?? 0);
+      const rawDisc = Number(it.discount ?? it.Discount ?? 0);
+      const isPercent = it.discountType === 'percent';
+      const discVal = isPercent ? (qty * rate * rawDisc / 100) : rawDisc;
+      const gr = (qty * rate) - discVal;
+
+      const isZ = isCustomerExempt || it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true;
+      const gstPct = isZ ? 0 : Number(it['GST %'] ?? it.gstPct ?? it.taxRate ?? 0);
+      const lineGst = isZ ? 0 : (gr * gstPct / 100);
+
+      if (isZ) {
+        calcZero += gr;
+      } else {
+        calcTaxable += gr;
+      }
+      calcGst += lineGst;
+    });
+
+    if (isNaN(taxable) || (!taxable && calcTaxable > 0)) taxable = calcTaxable;
+    if (isNaN(zeroRated) || (!zeroRated && calcZero > 0)) zeroRated = calcZero;
+    if (isNaN(gstAmt) || (!gstAmt && calcGst > 0)) gstAmt = calcGst;
+  }
+
+  taxable = isNaN(taxable) ? 0 : taxable;
+  zeroRated = isNaN(zeroRated) ? 0 : zeroRated;
+  gstAmt = isNaN(gstAmt) ? 0 : gstAmt;
+
+  if (!total) {
+    total = taxable + zeroRated + gstAmt - discount;
+  }
+
+  return {
+    taxable: Math.max(0, taxable),
+    zeroRated: Math.max(0, zeroRated),
+    gstAmt: Math.max(0, gstAmt),
+    discount: Math.max(0, discount),
+    total: Math.max(0, total)
+  };
+}
+
+export function drawDetailedBillSummaryBox(
+  doc: jsPDF,
+  invoice: any,
+  finalY: number,
+  currency: string,
+  margin: number,
+  pageWidth: number,
+  totalLabel: string = 'Total Invoice Amount:'
+): number {
+  const totals = extractInvoiceTotals(invoice);
+  const boxW = 92;
+  const boxX = pageWidth - margin - boxW;
+
+  const rows: { label: string; value: string; isBold?: boolean; isHighlight?: boolean }[] = [
+    { label: 'Taxable Amount:', value: `${currency} ${totals.taxable.toFixed(2)}` },
+    { label: 'Exempted / Zero Rated Sale:', value: `${currency} ${totals.zeroRated.toFixed(2)}` },
+    { label: 'GST Amount:', value: `${currency} ${totals.gstAmt.toFixed(2)}` },
+  ];
+
+  if (totals.discount > 0) {
+    rows.push({ label: 'Discount:', value: `-${currency} ${totals.discount.toFixed(2)}` });
+  }
+
+  rows.push({
+    label: totalLabel,
+    value: `${currency} ${totals.total.toFixed(2)}`,
+    isBold: true,
+    isHighlight: true
   });
 
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 14;
-  const currency = config.CurrencySymbol || 'Nu.';
+  const rowHeight = 6;
+  const paddingY = 4;
+  const totalBoxHeight = rows.length * rowHeight + paddingY * 2;
 
-  // Header
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(30, 41, 59);
-  doc.text(config.CompanyName || 'BUSINESS STORE', margin, 20);
+  // Background Box
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(boxX, finalY, boxW, totalBoxHeight, 2, 2, 'FD');
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
-  let headerY = 25;
-  if (config.Address) {
-    doc.text(config.Address, margin, headerY);
-    headerY += 4.5;
-  }
-  if (config.CompanyGSTNo || config.CompanyTPNNo) {
-    doc.text(`GSTIN / TPN: ${config.CompanyGSTNo || config.CompanyTPNNo}`, margin, headerY);
-    headerY += 4.5;
-  }
+  let currentY = finalY + paddingY + 4;
 
-  // Right Title
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(194, 65, 12); // orange-700
-  doc.text('DEBIT NOTE', pageWidth - margin, 20, { align: 'right' });
+  rows.forEach(r => {
+    if (r.isHighlight) {
+      const hY = currentY - 4.5;
+      doc.setFillColor(239, 246, 255);
+      doc.setDrawColor(191, 219, 254);
+      doc.roundedRect(boxX + 2, hY, boxW - 4, 8, 1.5, 1.5, 'FD');
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(51, 65, 85);
-  doc.text(`Doc No: ${debitNote.voucherNo}`, pageWidth - margin, 26, { align: 'right' });
-  doc.text(`Date: ${new Date(debitNote.date).toLocaleDateString()}`, pageWidth - margin, 31, { align: 'right' });
-  if (debitNote.originalBillRef) {
-    doc.text(`Orig Bill: ${debitNote.originalBillRef}`, pageWidth - margin, 36, { align: 'right' });
-  }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 58, 138);
+      doc.text(r.label, boxX + 5, currentY + 0.8);
 
-  const dividerY = Math.max(headerY + 2, 42);
-  doc.setDrawColor(255, 237, 213);
-  doc.setLineWidth(0.6);
-  doc.line(margin, dividerY, pageWidth - margin, dividerY);
+      doc.setFontSize(10.5);
+      doc.setTextColor(29, 78, 216);
+      doc.text(r.value, boxX + boxW - 5, currentY + 0.8, { align: 'right' });
+    } else {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      doc.text(r.label, boxX + 5, currentY);
 
-  // Supplier info
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.setTextColor(30, 41, 59);
-  doc.text('DEBIT ISSUED TO (SUPPLIER):', margin, dividerY + 6);
-
-  let dnY = dividerY + 11;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.text(debitNote.supplierLedger || debitNote.partyLedger || 'Supplier Account', margin, dnY);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(71, 85, 105);
-  dnY += 4.5;
-
-  const suppPhone = debitNote.supplierPhone || debitNote.partyPhone;
-  const suppAddr = debitNote.supplierAddress || debitNote.partyAddress;
-  const suppGst = debitNote.supplierGstNo || debitNote.partyGstNo;
-
-  if (suppPhone) {
-    doc.text(`Contact: ${suppPhone}`, margin, dnY);
-    dnY += 4.5;
-  }
-  if (suppAddr) {
-    doc.text(`Address: ${suppAddr}`, margin, dnY);
-    dnY += 4.5;
-  }
-  if (suppGst) {
-    doc.text(`GSTIN / TPN: ${suppGst}`, margin, dnY);
-    dnY += 4.5;
-  }
-
-  // Items or lines
-  let tableHeaders = ['#', 'Item / Particulars', 'Qty', `Rate (${currency})`, `Amount (${currency})`];
-  let tableBody: any[] = [];
-  if (debitNote.items && debitNote.items.length > 0) {
-    tableBody = debitNote.items.map((it: any, idx: number) => [
-      idx + 1,
-      it.itemName || it.itemCode,
-      it.qty,
-      (Number(it.rate) || 0).toFixed(2),
-      (Number(it.amount) || 0).toFixed(2)
-    ]);
-  } else {
-    tableBody = [[1, 'Purchase Return / Debit Adjustment', 1, (Number(debitNote.amount) || 0).toFixed(2), (Number(debitNote.amount) || 0).toFixed(2)]];
-  }
-
-  autoTable(doc, {
-    startY: Math.max(dnY + 2, dividerY + 16),
-    head: [tableHeaders],
-    body: tableBody,
-    theme: 'grid',
-    headStyles: {
-      fillColor: [194, 65, 12],
-      textColor: [255, 255, 255],
-      fontSize: 8.5,
-      fontStyle: 'bold'
-    },
-    styles: {
-      fontSize: 8.5,
-      textColor: [51, 65, 85],
-      cellPadding: 2.5
-    },
-    columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 'auto' },
-      2: { cellWidth: 20, halign: 'center' },
-      3: { cellWidth: 30, halign: 'right' },
-      4: { cellWidth: 35, halign: 'right', fontStyle: 'bold' }
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(r.value, boxX + boxW - 5, currentY, { align: 'right' });
     }
+
+    currentY += rowHeight;
   });
 
-  const finalY = (doc as any).lastAutoTable.finalY + 6;
-  const grandTotal = Number(debitNote.totalAmount || debitNote.amount || 0);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(194, 65, 12);
-  doc.text(`Total Debited: ${currency} ${grandTotal.toFixed(2)}`, pageWidth - margin, finalY + 4, { align: 'right' });
-
-  if (debitNote.narration) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text('Narration / Reason:', margin, finalY + 12);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
-    doc.text(debitNote.narration, margin, finalY + 17);
-  }
-
-  const footerY = doc.internal.pageSize.getHeight() - 14;
-  doc.setDrawColor(226, 232, 240);
-  doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Prepared By', margin, footerY);
-  doc.text('Approved By', pageWidth / 2, footerY, { align: 'center' });
-  doc.text(config.SignatoryTitle || 'Authorized Signatory', pageWidth - margin, footerY, { align: 'right' });
-
-  return doc;
+  return finalY + totalBoxHeight + 5;
 }
 
-/**
- * Generate a professional Physical Stock Audit Report PDF
- */
-export function generatePhysicalStockPDF(voucher: any, config: Config): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  });
-
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 14;
-  const currency = config.CurrencySymbol || 'Nu.';
-
-  // Header
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(30, 41, 59);
-  doc.text(config.CompanyName || 'BUSINESS STORE', margin, 20);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
-  let headerY = 25;
-  if (config.Address) {
-    doc.text(config.Address, margin, headerY);
-    headerY += 4.5;
-  }
-
-  // Right Title
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(13, 148, 136); // teal-600
-  doc.text('PHYSICAL STOCK AUDIT', pageWidth - margin, 20, { align: 'right' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(51, 65, 85);
-  doc.text(`Audit Ref: ${voucher.voucherNo}`, pageWidth - margin, 26, { align: 'right' });
-  doc.text(`Audit Date: ${new Date(voucher.date).toLocaleDateString()}`, pageWidth - margin, 31, { align: 'right' });
-  if (voucher.verifiedBy) {
-    doc.text(`Auditor: ${voucher.verifiedBy}`, pageWidth - margin, 36, { align: 'right' });
-  }
-
-  const dividerY = Math.max(headerY + 2, 42);
-  doc.setDrawColor(204, 251, 241);
-  doc.setLineWidth(0.6);
-  doc.line(margin, dividerY, pageWidth - margin, dividerY);
-
-  const tableHeaders = ['#', 'Item Name', 'Book Qty', 'Counted Qty', 'Difference', `Variance (${currency})`];
-  const tableBody = (voucher.items || []).map((it: any, idx: number) => {
-    const diff = Number(it.differenceQty) || 0;
-    const diffStr = diff > 0 ? `+${diff}` : String(diff);
-    return [
-      idx + 1,
-      it.itemName || it.itemCode,
-      it.bookQty,
-      it.physicalQty,
-      diffStr,
-      (Number(it.varianceValue) || 0).toFixed(2)
-    ];
-  });
-
-  autoTable(doc, {
-    startY: dividerY + 6,
-    head: [tableHeaders],
-    body: tableBody,
-    theme: 'grid',
-    headStyles: {
-      fillColor: [13, 148, 136],
-      textColor: [255, 255, 255],
-      fontSize: 8.5,
-      fontStyle: 'bold'
-    },
-    styles: {
-      fontSize: 8.5,
-      textColor: [51, 65, 85],
-      cellPadding: 2.4
-    },
-    columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 'auto' },
-      2: { cellWidth: 20, halign: 'center' },
-      3: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
-      4: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
-      5: { cellWidth: 28, halign: 'right' }
-    }
-  });
-
-  const finalY = (doc as any).lastAutoTable.finalY + 6;
-  if (voucher.remarks) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text('Audit Remarks / Location:', margin, finalY);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
-    doc.text(voucher.remarks, margin, finalY + 4.5);
-  }
-
-  const footerY = doc.internal.pageSize.getHeight() - 14;
-  doc.setDrawColor(226, 232, 240);
-  doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text('Audited By', margin, footerY);
-  doc.text('Store Manager Signature', pageWidth / 2, footerY, { align: 'center' });
-  doc.text(config.SignatoryTitle || 'Authorized Signatory', pageWidth - margin, footerY, { align: 'right' });
-
-  return doc;
-}
-
-/**
- * Generate a professional A4 Purchase Bill / Purchase Invoice PDF
- */
-export function generatePurchaseBillPDF(purchase: PurchaseInvoice | any, config: Config): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4'
-  });
-
+function buildGenericVoucherPdf(
+  voucher: any,
+  config: Config,
+  title: string,
+  meta: {label: string, value: string}[],
+  entityTitle: string,
+  entityName: string,
+  entityDetails: string[],
+  items: any[],
+  columns: any[],
+  summaryBlock: (doc: jsPDF, finalY: number, currency: string, margin: number, pageWidth: number) => number
+) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 14;
   const currency = config.CurrencySymbol || 'Nu.';
-  const showGst = String(config.EnableGST) !== 'false';
 
-  if (purchase.status === 'Cancelled') {
-    drawCancelledWatermark(doc, pageWidth, pageHeight);
-  }
+  if (voucher.status === 'Cancelled') drawCancelledWatermark(doc, pageWidth, pageHeight);
 
-  // --- Header ---
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(30, 41, 59);
-  doc.text(config.CompanyName || 'BUSINESS ACCOUNTING', margin, 20);
+  const dividerY = drawVoucherHeader(doc, config, title, meta);
+  
+  const entityY = dividerY + 5;
+  let startTableY = dividerY + 5;
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(100, 116, 139);
+  if (entityTitle || entityName || entityDetails.length > 0) {
+    const detailLines = entityDetails.filter(Boolean);
+    const lineCount = (entityName ? 1 : 0) + detailLines.length;
+    const boxHeight = Math.max(14, 7 + lineCount * 4.2);
+    
+    // Clean card container for BILL TO with left royal blue accent line
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(margin, entityY, 95, boxHeight, 2, 2, 'FD');
 
-  let headerY = 25;
-  if (config.Address) {
-    doc.text(config.Address, margin, headerY);
-    headerY += 4.5;
-  }
-  if (showGst && (config.CompanyGSTNo || config.CompanyTPNNo)) {
-    doc.text(`GSTIN / TPN: ${config.CompanyGSTNo || config.CompanyTPNNo}`, margin, headerY);
-    headerY += 4.5;
-  }
+    // Accent line
+    doc.setFillColor(37, 99, 235);
+    doc.roundedRect(margin, entityY, 2.5, boxHeight, 1, 1, 'F');
 
-  // --- Right side: Title & Meta ---
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.setTextColor(2, 132, 199); // sky-600
-  doc.text('PURCHASE BILL', pageWidth - margin, 20, { align: 'right' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(51, 65, 85);
-  doc.text(`Bill Ref: ${purchase.billNo || purchase.invoiceNo || 'PUR'}`, pageWidth - margin, 26, { align: 'right' });
-  if (purchase.supplierBillNo) {
-    doc.text(`Supplier Inv #: ${purchase.supplierBillNo}`, pageWidth - margin, 31, { align: 'right' });
-    doc.text(`Date: ${new Date(purchase.date).toLocaleDateString()}`, pageWidth - margin, 36, { align: 'right' });
-  } else {
-    doc.text(`Date: ${new Date(purchase.date).toLocaleDateString()}`, pageWidth - margin, 31, { align: 'right' });
-  }
-
-  // Divider line
-  const dividerY = Math.max(headerY + 2, 42);
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.5);
-  doc.line(margin, dividerY, pageWidth - margin, dividerY);
-
-  // --- Supplier Section ---
-  const suppY = dividerY + 6;
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(30, 41, 59);
-  doc.text('SUPPLIER (VENDOR):', margin, suppY);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(71, 85, 105);
-
-  let detailY = suppY + 5;
-  const suppName = typeof purchase.supplier === 'object' ? (purchase.supplier?.name || purchase.supplier?.ledger || 'Vendor') : (purchase.supplier || 'Vendor');
-  doc.setFont('helvetica', 'bold');
-  doc.text(suppName, margin, detailY);
-  doc.setFont('helvetica', 'normal');
-  detailY += 4.5;
-
-  if (typeof purchase.supplier === 'object' && (purchase.supplier?.contactNo || purchase.supplier?.phone)) {
-    doc.text(`Contact: ${purchase.supplier.contactNo || purchase.supplier.phone}`, margin, detailY);
-    detailY += 4.5;
-  }
-  if (typeof purchase.supplier === 'object' && (purchase.supplier?.address || purchase.supplier?.Address)) {
-    doc.text(`Address: ${purchase.supplier.address || purchase.supplier.Address}`, margin, detailY);
-    detailY += 4.5;
-  }
-  if (typeof purchase.supplier === 'object' && (purchase.supplier?.gstNo || purchase.supplier?.tpnNo)) {
-    doc.text(`Supplier GSTIN/TPN: ${purchase.supplier.gstNo || purchase.supplier.tpnNo}`, margin, detailY);
-    detailY += 4.5;
-  }
-
-  // --- Items Table ---
-  const startTableY = Math.max(detailY + 3, dividerY + 22);
-
-  const tableHeaders = showGst
-    ? ['#', 'Item Name', 'Qty', 'Unit', 'Rate', 'Dis', 'Taxable', 'GST%', 'GST Amt', 'Total']
-    : ['#', 'Item Name', 'Qty', 'Unit', 'Rate', 'Dis', 'Total'];
-
-  const tableBody = (purchase.items || []).map((item: any, index: number) => {
-    const qty = Number(item.Qty) || 0;
-    const rate = Number(item.Rate) || 0;
-    const discount = Number(item.Discount) || 0;
-    const taxable = Number(item['Taxable Value'] ?? item.taxable ?? (qty * rate - discount)) || 0;
-    const gstPct = Number(item['GST %'] ?? item.gstPct) || 0;
-    const gstAmt = Number(item['GST Amount'] ?? item.gstAmt) || 0;
-    const lineTotal = Number(item['Line Total'] ?? item.lineTotal ?? (taxable + gstAmt)) || 0;
-
-    let itemDisplayName = item['Item Name'] || item.itemName || 'Item';
-    if (item['Serial Numbers']) {
-      itemDisplayName += `\nSN: ${item['Serial Numbers']}`;
+    let currY = entityY + 4.5;
+    if (entityTitle) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(37, 99, 235);
+      doc.text(entityTitle.toUpperCase(), margin + 5, currY);
+      currY += 4.5;
     }
 
-    if (showGst) {
-      return [
-        index + 1,
-        itemDisplayName,
-        qty,
-        item.Unit || item.unit || 'pcs',
-        rate.toFixed(2),
-        discount > 0 ? discount.toFixed(2) : '-',
-        taxable.toFixed(2),
-        gstPct > 0 ? `${gstPct}%` : '0%',
-        gstAmt > 0 ? gstAmt.toFixed(2) : '-',
-        lineTotal.toFixed(2)
-      ];
-    } else {
-      return [
-        index + 1,
-        itemDisplayName,
-        qty,
-        item.Unit || item.unit || 'pcs',
-        rate.toFixed(2),
-        discount > 0 ? discount.toFixed(2) : '-',
-        lineTotal.toFixed(2)
-      ];
+    if (entityName) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(entityName, margin + 5, currY);
+      currY += 4.2;
     }
-  });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    detailLines.forEach(d => {
+      doc.text(d, margin + 5, currY);
+      currY += 4.2;
+    });
+
+    startTableY = entityY + boxHeight + 6;
+  }
+
+  const safeItems = Array.isArray(items) ? items : [];
 
   autoTable(doc, {
     startY: startTableY,
-    head: [tableHeaders],
-    body: tableBody,
+    head: [columns.map(c => c.header)],
+    body: safeItems.map((item, index) => columns.map(c => c.getValue(item, index))),
     theme: 'grid',
-    headStyles: {
-      fillColor: [2, 132, 199], // sky-600
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      fontSize: 8.5
+    headStyles: { 
+      fillColor: [37, 99, 235], // Vibrant Royal Blue Header
+      textColor: [255, 255, 255], 
+      fontStyle: 'bold', 
+      fontSize: 8.5, 
+      cellPadding: 2.5 
     },
-    bodyStyles: {
-      fontSize: 8,
-      textColor: [51, 65, 85],
-      cellPadding: 2.2
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252]
-    },
-    columnStyles: {
-      0: { cellWidth: 8, halign: 'center' },
-      1: { cellWidth: 'auto' },
-      2: { cellWidth: 14, halign: 'center' },
-      3: { cellWidth: 12, halign: 'center' },
-      4: { cellWidth: 18, halign: 'right' },
-      5: { cellWidth: 14, halign: 'right' },
-      ...(showGst
-        ? {
-            6: { cellWidth: 18, halign: 'right' },
-            7: { cellWidth: 13, halign: 'center' },
-            8: { cellWidth: 16, halign: 'right' },
-            9: { cellWidth: 20, halign: 'right', fontStyle: 'bold' }
-          }
-        : {
-            6: { cellWidth: 22, halign: 'right', fontStyle: 'bold' }
-          })
-    }
+    bodyStyles: { fontSize: 8, textColor: [30, 41, 59], cellPadding: 2 },
+    alternateRowStyles: { fillColor: [240, 245, 255] }, // Light blue row shade background
+    columnStyles: columns.reduce((acc: any, col, i) => {
+      acc[i] = { halign: col.align || 'left' };
+      if (col.width) acc[i].cellWidth = col.width;
+      return acc;
+    }, {})
   });
 
-  let finalY = (doc as any).lastAutoTable.finalY + 6;
+  let finalY = (doc as any).lastAutoTable.finalY + 5;
+  
+  finalY = summaryBlock(doc, finalY, currency, margin, pageWidth);
 
-  // --- Summary Box on Right ---
-  const summaryBoxWidth = 80;
-  const summaryX = pageWidth - margin - summaryBoxWidth;
-
-  const totalTaxable = Number(purchase.taxable) || 0;
-  const totalZeroRated = Number(purchase.zeroRated) || 0;
-  const totalGst = Number(purchase.gstAmt) || 0;
-  const grandTotal = Number(purchase.total) || 0;
-
-  const summaryData: string[][] = [];
-  if (showGst) {
-    if (totalTaxable > 0) summaryData.push(['Taxable Value:', `${currency} ${totalTaxable.toFixed(2)}`]);
-    if (totalZeroRated > 0) summaryData.push(['Zero Rated / Exempt:', `${currency} ${totalZeroRated.toFixed(2)}`]);
-    if (totalGst > 0) summaryData.push(['Total Input GST:', `${currency} ${totalGst.toFixed(2)}`]);
-  }
-
-  if (purchase.additionalExpenses && purchase.additionalExpenses.length > 0) {
-    purchase.additionalExpenses.forEach((exp: any) => {
-      summaryData.push([`Expense (${exp.ledger}):`, `${currency} ${Number(exp.amount).toFixed(2)}`]);
-    });
-  }
-
-  summaryData.push(['Grand Total:', `${currency} ${grandTotal.toFixed(2)}`]);
-
-  autoTable(doc, {
-    startY: finalY,
-    margin: { left: summaryX },
-    tableWidth: summaryBoxWidth,
-    body: summaryData,
-    theme: 'plain',
-    styles: {
-      fontSize: 8.5,
-      cellPadding: 1.5,
-      textColor: [51, 65, 85]
-    },
-    columnStyles: {
-      0: { halign: 'left', fontStyle: 'bold' },
-      1: { halign: 'right', fontStyle: 'bold' }
-    },
-    didParseCell: function (data) {
-      if (data.row.index === summaryData.length - 1) {
-        data.cell.styles.fontSize = 10;
-        data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.textColor = [2, 132, 199];
-      }
-    }
-  });
-
-  // --- Payment Breakdown ---
-  const cash = Number(purchase.cash) || 0;
-  const b1 = Number(purchase.bank1) || 0;
-  const b2 = Number(purchase.bank2) || 0;
-  const cr = Number(purchase.credit) || 0;
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(30, 41, 59);
-  doc.text('Payment Settlement Details:', margin, finalY + 4);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(71, 85, 105);
-  let payY = finalY + 9;
-
-  if (cash > 0) {
-    doc.text(`• Cash Paid: ${currency} ${cash.toFixed(2)}`, margin, payY);
-    payY += 4;
-  }
-  if (b1 > 0) {
-    const b1Name = purchase.paymentDetails?.bank1Ledger || 'Bank 1';
-    doc.text(`• Bank (${b1Name}): ${currency} ${b1.toFixed(2)}`, margin, payY);
-    payY += 4;
-  }
-  if (b2 > 0) {
-    const b2Name = purchase.paymentDetails?.bank2Ledger || 'Bank 2';
-    doc.text(`• Bank (${b2Name}): ${currency} ${b2.toFixed(2)}`, margin, payY);
-    payY += 4;
-  }
-  if (cr > 0) {
+  const remarksFields = [voucher.narration, voucher.remarks, voucher.paymentTerms, voucher.deliveryTerms, voucher.terms].filter(Boolean);
+  if (remarksFields.length > 0) {
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(220, 38, 38);
-    doc.text(`• Credit / Balance Due: ${currency} ${cr.toFixed(2)}`, margin, payY);
+    doc.setFontSize(8.5);
+    doc.setTextColor(30, 41, 59);
+    doc.text('Notes / Remarks:', margin, finalY + 5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+    const splitNotes = doc.splitTextToSize(remarksFields.join('\n'), pageWidth - margin * 2);
+    doc.text(splitNotes, margin, finalY + 9);
   }
 
-  // Footer Signatures
-  const footerY = doc.internal.pageSize.getHeight() - 14;
+  const footerY = pageHeight - 14;
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
   addSignatureToPdf(doc, config, pageWidth - margin, footerY);
+  
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(8);
   doc.setTextColor(148, 163, 184);
-  doc.text(`Purchase Record • ${config.CompanyName || 'POS'}`, margin, footerY);
+  doc.text(`${title} • ${config.CompanyName || 'POS'}`, margin, footerY);
   doc.text(config.SignatoryTitle || 'Authorized Signatory', pageWidth - margin, footerY, { align: 'right' });
-
+  
   return doc;
 }
 
-/**
- * Generate a professional landscape A4 Voucher Register Report PDF
- */
+export function generateInvoicePDF(invoice: SalesInvoice | any, config: Config, options?: any): jsPDF {
+  const meta = [
+    { label: 'Invoice No', value: invoice.invoiceNo || invoice.billNo || 'INV' },
+    { label: 'Date', value: invoice.date ? new Date(invoice.date).toLocaleDateString() : new Date().toLocaleDateString() },
+    { label: 'Time', value: invoice.date ? new Date(invoice.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '' }
+  ];
+  const entName = typeof invoice.customer === 'object'
+    ? (invoice.customer?.name || invoice.customer?.ledger || 'Walk-in Customer')
+    : (invoice.customer || 'Walk-in Customer');
+  const entDetails = [
+    (typeof invoice.customer === 'object' && invoice.customer?.phone) ? `Contact: ${invoice.customer.phone}` : '',
+    (typeof invoice.customer === 'object' && invoice.customer?.address) ? `Address: ${invoice.customer.address}` : '',
+    (typeof invoice.customer === 'object' && invoice.customer?.gstNo) ? `GSTIN: ${invoice.customer.gstNo}` : ''
+  ];
+  
+  const cols = [
+    { header: 'Sl', align: 'center', width: 10, getValue: (_:any, i:number) => i + 1 },
+    { header: 'Item Description', align: 'left', getValue: (it:any) => it.itemName || it['Item Name'] || it.itemDescription || it['Item Description'] || it.description || '' },
+    { header: 'Qty', align: 'center', width: 18, getValue: (it:any) => `${it.qty ?? it.Qty ?? ''} ${it.unit || it.Unit || ''}`.trim() },
+    { header: 'Rate', align: 'right', width: 22, getValue: (it:any) => Number(it.rate ?? it.Rate ?? 0).toFixed(2) },
+    { header: 'Tax %', align: 'right', width: 15, getValue: (it:any) => (it.taxRate ?? it['GST %'] ?? it.gstPct) ? `${it.taxRate ?? it['GST %'] ?? it.gstPct}%` : '-' },
+    { header: 'Amount', align: 'right', width: 28, getValue: (it:any) => Number(it.amount ?? it['Line Total'] ?? it.lineTotal ?? 0).toFixed(2) }
+  ];
+
+  const items = Array.isArray(invoice.items) ? invoice.items : [];
+  return buildGenericVoucherPdf(invoice, config, 'TAX INVOICE', meta, 'BILL TO:', entName, entDetails, items, cols, (doc, finalY, curr, margin, pw) => {
+    const endY = drawDetailedBillSummaryBox(doc, invoice, finalY, curr, margin, pw, 'Total Invoice Amount:');
+    
+    // Bank details
+    const bDetails = options?.customBankDetails || resolveBankDetailsForPrint(config);
+    if (bDetails) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text('Bank Details:', margin, finalY + 4);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      const splitB = doc.splitTextToSize(bDetails, pw / 2 - 10);
+      doc.text(splitB, margin, finalY + 8);
+    }
+    
+    return endY + 2;
+  });
+}
+
+export function generatePurchaseBillPDF(purchase: PurchaseInvoice | any, config: Config): jsPDF {
+  const meta = [
+    { label: 'Bill No', value: purchase.billNo },
+    { label: 'Date', value: new Date(purchase.date).toLocaleDateString() },
+    { label: 'Supplier Ref', value: purchase.supplierInvoiceNo || '' }
+  ];
+  const supp = purchase.supplier || {};
+  const entName = typeof supp === 'object' ? (supp.name || supp.ledger || 'Vendor') : supp;
+  const entDetails = [
+    supp.phone ? `Contact: ${supp.phone}` : '',
+    supp.address ? `Address: ${supp.address}` : '',
+    supp.gstNo ? `GSTIN: ${supp.gstNo}` : ''
+  ];
+  
+  const cols = [
+    { header: 'Sl', align: 'center', width: 10, getValue: (_:any, i:number) => i + 1 },
+    { header: 'Item Description', align: 'left', getValue: (it:any) => it.itemName || it['Item Name'] || it.itemDescription || it['Item Description'] || '' },
+    { header: 'Qty', align: 'center', width: 18, getValue: (it:any) => `${it.qty ?? it.Qty ?? ''} ${it.unit || it.Unit || ''}`.trim() },
+    { header: 'Rate', align: 'right', width: 22, getValue: (it:any) => Number(it.rate ?? it.Rate ?? 0).toFixed(2) },
+    { header: 'Amount', align: 'right', width: 28, getValue: (it:any) => Number(it.amount ?? it['Line Total'] ?? it.lineTotal ?? 0).toFixed(2) }
+  ];
+
+  return buildGenericVoucherPdf(purchase, config, 'PURCHASE BILL', meta, 'SUPPLIER (VENDOR):', entName, entDetails, purchase.items, cols, (doc, finalY, curr, margin, pw) => {
+    return drawDetailedBillSummaryBox(doc, purchase, finalY, curr, margin, pw, 'Total Bill Amount:');
+  });
+}
+
+export function generateQuotationPDF(quote: Quotation | any, config: Config): jsPDF {
+  const meta = [
+    { label: 'Quote No', value: quote.quotationNo || quote.quoteNo || '' },
+    { label: 'Date', value: quote.date ? new Date(quote.date).toLocaleDateString() : new Date().toLocaleDateString() },
+    { label: 'Valid Until', value: quote.validUntil ? new Date(quote.validUntil).toLocaleDateString() : '' }
+  ];
+  const cust = quote.customer || {};
+  const entName = typeof cust === 'object' ? (cust.name || cust.ledger || 'Customer') : (cust || 'Customer');
+  const entDetails = [
+    (typeof cust === 'object' && cust.address) ? `Address: ${cust.address}` : '',
+    (typeof cust === 'object' && (cust.gstNo || cust.tpnNo)) ? `GSTIN: ${cust.gstNo || cust.tpnNo}` : '',
+    (typeof cust === 'object' && cust.phone) ? `Contact: ${cust.phone}` : ''
+  ];
+  
+  const cols = [
+    { header: 'Sl', align: 'center', width: 10, getValue: (_:any, i:number) => i + 1 },
+    { header: 'Item Description', align: 'left', getValue: (it:any) => it.itemName || it['Item Name'] || it.itemDescription || it['Item Description'] || it.description || '' },
+    { header: 'Qty', align: 'center', width: 18, getValue: (it:any) => `${it.qty ?? it.Qty ?? it.systemQty ?? ''} ${it.unit || it.Unit || ''}`.trim() },
+    { header: 'Rate', align: 'right', width: 22, getValue: (it:any) => Number(it.rate ?? it.Rate ?? 0).toFixed(2) },
+    { header: 'Amount', align: 'right', width: 28, getValue: (it:any) => Number(it.amount ?? it['Line Total'] ?? it.taxableValue ?? it.lineTotal ?? 0).toFixed(2) }
+  ];
+
+  const items = Array.isArray(quote.items) ? quote.items : [];
+  return buildGenericVoucherPdf(quote, config, 'QUOTATION', meta, 'QUOTATION TO:', entName, entDetails, items, cols, (doc, finalY, curr, margin, pw) => {
+    return drawDetailedBillSummaryBox(doc, quote, finalY, curr, margin, pw, 'Total Quotation Amount:');
+  });
+}
+
+export function generateDeliveryNotePDF(note: DeliveryNote | any, config: Config): jsPDF {
+  const meta = [
+    { label: 'Note No', value: note.noteNo || '' },
+    { label: 'Date', value: note.date ? new Date(note.date).toLocaleDateString() : new Date().toLocaleDateString() },
+    { label: 'Order Ref', value: note.orderRefNo || '' }
+  ];
+  const cust = note.customer || {};
+  const entName = typeof cust === 'object' ? (cust.name || cust.ledger || 'Customer') : (cust || 'Customer');
+  const entDetails = [
+    (typeof cust === 'object' && cust.address) ? `Destination / Address: ${cust.address}` : '',
+    note.dispatchThrough ? `Dispatch: ${note.dispatchThrough}` : '',
+    note.vehicleNo ? `Vehicle: ${note.vehicleNo}` : ''
+  ];
+  
+  const cols = [
+    { header: 'Sl', align: 'center', width: 12, getValue: (_:any, i:number) => i + 1 },
+    { header: 'Item Description', align: 'left', getValue: (it:any) => it.itemName || it['Item Name'] || it.itemDescription || it['Item Description'] || it.description || '' },
+    { header: 'Quantity Delivered', align: 'center', width: 35, getValue: (it:any) => `${it.qty ?? it.Qty ?? it.systemQty ?? ''} ${it.unit || it.Unit || ''}`.trim() }
+  ];
+
+  const items = Array.isArray(note.items) ? note.items : [];
+  return buildGenericVoucherPdf(note, config, 'DELIVERY CHALLAN', meta, 'DELIVER TO:', entName, entDetails, items, cols, (doc, finalY) => {
+    return finalY + 5;
+  });
+}
+
+export function generateVoucherSlipPDF(voucher: any, config: Config): jsPDF {
+  const vType = voucher.type || (voucher.voucherNo?.startsWith('PV-') ? 'P' : voucher.voucherNo?.startsWith('RV-') ? 'R' : voucher.voucherNo?.startsWith('CV-') ? 'C' : voucher.voucherNo?.startsWith('JV-') ? 'J' : 'P');
+  const typeMap: Record<string, string> = {
+    P: 'PAYMENT',
+    R: 'RECEIPT',
+    C: 'CONTRA',
+    J: 'JOURNAL',
+    CN: 'CREDIT NOTE',
+    DN: 'DEBIT NOTE',
+    QUOTATION: 'QUOTATION',
+    DEL_NOTE: 'DELIVERY CHALLAN',
+    PHYSICAL_STOCK: 'PHYSICAL STOCK'
+  };
+  const title = (typeMap[vType] || 'ACCOUNTING') + ' VOUCHER';
+
+  const meta = [
+    { label: 'Voucher No', value: voucher.voucherNo || voucher.no || 'VOUCHER' },
+    { label: 'Date', value: voucher.date ? new Date(voucher.date).toLocaleDateString() : new Date().toLocaleDateString() }
+  ];
+  
+  const entName = voucher.partyLedger || (vType === 'P' || vType === 'C' ? voucher.creditLedger : voucher.debitLedger) || voucher.fromAccount || 'Primary Account';
+  
+  let items = Array.isArray(voucher.lines) && voucher.lines.length > 0 ? voucher.lines : [];
+  if (items.length === 0) {
+    const oppLedger = voucher.partyLedger || (vType === 'P' || vType === 'C' ? voucher.debitLedger : voucher.creditLedger) || voucher.toAccount || 'General Account';
+    const oppType = vType === 'P' || vType === 'C' ? 'Dr' : 'Cr';
+    items = [{ account: oppLedger, amount: voucher.amount || voucher.totalAmount || voucher.total || 0, type: oppType }];
+  }
+  
+  const cols = [
+    { header: 'Sl', align: 'center', width: 12, getValue: (_:any, i:number) => i + 1 },
+    { header: 'Particulars / Account', align: 'left', getValue: (it:any) => it.ledger || it.account || it.particulars || 'Account' },
+    { header: 'Type', align: 'center', width: 15, getValue: (it:any) => it.type || (it.debit ? 'Dr' : 'Cr') },
+    { header: 'Amount', align: 'right', width: 35, getValue: (it:any) => Number(it.amount ?? it.debit ?? it.credit ?? 0).toFixed(2) }
+  ];
+
+  return buildGenericVoucherPdf(voucher, config, title, meta, 'PRIMARY ACCOUNT:', entName, [], items, cols, (doc, finalY, curr, margin, pw) => {
+    const tAmt = voucher.totalAmount ?? voucher.amount ?? voucher.total ?? 0;
+    return drawTotalSummaryBox(doc, 'Total Amount:', `${curr} ${Number(tAmt).toFixed(2)}`, finalY, margin, pw);
+  });
+}
+
+export function generateCreditNotePDF(note: any, config: Config): jsPDF {
+  const cust = note.customer || {};
+  const entName = typeof cust === 'object' ? (cust.name || cust.ledger || 'Customer') : (cust || 'Customer');
+  const items = Array.isArray(note.items) ? note.items : [];
+  return buildGenericVoucherPdf(
+    note,
+    config,
+    'CREDIT NOTE',
+    [{ label: 'Note No', value: note.noteNo || '' }, { label: 'Date', value: note.date ? new Date(note.date).toLocaleDateString() : new Date().toLocaleDateString() }],
+    'ISSUED TO:',
+    entName,
+    [],
+    items, 
+    [
+      { header: 'Item', align: 'left', getValue: (it:any) => it.itemName || it['Item Name'] || it.itemDescription || it['Item Description'] || '' },
+      { header: 'Qty', align: 'center', width: 20, getValue: (it:any) => it.qty ?? it.Qty ?? '' },
+      { header: 'Amount', align: 'right', width: 30, getValue: (it:any) => Number(it.amount ?? it['Line Total'] ?? it.taxableValue ?? 0).toFixed(2) }
+    ], 
+    (doc, finalY, curr, margin, pw) => {
+      return drawDetailedBillSummaryBox(doc, note, finalY, curr, margin, pw, 'Total Credit Amount:');
+    }
+  );
+}
+
+export function generateDebitNotePDF(note: any, config: Config): jsPDF {
+  const supp = note.supplier || {};
+  const entName = typeof supp === 'object' ? (supp.name || supp.ledger || 'Supplier') : (supp || 'Supplier');
+  const items = Array.isArray(note.items) ? note.items : [];
+  return buildGenericVoucherPdf(
+    note,
+    config,
+    'DEBIT NOTE',
+    [{ label: 'Note No', value: note.noteNo || '' }, { label: 'Date', value: note.date ? new Date(note.date).toLocaleDateString() : new Date().toLocaleDateString() }],
+    'ISSUED TO:',
+    entName,
+    [],
+    items, 
+    [
+      { header: 'Item', align: 'left', getValue: (it:any) => it.itemName || it['Item Name'] || it.itemDescription || it['Item Description'] || '' },
+      { header: 'Qty', align: 'center', width: 20, getValue: (it:any) => it.qty ?? it.Qty ?? '' },
+      { header: 'Amount', align: 'right', width: 30, getValue: (it:any) => Number(it.amount ?? it['Line Total'] ?? it.taxableValue ?? 0).toFixed(2) }
+    ], 
+    (doc, finalY, curr, margin, pw) => {
+      return drawDetailedBillSummaryBox(doc, note, finalY, curr, margin, pw, 'Total Debit Amount:');
+    }
+  );
+}
+
+export function generatePhysicalStockPDF(voucher: any, config: Config): jsPDF {
+  const items = Array.isArray(voucher.items) ? voucher.items : [];
+  return buildGenericVoucherPdf(
+    voucher,
+    config,
+    'PHYSICAL STOCK VOUCHER',
+    [{ label: 'Voucher No', value: voucher.voucherNo || '' }, { label: 'Date', value: voucher.date ? new Date(voucher.date).toLocaleDateString() : new Date().toLocaleDateString() }],
+    'LOCATION / REMARKS:',
+    voucher.remarks || 'Main Location',
+    [],
+    items, 
+    [
+      { header: 'Item Code', align: 'left', width: 30, getValue: (it:any) => it.itemCode || '' },
+      { header: 'Item Name', align: 'left', getValue: (it:any) => it.itemName || it['Item Name'] || it.itemDescription || it['Item Description'] || '' },
+      { header: 'System Qty', align: 'center', width: 25, getValue: (it:any) => it.systemQty ?? '' },
+      { header: 'Physical Qty', align: 'center', width: 25, getValue: (it:any) => it.physicalQty ?? '' },
+      { header: 'Diff', align: 'center', width: 20, getValue: (it:any) => it.difference ?? '' }
+    ], 
+    (doc, finalY) => finalY + 5
+  );
+}
+
 export function generateVoucherRegisterPDF(
   vouchers: any[],
   config: Config,
-  filters?: {
-    startDate?: string;
-    endDate?: string;
-    vType?: string;
-    status?: string;
-    ledger?: string;
-    searchTerm?: string;
-  }
+  filters?: { startDate?: string; endDate?: string; vType?: string; status?: string; ledger?: string; searchTerm?: string; }
 ): jsPDF {
-  const doc = new jsPDF({
-    orientation: 'landscape',
-    unit: 'mm',
-    format: 'a4'
-  });
-
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 12;
   const currency = config.CurrencySymbol || 'Nu.';
 
-  // Header
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.setTextColor(30, 41, 59);
-  doc.text(config.CompanyName || 'RETAIL STORE', margin, 15);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(79, 70, 229);
-  doc.text('ACCOUNTING VOUCHER REGISTER', margin, 21);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(100, 116, 139);
+  const dividerY = drawVoucherHeader(doc, config, 'ACCOUNTING VOUCHER REGISTER', [
+    { label: 'Generated', value: new Date().toLocaleString() }
+  ]);
 
   const filterParts = [];
-  if (filters?.startDate || filters?.endDate) {
-    filterParts.push(`Period: ${filters.startDate || 'Beginning'} to ${filters.endDate || 'Present'}`);
-  }
+  if (filters?.startDate || filters?.endDate) filterParts.push(`Period: ${filters.startDate || 'Beginning'} to ${filters.endDate || 'Present'}`);
   if (filters?.vType && filters.vType !== 'ALL') filterParts.push(`Type: ${filters.vType}`);
   if (filters?.status && filters.status !== 'ALL') filterParts.push(`Status: ${filters.status}`);
   if (filters?.ledger) filterParts.push(`Ledger: ${filters.ledger}`);
   if (filters?.searchTerm) filterParts.push(`Search: "${filters.searchTerm}"`);
-
   const filterStr = filterParts.length > 0 ? filterParts.join('  |  ') : 'All Transactions';
-  doc.text(filterStr, margin, 26);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth - margin, 26, { align: 'right' });
+  
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text(filterStr, margin, dividerY + 5);
 
-  // Table Data
   const tableData = vouchers.map(v => {
     const isCancelled = v.status === 'Cancelled';
-    const vTypeLabel =
-      v.type === 'P'
-        ? 'Payment (F5)'
-        : v.type === 'R'
-        ? 'Receipt (F6)'
-        : v.type === 'J'
-        ? 'Journal (F7)'
-        : v.type === 'C'
-        ? 'Contra (F4)'
-        : v.type || '-';
+    const vTypeLabel = v.type === 'P' ? 'Payment (F5)' : v.type === 'R' ? 'Receipt (F6)' : v.type === 'J' ? 'Journal (F7)' : v.type === 'C' ? 'Contra (F4)' : v.type || '-';
     const particulars = v.lines ? `${v.lines.length} Line Split` : v.debitLedger || '-';
     const account = v.lines ? 'Multi-Account' : v.creditLedger || '-';
     const amt = Number(v.totalAmount || v.amount || 0);
-
     return [
       new Date(v.date).toLocaleDateString('en-GB'),
       v.voucherNo || '-',
@@ -2164,95 +1430,27 @@ export function generateVoucherRegisterPDF(
   const cancelledCount = vouchers.filter(v => v.status === 'Cancelled').length;
 
   autoTable(doc, {
-    startY: 29,
+    startY: dividerY + 8,
     margin: { left: margin, right: margin },
     head: [['Date', 'Voucher No', 'Type', 'Status', 'Debit / Particulars', 'Credit / Account', 'Narration', 'Amount']],
     body: tableData,
     foot: [
-      [
-        `Total: ${vouchers.length} (${activeCount} Active, ${cancelledCount} Void)`,
-        '',
-        '',
-        '',
-        '',
-        '',
-        'TOTAL REGISTER:',
-        `${currency} ${totalAmount.toFixed(2)}`
-      ]
+      [`Total: ${vouchers.length} (${activeCount} Active, ${cancelledCount} Void)`, '', '', '', '', '', 'TOTAL REGISTER:', `${currency} ${totalAmount.toFixed(2)}`]
     ],
-    headStyles: {
-      fillColor: [79, 70, 229],
-      textColor: [255, 255, 255],
-      fontStyle: 'bold',
-      fontSize: 8.5
-    },
-    footStyles: {
-      fillColor: [241, 245, 249],
-      textColor: [30, 41, 59],
-      fontStyle: 'bold',
-      fontSize: 8.5
-    },
-    bodyStyles: {
-      fontSize: 8,
-      textColor: [51, 65, 85]
-    },
-    alternateRowStyles: {
-      fillColor: [248, 250, 252]
-    },
+    headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
+    footStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: 'bold', fontSize: 8.5 },
+    bodyStyles: { fontSize: 8, textColor: [51, 65, 85] },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
     columnStyles: {
-      0: { cellWidth: 22 },
-      1: { cellWidth: 28, fontStyle: 'bold' },
-      2: { cellWidth: 24 },
-      3: { cellWidth: 20 },
-      4: { cellWidth: 48 },
-      5: { cellWidth: 48 },
-      6: { cellWidth: 'auto' },
-      7: { cellWidth: 32, halign: 'right', fontStyle: 'bold' }
+      0: { cellWidth: 22 }, 1: { cellWidth: 28, fontStyle: 'bold' }, 2: { cellWidth: 24 },
+      3: { cellWidth: 20 }, 4: { cellWidth: 48 }, 5: { cellWidth: 48 },
+      6: { cellWidth: 'auto' }, 7: { cellWidth: 32, halign: 'right', fontStyle: 'bold' }
     }
   });
 
-  const finalPageHeight = doc.internal.pageSize.getHeight();
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(7.5);
   doc.setTextColor(148, 163, 184);
-  doc.text(`Voucher Register • ${config.CompanyName || 'POS'}`, margin, finalPageHeight - 6);
-
+  doc.text(`Voucher Register • ${config.CompanyName || 'POS'}`, margin, pageHeight - 6);
   return doc;
-}
-
-/**
- * Universal Share or Download Helper
- * Uses Web Share API (native share with PDF file on mobile/tablets/compatible OS)
- * Falls back to automatic PDF download.
- */
-export async function shareOrDownloadPDF(
-  doc: jsPDF,
-  filename: string,
-  title: string,
-  fallbackText?: string
-): Promise<{ success: boolean; method: 'shared' | 'downloaded' }> {
-  try {
-    const pdfBlob = doc.output('blob');
-    const pdfFile = new File([pdfBlob], filename, { type: 'application/pdf' });
-
-    if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-      await navigator.share({
-        files: [pdfFile],
-        title: title,
-        text: fallbackText || title
-      });
-      return { success: true, method: 'shared' };
-    } else {
-      // Direct PDF download
-      doc.save(filename);
-      return { success: true, method: 'downloaded' };
-    }
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
-      return { success: true, method: 'shared' };
-    }
-    // Fallback: trigger download
-    doc.save(filename);
-    return { success: true, method: 'downloaded' };
-  }
 }

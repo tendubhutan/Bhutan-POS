@@ -119,7 +119,7 @@ export const Reports: React.FC<ReportsProps> = ({
   // Keyboard navigation and shortcuts (Escape, Alt+Left / Alt+Right)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape') { if (e.defaultPrevented) return;
         const handled = handleReportsBack();
         if (handled) {
           e.preventDefault();
@@ -508,25 +508,93 @@ export const Reports: React.FC<ReportsProps> = ({
         const grossProfit = s + di - cogs;
         const netProfit = grossProfit + ii - ie;
 
+        const rawTb = reportData.tb || [];
+        const getPnlAmt = (l: any, isIncome: boolean) => {
+          const pDr = Number(l.pDr) || 0;
+          const pCr = Number(l.pCr) || 0;
+          if (pDr > 0 || pCr > 0) {
+            return isIncome ? Math.abs(pCr - pDr) : Math.max(0, pDr - pCr);
+          }
+          return isIncome ? Math.abs((Number(l.cr) || 0) - (Number(l.dr) || 0)) : Math.max(0, (Number(l.dr) || 0) - (Number(l.cr) || 0));
+        };
+        const filterPnlLedgers = (ledgers: any[], isIncome: boolean) => {
+          const mapped = ledgers.map(l => ({ ...l, amount: getPnlAmt(l, isIncome) }));
+          return mapped.filter(l => l.amount > 0);
+        };
+
+        const salesLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Sales')), true);
+        const purchLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Purchase')), false);
+        const directExpLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Direct Expense')), false);
+        const indirectExpLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Indirect Expense')), false);
+        const indirectIncLedgers = filterPnlLedgers(rawTb.filter((l: any) => (l.grp || '').includes('Indirect Income')), true);
+
+        const leftTrading: { label: string; amt: string }[] = [];
+        const rightTrading: { label: string; amt: string }[] = [];
+
+        leftTrading.push({ label: 'Opening Stock', amt: fmt(os) });
+        leftTrading.push({ label: 'Purchase Accounts', amt: fmt(pur) });
+        purchLedgers.forEach(l => leftTrading.push({ label: `  ${l.name}`, amt: fmt(l.amount) }));
+        if (de > 0) {
+          leftTrading.push({ label: 'Direct Expenses', amt: fmt(de) });
+          directExpLedgers.forEach(l => leftTrading.push({ label: `  ${l.name}`, amt: fmt(l.amount) }));
+        }
+        if (grossProfit >= 0) {
+          leftTrading.push({ label: 'Gross Profit c/o', amt: fmt(grossProfit) });
+        }
+
+        rightTrading.push({ label: 'Sales Accounts', amt: fmt(s) });
+        salesLedgers.forEach(l => rightTrading.push({ label: `  ${l.name}`, amt: fmt(l.amount) }));
+        if (di > 0) rightTrading.push({ label: 'Direct Incomes', amt: fmt(di) });
+        rightTrading.push({ label: 'Closing Stock Valuation', amt: fmt(cs) });
+        if (grossProfit < 0) {
+          rightTrading.push({ label: 'Gross Loss c/o', amt: fmt(Math.abs(grossProfit)) });
+        }
+
+        const totalTradingLeft = os + pur + de + Math.max(0, grossProfit);
+        const totalTradingRight = s + di + cs + (grossProfit < 0 ? Math.abs(grossProfit) : 0);
+
+        const leftPnl: { label: string; amt: string }[] = [];
+        const rightPnl: { label: string; amt: string }[] = [];
+
+        if (grossProfit < 0) leftPnl.push({ label: 'Gross Loss b/f', amt: fmt(Math.abs(grossProfit)) });
+        leftPnl.push({ label: 'Indirect Expenses', amt: fmt(ie) });
+        indirectExpLedgers.forEach(l => leftPnl.push({ label: `  ${l.name}`, amt: fmt(l.amount) }));
+        if (netProfit >= 0) leftPnl.push({ label: 'Nett Profit', amt: fmt(netProfit) });
+
+        if (grossProfit >= 0) rightPnl.push({ label: 'Gross Profit b/f', amt: fmt(grossProfit) });
+        if (ii > 0) {
+          rightPnl.push({ label: 'Indirect Incomes', amt: fmt(ii) });
+          indirectIncLedgers.forEach(l => rightPnl.push({ label: `  ${l.name}`, amt: fmt(l.amount) }));
+        }
+        if (netProfit < 0) rightPnl.push({ label: 'Nett Loss', amt: fmt(Math.abs(netProfit)) });
+
+        const totalPnlLeft = ie + (grossProfit < 0 ? Math.abs(grossProfit) : 0) + Math.max(0, netProfit);
+        const totalPnlRight = Math.max(0, grossProfit) + ii + (netProfit < 0 ? Math.abs(netProfit) : 0);
+
         reportTitle = 'Profit & Loss Statement';
-        headers = ['Particulars (Expenses & Income)', 'Dr Amount (Nu.)', 'Cr Amount (Nu.)'];
+        headers = ['Particulars', 'Amount (Nu.)', 'Particulars', 'Amount (Nu.)'];
 
         rows = [
-          ['Revenue from Operations (Sales)', '', fmt(s)],
-          ['Direct Income', '', fmt(di)],
-          ['Opening Stock Valuation', fmt(os), ''],
-          ['Cost of Purchases', fmt(pur), ''],
-          ['Direct Expenses', fmt(de), ''],
-          ['Less: Closing Stock Valuation', `-${fmt(cs)}`, ''],
-          ['GROSS PROFIT', fmt(grossProfit >= 0 ? grossProfit : 0), fmt(grossProfit < 0 ? Math.abs(grossProfit) : 0)],
-          ['Indirect Income', '', fmt(ii)],
-          ['Indirect Expenses', fmt(ie), ''],
-          ['NET PROFIT / (LOSS)', fmt(netProfit < 0 ? Math.abs(netProfit) : 0), fmt(netProfit >= 0 ? netProfit : 0)]
+          ['TRADING ACCOUNT', '', '', ''],
+          ...Array.from({ length: Math.max(leftTrading.length, rightTrading.length) }).map((_, i) => [
+            leftTrading[i]?.label || '',
+            leftTrading[i]?.amt || '',
+            rightTrading[i]?.label || '',
+            rightTrading[i]?.amt || ''
+          ]),
+          ['TOTAL', fmt(totalTradingLeft), 'TOTAL', fmt(totalTradingRight)],
+          ['', '', '', ''],
+          ['PROFIT & LOSS ACCOUNT', '', '', ''],
+          ...Array.from({ length: Math.max(leftPnl.length, rightPnl.length) }).map((_, i) => [
+            leftPnl[i]?.label || '',
+            leftPnl[i]?.amt || '',
+            rightPnl[i]?.label || '',
+            rightPnl[i]?.amt || ''
+          ])
         ];
 
-        totalsRow = ['TOTAL NET RESULT', fmt(netProfit < 0 ? Math.abs(netProfit) : 0), fmt(netProfit >= 0 ? netProfit : 0)];
+        totalsRow = ['TOTAL', fmt(totalPnlLeft), 'TOTAL', fmt(totalPnlRight)];
         summaryCards = [
-          { label: 'Total Revenue', value: `Nu. ${fmt(s + di + ii)}` },
           { label: 'Gross Profit', value: `Nu. ${fmt(grossProfit)}` },
           { label: 'Net Profit / (Loss)', value: `Nu. ${fmt(netProfit)}` }
         ];
@@ -545,34 +613,60 @@ export const Reports: React.FC<ReportsProps> = ({
         const netProfit = grossProfit + ii - ie;
 
         const cap = Number(reportData.bs.cap) || 0;
-        const netEquity = cap + netProfit;
         const loans = Number(reportData.bs.ln) || 0;
         const cl = Number(reportData.bs.cl) || 0;
-
         const fa = Number(reportData.bs.fa) || 0;
         const ca = Number(reportData.bs.ca) || 0;
         const stockVal = Number(reportData.bs.cs) || 0;
 
-        const totLiabBeforeDiff = netEquity + loans + cl;
-        const totAssetBeforeDiff = fa + ca + stockVal;
-        const finalTotal = Math.max(totLiabBeforeDiff, totAssetBeforeDiff);
+        const rawTb = reportData.tb || [];
+        const capitalLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Capital'));
+        const loanLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Loan'));
+        const currentLiabLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Liabilit') || (l.grp || '').includes('Creditor') || (l.grp || '').includes('Dut'));
+        const fixedAssetLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Fixed Asset'));
+        const currentAssetLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Current Asset') || (l.grp || '').includes('Debtor') || (l.grp || '').includes('Bank') || (l.grp || '').includes('Cash'));
+
+        const totalLiab = cap + netProfit + loans + cl;
+        const totalAssets = fa + ca + stockVal;
+
+        const leftBs: { label: string; amt: string }[] = [];
+        const rightBs: { label: string; amt: string }[] = [];
+
+        leftBs.push({ label: 'Capital Account', amt: fmt(cap) });
+        capitalLedgers.forEach(l => leftBs.push({ label: `  ${l.name}`, amt: fmt(l.cr || l.dr) }));
+        leftBs.push({ label: '  Add: Nett Profit / (Loss)', amt: fmt(netProfit) });
+
+        if (loans > 0) {
+          leftBs.push({ label: 'Loans (Liability)', amt: fmt(loans) });
+          loanLedgers.forEach(l => leftBs.push({ label: `  ${l.name}`, amt: fmt(l.cr || l.dr) }));
+        }
+
+        leftBs.push({ label: 'Current Liabilities & Payables', amt: fmt(cl) });
+        currentLiabLedgers.forEach(l => leftBs.push({ label: `  ${l.name}`, amt: fmt(l.cr || l.dr) }));
+
+        rightBs.push({ label: 'Fixed Assets', amt: fmt(fa) });
+        fixedAssetLedgers.forEach(l => rightBs.push({ label: `  ${l.name}`, amt: fmt(l.dr || l.cr) }));
+
+        rightBs.push({ label: 'Current Assets', amt: fmt(ca) });
+        currentAssetLedgers.forEach(l => rightBs.push({ label: `  ${l.name}`, amt: fmt(l.dr || l.cr) }));
+
+        rightBs.push({ label: 'Closing Stock Valuation', amt: fmt(stockVal) });
 
         reportTitle = 'Balance Sheet Statement';
-        headers = ['Capital & Liabilities', 'Amount (Nu.)', 'Assets & Properties', 'Amount (Nu.)'];
+        headers = ['L I A B I L I T I E S', 'Amount (Nu.)', 'A S S E T S', 'Amount (Nu.)'];
 
-        rows = [
-          ['Capital Account (Opening)', fmt(cap), 'Fixed Assets', fmt(fa)],
-          ['Add: Net Profit / (Loss) for Period', fmt(netProfit), 'Current Assets (Cash/Bank/Debtors)', fmt(ca)],
-          ['Loans & Borrowings (Liabilities)', fmt(loans), 'Closing Stock Valuation', fmt(stockVal)],
-          ['Current Liabilities & Payables', fmt(cl), '', ''],
-          ['TOTAL LIABILITIES & EQUITY', fmt(finalTotal), 'TOTAL ASSETS', fmt(finalTotal)]
-        ];
+        rows = Array.from({ length: Math.max(leftBs.length, rightBs.length) }).map((_, i) => [
+          leftBs[i]?.label || '',
+          leftBs[i]?.amt || '',
+          rightBs[i]?.label || '',
+          rightBs[i]?.amt || ''
+        ]);
 
-        totalsRow = ['BALANCE SHEET TOTAL', fmt(finalTotal), 'BALANCE SHEET TOTAL', fmt(finalTotal)];
+        totalsRow = ['TOTAL LIABILITIES', fmt(totalLiab), 'TOTAL ASSETS', fmt(totalAssets)];
         summaryCards = [
-          { label: 'Total Owner Equity', value: `Nu. ${fmt(netEquity)}` },
-          { label: 'Total Assets', value: `Nu. ${fmt(totAssetBeforeDiff)}` },
-          { label: 'Total Liabilities', value: `Nu. ${fmt(totLiabBeforeDiff)}` }
+          { label: 'Total Owner Equity', value: `Nu. ${fmt(cap + netProfit)}` },
+          { label: 'Total Assets', value: `Nu. ${fmt(totalAssets)}` },
+          { label: 'Total Liabilities', value: `Nu. ${fmt(totalLiab)}` }
         ];
       } else if (finSubTab === 'REC' && reportData?.rec) {
         reportTitle = 'Outstanding Receivables Report';
@@ -762,12 +856,46 @@ export const Reports: React.FC<ReportsProps> = ({
       rows.forEach((row, rIdx) => {
         const rowIdx = startDataRowIdx + rIdx;
         const isEven = rIdx % 2 === 0;
+        const firstVal = String(row[0] || '').trim();
+        const isBannerRow = firstVal === 'TRADING ACCOUNT' || firstVal === 'PROFIT & LOSS ACCOUNT';
+        const isTotalRow = firstVal === 'TOTAL' || firstVal === 'TOTAL LIABILITIES' || firstVal === 'TOTAL ASSETS';
+
         row.forEach((val, cIdx) => {
           const cellRef = XLSX.utils.encode_cell({ r: rowIdx, c: cIdx });
-          if (ws[cellRef]) {
-            const isNum = typeof val === 'number' || (!isNaN(Number(val)) && String(val).includes('.') && !isNaN(parseFloat(val)));
+          if (!ws[cellRef]) return;
+
+          const strVal = String(val || '');
+          const isNum = typeof val === 'number' || (!isNaN(Number(val)) && String(val).includes('.') && !isNaN(parseFloat(val)));
+          const isSub = strVal.startsWith('  ');
+          const isProfit = strVal.includes('Gross Profit') || strVal.includes('Nett Profit') || strVal.includes('Gross Loss') || strVal.includes('Nett Loss');
+
+          if (isBannerRow) {
             ws[cellRef].s = {
-              font: { name: 'Calibri', sz: 10, color: { rgb: '0F172A' } },
+              font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: '3730A3' } },
+              fill: { fgColor: { rgb: 'E0E7FF' } },
+              alignment: { vertical: 'center', horizontal: 'left' },
+              border: {
+                top: { style: 'thin', color: { rgb: 'A5B4FC' } },
+                bottom: { style: 'thin', color: { rgb: 'A5B4FC' } }
+              }
+            };
+          } else if (isTotalRow) {
+            ws[cellRef].s = {
+              font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: '0F172A' } },
+              fill: { fgColor: { rgb: 'F1F5F9' } },
+              alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left' },
+              border: {
+                top: { style: 'thin', color: { rgb: '0F172A' } },
+                bottom: { style: 'double', color: { rgb: '0F172A' } }
+              }
+            };
+          } else {
+            let textColor = '0F172A';
+            if (isProfit) textColor = '166534';
+            else if (isSub) textColor = '475569';
+
+            ws[cellRef].s = {
+              font: { name: 'Calibri', sz: isSub ? 10 : 10.5, italic: isSub, bold: !isSub || isProfit, color: { rgb: textColor } },
               fill: { fgColor: { rgb: isEven ? 'FFFFFF' : 'F8FAFC' } },
               alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left' },
               border: {
@@ -789,7 +917,7 @@ export const Reports: React.FC<ReportsProps> = ({
             const isNum = typeof val === 'number' || (!isNaN(Number(val)) && String(val).includes('.') && !isNaN(parseFloat(val)));
             ws[cellRef].s = {
               font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: '0F172A' } },
-              fill: { fgColor: { rgb: 'E2E8F0' } },
+              fill: { fgColor: { rgb: 'F1F5F9' } },
               alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left' },
               border: {
                 top: { style: 'thin', color: { rgb: '0F172A' } },

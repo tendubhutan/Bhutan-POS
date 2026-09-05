@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { GlowButton } from '../common/GlowButton';
 import { focusNextOutsideGrid } from '../../utils/domUtils';
 import { Config, Item, Ledger, Quotation, QuotationItem } from '../../types';
 import {
@@ -8,6 +9,7 @@ import { SearchableLedgerSelect } from '../SearchableLedgerSelect';
 import { SearchableItemSelect } from '../SearchableItemSelect';
 import { handleGridKeyDown } from '../../utils/gridKeyboardNav';
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './VoucherSuccessActionModal';
+import { AcceptModal } from '../AcceptModal';
 import {
   FileCheck2, Plus, Trash2, CheckCircle2, AlertCircle, Package, Printer, Calendar, Send, ArrowRight, Sparkles, Share2, Download, ArrowLeft, ChevronUp, ChevronDown } from 'lucide-react';
 import { generateQuotationPDF, shareOrDownloadPDF } from '../../utils/pdfExport';
@@ -17,6 +19,7 @@ interface QuotationEntryProps {
   items: Item[];
   ledgers: Ledger[];
   onDataRefresh: () => void;
+  initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onOpenQuickLedger: (group: string) => void;
   onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
   onPrintQuotation?: (quote: Quotation) => void;
@@ -28,12 +31,15 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
   items,
   ledgers,
   onDataRefresh,
+  initialVoucherTarget,
   onOpenQuickLedger,
   onOpenNewItemModal,
   onPrintQuotation,
   onNavigateBack
 }) => {
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
+  const [editingQuotationNo, setEditingQuotationNo] = useState<string | null>(null);
+  const [showAcceptModal, setShowAcceptModal] = useState(false);
   const [quotationNo, setQuotationNo] = useState(() => (isAutoMode ? peekNextVoucherNo('QUOTATION', config) : ''));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   
@@ -92,17 +98,65 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
   }, []);
 
   useEffect(() => {
-    if (isAutoMode) {
+    if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
+      const all = getQuotations();
+      const q = all.find(x => x.quotationNo === initialVoucherTarget.voucherNo);
+      if (q) {
+        setEditingQuotationNo(q.quotationNo);
+        setQuotationNo(q.quotationNo);
+        if (q.date) setDate(new Date(q.date).toISOString().split('T')[0]);
+        if (q.validUntil) setValidUntil(new Date(q.validUntil).toISOString().split('T')[0]);
+        if (q.customer) {
+          const cName = typeof q.customer === 'object' ? (q.customer.name || q.customer.ledger || '') : q.customer;
+          setCustomerName(cName);
+          if (typeof q.customer === 'object') {
+            setContactNo((q.customer as any).contact || (q.customer as any).contactNo || '');
+            setAddress(q.customer.address || '');
+            setGstin((q.customer as any).gstin || (q.customer as any).gstNo || '');
+          }
+        }
+        if (q.paymentTerms) setTermsAndConditions(q.paymentTerms);
+        if (q.remarks) setRemarks(q.remarks);
+        if (Array.isArray(q.items)) {
+          setQuoteItems(q.items.map((it: any) => {
+            const qty = it.qty !== undefined ? Number(it.qty) : (it.Qty !== undefined ? Number(it.Qty) : 1);
+            const rate = it.rate !== undefined ? Number(it.rate) : (it.Rate !== undefined ? Number(it.Rate) : 0);
+            const discount = it.discount !== undefined ? Number(it.discount) : (it.Discount !== undefined ? Number(it.Discount) : 0);
+            const gstPct = it.gstPct !== undefined ? Number(it.gstPct) : (it['GST %'] !== undefined ? Number(it['GST %']) : 0);
+            const taxableValue = (qty * rate) - discount;
+            const gstAmount = (taxableValue * gstPct) / 100;
+            const lineTotal = taxableValue + gstAmount;
+
+            return {
+              itemCode: it.itemCode || it['Item Code'] || '',
+              itemName: it.itemName || it['Item Name'] || '',
+              description: it.description || it['Item Description'] || '',
+              unit: it.unit || it.Unit || 'Pcs',
+              qty,
+              rate,
+              discount,
+              taxableValue,
+              gstPct,
+              gstAmount,
+              zeroRated: it.zeroRated || false,
+              lineTotal
+            };
+          }));
+        }
+        setActiveTab('create');
+      }
+    }
+  }, [initialVoucherTarget]);
+
+  useEffect(() => {
+    if (isAutoMode && !editingQuotationNo) {
       setQuotationNo(peekNextVoucherNo('QUOTATION', config));
     }
-  }, [config, isAutoMode]);
+  }, [config, isAutoMode, editingQuotationNo]);
 
   // Set default customer
   useEffect(() => {
-    if (!customerName && ledgers.length > 0) {
-      const debtor = ledgers.find(l => l.Group === 'Sundry Debtors')?.['Ledger Name'] || ledgers[0]['Ledger Name'];
-      setCustomerName(debtor);
-    }
+    // Disabled auto-fill to keep ledger fields empty by default
   }, [ledgers]);
 
   // Sync customer details when ledger changes
@@ -285,6 +339,12 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
       return;
     }
 
+    setShowAcceptModal(true);
+  };
+
+  const proceedSaveQuotation = () => {
+    setShowAcceptModal(false);
+
     const payload = {
       quotationNo: quotationNo.trim() || undefined,
       date: new Date(date).toISOString(),
@@ -319,9 +379,10 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
 
     const res = saveQuotation(payload as any);
     if (res.ok) {
-      showToast(`Quotation ${res.quotationNo} generated successfully!`, 'success');
+      showToast(`Quotation ${res.quotationNo} saved successfully!`, 'success');
       onDataRefresh();
       loadSavedQuotations();
+      setEditingQuotationNo(null);
 
       const savedObj: Quotation = {
         ...payload,
@@ -417,7 +478,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
   // Global F2, Escape, and shortcut listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape') { if (e.defaultPrevented) return;
         const handled = handleQuoteBack();
         if (handled) {
           e.preventDefault();
@@ -464,6 +525,12 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2">
+      <AcceptModal
+        isOpen={showAcceptModal}
+        title={editingQuotationNo ? `Save changes to ${editingQuotationNo}?` : "Save Quotation / Estimate?"}
+        onConfirm={proceedSaveQuotation}
+        onCancel={() => setShowAcceptModal(false)}
+      />
       {/* Toast */}
       {toastMsg && (
         <div
@@ -750,11 +817,11 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
                 <div className="sm:col-span-8">
                   <SearchableItemSelect
-                    id="qt-fast-item-picker"
+                    id="qt-fast-item-picker-top"
                     items={items}
                     placeholder="Type or scan item name / barcode to auto-add to quotation..."
                     currencySymbol={currencySymbol}
-                    onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                    onEndOfList={(id) => id && focusElement('qt-save-btn')}
                         onSelect={selectedItem => {
                       handleQuickAddItem(selectedItem);
                     }}
@@ -803,7 +870,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                           currencySymbol={currencySymbol}
                           priceType="sale"
                           showPrice={true}
-                          onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                          onEndOfList={(id) => id && focusElement('qt-save-btn')}
                           onSelect={selectedItem => {
                             const qty = line.qty || 1;
                             const rate = Number((selectedItem as any)['Sale Rate'] ?? (selectedItem as any)['Sales Rate'] ?? selectedItem.MRP ?? selectedItem['Purchase Rate'] ?? 0);
@@ -974,10 +1041,10 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                         currencySymbol={currencySymbol}
                         priceType="sale"
                         showPrice={true}
-                        onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                        onEndOfList={(id) => id && focusElement('qt-save-btn')}
                         onSelect={selectedItem => handleQuickAddItem(selectedItem)}
                         autoClearAfterSelect={true}
-                        onEnterNext={() => focusNextOutsideGrid('qt-fast-item-picker')}
+                        onEnterNext={() => focusElement('qt-save-btn')}
                         onCreateNew={onOpenNewItemModal}
                       />
                     </td>
@@ -1068,20 +1135,21 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <button
+              <GlowButton
                 id="qt-save-btn"
                 type="submit"
+                variant="blue"
+                size="sm"
+                icon={CheckCircle2}
                 onKeyDown={e => {
                   if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
                     e.preventDefault();
                     focusElement('qt-terms');
                   }
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 px-4 py-2 font-black text-white text-xs shadow-xs transition active:scale-95 focus:ring-2 focus:ring-violet-400 outline-none cursor-pointer"
               >
-                <CheckCircle2 className="h-4 w-4" />
-                <span>Save Quotation (F2)</span>
-              </button>
+                Save Quotation (F2)
+              </GlowButton>
             </div>
           </div>
         </form>

@@ -1,3 +1,4 @@
+import { GlowButton } from './common/GlowButton';
 import { Unit } from '../types';
 import { loadJson, saveJson, STORAGE_KEYS, DEFAULT_UNITS } from '../services/storageService';
 import React, { useState, useEffect, useRef } from 'react';
@@ -18,6 +19,7 @@ import {
   POSSettings
 } from '../types/posSettings';
 import { BankTransactionIdModal } from './BankTransactionIdModal';
+import { AcceptModal } from './AcceptModal';
 import {
   holdBill,
   resumeBill,
@@ -159,49 +161,77 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   
   const [editingInvoiceNo, setEditingInvoiceNo] = useState<string | null>(null);
+  const [editingInvoiceDate, setEditingInvoiceDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
       import('../services/storageService').then(m => {
         const details = m.getVoucherDetails(initialVoucherTarget.voucherNo);
-        if (details && details.type === 'INV') {
+        if (details && (details.type === 'INV' || details.type === 'S')) {
           const inv = details.header as any;
-          const newCart = (inv.items || []).map((it) => ({
-            itemCode: it['Item Code'],
-            itemName: it['Item Name'],
-            description: it.description || it['Item Description'] || '',
-            qty: it.Qty || 1,
-            rate: it.Rate || 0,
-            discount: it.Discount || 0,
-            unit: it.Unit || 'Pcs',
-            gstPct: it['GST %'] || 0,
-            gstAmt: it['GST Amount'] || 0,
-            zeroRated: it['Zero Rated (Y/N)'] === 'Y',
-            serials: it['Serial Numbers'] ? it['Serial Numbers'].split(',').map(s=>s.trim()).filter(Boolean) : []
-          }));
+          if (inv && (inv.isPOS === false || inv.voucherTypeId === 'VT-SALE-NORMAL')) {
+            return;
+          }
+          const newCart: CartLine[] = (inv.items || []).map((it: any) => {
+            const itemMatch = items.find(i => i['Item Code'] === (it['Item Code'] || it.itemCode));
+            const isZeroRated = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
+            const rawRate = Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0));
+            const rawQty = Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : 1));
+            const rawDisc = Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0));
+            return {
+              itemCode: it['Item Code'] || it.itemCode || '',
+              itemName: it['Item Name'] || it.itemName || '',
+              description: it.description || it['Item Description'] || '',
+              lineDescription: it.lineDescription || '',
+              qty: rawQty,
+              rate: rawRate,
+              discount: rawDisc,
+              discountType: (it['Discount %'] && Number(it['Discount %']) > 0) ? ('percent' as const) : ('flat' as const),
+              unit: it.Unit || it.unit || itemMatch?.Unit || 'Pcs',
+              gstPct: Number(it['GST %'] !== undefined ? it['GST %'] : (it.gstPct !== undefined ? it.gstPct : (itemMatch?.['GST %'] || 0))),
+              gstAmt: Number(it['GST Amount'] !== undefined ? it['GST Amount'] : (it.gstAmt !== undefined ? it.gstAmt : 0)),
+              zeroRated: isZeroRated ? ('Y' as const) : ('N' as const),
+              purchaseRate: Number(it.purchaseRate || itemMatch?.['Purchase Rate'] || 0),
+              isSerialized: (it.isSerialized || itemMatch?.['Is Serialized'] || 'N') as 'Y' | 'N',
+              serials: typeof it['Serial Numbers'] === 'string'
+                ? it['Serial Numbers'].split(',').map((s: string) => s.trim()).filter(Boolean) 
+                : (Array.isArray(it.serials) ? it.serials : [])
+            };
+          });
           setCart(newCart);
           
           if (inv.customer) {
             if (typeof inv.customer === 'object') {
-              setCustomerName(inv.customer.ledger || inv.customer.name);
+              setCustomerName(inv.customer.ledger || inv.customer.name || '');
               setWalkInDetails(inv.customer);
             } else {
               setCustomerName(inv.customer);
             }
           }
 
-          setCash(inv.cash > 0 ? inv.cash : '');
-          setBank1(inv.bank1 > 0 ? inv.bank1 : '');
-          setBank2(inv.bank2 > 0 ? inv.bank2 : '');
-          setBankTxnNo(inv.bankTxnNo || '');
-          setBank2TxnNo(inv.bank2TxnNo || '');
-          setBillDiscount(inv.discount || '');
+          const cashAmt = Number(inv.cash ?? inv.payment?.cash ?? 0);
+          setCash(cashAmt > 0 ? cashAmt : '');
+
+          const bank1Amt = Number(inv.bank1 ?? inv.payment?.bank1 ?? 0);
+          setBank1(bank1Amt > 0 ? bank1Amt : '');
+
+          const bank2Amt = Number(inv.bank2 ?? inv.payment?.bank2 ?? 0);
+          setBank2(bank2Amt > 0 ? bank2Amt : '');
+
+          setBankTxnNo(inv.bankTxnNo || inv.payment?.bank1TxnNo || inv.payment?.bankTxnNo || '');
+          setBank2TxnNo(inv.bank2TxnNo || inv.payment?.bank2TxnNo || '');
+
+          const discVal = inv.discount ?? inv.billDiscount ?? inv.payment?.discount ?? '';
+          setBillDiscount(discVal !== '' ? Number(discVal) : '');
           
-          setEditingInvoiceNo(inv.invoiceNo);
+          setEditingInvoiceNo(inv.invoiceNo || inv.billNo);
+          if (inv.date) {
+            setEditingInvoiceDate(inv.date);
+          }
         }
       });
     }
-  }, [initialVoucherTarget]);
+  }, [initialVoucherTarget, items]);
 
   // Cart & Customer State
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -387,7 +417,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // ESC closes open modals
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape') { if (e.defaultPrevented) return;
         if (showSettingsModal) {
           e.preventDefault();
           setShowSettingsModal(false);
@@ -497,6 +527,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           setCart([]);
           setCustomerName('');
           setWalkInDetails(null);
+          setEditingInvoiceNo(null);
+          setEditingInvoiceDate(null);
           itemInputRef.current?.focus();
         }
         return;
@@ -1307,9 +1339,19 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     onDataRefresh();
   };
 
+  const [showAcceptModal, setShowAcceptModal] = useState<'print' | 'whatsapp' | 'email' | 'save_only' | 'share_pdf' | 'download_pdf' | false>(false);
+
   // Checkout Handler
-  const handleCheckout = async (actionType: 'print' | 'whatsapp' | 'email' | 'save_only' | 'share_pdf' | 'download_pdf' = 'print') => {
+  const handleCheckout = async (
+    actionType: 'print' | 'whatsapp' | 'email' | 'save_only' | 'share_pdf' | 'download_pdf' = 'print',
+    bypassConfirm: boolean = false
+  ) => {
     if (cart.length === 0 || isSubmitting) return;
+
+    if (!bypassConfirm) {
+      setShowAcceptModal(actionType);
+      return;
+    }
 
     let custLedger = customerName.trim();
     let name = 'Cash Customer';
@@ -1375,6 +1417,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       voucherTypeId: activeVoucherType?.id,
       voucherTypeName: activeVoucherType?.name,
       invoiceNo: editingInvoiceNo || undefined,
+      date: editingInvoiceDate || undefined,
+      isEdit: Boolean(editingInvoiceNo),
       isPOS: true
     });
 
@@ -1386,6 +1430,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     }
     
     setEditingInvoiceNo(null);
+    setEditingInvoiceDate(null);
 
     if (result) {
       // Audio Chime
@@ -1520,6 +1565,33 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   return (
     <div className="flex flex-col gap-2 h-full overflow-hidden">
+      {/* Active Altering Invoice Banner */}
+      {editingInvoiceNo && (
+        <div className="shrink-0 flex items-center justify-between px-3.5 py-2 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs shadow-2xs">
+          <div className="flex items-center gap-2 font-medium">
+            <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+            <span>Altering Sales Invoice: <strong className="font-mono font-bold text-amber-950 text-sm">{editingInvoiceNo}</strong></span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingInvoiceNo(null);
+              setEditingInvoiceDate(null);
+              setCart([]);
+              setCustomerName('');
+              setWalkInDetails(null);
+              setCash('');
+              setBank1('');
+              setBank2('');
+              setBillDiscount('');
+            }}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 font-bold text-[11px] hover:bg-amber-100 transition cursor-pointer shadow-2xs"
+          >
+            <span>Discard Alteration &amp; New Sale</span>
+          </button>
+        </div>
+      )}
+
       {/* Header & Quick Summary Bar */}
       <div className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xs flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2.5">
@@ -2070,6 +2142,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                       setCart([]);
                       setCustomerName('');
                       setWalkInDetails(null);
+                      setEditingInvoiceNo(null);
+                      setEditingInvoiceDate(null);
                       itemInputRef.current?.focus();
                     }
                   }}
@@ -2476,55 +2550,57 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         </div>
 
         {/* Checkout & Instant Sharing Action Buttons */}
-        <div className="space-y-1.5 pt-0.5">
+        <div className="space-y-2 pt-1">
           {/* Primary Checkout & Print (F2) */}
-          <button
+          <GlowButton
             type="button"
             onClick={() => handleCheckout('print')}
             disabled={cart.length === 0 || isSubmitting}
-            className="w-full py-2.5 sm:py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-black text-sm shadow-md hover:shadow-lg disabled:opacity-50 transition flex items-center justify-center gap-2 cursor-pointer"
+            variant="blue"
+            size="lg"
+            fullWidth
+            icon={Printer}
           >
-            <Printer className="h-4.5 w-4.5" />
-            <span>Checkout & Print</span>
-            <kbd className="bg-indigo-700/90 border border-indigo-400/50 text-indigo-100 rounded px-1.5 py-0.5 text-[11px] font-mono font-bold">
-              F2
-            </kbd>
-          </button>
+            Checkout & Print [F2]
+          </GlowButton>
 
-          {/* Instant Share & Quick Save Actions (Available right before print) */}
+          {/* Instant Share & Quick Save Actions */}
           <div className="grid grid-cols-3 gap-1.5">
-            <button
+            <GlowButton
               type="button"
               onClick={() => handleCheckout('share_pdf')}
               disabled={cart.length === 0 || isSubmitting}
-              className="py-2 px-1 rounded-xl bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-300 font-bold text-xs transition flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer shadow-2xs"
+              variant="purple"
+              size="sm"
+              icon={Share2}
               title="Save bill and share PDF directly via WhatsApp / Email"
             >
-              <Share2 className="h-3.5 w-3.5 text-violet-600 shrink-0" />
-              <span className="truncate">Share PDF</span>
-            </button>
+              Share PDF
+            </GlowButton>
 
-            <button
+            <GlowButton
               type="button"
               onClick={() => handleCheckout('download_pdf')}
               disabled={cart.length === 0 || isSubmitting}
-              className="py-2 px-1 rounded-xl bg-slate-800 hover:bg-slate-900 text-white border border-slate-700 font-bold text-xs transition flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer shadow-2xs"
+              variant="cyan"
+              size="sm"
+              icon={FileDown}
               title="Save bill and download A4 Tax Invoice PDF"
             >
-              <FileDown className="h-3.5 w-3.5 text-slate-200 shrink-0" />
-              <span className="truncate">Save PDF</span>
-            </button>
+              Save PDF
+            </GlowButton>
 
-            <button
+            <GlowButton
               type="button"
               onClick={() => handleCheckout('save_only')}
               disabled={cart.length === 0 || isSubmitting}
-              className="py-2 px-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-bold text-xs transition flex items-center justify-center gap-1 disabled:opacity-50 cursor-pointer shadow-2xs"
+              variant="emerald"
+              size="sm"
+              icon={Check}
               title="Save bill to database without opening print dialogue"
             >
-              <Check className="h-3.5 w-3.5 text-slate-600 shrink-0" />
-              <span className="truncate">Save Only</span>
-            </button>
+              Save Only
+            </GlowButton>
           </div>
         </div>
       </div>
@@ -2845,6 +2921,17 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           }
         }}
         onClose={() => setBankTxnModalOpen(false)}
+      />
+
+      <AcceptModal
+        isOpen={Boolean(showAcceptModal)}
+        title={editingInvoiceNo ? `Save changes to ${editingInvoiceNo}?` : "Save Sales Invoice?"}
+        onConfirm={() => {
+          const act = showAcceptModal;
+          setShowAcceptModal(false);
+          if (act) handleCheckout(act, true);
+        }}
+        onCancel={() => setShowAcceptModal(false)}
       />
     </div>
   );

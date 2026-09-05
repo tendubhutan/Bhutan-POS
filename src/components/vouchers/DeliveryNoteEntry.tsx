@@ -8,6 +8,7 @@ import { SearchableLedgerSelect } from '../SearchableLedgerSelect';
 import { SearchableItemSelect } from '../SearchableItemSelect';
 import { handleGridKeyDown } from '../../utils/gridKeyboardNav';
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './VoucherSuccessActionModal';
+import { AcceptModal } from '../AcceptModal';
 import {
   Truck, Plus, Trash2, CheckCircle2, AlertCircle, Package, Printer, FileText, MapPin, Calendar, Layers, Share2, Download, ArrowLeft, Sparkles, ChevronUp, ChevronDown } from 'lucide-react';
 import { generateDeliveryNotePDF, shareOrDownloadPDF } from '../../utils/pdfExport';
@@ -17,6 +18,7 @@ interface DeliveryNoteEntryProps {
   items: Item[];
   ledgers: Ledger[];
   onDataRefresh: () => void;
+  initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onOpenQuickLedger: (group: string) => void;
   onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
   onPrintDeliveryNote?: (note: DeliveryNote) => void;
@@ -28,12 +30,15 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
   items,
   ledgers,
   onDataRefresh,
+  initialVoucherTarget,
   onOpenQuickLedger,
   onOpenNewItemModal,
   onPrintDeliveryNote,
   onNavigateBack
 }) => {
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
+  const [editingNoteNo, setEditingNoteNo] = useState<string | null>(null);
+  const [showAcceptModal, setShowAcceptModal] = useState(false);
   const [noteNo, setNoteNo] = useState(() => (isAutoMode ? peekNextVoucherNo('DEL_NOTE', config) : ''));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [customerName, setCustomerName] = useState('');
@@ -85,17 +90,44 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
   }, []);
 
   useEffect(() => {
-    if (isAutoMode) {
+    if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
+      const all = getDeliveryNotes();
+      const dn = all.find(x => x.noteNo === initialVoucherTarget.voucherNo);
+      if (dn) {
+        setEditingNoteNo(dn.noteNo);
+        setNoteNo(dn.noteNo);
+        if (dn.date) setDate(new Date(dn.date).toISOString().split('T')[0]);
+        if ((dn as any).customerName || dn.customer) setCustomerName((dn as any).customerName || dn.customer);
+        if (dn.orderRefNo) setOrderRefNo(dn.orderRefNo);
+        if (dn.dispatchThrough) setDispatchThrough(dn.dispatchThrough);
+        if (dn.destination) setDestination(dn.destination);
+        if (dn.vehicleNo) setVehicleNo(dn.vehicleNo);
+        if (dn.remarks) setRemarks(dn.remarks);
+        if (Array.isArray(dn.items)) {
+          setNoteItems(dn.items.map((it: any) => ({
+            itemCode: it.itemCode || it['Item Code'] || '',
+            itemName: it.itemName || it['Item Name'] || '',
+            description: it.description || it['Item Description'] || '',
+            unit: it.unit || it.Unit || 'Pcs',
+            qty: it.qty !== undefined ? Number(it.qty) : (it.Qty !== undefined ? Number(it.Qty) : 1),
+            rate: it.rate !== undefined ? Number(it.rate) : (it.Rate !== undefined ? Number(it.Rate) : 0),
+            amount: it.amount !== undefined ? Number(it.amount) : (it.total !== undefined ? Number(it.total) : (Number(it.qty || 1) * Number(it.rate || 0)))
+          })));
+        }
+        setActiveTab('create');
+      }
+    }
+  }, [initialVoucherTarget]);
+
+  useEffect(() => {
+    if (isAutoMode && !editingNoteNo) {
       setNoteNo(peekNextVoucherNo('DEL_NOTE', config));
     }
-  }, [config, isAutoMode]);
+  }, [config, isAutoMode, editingNoteNo]);
 
   // Set default customer
   useEffect(() => {
-    if (!customerName && ledgers.length > 0) {
-      const debtor = ledgers.find(l => l.Group === 'Sundry Debtors')?.['Ledger Name'] || ledgers[0]['Ledger Name'];
-      setCustomerName(debtor);
-    }
+    // Disabled auto-fill to keep ledger fields empty by default
   }, [ledgers]);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
@@ -245,6 +277,12 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
       return;
     }
 
+    setShowAcceptModal(true);
+  };
+
+  const proceedSaveDeliveryNote = () => {
+    setShowAcceptModal(false);
+
     const customerLedger = ledgers.find(l => l['Ledger Name'] === customerName);
 
     const payload = {
@@ -278,6 +316,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
       showToast(`Delivery Note ${res.noteNo} saved & stock deducted!`, 'success');
       onDataRefresh();
       loadSavedDeliveryNotes();
+      setEditingNoteNo(null);
 
       const savedObj: DeliveryNote = {
         ...payload,
@@ -370,7 +409,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
   // Global F2 and Escape listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape') { if (e.defaultPrevented) return;
         const handled = handleDeliveryBack();
         if (handled) {
           e.preventDefault();
@@ -416,6 +455,12 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2">
+      <AcceptModal
+        isOpen={showAcceptModal}
+        title={editingNoteNo ? `Save changes to ${editingNoteNo}?` : "Save Delivery Note / Challan?"}
+        onConfirm={proceedSaveDeliveryNote}
+        onCancel={() => setShowAcceptModal(false)}
+      />
       {/* Toast */}
       {toastMsg && (
         <div
@@ -693,11 +738,11 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
                 <div className="sm:col-span-8">
                   <SearchableItemSelect
-                    id="dn-fast-item-picker"
+                    id="dn-fast-item-picker-top"
                     items={items}
                     placeholder="Type or scan item name / barcode to auto-add..."
                     currencySymbol={currencySymbol}
-                    onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                    onEndOfList={(id) => id && focusElement('dn-save-btn')}
                         onSelect={selectedItem => {
                       handleQuickAddItem(selectedItem);
                     }}
@@ -744,7 +789,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                           currencySymbol={currencySymbol}
                           priceType="sale"
                           showPrice={true}
-                          onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                          onEndOfList={(id) => id && focusElement('dn-save-btn')}
                           onSelect={selectedItem => {
                             const qty = line.qty || 1;
                             const rate = Number((selectedItem as any)['Sale Rate'] ?? (selectedItem as any)['Sales Rate'] ?? selectedItem.MRP ?? selectedItem['Purchase Rate'] ?? 0);
@@ -863,10 +908,10 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                         currencySymbol={currencySymbol}
                         priceType="sale"
                         showPrice={true}
-                        onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                        onEndOfList={(id) => id && focusElement('dn-save-btn')}
                         onSelect={selectedItem => handleQuickAddItem(selectedItem)}
                         autoClearAfterSelect={true}
-                        onEnterNext={() => focusNextOutsideGrid('dn-fast-item-picker')}
+                        onEnterNext={() => focusElement('dn-save-btn')}
                         onCreateNew={onOpenNewItemModal}
                       />
                     </td>
@@ -900,18 +945,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
             <div className="flex items-center gap-2">
               <button
                 id="dn-save-btn"
-                type="submit"
-                onKeyDown={e => {
-                  if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-                    e.preventDefault();
-                    if (noteItems.length > 0) {
-                      focusElement(`dn-item-${noteItems.length - 1}-qty`);
-                    } else {
-                      focusElement('dn-destination');
-                    }
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 px-4 py-2 font-black text-white text-xs shadow-xs transition active:scale-95 focus:ring-2 focus:ring-cyan-400 outline-none cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 px-4 py-2 font-black text-white text-xs shadow-xs transition active:scale-95 focus:ring-[4px] focus:ring-cyan-400/80 focus:ring-offset-1 focus:shadow-[0_0_15px_rgba(34,211,238,0.6)] z-10 relative focus:scale-[1.02] outline-none cursor-pointer"
               >
                 <CheckCircle2 className="h-4 w-4" />
                 <span>Save Delivery Note (F2)</span>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { GlowButton } from './common/GlowButton';
 import {
   getItemStockLedger,
   getFullLedgerStatement,
@@ -818,37 +819,40 @@ export const DrillModal: React.FC<DrillModalProps> = ({
                 <div className="mt-3.5 pt-3 border-t border-slate-200/80 flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {/* Print Button */}
-                    <button
+                    <GlowButton
                       type="button"
                       onClick={handlePrintVoucher}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs border border-slate-300 shadow-2xs hover:border-slate-400 transition active:scale-95 cursor-pointer"
+                      variant="blue"
+                      size="sm"
+                      icon={Printer}
                       title="Print Voucher / Bill"
                     >
-                      <Printer className="h-3.5 w-3.5 text-indigo-600" />
-                      <span>Print</span>
-                    </button>
+                      Print
+                    </GlowButton>
 
                     {/* Save PDF Button */}
-                    <button
+                    <GlowButton
                       type="button"
                       onClick={handleSavePdf}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs border border-slate-300 shadow-2xs hover:border-slate-400 transition active:scale-95 cursor-pointer"
+                      variant="cyan"
+                      size="sm"
+                      icon={Download}
                       title="Save PDF file to computer"
                     >
-                      <Download className="h-3.5 w-3.5 text-slate-600" />
-                      <span>Save PDF</span>
-                    </button>
+                      Save PDF
+                    </GlowButton>
 
                     {/* Share Button */}
-                    <button
+                    <GlowButton
                       type="button"
                       onClick={() => setShowShareModal(true)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs border border-slate-300 shadow-2xs hover:border-slate-400 transition active:scale-95 cursor-pointer"
+                      variant="purple"
+                      size="sm"
+                      icon={Share2}
                       title="Share Voucher via WhatsApp, Copy Text or PDF"
                     >
-                      <Share2 className="h-3.5 w-3.5 text-emerald-600" />
-                      <span>Share</span>
-                    </button>
+                      Share
+                    </GlowButton>
 
                     {/* Open in Entry Screen */}
                     {onOpenVoucherInEntry && !isCancelled && (

@@ -423,14 +423,14 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                               {groupNode.nature || 'Primary Group'}
                             </span>
                           </td>
-                          <td className="py-3 px-4 sm:px-6 text-right font-mono font-bold text-slate-900">
+                          <td className="py-2.5 px-4 sm:px-6 text-right font-mono font-black text-slate-900">
                             {isDr && groupVal > 0 ? (
-                              <span className="text-slate-900">{fmt(groupVal)}</span>
+                              <span className="text-slate-900 font-extrabold underline decoration-slate-900 decoration-1 underline-offset-4">{fmt(groupVal)}</span>
                             ) : '-'}
                           </td>
-                          <td className="py-3 px-4 sm:px-6 text-right font-mono font-bold text-slate-900">
+                          <td className="py-2.5 px-4 sm:px-6 text-right font-mono font-black text-slate-900">
                             {!isDr && groupVal > 0 ? (
-                              <span className="text-slate-900">{fmt(groupVal)}</span>
+                              <span className="text-slate-900 font-extrabold underline decoration-slate-900 decoration-1 underline-offset-4">{fmt(groupVal)}</span>
                             ) : '-'}
                           </td>
                         </tr>
@@ -447,19 +447,19 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                               onClick={() => onDrillLedger && onDrillLedger(child.name)}
                               className="hover:bg-indigo-50/50 cursor-pointer text-slate-700 transition"
                             >
-                              <td className="py-2.5 px-4 sm:px-6 pl-10 sm:pl-14 font-normal text-slate-700 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover:bg-indigo-500" />
-                                <span className="hover:text-indigo-600 hover:font-semibold transition underline decoration-dotted decoration-slate-300 underline-offset-4">
+                              <td className="py-2 px-4 sm:px-6 pl-10 sm:pl-14 font-medium italic text-slate-700 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover:bg-indigo-500 shrink-0" />
+                                <span className="hover:text-indigo-600 transition underline decoration-dotted decoration-slate-300 underline-offset-4">
                                   {child.name}
                                 </span>
                               </td>
-                              <td className="py-2.5 px-4 text-xs text-slate-400 hidden md:table-cell">
+                              <td className="py-2 px-4 text-xs text-slate-400 italic hidden md:table-cell">
                                 {groupNode.name}
                               </td>
-                              <td className="py-2.5 px-4 sm:px-6 text-right font-mono text-slate-800">
+                              <td className="py-2 px-4 sm:px-6 text-right font-mono italic text-slate-700">
                                 {childIsDr && childVal > 0 ? fmt(childVal) : '-'}
                               </td>
-                              <td className="py-2.5 px-4 sm:px-6 text-right font-mono text-slate-800">
+                              <td className="py-2 px-4 sm:px-6 text-right font-mono italic text-slate-700">
                                 {!childIsDr && childVal > 0 ? fmt(childVal) : '-'}
                               </td>
                             </tr>

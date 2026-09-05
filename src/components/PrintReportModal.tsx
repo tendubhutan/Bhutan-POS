@@ -509,10 +509,10 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
         const absVal = Math.abs(net);
 
         let html = `
-          <tr style="font-weight: 700; background: #f8fafc;">
-            <td style="padding: 5px 8px; font-size: 11px;">${g.name}</td>
-            <td class="num" style="padding: 5px 8px; font-size: 11px;">${isDr && absVal > 0 ? fmtNum(absVal) : ''}</td>
-            <td class="num" style="padding: 5px 8px; font-size: 11px;">${!isDr && absVal > 0 ? fmtNum(absVal) : ''}</td>
+          <tr style="font-weight: 800; color: #000; background: #fafafa;">
+            <td style="padding: 5px 8px; font-size: 11px; font-weight: 800;">${g.name}</td>
+            <td class="num" style="padding: 5px 8px; font-size: 11px; font-weight: 800; text-decoration: underline;">${isDr && absVal > 0 ? fmtNum(absVal) : ''}</td>
+            <td class="num" style="padding: 5px 8px; font-size: 11px; font-weight: 800; text-decoration: underline;">${!isDr && absVal > 0 ? fmtNum(absVal) : ''}</td>
           </tr>
         `;
 
@@ -522,10 +522,10 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
             const lIsDr = lNet >= 0;
             const lAbs = Math.abs(lNet);
             html += `
-              <tr style="color: #475569;">
-                <td style="padding: 3px 8px 3px 22px; font-size: 10px;">${l.name}</td>
-                <td class="num" style="padding: 3px 8px; font-size: 10px;">${lIsDr && lAbs > 0 ? fmtNum(lAbs) : ''}</td>
-                <td class="num" style="padding: 3px 8px; font-size: 10px;">${!lIsDr && lAbs > 0 ? fmtNum(lAbs) : ''}</td>
+              <tr style="font-style: italic; color: #334155;">
+                <td style="padding: 3px 8px 3px 24px; font-size: 10px; font-style: italic;">${l.name}</td>
+                <td class="num" style="padding: 3px 8px; font-size: 10px; font-style: italic;">${lIsDr && lAbs > 0 ? fmtNum(lAbs) : ''}</td>
+                <td class="num" style="padding: 3px 8px; font-size: 10px; font-style: italic;">${!lIsDr && lAbs > 0 ? fmtNum(lAbs) : ''}</td>
               </tr>
             `;
           });
@@ -535,22 +535,22 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
       }).join('');
 
       return `
-        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #cbd5e1;">
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #cbd5e1; font-family: sans-serif;">
           <thead>
-            <tr style="background: #e0e7ff; color: #3730a3; font-weight: 800; font-size: 10px; text-transform: uppercase;">
-              <th style="padding: 6px 8px; text-align: left; border: 1px solid #cbd5e1;">P a r t i c u l a r s</th>
-              <th style="padding: 6px 8px; text-align: right; border: 1px solid #cbd5e1; width: 140px;">Closing Debit (${config.CurrencySymbol || 'Nu.'})</th>
-              <th style="padding: 6px 8px; text-align: right; border: 1px solid #cbd5e1; width: 140px;">Closing Credit (${config.CurrencySymbol || 'Nu.'})</th>
+            <tr style="background: #f8fafc; color: #0f172a; font-weight: 800; font-size: 10px; text-transform: uppercase; border-top: 1px solid #0f172a; border-bottom: 1px solid #0f172a;">
+              <th style="padding: 6px 8px; text-align: left;">P a r t i c u l a r s</th>
+              <th style="padding: 6px 8px; text-align: right; width: 140px;">Closing Debit (${config.CurrencySymbol || 'Nu.'})</th>
+              <th style="padding: 6px 8px; text-align: right; width: 140px;">Closing Credit (${config.CurrencySymbol || 'Nu.'})</th>
             </tr>
           </thead>
           <tbody>
             ${rowsHtml}
           </tbody>
           <tfoot>
-            <tr style="background: #f1f5f9; font-weight: 800; font-size: 11px; border-top: 2px solid #0f172a; border-bottom: 2px double #0f172a;">
-              <td style="padding: 6px 8px;">CARRIED OVER / GRAND TOTAL</td>
-              <td class="num" style="padding: 6px 8px;">${fmtNum(totalDr)}</td>
-              <td class="num" style="padding: 6px 8px;">${fmtNum(totalCr)}</td>
+            <tr style="background: #ffffff; font-weight: 800; font-size: 11px; border-top: 1px solid #0f172a; border-bottom: 3px double #0f172a; color: #000;">
+              <td style="padding: 6px 8px; font-weight: 800;">CARRIED OVER / GRAND TOTAL</td>
+              <td class="num" style="padding: 6px 8px; font-weight: 800;">${fmtNum(totalDr)}</td>
+              <td class="num" style="padding: 6px 8px; font-weight: 800;">${fmtNum(totalCr)}</td>
             </tr>
           </tfoot>
         </table>

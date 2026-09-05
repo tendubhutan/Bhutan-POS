@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { SalesInvoice, Config } from '../types';
 import { X, Printer, Share2, Mail, MessageCircle, FileText, Check, Copy, FileDown } from 'lucide-react';
 import { generateInvoicePDF, shareOrDownloadPDF, resolveBankDetailsForPrint } from '../utils/pdfExport';
+import { GlowButton } from './common/GlowButton';
 
 interface ThermalReceiptModalProps {
   isOpen: boolean;
@@ -97,36 +98,51 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   const resolvedTerms = getResolvedTerms();
 
   const generateInvoiceText = () => {
+    if (!invoice) return '';
+    const safeItems = Array.isArray(invoice.items) ? invoice.items : [];
+    const partyName = typeof invoice.customer === 'object'
+      ? (invoice.customer?.name || invoice.customer?.ledger || 'Walk-in Cash Customer')
+      : (invoice.customer || 'Walk-in Cash Customer');
+    const partyPhone = typeof invoice.customer === 'object' ? invoice.customer?.phone : '';
+
     const lines = [
-      `🧾 *TAX INVOICE: ${invoice.invoiceNo}*`,
+      `🧾 *TAX INVOICE: ${invoice.invoiceNo || 'INV'}*`,
       `🏪 *${config.CompanyName || 'Retail Store'}*`,
       config.Address ? `📍 ${config.Address}` : '',
       showGst && config.CompanyGSTNo ? `🏛 GSTIN: ${config.CompanyGSTNo}` : '',
-      `📅 Date: ${new Date(invoice.date).toLocaleString()}`,
-      `👤 Customer: ${invoice.customer?.name || 'Walk-in Cash Customer'}`,
-      invoice.customer?.phone ? `📞 Phone: ${invoice.customer.phone}` : '',
+      `📅 Date: ${invoice.date ? new Date(invoice.date).toLocaleString() : new Date().toLocaleString()}`,
+      `👤 Customer: ${partyName}`,
+      partyPhone ? `📞 Phone: ${partyPhone}` : '',
       '--------------------------------',
       '*ITEMS:*',
-      ...invoice.items.map(item => {
+      ...safeItems.map((item: any) => {
+        const itemQty = Number(item.Qty ?? item.qty ?? 1);
+        const itemRate = Number(item.Rate ?? item.rate ?? 0);
+        const itemDisc = Number(item.Discount ?? item.discount ?? 0);
+        const itemName = item['Item Name'] || item.itemName || item.itemDescription || 'Item';
+        const itemUnit = item.Unit || item.unit || 'Pcs';
+        const itemGstPct = Number(item['GST %'] ?? item.gstPct ?? item.taxRate ?? 0);
+        const itemGstAmt = Number(item['GST Amount'] ?? item.gstAmt ?? 0);
+        const itemLineTotal = Number(item['Line Total'] ?? item.lineTotal ?? item.amount ?? (itemQty * itemRate - itemDisc));
         const saleAmt = Number(
           item['Taxable Value'] !== undefined
             ? item['Taxable Value']
-            : (Number(item.Qty) || 0) * (Number(item.Rate) || 0) - (Number(item.Discount) || 0)
+            : (itemQty * itemRate - itemDisc)
         ).toFixed(2);
-        const gstInfo = showGst ? ` | GST: ${item['GST %'] || 0}% (${currency} ${Number(item['GST Amount'] || 0).toFixed(2)})` : '';
-        return `• *${item['Item Name']}* (${item.Qty} ${item.Unit || 'Pcs'} @ ${currency} ${Number(item.Rate).toFixed(2)}) | Sale Amt: ${currency} ${saleAmt}${gstInfo} | Total: ${currency} ${Number(item['Line Total']).toFixed(2)}`;
+        const gstInfo = showGst ? ` | GST: ${itemGstPct}% (${currency} ${itemGstAmt.toFixed(2)})` : '';
+        return `• *${itemName}* (${itemQty} ${itemUnit} @ ${currency} ${itemRate.toFixed(2)}) | Sale Amt: ${currency} ${saleAmt}${gstInfo} | Total: ${currency} ${itemLineTotal.toFixed(2)}`;
       }),
       '--------------------------------',
-      showGst ? `Taxable Sale: ${currency} ${invoice.taxable.toFixed(2)}` : '',
-      showGst ? `Exempted Sale: ${currency} ${invoice.zeroRated.toFixed(2)}` : '',
-      showGst ? `GST Amount: ${currency} ${invoice.gstAmt.toFixed(2)}` : '',
-      ...(invoice.additionalExpenses && invoice.additionalExpenses.length > 0 ? invoice.additionalExpenses.map(exp => `Addl Charge (${exp.ledger}): ${currency} ${Number(exp.amount).toFixed(2)}`) : []),
-      (invoice.discount && invoice.discount > 0) ? `Subtotal: ${currency} ${(invoice.subtotal || (invoice.total + invoice.discount)).toFixed(2)}` : '',
-      (invoice.discount && invoice.discount > 0) ? `Bill Discount: -${currency} ${invoice.discount.toFixed(2)}` : '',
-      `*GRAND TOTAL: ${currency} ${invoice.total.toFixed(2)}*`,
+      showGst ? `Taxable Sale: ${currency} ${Number(invoice.taxable || 0).toFixed(2)}` : '',
+      showGst ? `Exempted Sale: ${currency} ${Number(invoice.zeroRated || 0).toFixed(2)}` : '',
+      showGst ? `GST Amount: ${currency} ${Number(invoice.gstAmt || 0).toFixed(2)}` : '',
+      ...(Array.isArray(invoice.additionalExpenses) && invoice.additionalExpenses.length > 0 ? invoice.additionalExpenses.map((exp: any) => `Addl Charge (${exp.ledger || 'Exp'}): ${currency} ${Number(exp.amount || 0).toFixed(2)}`) : []),
+      (Number(invoice.discount || 0) > 0) ? `Subtotal: ${currency} ${Number(invoice.subtotal || (Number(invoice.total || 0) + Number(invoice.discount || 0))).toFixed(2)}` : '',
+      (Number(invoice.discount || 0) > 0) ? `Bill Discount: -${currency} ${Number(invoice.discount || 0).toFixed(2)}` : '',
+      `*GRAND TOTAL: ${currency} ${Number(invoice.total || 0).toFixed(2)}*`,
       '--------------------------------',
-      `Paid: Cash ${currency} ${invoice.cash.toFixed(2)} | Bank ${currency} ${(invoice.bank1 + invoice.bank2).toFixed(2)}`,
-      invoice.credit > 0 ? `⚠️ *Credit Balance Due: ${currency} ${invoice.credit.toFixed(2)}*` : '✅ *Status: Fully Paid*',
+      `Paid: Cash ${currency} ${Number(invoice.cash || 0).toFixed(2)} | Bank ${currency} ${(Number(invoice.bank1 || 0) + Number(invoice.bank2 || 0)).toFixed(2)}`,
+      Number(invoice.credit || 0) > 0 ? `⚠️ *Credit Balance Due: ${currency} ${Number(invoice.credit || 0).toFixed(2)}*` : '✅ *Status: Fully Paid*',
       config.CompanyBankDetails ? `\n*Bank Details:*\n${config.CompanyBankDetails}` : '',
       `\nThank you for choosing ${config.CompanyName || 'us'}! Visit Again.`
     ].filter(Boolean);
@@ -164,20 +180,28 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
 
   const handleDownloadPDF = () => {
     if (!invoice) return;
-    const doc = generateInvoicePDF(invoice, config, { customTerms: resolvedTerms, customBankDetails: effectiveBankDetails });
-    doc.save(`Invoice_${invoice.invoiceNo}.pdf`);
+    try {
+      const doc = generateInvoicePDF(invoice, config, { customTerms: resolvedTerms, customBankDetails: effectiveBankDetails });
+      doc.save(`Invoice_${invoice.invoiceNo || 'INV'}.pdf`);
+    } catch (err) {
+      console.error('Download PDF error', err);
+    }
   };
 
   const handleSharePDF = async () => {
     if (!invoice) return;
-    const doc = generateInvoicePDF(invoice, config, { customTerms: resolvedTerms, customBankDetails: effectiveBankDetails });
-    const filename = `Invoice_${invoice.invoiceNo}.pdf`;
-    await shareOrDownloadPDF(
-      doc,
-      filename,
-      `Tax Invoice #${invoice.invoiceNo} - ${config.CompanyName || 'Store'}`,
-      generateInvoiceText()
-    );
+    try {
+      const doc = generateInvoicePDF(invoice, config, { customTerms: resolvedTerms, customBankDetails: effectiveBankDetails });
+      const filename = `Invoice_${invoice.invoiceNo || 'INV'}.pdf`;
+      await shareOrDownloadPDF(
+        doc,
+        filename,
+        `Tax Invoice #${invoice.invoiceNo || 'INV'} - ${config.CompanyName || 'Store'}`,
+        generateInvoiceText()
+      );
+    } catch (err) {
+      console.error('Share PDF error', err);
+    }
   };
 
   const printReceipt = (mode: 'thermal' | 'a4' | 'a5') => {
@@ -310,16 +334,16 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               </tr>
             </thead>
             <tbody>
-              ${invoice.items.map(item => `
+              ${(Array.isArray(invoice.items) ? invoice.items : []).map(item => `
                 <tr>
                   <td class="text-left">
-                    ${item['Item Name']}
+                    ${item['Item Name'] || (item as any).itemName || (item as any).name || 'Item'}
                     ${item['Serial Numbers'] ? `<br><span style="font-size: 8px;">SN: ${item['Serial Numbers']}</span>` : ''}
                   </td>
-                  <td class="text-center">${item.Qty}</td>
-                  <td class="text-right">${Number(item.Rate).toFixed(2)}</td>
-                  ${showGst ? `<td class="text-right">${item['GST %'] || 0}%</td>` : ''}
-                  <td class="text-right">${Number(item['Line Total']).toFixed(2)}</td>
+                  <td class="text-center">${item.Qty ?? (item as any).qty ?? 1}</td>
+                  <td class="text-right">${Number(item.Rate ?? (item as any).rate ?? 0).toFixed(2)}</td>
+                  ${showGst ? `<td class="text-right">${item['GST %'] ?? (item as any).gstPct ?? 0}%</td>` : ''}
+                  <td class="text-right">${Number(item['Line Total'] ?? (item as any).lineTotal ?? (item as any).amount ?? 0).toFixed(2)}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -610,31 +634,34 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               </tr>
             </thead>
             <tbody>
-              ${invoice.items.map((item, i) => {
+              ${(Array.isArray(invoice.items) ? invoice.items : []).map((item, i) => {
+                const itemQty = Number(item.Qty ?? (item as any).qty ?? 1);
+                const itemRate = Number(item.Rate ?? (item as any).rate ?? 0);
+                const itemDisc = Number(item.Discount ?? (item as any).discount ?? 0);
                 const saleAmt = Number(
                   item['Taxable Value'] !== undefined
                     ? item['Taxable Value']
-                    : (Number(item.Qty) || 0) * (Number(item.Rate) || 0) - (Number(item.Discount) || 0)
+                    : (itemQty * itemRate - itemDisc)
                 ).toFixed(2);
                 const gstAmt = Number(
                   item['GST Amount'] !== undefined
                     ? item['GST Amount']
-                    : (item['Zero Rated (Y/N)'] === 'Y' ? 0 : ((Number(item['Taxable Value'] || 0) * (Number(item['GST %']) || 0)) / 100))
+                    : (item['Zero Rated (Y/N)'] === 'Y' ? 0 : (((itemQty * itemRate - itemDisc) * Number(item['GST %'] ?? (item as any).gstPct ?? 0)) / 100))
                 ).toFixed(2);
                 return `
                 <tr>
                   <td class="text-center">${i + 1}</td>
                   <td>
-                    <b>${item['Item Name']}</b>
+                    <b>${item['Item Name'] || (item as any).itemName || (item as any).name || 'Item'}</b>
                     ${(item.description || (item as any).Description || item["Item Description"]) ? `<br><small style="color: #475569; font-style: italic;">Desc: ${item.description || (item as any).Description || item["Item Description"]}</small>` : ''}
                     ${item['Serial Numbers'] ? `<br><small style="color: #64748b;">Serial/IMEI: ${item['Serial Numbers']}</small>` : ''}
                   </td>
-                  <td class="text-center">${item.Qty}</td>
-                  <td class="text-center">${item.Unit || 'Pcs'}</td>
-                  <td class="text-right">${Number(item.Rate).toFixed(2)}</td>
+                  <td class="text-center">${itemQty}</td>
+                  <td class="text-center">${item.Unit || (item as any).unit || 'Pcs'}</td>
+                  <td class="text-right">${itemRate.toFixed(2)}</td>
                   <td class="text-right">${saleAmt}</td>
                   ${showGst ? `<td class="text-right">${gstAmt}</td>` : ''}
-                  <td class="text-right" style="font-weight: bold;">${Number(item['Line Total']).toFixed(2)}</td>
+                  <td class="text-right" style="font-weight: bold;">${Number(item['Line Total'] ?? (item as any).lineTotal ?? (item as any).amount ?? 0).toFixed(2)}</td>
                 </tr>
               `;
               }).join('')}
@@ -1152,53 +1179,54 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
         {/* Action Buttons Toolbar */}
         <div className="space-y-2 shrink-0 pt-1">
           {/* Primary Action Buttons */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             {/* Share PDF with WhatsApp/Email/Device */}
-            <button
+            <GlowButton
               type="button"
               onClick={handleSharePDF}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 py-2.5 px-3 text-xs font-bold text-white shadow-sm active:scale-98 transition cursor-pointer"
+              variant="purple"
+              size="sm"
+              icon={Share2}
               title="Share attached PDF invoice via WhatsApp, Gmail, or device apps"
             >
-              <Share2 className="h-4 w-4" />
-              <span>Share PDF</span>
-            </button>
+              Share PDF
+            </GlowButton>
 
             {/* Save PDF directly */}
-            <button
+            <GlowButton
               type="button"
               onClick={handleDownloadPDF}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 py-2.5 px-3 text-xs font-bold text-white shadow-sm active:scale-98 transition cursor-pointer"
+              variant="blue"
+              size="sm"
+              icon={FileDown}
               title="Download professional A4 Tax Invoice PDF"
             >
-              <FileDown className="h-4 w-4" />
-              <span>Save PDF</span>
-            </button>
-
-
-
+              Save PDF
+            </GlowButton>
 
             {/* Print A4 */}
-            <button
+            <GlowButton
               type="button"
               onClick={() => printReceipt('a4')}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2.5 px-3 text-xs font-bold text-white shadow-sm hover:bg-indigo-700 active:scale-98 transition cursor-pointer"
+              variant="cyan"
+              size="sm"
+              icon={Printer}
               title="Print full page A4 Tax Invoice Document"
             >
-              <Printer className="h-4 w-4" />
-              <span>A4 Print</span>
-            </button>
+              A4 Print
+            </GlowButton>
 
             {/* 3-Inch Thermal */}
-            <button
+            <GlowButton
               type="button"
               onClick={() => printReceipt('thermal')}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 py-2.5 px-3 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-98 transition cursor-pointer"
+              variant="emerald"
+              size="sm"
+              icon={Printer}
               title="Print 3-Inch Thermal Slip"
             >
-              <Printer className="h-4 w-4" />
-              <span>3" Thermal</span>
-            </button>
+              3" Thermal
+            </GlowButton>
           </div>
 
           {/* Secondary Utilities & Close */}

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { GlowButton } from '../common/GlowButton';
 import { focusNextOutsideGrid } from '../../utils/domUtils';
 import { Config, Item, Ledger } from '../../types';
-import { saveDebitNote, peekNextVoucherNo } from '../../services/storageService';
+import { saveDebitNote, peekNextVoucherNo, getVoucherDetails } from '../../services/storageService';
 import { SearchableLedgerSelect } from '../SearchableLedgerSelect';
 import { SearchableItemSelect } from '../SearchableItemSelect';
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './VoucherSuccessActionModal';
+import { AcceptModal } from '../AcceptModal';
 import { generateDebitNotePDF, shareOrDownloadPDF } from '../../utils/pdfExport';
 import {
   RotateCcw, Plus, Trash2, CheckCircle2, AlertCircle, Package, Printer, Share2, Download, ChevronDown, ChevronUp } from 'lucide-react';
@@ -14,6 +16,7 @@ interface DebitNoteEntryProps {
   items: Item[];
   ledgers: Ledger[];
   onDataRefresh: () => void;
+  initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onOpenQuickLedger: (group: string) => void;
   onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
   onPrintVoucher?: (refNo: string) => void;
@@ -35,6 +38,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
   items,
   ledgers,
   onDataRefresh,
+  initialVoucherTarget,
   onOpenQuickLedger,
   onOpenNewItemModal,
   onPrintVoucher,
@@ -42,6 +46,8 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
 }) => {
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
+  const [editingVoucherNo, setEditingVoucherNo] = useState<string | null>(null);
+  const [showAcceptModal, setShowAcceptModal] = useState(false);
   const [voucherNo, setVoucherNo] = useState(() => (isAutoMode ? peekNextVoucherNo('DN', config) : ''));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [supplierLedger, setSupplierLedger] = useState('');
@@ -58,12 +64,12 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
   const [itemLines, setItemLines] = useState<ItemLine[]>([
     {
       id: '1',
-      itemCode: items[0]?.['Item Code'] || '',
-      itemName: items[0]?.['Item Name'] || '',
+      itemCode: '',
+      itemName: '',
       qty: 1,
-      rate: items[0]?.['Purchase Rate'] || 0,
-      gstPct: items[0]?.['GST %'] || 0,
-      amount: items[0]?.['Purchase Rate'] || 0
+      rate: 0,
+      gstPct: 0,
+      amount: 0
     }
   ]);
 
@@ -72,17 +78,46 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
   const currencySymbol = config?.CurrencySymbol || 'Nu.';
 
   useEffect(() => {
-    if (isAutoMode) {
+    if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
+      const details = getVoucherDetails(initialVoucherTarget.voucherNo);
+      if (details) {
+        const v: any = details.header || details;
+        if (v.type === 'DN' || v.voucherNo?.startsWith('DN-')) {
+          setEditingVoucherNo(v.voucherNo);
+          setVoucherNo(v.voucherNo);
+          if (v.date) setDate(new Date(v.date).toISOString().split('T')[0]);
+          if (v.supplierLedger || v.partyLedger || v.debitLedger) setSupplierLedger(v.supplierLedger || v.partyLedger || v.debitLedger);
+          if (v.purchaseReturnLedger || v.creditLedger) setPurchaseReturnLedger(v.purchaseReturnLedger || v.creditLedger);
+          if (v.originalInvoiceRef || v.originalBillRef) setOriginalBillRef(v.originalInvoiceRef || v.originalBillRef);
+          if (v.narration) setNarration(v.narration);
+          if (Array.isArray(v.items) && v.items.length > 0) {
+            setHasStockReturn(true);
+            setItemLines(v.items.map((it: any, idx: number) => ({
+              id: String(idx + 1),
+              itemCode: it.itemCode || it['Item Code'] || '',
+              itemName: it.itemName || it['Item Name'] || '',
+              qty: it.qty !== undefined ? Number(it.qty) : (it.Qty !== undefined ? Number(it.Qty) : 1),
+              rate: it.rate !== undefined ? Number(it.rate) : (it.Rate !== undefined ? Number(it.Rate) : 0),
+              gstPct: it.gstPct !== undefined ? Number(it.gstPct) : (it['GST %'] !== undefined ? Number(it['GST %']) : 0),
+              amount: it.amount !== undefined ? Number(it.amount) : (it.total !== undefined ? Number(it.total) : (Number(it.qty || 1) * Number(it.rate || 0)))
+            })));
+          } else {
+            setHasStockReturn(false);
+            setLumpSumAmount(v.amount ?? v.total ?? v.totalAmount ?? '');
+          }
+        }
+      }
+    }
+  }, [initialVoucherTarget]);
+
+  useEffect(() => {
+    if (isAutoMode && !editingVoucherNo) {
       setVoucherNo(peekNextVoucherNo('DN', config));
     }
-  }, [config, isAutoMode]);
+  }, [config, isAutoMode, editingVoucherNo]);
 
   // Set default supplier
   useEffect(() => {
-    if (!supplierLedger && ledgers.length > 0) {
-      const creditor = ledgers.find(l => l.Group === 'Sundry Creditors')?.['Ledger Name'] || ledgers[0]['Ledger Name'];
-      setSupplierLedger(creditor);
-    }
     if (ledgers.some(l => l['Ledger Name'] === 'Purchase Return')) {
       setPurchaseReturnLedger('Purchase Return');
     }
@@ -103,17 +138,16 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
   };
 
   const handleAddItemLine = () => {
-    const firstItem = items[0];
     setItemLines(prev => [
       ...prev,
       {
         id: String(Date.now()),
-        itemCode: firstItem?.['Item Code'] || '',
-        itemName: firstItem?.['Item Name'] || '',
+        itemCode: '',
+        itemName: '',
         qty: 1,
-        rate: firstItem?.['Purchase Rate'] || 0,
-        gstPct: firstItem?.['GST %'] || 0,
-        amount: firstItem?.['Purchase Rate'] || 0
+        rate: 0,
+        gstPct: 0,
+        amount: 0
       }
     ]);
   };
@@ -191,6 +225,12 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
       return;
     }
 
+    setShowAcceptModal(true);
+  };
+
+  const proceedSave = () => {
+    setShowAcceptModal(false);
+
     const suppObj = ledgers.find(l => l['Ledger Name'] === supplierLedger);
 
     const payload = {
@@ -221,8 +261,9 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
 
     const res = saveDebitNote(payload);
     if (res.ok) {
-      showToast(`Debit Note ${res.voucherNo} created successfully!`, 'success');
+      showToast(`Debit Note ${res.voucherNo} saved successfully!`, 'success');
       onDataRefresh();
+      setEditingVoucherNo(null);
 
       const savedObj = {
         ...payload,
@@ -260,16 +301,15 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
           if (isAutoMode) {
             setVoucherNo(peekNextVoucherNo('DN', config));
           }
-          const firstItem = items[0];
           setItemLines([
             {
               id: String(Date.now()),
-              itemCode: firstItem?.['Item Code'] || '',
-              itemName: firstItem?.['Item Name'] || '',
+              itemCode: '',
+              itemName: '',
               qty: 1,
-              rate: firstItem?.['Purchase Rate'] || 0,
-              gstPct: firstItem?.['GST %'] || 0,
-              amount: firstItem?.['Purchase Rate'] || 0
+              rate: 0,
+              gstPct: 0,
+              amount: 0
             }
           ]);
         }
@@ -301,7 +341,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
   // Global F2, Escape, and app event listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape') { if (e.defaultPrevented) return;
         if (successModalDetails) {
           setSuccessModalDetails(null);
           e.preventDefault();
@@ -354,6 +394,12 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
 
   return (
     <form id="debit-note-form" onSubmit={handleSubmit} className="flex flex-col h-full min-h-0 space-y-2">
+      <AcceptModal
+        isOpen={showAcceptModal}
+        title={editingVoucherNo ? `Save changes to ${editingVoucherNo}?` : "Save Debit Note?"}
+        onConfirm={proceedSave}
+        onCancel={() => setShowAcceptModal(false)}
+      />
       {/* Toast Notification */}
       {toastMsg && (
         <div
@@ -452,7 +498,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
                   focusElement('dn-voucher-no');
                 }
               }}
-              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-orange-600 text-xs"
+              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-[3px] focus:ring-indigo-400/80 focus:bg-indigo-50/50 focus:border-indigo-400 focus:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all z-10 relative text-xs"
             />
           </div>
 
@@ -492,7 +538,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
                   focusElement('dn-supplier');
                 }
               }}
-              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-orange-600 text-xs"
+              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-[3px] focus:ring-indigo-400/80 focus:bg-indigo-50/50 focus:border-indigo-400 focus:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all z-10 relative text-xs"
             />
           </div>
         </div>
@@ -536,7 +582,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
                   focusElement('dn-purchase-return');
                 }
               }}
-              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-orange-600 text-xs"
+              className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-[3px] focus:ring-indigo-400/80 focus:bg-indigo-50/50 focus:border-indigo-400 focus:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all z-10 relative text-xs"
             />
           </div>
         </div>
@@ -584,7 +630,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
                         currencySymbol={currencySymbol}
                         onCreateNew={onOpenNewItemModal}
                         priceType="purchase"
-                        onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                        onEndOfList={(id) => id && focusElement('dn-save-btn')}
                         onSelect={selectedItem => {
                           const qty = Number(line.qty) || 1;
                           const rate = selectedItem['Purchase Rate'] || 0;
@@ -827,9 +873,12 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
+          <GlowButton
             id="dn-save-btn"
             type="submit"
+            variant="amber"
+            size="sm"
+            icon={CheckCircle2}
             onKeyDown={e => {
               if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
                 e.preventDefault();
@@ -840,11 +889,9 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
                 }
               }
             }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 px-4 py-2 font-black text-white text-xs shadow-xs transition active:scale-95 focus:ring-2 focus:ring-orange-400 outline-none cursor-pointer"
           >
-            <CheckCircle2 className="h-4 w-4" />
-            <span>Save Debit Note (F2)</span>
-          </button>
+            Save Debit Note (F2)
+          </GlowButton>
         </div>
       </div>
 

@@ -8,12 +8,14 @@ import {
   Boxes, Plus, Trash2, CheckCircle2, AlertCircle, Package, RotateCcw, Sparkles, TrendingDown, TrendingUp, Scale, Printer, Share2, Download, ChevronUp, ChevronDown } from 'lucide-react';
 import { SearchableItemSelect } from '../SearchableItemSelect';
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './VoucherSuccessActionModal';
+import { AcceptModal } from '../AcceptModal';
 import { generatePhysicalStockPDF, shareOrDownloadPDF } from '../../utils/pdfExport';
 
 interface PhysicalStockEntryProps {
   config: Config;
   items: Item[];
   onDataRefresh: () => void;
+  initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
   onNavigateBack?: () => void;
 }
@@ -22,10 +24,13 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
   config,
   items,
   onDataRefresh,
+  initialVoucherTarget,
   onOpenNewItemModal,
   onNavigateBack
 }) => {
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
+  const [editingVoucherNo, setEditingVoucherNo] = useState<string | null>(null);
+  const [showAcceptModal, setShowAcceptModal] = useState(false);
   const [voucherNo, setVoucherNo] = useState(() => (isAutoMode ? peekNextVoucherNo('PHYSICAL_STOCK', config) : ''));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [verifiedBy, setVerifiedBy] = useState('');
@@ -52,29 +57,42 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
   }, []);
 
   useEffect(() => {
-    if (isAutoMode) {
+    if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
+      const all = getPhysicalStockRecords();
+      const ps = all.find(x => x.voucherNo === initialVoucherTarget.voucherNo);
+      if (ps) {
+        setEditingVoucherNo(ps.voucherNo);
+        setVoucherNo(ps.voucherNo);
+        if (ps.date) setDate(new Date(ps.date).toISOString().split('T')[0]);
+        if (ps.verifiedBy) setVerifiedBy(ps.verifiedBy);
+        if (ps.remarks) setRemarks(ps.remarks);
+        if (Array.isArray(ps.items)) {
+          setStockLines(ps.items.map((it: any) => ({
+            itemCode: it.itemCode || it['Item Code'] || '',
+            itemName: it.itemName || it['Item Name'] || '',
+            unit: it.unit || it.Unit || 'Pcs',
+            physicalQty: Number(it.physicalQty !== undefined ? it.physicalQty : (it.Qty !== undefined ? it.Qty : 0)),
+            bookQty: Number(it.bookQty !== undefined ? it.bookQty : 0),
+            differenceQty: Number(it.differenceQty !== undefined ? it.differenceQty : (it.difference !== undefined ? it.difference : (Number(it.physicalQty || 0) - Number(it.bookQty || 0)))),
+            varianceValue: Number(it.varianceValue !== undefined ? it.varianceValue : 0),
+            rate: Number(it.rate !== undefined ? it.rate : (it.Rate !== undefined ? it.Rate : 0)),
+            remarks: it.remarks || ''
+          })));
+        }
+        setActiveTab('create');
+      }
+    }
+  }, [initialVoucherTarget]);
+
+  useEffect(() => {
+    if (isAutoMode && !editingVoucherNo) {
       setVoucherNo(peekNextVoucherNo('PHYSICAL_STOCK', config));
     }
-  }, [config, isAutoMode]);
+  }, [config, isAutoMode, editingVoucherNo]);
 
   // Prepopulate initial stock lines
   useEffect(() => {
-    if (stockLines.length === 0 && items.length > 0) {
-      const initial = items.slice(0, 8).map(it => {
-        const book = Number(it['Current Stock']) || 0;
-        return {
-          itemCode: it['Item Code'],
-          itemName: it['Item Name'],
-          unit: it.Unit || 'Pcs',
-          bookQty: book,
-          physicalQty: book,
-          differenceQty: 0,
-          rate: Number(it['Purchase Rate']) || 0,
-          varianceValue: 0
-        };
-      });
-      setStockLines(initial);
-    }
+    // Disabled auto-fill to keep grid empty by default
   }, [items]);
 
   
@@ -153,6 +171,12 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
       return;
     }
 
+    setShowAcceptModal(true);
+  };
+
+  const proceedSavePhysicalStock = () => {
+    setShowAcceptModal(false);
+
     const payload = {
       voucherNo: voucherNo.trim() || undefined,
       date: new Date(date).toISOString(),
@@ -167,11 +191,12 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
     const res = savePhysicalStockAdjustment(payload);
     if (res.ok) {
       showToast(
-        `Physical stock adjustment ${res.voucherNo} posted! Inventory synchronized.`,
+        `Physical stock adjustment ${res.voucherNo} saved! Inventory synchronized.`,
         'success'
       );
       onDataRefresh();
       loadHistory();
+      setEditingVoucherNo(null);
 
       const savedObj = {
         ...payload,
@@ -247,7 +272,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
   // Global F2, Escape, and app event listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape') { if (e.defaultPrevented) return;
         const handled = handlePhysicalBack();
         if (handled) {
           e.preventDefault();
@@ -293,6 +318,12 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2">
+      <AcceptModal
+        isOpen={showAcceptModal}
+        title={editingVoucherNo ? `Save changes to ${editingVoucherNo}?` : "Save Physical Stock Verification?"}
+        onConfirm={proceedSavePhysicalStock}
+        onCancel={() => setShowAcceptModal(false)}
+      />
       {/* Toast */}
       {toastMsg && (
         <div
@@ -405,6 +436,10 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
                   disabled={isAutoMode}
                   onFocus={e => e.target.select()}
                   onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      document.getElementById('ps-save-btn')?.focus();
+                    }
                     if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
                       e.preventDefault();
                       focusElement('ps-date');
@@ -446,6 +481,10 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
                   onChange={e => setVerifiedBy(e.target.value)}
                   onFocus={e => e.target.select()}
                   onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      document.getElementById('ps-save-btn')?.focus();
+                    }
                     if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
                       e.preventDefault();
                       focusElement('ps-remarks');
@@ -468,6 +507,10 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
                   onChange={e => setRemarks(e.target.value)}
                   onFocus={e => e.target.select()}
                   onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      document.getElementById('ps-save-btn')?.focus();
+                    }
                     if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
                       e.preventDefault();
                       if (stockLines.length > 0) {
@@ -502,6 +545,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
                 {/* Fast find bar */}
                 <div className="w-64">
                   <SearchableItemSelect
+                    id="ps-fast-item-picker"
                     valueCode={quickSearchCode}
                     items={items}
                     placeholder="Quick add item to count..."
@@ -510,7 +554,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
                     onCreateNew={onOpenNewItemModal}
                     autoClearAfterSelect={true}
                     dropdownPosition="down"
-                    onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                    onEndOfList={() => document.getElementById('ps-save-btn')?.focus()}
                         onSelect={selectedItem => {
                       const code = selectedItem['Item Code'];
                       const exists = stockLines.some(l => l.itemCode === code);
@@ -724,7 +768,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
                     }
                   }
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-black text-white text-xs shadow-xs transition active:scale-95 focus:ring-2 focus:ring-emerald-400 outline-none cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-black text-white text-xs shadow-xs transition active:scale-95 focus:ring-[4px] focus:ring-emerald-400/80 focus:ring-offset-1 focus:shadow-[0_0_15px_rgba(52,211,153,0.6)] z-10 relative focus:scale-[1.02] outline-none cursor-pointer"
               >
                 <CheckCircle2 className="h-4 w-4" />
                 <span>Reconcile & Save (F2)</span>

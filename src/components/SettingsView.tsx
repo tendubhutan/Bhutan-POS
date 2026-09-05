@@ -5,6 +5,7 @@ import { POSSettings, loadPOSSettings, savePOSSettings, DEFAULT_POS_SETTINGS } f
 import { playSaveSound } from '../utils/audio';
 import { VoucherTypeManager } from './vouchers/VoucherTypeManager';
 import { AcceptModal } from './AcceptModal';
+import { GlowButton } from './common/GlowButton';
 import { 
   Save, CheckCircle2, Shield, FileText, Image as ImageIcon, PenTool, Plus, Lock, UserCheck, RefreshCw, 
   ShoppingCart, Zap, SlidersHorizontal, AlertTriangle, Keyboard, Percent, CreditCard, RotateCcw,
@@ -217,41 +218,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     };
 
     return (
-      <button
+      <GlowButton
         type="button"
         onClick={handleAction}
-        disabled={isSaving}
-        className={`relative overflow-hidden font-bold cursor-pointer flex items-center justify-center gap-2 select-none transition-all duration-200 active:scale-[0.99] ${
-          fullWidth ? 'w-full' : 'shrink-0'
-        } ${
-          size === 'lg'
-            ? 'py-3.5 px-6 rounded-xl text-sm shadow-xs'
-            : 'py-2 px-4 rounded-xl text-xs'
-        } ${
-          isSaved
-            ? 'bg-emerald-600 text-white shadow-sm'
-            : isSaving
-            ? 'bg-orange-700/90 text-white opacity-85 cursor-wait'
-            : 'bg-orange-600 text-white hover:bg-orange-700 active:bg-orange-800 shadow-xs'
-        }`}
+        loading={isSaving}
+        variant={isSaved ? 'emerald' : 'blue'}
+        size={size === 'lg' ? 'lg' : 'sm'}
+        fullWidth={fullWidth}
+        icon={isSaved ? Check : Save}
       >
-        {isSaving ? (
-          <>
-            <RefreshCw className="h-4 w-4 animate-spin text-orange-100" />
-            <span>Saving...</span>
-          </>
-        ) : isSaved ? (
-          <>
-            <Check className="h-4 w-4 text-white stroke-[3]" />
-            <span className="font-extrabold">Saved Successfully</span>
-          </>
-        ) : (
-          <>
-            <Save className="h-4 w-4 text-orange-100" />
-            <span>Save {label}</span>
-          </>
-        )}
-      </button>
+        {isSaved ? 'Saved Successfully' : `Save ${label}`}
+      </GlowButton>
     );
   };
 

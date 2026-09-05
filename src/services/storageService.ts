@@ -1591,6 +1591,8 @@ export function saveSalesInvoice(payload: {
   notes?: string;
   termsAndConditions?: string;
   invoiceNo?: string;
+  date?: string;
+  isEdit?: boolean;
   voucherTypeId?: string;
   voucherTypeName?: string;
   isPOS?: boolean;
@@ -1616,8 +1618,32 @@ export function saveSalesInvoice(payload: {
     }
   }
 
-  if (invoiceNo) {
-    deleteSalesInvoice(invoiceNo);
+  const isEditing = Boolean(invoiceNo);
+  let originalDate: string | undefined;
+
+  if (isEditing && invoiceNo) {
+    const existingSales = getDeduplicatedSales();
+    const oldInv = existingSales.find(s => s.invoiceNo.toLowerCase() === invoiceNo.toLowerCase());
+    if (oldInv) {
+      originalDate = oldInv.date;
+      // 1. Revert previous stock deduction from the original sale
+      (oldInv.items || []).forEach((item: any) => {
+        const qty = Number(item.Qty) || 0;
+        if (qty > 0) {
+          updateItemStock(item['Item Code'], qty, item.Unit || item.unit);
+        }
+      });
+    }
+
+    // 2. Remove old stock ledger entries for this invoice to prevent duplicate audit rows
+    let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+    stockLogs = stockLogs.filter(s => s['Ref No'] !== invoiceNo);
+    saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
+
+    // 3. Clean out previous ledger logs for this invoice so previous amounts don't double up
+    let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+    logs = logs.filter(l => l['Ref No'] !== invoiceNo);
+    saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
   }
 
   // Check if customer or their ledger is GST Exempted
@@ -1707,9 +1733,13 @@ export function saveSalesInvoice(payload: {
     }
   }
 
+  const invoiceDate = payload.date 
+    ? new Date(payload.date).toISOString() 
+    : (originalDate || new Date().toISOString());
+
   const invoice: SalesInvoice = {
     invoiceNo: iNo,
-    date: new Date().toISOString(),
+    date: invoiceDate,
     customer: { ...customer, ledger: sLg, isGSTExempted: isCustomerGstExempted },
     subtotal: rawTot,
     discount: appliedDiscount,
@@ -1736,7 +1766,7 @@ export function saveSalesInvoice(payload: {
   };
 
   const sales = getDeduplicatedSales();
-  const existIdx = sales.findIndex(s => s.invoiceNo === iNo);
+  const existIdx = sales.findIndex(s => s.invoiceNo.toLowerCase() === iNo.toLowerCase());
   if (existIdx >= 0) {
     sales[existIdx] = invoice;
   } else {
@@ -1774,6 +1804,10 @@ export function saveSalesInvoice(payload: {
   const netSalesCredit = Math.max(0, round2((tax + zro) - appliedDiscount));
   adjustLedgerBalance('Sales Account', netSalesCredit, 'Cr', iNo, 'Sale ' + iNo, 'Sale');
   if (gst > 0) adjustLedgerBalance('GST Payable', gst, 'Cr', iNo, 'GST ' + iNo, 'Sale');
+
+  if (isEditing) {
+    recalculateLedgerBalances();
+  }
 
   const updatedItems = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const updatedLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
@@ -1851,6 +1885,8 @@ export function savePurchaseInvoice(payload: {
   notes?: string;
   additionalExpenses?: { ledger: string; amount: number }[];
   billNo?: string;
+  date?: string;
+  isEdit?: boolean;
 }) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const itemsList = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
@@ -1884,8 +1920,33 @@ export function savePurchaseInvoice(payload: {
       }
     }
   }
-  if (payload.billNo) {
-    deletePurchaseInvoice(payload.billNo);
+
+  const isEditing = Boolean(payload.billNo);
+  let originalDate: string | undefined;
+
+  if (isEditing && payload.billNo) {
+    const existingPurchases = getDeduplicatedPurchases();
+    const oldPur = existingPurchases.find(p => p.billNo.toLowerCase() === payload.billNo!.toLowerCase());
+    if (oldPur) {
+      originalDate = oldPur.date;
+      // 1. Revert previous stock addition from original purchase
+      (oldPur.items || []).forEach((item: any) => {
+        const qty = Number(item.Qty) || 0;
+        if (qty > 0) {
+          updateItemStock(item['Item Code'], -qty, item.Unit || item.unit);
+        }
+      });
+    }
+
+    // 2. Remove old stock ledger entries for this bill to prevent duplicate audit rows
+    let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+    stockLogs = stockLogs.filter(s => s['Ref No'] !== payload.billNo);
+    saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
+
+    // 3. Clean out previous ledger logs for this bill so previous amounts don't double up
+    let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+    logs = logs.filter(l => l['Ref No'] !== payload.billNo);
+    saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
   }
   
   const supplierLedgerObj = ledgersList.find(l => l['Ledger Name'] === supplier.name);
@@ -1951,10 +2012,14 @@ export function savePurchaseInvoice(payload: {
   const cr = round2(tot - cash - b1 - b2);
   const st = cr > 0.009 ? ((cash + b1 + b2) > 0 ? 'Partial Credit' : 'Credit') : 'Paid';
 
+  const purchaseDate = payload.date
+    ? new Date(payload.date).toISOString()
+    : (originalDate || new Date().toISOString());
+
   const purchase: PurchaseInvoice = {
     billNo: bNo,
     supplierBillNo: payload.supplierBillNo || '',
-    date: new Date().toISOString(),
+    date: purchaseDate,
     supplier,
     taxable: tax,
     zeroRated: zro,
@@ -1972,7 +2037,7 @@ export function savePurchaseInvoice(payload: {
   };
 
   const purchases = getDeduplicatedPurchases();
-  const existIdx = purchases.findIndex(p => p.billNo === bNo);
+  const existIdx = purchases.findIndex(p => p.billNo.toLowerCase() === bNo.toLowerCase());
   if (existIdx >= 0) {
     purchases[existIdx] = purchase;
   } else {
@@ -2008,6 +2073,10 @@ export function savePurchaseInvoice(payload: {
       adjustLedgerBalance(exp.ledger, Number(exp.amount), 'Dr', bNo, 'Purchase Expense ' + bNo, 'Purchase');
     }
   });
+
+  if (isEditing) {
+    recalculateLedgerBalances();
+  }
 
   const updatedItems = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const updatedLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
@@ -2072,6 +2141,7 @@ export function peekNextVoucherNo(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'C
 export function saveMultiLineVoucher(payload: {
   type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR';
   voucherNo?: string;
+  isEdit?: boolean;
   date?: string;
   narration?: string;
   transactionId?: string;
@@ -2143,6 +2213,10 @@ export function saveMultiLineVoucher(payload: {
   const existIdx = vouchers.findIndex(v => v.voucherNo === no);
   if (existIdx >= 0) {
     vouchers[existIdx] = newVoucher;
+    // Clear out earlier ledger log rows for this voucher to prevent duplicate ledger balance postings
+    let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+    logs = logs.filter(l => l['Ref No'] !== no);
+    saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
   } else {
     vouchers.push(newVoucher);
   }
@@ -2158,6 +2232,10 @@ export function saveMultiLineVoucher(payload: {
       adjustLedgerBalance(line.ledger, Number(line.amount), line.type, no, lineNarr.trim(), payload.type, lineTxn);
     }
   });
+
+  if (existIdx >= 0) {
+    recalculateLedgerBalances();
+  }
 
   const updatedLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
   return { ok: true, voucherNo: no, ledgers: updatedLedgers };
@@ -2641,6 +2719,7 @@ export function bulkDeleteData(options: { deleteTransactions: boolean; deleteMas
 
 export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: { 
   voucherNo?: string; 
+  isEdit?: boolean;
   date?: string; 
   ledger?: string; 
   amount: number; 
@@ -2659,7 +2738,7 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   
   const vouchersList = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
-  if (v.voucherNo && vouchersList.some(x => x.voucherNo.toLowerCase() === v.voucherNo!.trim().toLowerCase())) {
+  if (!v.isEdit && v.voucherNo && vouchersList.some(x => x.voucherNo.toLowerCase() === v.voucherNo!.trim().toLowerCase())) {
     return { ok: false, error: `Duplicate Voucher Number: ${v.voucherNo}` };
   }
 
@@ -2704,6 +2783,10 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
   const existIdx = vouchers.findIndex(x => x.voucherNo === no);
   if (existIdx >= 0) {
     vouchers[existIdx] = newV;
+    // Clear out earlier ledger log rows for this voucher to prevent duplicate ledger balance postings
+    let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+    logs = logs.filter(l => l['Ref No'] !== no);
+    saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
   } else {
     vouchers.push(newV);
   }
@@ -2714,6 +2797,10 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
 
   adjustLedgerBalance(dr, Number(v.amount), 'Dr', no, narrWithTxn, t, txnId);
   adjustLedgerBalance(cr, Number(v.amount), 'Cr', no, narrWithTxn, t, txnId);
+
+  if (existIdx >= 0) {
+    recalculateLedgerBalances();
+  }
 
   const updatedLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
   return { ok: true, voucherNo: no, ledgers: updatedLedgers };
@@ -2927,9 +3014,15 @@ export function saveCreditNote(payload: {
     ],
     items: payload.items
   };
-  const existIdx = vouchers.findIndex(x => x.voucherNo === no);
-  if (existIdx >= 0) {
-    vouchers[existIdx] = newV;
+  const existIdxCN = vouchers.findIndex(x => x.voucherNo === no);
+  if (existIdxCN >= 0) {
+    vouchers[existIdxCN] = newV;
+    let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+    logs = logs.filter(l => l['Ref No'] !== no);
+    saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
+    let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+    stockLogs = stockLogs.filter(s => s['Ref No'] !== no);
+    saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
   } else {
     vouchers.push(newV);
   }
@@ -3014,9 +3107,15 @@ export function saveDebitNote(payload: {
     ],
     items: payload.items
   };
-  const existIdx = vouchers.findIndex(x => x.voucherNo === no);
-  if (existIdx >= 0) {
-    vouchers[existIdx] = newV;
+  const existIdxDN = vouchers.findIndex(x => x.voucherNo === no);
+  if (existIdxDN >= 0) {
+    vouchers[existIdxDN] = newV;
+    let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+    logs = logs.filter(l => l['Ref No'] !== no);
+    saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
+    let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+    stockLogs = stockLogs.filter(s => s['Ref No'] !== no);
+    saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
   } else {
     vouchers.push(newV);
   }
@@ -3086,7 +3185,15 @@ export function saveDeliveryNote(note: {
   };
 
   const notes = loadJson<DeliveryNote[]>(STORAGE_KEYS.DELIVERY_NOTES, []);
-  notes.push(deliveryDoc);
+  const existIdxDel = notes.findIndex(n => n.noteNo === no);
+  if (existIdxDel >= 0) {
+    notes[existIdxDel] = deliveryDoc;
+    let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+    stockLogs = stockLogs.filter(s => s['Ref No'] !== no);
+    saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
+  } else {
+    notes.push(deliveryDoc);
+  }
   saveJson(STORAGE_KEYS.DELIVERY_NOTES, notes);
 
   // Deduct stock and log in stock ledger
@@ -3191,7 +3298,15 @@ export function savePhysicalStockAdjustment(payload: {
   };
 
   const records = loadJson<PhysicalStockVoucher[]>(STORAGE_KEYS.PHYSICAL_STOCK, []);
-  records.push(doc);
+  const existIdxPhys = records.findIndex(r => r.voucherNo === no);
+  if (existIdxPhys >= 0) {
+    records[existIdxPhys] = doc;
+    let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+    stockLogs = stockLogs.filter(s => s['Ref No'] !== no);
+    saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
+  } else {
+    records.push(doc);
+  }
   saveJson(STORAGE_KEYS.PHYSICAL_STOCK, records);
 
   return { ok: true, voucherNo: no, record: doc, items: allItems };
@@ -3277,31 +3392,32 @@ export function deleteQuotation(quotationNo: string) {
 export function getVoucherDetails(refNo: string) {
   if (!refNo) return null;
   const cleanRef = String(refNo).trim();
+  const cleanRefLower = cleanRef.toLowerCase();
 
   // 1. Sales Invoices
   const invoices = getDeduplicatedSales();
-  const inv = invoices.find(x => x.invoiceNo === cleanRef);
-  if (inv) return { type: 'INV', header: inv, items: inv.items };
+  const inv = invoices.find(x => x.invoiceNo === cleanRef || x.invoiceNo?.trim().toLowerCase() === cleanRefLower);
+  if (inv) return { type: 'INV', header: inv, items: inv.items || [] };
 
   // 2. Purchase Invoices
   const purchases = getDeduplicatedPurchases();
-  const pur = purchases.find(x => x.billNo === cleanRef || x.invoiceNo === cleanRef);
-  if (pur) return { type: 'PUR', header: pur, items: pur.items };
+  const pur = purchases.find(x => x.billNo === cleanRef || x.invoiceNo === cleanRef || x.billNo?.trim().toLowerCase() === cleanRefLower || x.invoiceNo?.trim().toLowerCase() === cleanRefLower);
+  if (pur) return { type: 'PUR', header: pur, items: pur.items || [] };
 
   // 3. Delivery Notes
   const notes = loadJson<DeliveryNote[]>(STORAGE_KEYS.DELIVERY_NOTES, []);
-  const note = notes.find(x => x.noteNo === cleanRef);
-  if (note) return { type: 'DLV', header: note, items: note.items };
+  const note = notes.find(x => x.noteNo === cleanRef || x.noteNo?.trim().toLowerCase() === cleanRefLower);
+  if (note) return { type: 'DLV', header: note, items: note.items || [] };
 
   // 4. Physical Stock Vouchers
   const records = loadJson<PhysicalStockVoucher[]>(STORAGE_KEYS.PHYSICAL_STOCK, []);
-  const rec = records.find(x => x.voucherNo === cleanRef);
-  if (rec) return { type: 'PHY', header: rec, items: rec.items };
+  const rec = records.find(x => x.voucherNo === cleanRef || x.voucherNo?.trim().toLowerCase() === cleanRefLower);
+  if (rec) return { type: 'PHY', header: rec, items: rec.items || [] };
 
   // 5. Quotations
   const quotes = loadJson<Quotation[]>(STORAGE_KEYS.QUOTATIONS, []);
-  const quote = quotes.find(x => x.quotationNo === cleanRef);
-  if (quote) return { type: 'QTN', header: quote, items: quote.items };
+  const quote = quotes.find(x => x.quotationNo === cleanRef || x.quotationNo?.trim().toLowerCase() === cleanRefLower);
+  if (quote) return { type: 'QTN', header: quote, items: quote.items || [] };
 
   // 6. Check Monthly Payrolls directly
   const payrolls = loadJson<MonthlyPayroll[]>(STORAGE_KEYS.MONTHLY_PAYROLLS, []);
@@ -3371,7 +3487,7 @@ export function getVoucherDetails(refNo: string) {
 
   // 7. Standard Vouchers (Payment, Receipt, Journal, Contra, Credit Note, Debit Note)
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
-  const v = vouchers.find(x => x.voucherNo === cleanRef);
+  const v = vouchers.find(x => x.voucherNo === cleanRef || x.voucherNo?.trim().toLowerCase() === cleanRefLower);
   if (v) {
     // If lines not present in voucher, attempt to reconstruct from LEDGER_LOG
     if (!v.lines || v.lines.length === 0) {

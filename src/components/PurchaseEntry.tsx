@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { GlowButton } from './common/GlowButton';
 import { focusNextOutsideGrid } from '../utils/domUtils';
 import { Config, Item, Ledger, CartLine, Unit, BarcodeQueueItem } from '../types';
 import { BankTransactionIdModal } from './BankTransactionIdModal';
@@ -50,19 +51,29 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       const details = getVoucherDetails(initialVoucherTarget.voucherNo);
       if (details && details.type === 'PUR') {
         const inv = details.header as any;
-        const newCart = (inv.items || []).map((it: any) => ({
-          itemCode: it['Item Code'],
-          itemName: it['Item Name'],
-          description: it.description || it['Item Description'] || '',
-          qty: it.Qty || 1,
-          rate: it.Rate || 0,
-          discount: it.Discount || 0,
-          unit: it.Unit || 'Pcs',
-          gstPct: it['GST %'] || 0,
-          gstAmt: it['GST Amount'] || 0,
-          zeroRated: it['Zero Rated (Y/N)'] === 'Y',
-          serials: it['Serial Numbers'] ? it['Serial Numbers'].split(',').map((s: string)=>s.trim()).filter(Boolean) : []
-        }));
+        const newCart = (inv.items || []).map((it: any) => {
+          const itemMatch = items.find(i => i['Item Code'] === (it['Item Code'] || it.itemCode));
+          const isZeroRated = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
+          return {
+            itemCode: it['Item Code'] || it.itemCode || '',
+            itemName: it['Item Name'] || it.itemName || '',
+            description: it.description || it['Item Description'] || '',
+            lineDescription: it.lineDescription || '',
+            qty: Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : 1)),
+            rate: Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0)),
+            discount: Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0)),
+            discountType: (it['Discount %'] && Number(it['Discount %']) > 0) ? ('percent' as const) : ('flat' as const),
+            unit: it.Unit || it.unit || itemMatch?.Unit || 'Pcs',
+            gstPct: Number(it['GST %'] !== undefined ? it['GST %'] : (it.gstPct !== undefined ? it.gstPct : (itemMatch?.['GST %'] || 0))),
+            gstAmt: Number(it['GST Amount'] !== undefined ? it['GST Amount'] : (it.gstAmt !== undefined ? it.gstAmt : 0)),
+            zeroRated: isZeroRated ? ('Y' as const) : ('N' as const),
+            purchaseRate: Number(it.purchaseRate || itemMatch?.['Purchase Rate'] || 0),
+            isSerialized: (it.isSerialized || itemMatch?.['Is Serialized'] || 'N') as 'Y' | 'N',
+            serials: typeof it['Serial Numbers'] === 'string'
+              ? it['Serial Numbers'].split(',').map((s: string) => s.trim()).filter(Boolean) 
+              : (Array.isArray(it.serials) ? it.serials : [])
+          };
+        });
         setCart(newCart);
 
         const hasAnyGst = (inv.items || []).some((it: any) => (Number(it['GST Amount']) > 0 || Number(it['GST %']) > 0));
@@ -75,18 +86,21 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         
         if (inv.supplier) {
           if (typeof inv.supplier === 'object') {
-            setSupplierName(inv.supplier.ledger || inv.supplier.name);
+            setSupplierName(inv.supplier.ledger || inv.supplier.name || '');
           } else {
             setSupplierName(inv.supplier);
           }
         }
 
-        setBillNo(inv.supplierBillNo || '');
+        setBillNo(inv.supplierBillNo || inv.billNo || inv.invoiceNo || '');
         if (inv.date) {
            const d = new Date(inv.date);
            if (!isNaN(d.getTime())) setBillDate(d.toISOString().split('T')[0]);
         }
-        setEditingBillNo(inv.billNo);
+        if (Array.isArray(inv.additionalExpenses)) {
+          setAdditionalExpenses(inv.additionalExpenses);
+        }
+        setEditingBillNo(inv.billNo || inv.invoiceNo);
       }
     }
   }, [initialVoucherTarget]);
@@ -233,7 +247,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         return;
       }
 
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape') { if (e.defaultPrevented) return;
         const handled = handlePurchaseBack();
         if (handled) {
           e.preventDefault();
@@ -407,7 +421,9 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       },
       supplierBillNo: billNo,
       notes: billDate ? `Bill Date: ${billDate}` : '',
-      billNo: editingBillNo || undefined
+      billNo: editingBillNo || undefined,
+      date: billDate ? new Date(billDate).toISOString() : undefined,
+      isEdit: Boolean(editingBillNo),
     });
 
     if (!res.ok) {
@@ -435,9 +451,34 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     <div className="flex flex-col h-full min-h-0 space-y-2">
       <AcceptModal 
         isOpen={showAcceptModal}
+        title={editingBillNo ? `Save changes to ${editingBillNo}?` : "Save Purchase Invoice?"}
         onConfirm={proceedSavePurchase}
         onCancel={() => setShowAcceptModal(false)}
       />
+
+      {/* Active Altering Invoice Banner */}
+      {editingBillNo && (
+        <div className="shrink-0 flex items-center justify-between px-3.5 py-2 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs shadow-2xs">
+          <div className="flex items-center gap-2 font-medium">
+            <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+            <span>Altering Purchase Invoice: <strong className="font-mono font-bold text-amber-950 text-sm">{editingBillNo}</strong></span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingBillNo(null);
+              setCart([]);
+              setSupplierName('');
+              setBillNo('');
+              setBillDate(new Date().toISOString().split('T')[0]);
+            }}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 font-bold text-[11px] hover:bg-amber-100 transition cursor-pointer shadow-2xs"
+          >
+            <span>Discard Alteration &amp; New Purchase</span>
+          </button>
+        </div>
+      )}
+
       {/* Header & Quick Summary Bar */}
       <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xs flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
@@ -498,15 +539,18 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                 <div className={`absolute top-full right-6 -mt-1 border-4 border-transparent ${toastMsg.type === 'success' ? 'border-t-emerald-600' : 'border-t-rose-600'}`} />
               </div>
             )}
-            <button
+            <GlowButton
+              id="pur-save-btn"
+              type="button"
               onClick={handleSavePurchase}
               disabled={cart.length === 0}
-              className="px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 disabled:opacity-50 transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+              variant="emerald"
+              size="sm"
+              icon={CheckCircle2}
               title="Save Purchase (F2)"
             >
-              <CheckCircle2 className="h-4 w-4" />
-              <span>Save [F2]</span>
-            </button>
+              Save [F2]
+            </GlowButton>
           </div>
         </div>
       </div>
@@ -917,9 +961,10 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                 </div>
               )}
               <button
+                id="pur-save-btn"
                 onClick={handleSavePurchase}
                 disabled={cart.length === 0}
-                className="px-4 py-1.5 rounded-lg bg-emerald-600 text-white font-extrabold text-xs hover:bg-emerald-700 disabled:opacity-50 transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                className="focus:ring-[4px] focus:ring-emerald-400/80 focus:ring-offset-1 focus:shadow-[0_0_15px_rgba(52,211,153,0.6)] z-10 relative focus:scale-[1.02] outline-none px-4 py-1.5 rounded-lg bg-emerald-600 text-white font-extrabold text-xs hover:bg-emerald-700 disabled:opacity-50 transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
               >
                 <CheckCircle2 className="h-4 w-4" />
                 <span>Save Purchase [F2]</span>

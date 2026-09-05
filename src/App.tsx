@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getInitialData, getVoucherTypes, saveLedger } from './services/storageService';
+import { getInitialData, getVoucherTypes, saveLedger, getVoucherDetails } from './services/storageService';
 import { initFirestoreSync, subscribeFirebaseStatus, seedInitialLocalDataToFirestore } from './services/firebaseSyncService';
 import { Config, Item, Unit, UnitGroup, ItemGroup, Ledger, LedgerGroup, HeldBill, BarcodeQueueItem, VoucherType } from './types';
 import { Header } from './components/Header';
@@ -295,7 +295,7 @@ export default function App() {
       }
 
       // Escape key: step back in navigation history until reaching Main Menu
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape') { if (e.defaultPrevented) return;
         if (e.defaultPrevented) return;
 
         // 1. If drilldown modal is open, dispatch app:back so DrillModal steps back sequentially
@@ -582,7 +582,22 @@ export default function App() {
           setDrillInitialHistory([]);
           setVoucherTarget({ voucherNo: refNo, timestamp: Date.now() });
           if (vType === 'INV' || vType === 'S') {
-            navigateTo('pos');
+            const details = getVoucherDetails(refNo);
+            const inv = details?.header as any;
+            const isNormalSale = inv && (
+              inv.isPOS === false || 
+              inv.voucherTypeId === 'VT-SALE-NORMAL' || 
+              inv.invoiceNo?.startsWith('SAL-') || 
+              inv.invoiceNo?.startsWith('INV-B2B-') || 
+              Boolean(inv.orderNo) || 
+              Boolean(inv.deliveryNoteNo) || 
+              Boolean(inv.termsAndConditions)
+            );
+            if (isNormalSale && config.EnableNormalSale !== 'false') {
+              navigateTo('normalsale');
+            } else {
+              navigateTo('pos');
+            }
           } else if (vType === 'PUR') {
             navigateTo('purchase');
           } else {

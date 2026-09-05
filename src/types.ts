@@ -23,6 +23,7 @@ export interface Config {
   EnableNormalSale?: string;
   EnableEmployeeAdvances?: string; // "true" | "false"
   BarcodePrefix: string;
+  CompanyLogo?: string;
   ReceiptHeaderImage: string;
   ReceiptSignatureImage: string;
   InvoiceTemplate?: 'standard' | 'modern' | 'classic' | 'letterhead' | 'compact';

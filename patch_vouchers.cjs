@@ -1,41 +1,24 @@
 const fs = require('fs');
 let content = fs.readFileSync('src/components/Vouchers.tsx', 'utf8');
 
+// 1. Add ID and focus class to Save button
 content = content.replace(
-`  const handleCancelOrResetEntry = () => {
-    if (entryMode === 'multi') {
-      const cashOrBank = ledgers.find(l => l.Group === 'Cash-in-Hand' || l.Group === 'Bank Accounts')?.['Ledger Name'] || 'Cash';
-      const defaultParty = ledgers[0]?.['Ledger Name'] || '';
-      setLines([
-        { id: '1', type: 'Dr', ledger: defaultParty, debit: '', credit: 0, narration: '' },
-        { id: '2', type: 'Cr', ledger: cashOrBank, debit: 0, credit: '', narration: '' }
-      ]);
-    } else {
-      setAmount('');
-      if (ledgers.length > 0) {
-        setPartyLedger(ledgers[0]['Ledger Name']);
-        setModeLedger('Cash');
-        setDebitLedger(ledgers[0]['Ledger Name']);
-        setCreditLedger('Cash');
-        setFromAccount(ledgers[0]['Ledger Name']);
-        setToAccount('Cash');
-      }
-    }`,
-`  const handleCancelOrResetEntry = () => {
-    if (entryMode === 'multi') {
-      setLines([
-        { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
-        { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
-      ]);
-    } else {
-      setAmount('');
-      setPartyLedger('');
-      setModeLedger('');
-      setDebitLedger('');
-      setCreditLedger('');
-      setFromAccount('');
-      setToAccount('');
-    }`
+  /<button\n\s*type="button"\n\s*onClick=\{handleSubmit\}\n\s*disabled=\{!isDirty\}\n\s*className="/g,
+  '<button\n                type="button"\n                id="v-save-btn"\n                onClick={handleSubmit}\n                disabled={!isDirty}\n                className="focus:ring-4 focus:ring-indigo-500 outline-none '
+);
+
+// 2. Add onKeyDown to v-overall-narration to focus v-save-btn
+content = content.replace(
+  /onFocus=\{e => e\.target\.select\(\)\}\n\s*onChange=\{e => setNarration\(e\.target\.value\)\}\n\s*className="/g,
+  `onFocus={e => e.target.select()}
+              onChange={e => setNarration(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  document.getElementById('v-save-btn')?.focus();
+                }
+              }}
+              className="focus:ring-2 focus:ring-indigo-500 focus:bg-indigo-50 transition-all `
 );
 
 fs.writeFileSync('src/components/Vouchers.tsx', content);
