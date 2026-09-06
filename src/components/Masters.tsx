@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MultiUnitEditor } from './MultiUnitEditor';
 import { UnitMaster } from './masters/UnitMaster';
+import { ImportItemsModal } from './ImportItemsModal';
 import {
   Config,
   Item,
@@ -24,9 +25,10 @@ import {
   generateBarcode,
   generateMissingBarcodes
 } from '../services/storageService';
-import { Search, Plus, Edit2, Trash2, CheckCircle2, X, FolderPlus, Tag, KeyRound, Sparkles, Check, Save, Layers, Building2 } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, CheckCircle2, X, FolderPlus, Tag, KeyRound, Sparkles, Check, Save, Layers, Building2, ClipboardPaste, FileSpreadsheet } from 'lucide-react';
 import { SerialModal } from './SerialModal';
 import { VoucherTypeManager } from './vouchers/VoucherTypeManager';
+import { ExportStockExcelModal } from './ExportStockExcelModal';
 import { playSaveSound } from '../utils/audio';
 
 interface MastersProps {
@@ -221,6 +223,10 @@ export const Masters: React.FC<MastersProps> = ({
   const [justSavedQuickLedgerGroup, setJustSavedQuickLedgerGroup] = useState(false);
 
   const handleMastersBack = () => {
+    if (showStockExportModal) {
+      setShowStockExportModal(false);
+      return true;
+    }
     if (showOpeningSerialModal) {
       setShowOpeningSerialModal(false);
       return true;
@@ -360,6 +366,9 @@ export const Masters: React.FC<MastersProps> = ({
 
   const showGst = String(config.EnableGST) !== 'false';
   const showSerials = String(config.EnableSerials) === 'true';
+
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showStockExportModal, setShowStockExportModal] = useState(false);
 
   // Open New / Edit Item Modal
   const openNewItem = () => {
@@ -683,6 +692,21 @@ export const Masters: React.FC<MastersProps> = ({
                 title="Auto-generate 6-7 digit barcodes for items without barcode"
               >
                 ⚡ Generate Missing Barcodes
+              </button>
+              <button
+                onClick={() => setShowStockExportModal(true)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 shadow-xs hover:bg-emerald-100 transition cursor-pointer"
+                title="Export complete stock report or selected fields to Excel"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                Export Stock (Excel)
+              </button>
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50"
+              >
+                <ClipboardPaste className="h-4 w-4" />
+                Import Items
               </button>
               <button
                 onClick={openNewItem}
@@ -1057,7 +1081,7 @@ export const Masters: React.FC<MastersProps> = ({
 
             {/* Row 3: Stock & Inventory Options */}
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs items-center bg-slate-50 p-2 rounded-xl border border-slate-200">
-              <div className="sm:col-span-3">
+              <div className="sm:col-span-2">
                 <div className="flex items-center justify-between mb-0.5">
                   <label className="font-semibold text-slate-700">Opening Stock</label>
                   {showSerials && itemForm['Is Serialized'] === 'Y' && (Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0)) > 0) && (
@@ -1075,12 +1099,31 @@ export const Masters: React.FC<MastersProps> = ({
                   min="0"
                   step="any"
                   value={itemForm['Opening Stock'] ?? ''}
-                  onChange={e => setItemSearchForm({ ...itemForm, 'Opening Stock': e.target.value === '' ? '' as any : Number(e.target.value) })}
+                  onChange={e => {
+                    const newQty = e.target.value === '' ? '' as any : Number(e.target.value);
+                    const purchaseRate = Number(itemForm['Purchase Rate']) || 0;
+                    setItemSearchForm({ 
+                      ...itemForm, 
+                      'Opening Stock': newQty,
+                      'Opening Amount': typeof newQty === 'number' ? newQty * purchaseRate : 0
+                    });
+                  }}
                   className="w-full h-7.5 rounded-lg border border-slate-300 px-2 font-mono text-xs outline-none focus:border-indigo-500 bg-white"
                 />
               </div>
 
               <div className="sm:col-span-3">
+                <label className="block font-semibold text-slate-700 mb-0.5">Opening Value (Amt)</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={itemForm['Opening Amount'] !== undefined ? itemForm['Opening Amount'] : ((Number(itemForm['Opening Stock'] || 0) * Number(itemForm['Purchase Rate'] || 0)) || '')}
+                  onChange={e => setItemSearchForm({ ...itemForm, 'Opening Amount': e.target.value === '' ? '' as any : Number(e.target.value) })}
+                  className="w-full h-7.5 rounded-lg border border-slate-300 px-2 font-mono text-xs outline-none focus:border-indigo-500 bg-white"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
                 <label className="block font-semibold text-slate-700 mb-0.5">Reorder Level</label>
                 <input
                   type="number"
@@ -1091,7 +1134,7 @@ export const Masters: React.FC<MastersProps> = ({
                 />
               </div>
 
-              <div className="sm:col-span-6 flex flex-wrap gap-3 items-center pt-3 sm:pt-0">
+              <div className="sm:col-span-5 flex flex-wrap gap-3 items-center pt-3 sm:pt-0">
                 {/* Don't Maintain Stock Checkbox */}
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 cursor-pointer select-none">
                   <input
@@ -1713,6 +1756,22 @@ export const Masters: React.FC<MastersProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      <ImportItemsModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImportComplete={onDataRefresh}
+      />
+
+      {showStockExportModal && (
+        <ExportStockExcelModal
+          isOpen={showStockExportModal}
+          onClose={() => setShowStockExportModal(false)}
+          items={items}
+          config={config}
+          title="Export Items & Stock to Excel"
+        />
       )}
     </div>
   );

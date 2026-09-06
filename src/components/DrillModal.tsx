@@ -24,7 +24,9 @@ import {
   Copy,
   ExternalLink,
   MessageCircle,
-  FileText
+  FileText,
+  Package,
+  Search
 } from 'lucide-react';
 import {
   generateInvoicePDF,
@@ -95,10 +97,12 @@ export const DrillModal: React.FC<DrillModalProps> = ({
   const [copiedText, setCopiedText] = useState(false);
 
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [stockSearchTerm, setStockSearchTerm] = useState('');
 
   // Sync with prop changes when modal opens or target changes from outside
   useEffect(() => {
     if (type && targetId) {
+      setStockSearchTerm('');
       setActive(prev => {
         if (prev && prev.type === type && prev.targetId === targetId) {
           return prev;
@@ -140,9 +144,20 @@ export const DrillModal: React.FC<DrillModalProps> = ({
     if (!active) return;
     resetActionModals();
 
-    if (active.type === 'group') {
+    const targetLower = (active.targetId || '').trim().toLowerCase();
+    const isStockGroup =
+      targetLower === 'stock valuation' ||
+      targetLower.includes('opening stock') ||
+      targetLower.includes('closing stock') ||
+      targetLower.includes('stock-in-hand') ||
+      targetLower === 'stock in hand';
+
+    if (active.type === 'group' || (isStockGroup && (active.type === 'stock' || active.type === 'ledger'))) {
       const data = getCategoryLedgerBreakdown(active.targetId, fromDate, toDate);
       setGroupData(data);
+      if (active.type !== 'group' && isStockGroup) {
+        setActive(prev => (prev ? { ...prev, type: 'group' } : null));
+      }
     } else if (active.type === 'stock') {
       const data = getItemStockLedger(active.targetId);
       setStockLogs(data);
@@ -478,8 +493,18 @@ export const DrillModal: React.FC<DrillModalProps> = ({
               </button>
             )}
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-              {active.type === 'group' && `Category Breakdown: ${active.targetId}`}
-              {active.type === 'stock' && `Stock Ledger: ${active.targetId}`}
+              {active.type === 'group' && (
+                <span className="flex items-center gap-2">
+                  {groupData?.type === 'stock' && <Package className="h-4 w-4 text-indigo-600" />}
+                  <span>{groupData?.title || `Category Breakdown: ${active.targetId}`}</span>
+                </span>
+              )}
+              {active.type === 'stock' && (
+                <span className="flex items-center gap-2">
+                  <Package className="h-4 w-4 text-indigo-600" />
+                  <span>Stock Ledger: {active.targetId}</span>
+                </span>
+              )}
               {active.type === 'ledger' && `Ledger Statement: ${active.targetId}`}
               {active.type === 'voucher' && (
                 <span className="flex items-center gap-2">
@@ -525,40 +550,130 @@ export const DrillModal: React.FC<DrillModalProps> = ({
         {active.type === 'group' && groupData && (
           <div className="overflow-auto max-h-[65vh] text-xs space-y-2">
             {groupData.type === 'stock' ? (
-              <table className="w-full border-collapse">
-                <thead className="sticky top-0 z-10 bg-slate-100 shadow-sm">
-                  <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
-                    <th className="py-2 px-3 text-left">Item Name</th>
-                    <th className="py-2 px-3 text-left">Code</th>
-                    <th className="py-2 px-3 text-right">Closing Stock</th>
-                    <th className="py-2 px-3 text-right">Purchase Rate</th>
-                    <th className="py-2 px-3 text-right">Valuation</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {!groupData.rows || groupData.rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-6 text-center text-slate-400 italic">
-                        No items found under this valuation
-                      </td>
-                    </tr>
-                  ) : (
-                    groupData.rows.map((r: any, idx: number) => (
-                      <tr
-                        key={idx}
-                        onClick={() => navigateTo('stock', r.code)}
-                        className="hover:bg-indigo-50/60 cursor-pointer transition"
+              <div className="space-y-3">
+                {/* Search and Summary Card */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search items by name, code, or group..."
+                      value={stockSearchTerm}
+                      onChange={(e) => setStockSearchTerm(e.target.value)}
+                      className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                    />
+                    {stockSearchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setStockSearchTerm('')}
+                        className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer font-bold"
                       >
-                        <td className="py-2 px-3 font-semibold text-slate-800">{r.name}</td>
-                        <td className="py-2 px-3 font-mono text-slate-500">{r.code}</td>
-                        <td className="py-2 px-3 text-right font-mono font-bold text-indigo-700">{r.stock}</td>
-                        <td className="py-2 px-3 text-right font-mono text-slate-600">{fmt(r.rate)}</td>
-                        <td className="py-2 px-3 text-right font-mono font-bold text-emerald-700">{fmt(r.valuation)}</td>
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap text-xs">
+                    <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-lg font-bold border border-indigo-200">
+                      {groupData.rows?.length || 0} Items
+                    </span>
+                    <span className="bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-lg font-bold border border-emerald-200">
+                      Total: {getEffectiveConfig().CurrencySymbol || 'Nu.'} {fmt(groupData.totalValuation !== undefined ? groupData.totalValuation : (groupData.rows || []).reduce((acc: number, r: any) => acc + (Number(r.valuation) || 0), 0))}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Stock Table */}
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full border-collapse">
+                    <thead className="sticky top-0 z-10 bg-slate-100 shadow-xs">
+                      <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
+                        <th className="py-2.5 px-3 text-left">Item Name & Group</th>
+                        <th className="py-2.5 px-3 text-left">Code</th>
+                        <th className="py-2.5 px-3 text-center">Unit</th>
+                        <th className="py-2.5 px-3 text-right">{groupData.stockLabel || 'Stock Qty'}</th>
+                        <th className="py-2.5 px-3 text-right">Purchase Rate</th>
+                        <th className="py-2.5 px-3 text-right">Valuation Amount</th>
+                        <th className="py-2.5 px-3 text-center">Action</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {(() => {
+                        const term = stockSearchTerm.trim().toLowerCase();
+                        const filtered = (groupData.rows || []).filter((r: any) => {
+                          if (!term) return true;
+                          return (
+                            (r.name || '').toLowerCase().includes(term) ||
+                            (r.code || '').toLowerCase().includes(term) ||
+                            (r.group || '').toLowerCase().includes(term)
+                          );
+                        });
+
+                        if (filtered.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={7} className="py-8 text-center text-slate-400 italic">
+                                {stockSearchTerm ? `No items matching "${stockSearchTerm}"` : 'No items found under this valuation'}
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return filtered.map((r: any, idx: number) => (
+                          <tr
+                            key={idx}
+                            onClick={() => navigateTo('stock', r.code)}
+                            className="hover:bg-indigo-50/70 cursor-pointer transition group/stkrow"
+                            title="Click to drill down into Item Stock Ledger"
+                          >
+                            <td className="py-2.5 px-3">
+                              <div className="font-semibold text-slate-800 group-hover/stkrow:text-indigo-600 flex items-center gap-1.5">
+                                <span className="underline decoration-dotted decoration-slate-300 group-hover/stkrow:decoration-indigo-400 underline-offset-2">
+                                  {r.name}
+                                </span>
+                              </div>
+                              {r.group && (
+                                <span className="text-[10px] text-slate-400 font-normal">
+                                  {r.group}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">{r.code}</td>
+                            <td className="py-2.5 px-3 text-center font-medium text-slate-600">{r.unit || 'Pcs'}</td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-indigo-700">{r.stock}</td>
+                            <td className="py-2.5 px-3 text-right font-mono text-slate-600">{fmt(r.rate)}</td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-700">{fmt(r.valuation)}</td>
+                            <td className="py-2.5 px-3 text-center">
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-indigo-600 bg-indigo-50 group-hover/stkrow:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded transition">
+                                Ledger →
+                              </span>
+                            </td>
+                          </tr>
+                        ));
+                      })()}
+                    </tbody>
+                    <tfoot className="sticky bottom-0 z-10 bg-slate-50 border-t-2 border-slate-300 font-bold text-slate-900">
+                      <tr>
+                        <td colSpan={3} className="py-2.5 px-3 uppercase text-[11px] tracking-wider font-extrabold text-slate-800">
+                          Total ({groupData.rows?.length || 0} Items)
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-indigo-800">
+                          {groupData.totalQty !== undefined ? groupData.totalQty : (groupData.rows || []).reduce((acc: number, r: any) => acc + (Number(r.stock) || 0), 0)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-slate-500">-</td>
+                        <td className="py-2.5 px-3 text-right font-mono font-extrabold text-emerald-800">
+                          {fmt(groupData.totalValuation !== undefined ? groupData.totalValuation : (groupData.rows || []).reduce((acc: number, r: any) => acc + (Number(r.valuation) || 0), 0))}
+                        </td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                  <span>💡</span>
+                  <span>Click on any item row to view its complete transaction history (Inward, Outward &amp; Running Balance).</span>
+                </div>
+              </div>
             ) : (
               <table className="w-full border-collapse">
                 <thead className="sticky top-0 z-10 bg-slate-100 shadow-sm">

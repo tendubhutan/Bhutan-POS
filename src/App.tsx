@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getInitialData, getVoucherTypes, saveLedger, getVoucherDetails } from './services/storageService';
+import { getInitialData, getVoucherTypes, saveLedger, getVoucherDetails, migrateExistingItemsOpeningAmount } from './services/storageService';
 import { initFirestoreSync, subscribeFirebaseStatus, seedInitialLocalDataToFirestore } from './services/firebaseSyncService';
 import { Config, Item, Unit, UnitGroup, ItemGroup, Ledger, LedgerGroup, HeldBill, BarcodeQueueItem, VoucherType } from './types';
 import { Header } from './components/Header';
@@ -19,6 +19,7 @@ import { Reports, ReportTarget } from './components/Reports';
 import { SettingsView } from './components/SettingsView';
 import { BankReconciliation } from './components/BankReconciliation';
 import { DrillModal, TargetState } from './components/DrillModal';
+import { QuickLedgerSearchModal } from './components/QuickLedgerSearchModal';
 import { TrashModal } from './components/TrashModal';
 import { BulkDeleteModal } from './components/BulkDeleteModal';
 
@@ -43,6 +44,7 @@ export default function App() {
   }>({ type: null, targetId: null });
   const [drillInitialHistory, setDrillInitialHistory] = useState<TargetState[]>([]);
   const [drillReturnContext, setDrillReturnContext] = useState<DrillReturnContext | null>(null);
+  const [showGlobalLedgerSearch, setShowGlobalLedgerSearch] = useState(false);
 
   // Firebase status
   const [firebaseStatus, setFirebaseStatus] = useState<'connected' | 'syncing' | 'offline' | 'error'>('syncing');
@@ -89,10 +91,8 @@ export default function App() {
 
     // 2. Allow active sub-screen or modal to handle back navigation first
     const backEvent = new CustomEvent('app:back', { cancelable: true });
-    const notPrevented = window.dispatchEvent(backEvent);
-    if (!notPrevented) {
-      return;
-    }
+    const handled = window.dispatchEvent(backEvent);
+    if (!handled) return;
 
     // 3. If we came from a Drilldown (via Open in Entry), restore the DrillModal with its exact history
     if (drillReturnContext) {
@@ -185,6 +185,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    migrateExistingItemsOpeningAmount();
     refreshData();
     
     // Subscribe to Firestore sync status updates
@@ -312,10 +313,7 @@ export default function App() {
           return;
         } else if (rawKey === 'l' || e.code === 'KeyL') {
           e.preventDefault();
-          const t = { category: 'fin' as const, finSubTab: 'LED' as const, openQuickLedgerSearch: true, timestamp: Date.now() };
-          setReportTarget(t);
-          navigateTo('reports', t);
-          window.dispatchEvent(new CustomEvent('app:open-ledger-search'));
+          setShowGlobalLedgerSearch(true);
           return;
         }
       }
@@ -334,11 +332,8 @@ export default function App() {
 
         // 2. Dispatch app:back event so active screen/modal/sub-flow handles step-back first
         const backEvent = new CustomEvent('app:back', { cancelable: true });
-        const notPrevented = window.dispatchEvent(backEvent);
-        if (!notPrevented) {
-          e.preventDefault();
-          return;
-        }
+        const handled = window.dispatchEvent(backEvent);
+        if (!handled) return;
 
         // 3. If typing inside an input/select/textarea and not handled by modal, blur it
         if (isInput) {
@@ -449,6 +444,7 @@ export default function App() {
               onOpenVoucherTypeModal={() => handleOpenPOSBilling()}
               onDataRefresh={refreshData}
               initialVoucherTarget={voucherTarget}
+              onBack={navigateBack}
               onOpenNewItemModal={(onSelect) => {
                 setQuickItemModalProps({isOpen: true, onSelect});
               }}
@@ -581,6 +577,17 @@ export default function App() {
         />
         </main>
       </div>
+
+      {showGlobalLedgerSearch && (
+        <QuickLedgerSearchModal
+          ledgers={ledgers}
+          onClose={() => setShowGlobalLedgerSearch(false)}
+          onSelect={(ledgerName) => {
+            setShowGlobalLedgerSearch(false);
+            setDrillModal({ type: 'ledger', targetId: ledgerName });
+          }}
+        />
+      )}
 
       {/* Universal Drilldown Modal */}
       <DrillModal

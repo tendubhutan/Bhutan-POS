@@ -7,7 +7,8 @@ import {
   deleteDoc, 
   onSnapshot, 
   query,
-  limit 
+  limit,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { 
@@ -82,6 +83,30 @@ export async function syncItemToFirestore(item: Item) {
     await setDoc(ref, cleanObject(item), { merge: true });
   } catch (err) {
     console.warn('Firestore Item Sync Error:', err);
+  }
+}
+
+export async function syncItemsBatchToFirestore(items: Item[]) {
+  if (!items || items.length === 0) return;
+  try {
+    notifyStatus('syncing', `Syncing ${items.length} item(s) to Cloud Firestore...`);
+    const chunkSize = 400;
+    for (let i = 0; i < items.length; i += chunkSize) {
+      const chunk = items.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      for (const item of chunk) {
+        const id = item['Item Code'] || item.Barcode;
+        if (!id) continue;
+        const safeId = String(id).replace(/\//g, '_');
+        const ref = doc(db, 'items', safeId);
+        batch.set(ref, cleanObject(item), { merge: true });
+      }
+      await batch.commit();
+    }
+    notifyStatus('connected', `${items.length} item(s) synced to Cloud Firestore`);
+  } catch (err: any) {
+    console.warn('Firestore Bulk Item Sync Error:', err);
+    notifyStatus('error', err?.message || 'Failed to sync items to cloud');
   }
 }
 
@@ -179,39 +204,102 @@ export function initFirestoreSync(onDataUpdated?: () => void) {
     });
     unsubscribes.push(unsubConfig);
 
-    // 2. Items listener
+    // 2. Items listener with non-destructive local merge
     const itemsRef = collection(db, 'items');
     const unsubItems = onSnapshot(itemsRef, (snapshot) => {
       const remoteItems: Item[] = [];
       snapshot.forEach(docSnap => {
         remoteItems.push(docSnap.data() as Item);
       });
-      if (remoteItems.length > 0) {
-        saveJson(STORAGE_KEYS.ITEMS, remoteItems);
+
+      const localItems = loadJson<Item[]>(STORAGE_KEYS.ITEMS, []);
+      const deletedItems = new Set(
+        loadJson<string[]>(STORAGE_KEYS.DELETED_ITEMS, []).map(c => (c || '').trim().toLowerCase())
+      );
+
+      // Build map of remote items (excluding locally deleted items)
+      const mergedMap = new Map<string, Item>();
+      remoteItems.forEach(item => {
+        const code = (item['Item Code'] || item.Barcode || '').trim().toLowerCase();
+        if (code && !deletedItems.has(code)) {
+          mergedMap.set(code, item);
+        }
+      });
+
+      // Preserve any locally added/imported items that haven't synced to Firestore yet
+      const unsyncedItems: Item[] = [];
+      localItems.forEach(localItem => {
+        const code = (localItem['Item Code'] || localItem.Barcode || '').trim().toLowerCase();
+        if (code && !deletedItems.has(code) && !mergedMap.has(code)) {
+          mergedMap.set(code, localItem);
+          unsyncedItems.push(localItem);
+        }
+      });
+
+      const mergedList = Array.from(mergedMap.values());
+      if (mergedList.length > 0) {
+        saveJson(STORAGE_KEYS.ITEMS, mergedList);
         if (onDataUpdated) onDataUpdated();
+      }
+
+      // Automatically push any unsynced local items to Firestore so they are never lost
+      if (unsyncedItems.length > 0) {
+        syncItemsBatchToFirestore(unsyncedItems).catch(e => {
+          console.warn('Auto-sync unsynced local items to cloud:', e);
+        });
       }
     }, (err) => {
       console.warn('Firestore Listener Error (Items):', err);
     });
     unsubscribes.push(unsubItems);
 
-    // 3. Ledgers listener
+    // 3. Ledgers listener with non-destructive local merge
     const ledgersRef = collection(db, 'ledgers');
     const unsubLedgers = onSnapshot(ledgersRef, (snapshot) => {
       const remoteLedgers: Ledger[] = [];
       snapshot.forEach(docSnap => {
         remoteLedgers.push(docSnap.data() as Ledger);
       });
-      if (remoteLedgers.length > 0) {
-        saveJson(STORAGE_KEYS.LEDGERS, remoteLedgers);
+
+      const localLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, []);
+      const deletedLedgers = new Set(
+        loadJson<string[]>(STORAGE_KEYS.DELETED_LEDGERS, []).map(d => (d || '').trim().toLowerCase())
+      );
+
+      const mergedMap = new Map<string, Ledger>();
+      remoteLedgers.forEach(l => {
+        const name = (l['Ledger Name'] || '').trim().toLowerCase();
+        if (name && !deletedLedgers.has(name)) {
+          mergedMap.set(name, l);
+        }
+      });
+
+      const unsyncedLedgers: Ledger[] = [];
+      localLedgers.forEach(l => {
+        const name = (l['Ledger Name'] || '').trim().toLowerCase();
+        if (name && !deletedLedgers.has(name) && !mergedMap.has(name)) {
+          mergedMap.set(name, l);
+          unsyncedLedgers.push(l);
+        }
+      });
+
+      const mergedList = Array.from(mergedMap.values());
+      if (mergedList.length > 0) {
+        saveJson(STORAGE_KEYS.LEDGERS, mergedList);
         if (onDataUpdated) onDataUpdated();
+      }
+
+      if (unsyncedLedgers.length > 0) {
+        for (const l of unsyncedLedgers) {
+          syncLedgerToFirestore(l).catch(() => {});
+        }
       }
     }, (err) => {
       console.warn('Firestore Listener Error (Ledgers):', err);
     });
     unsubscribes.push(unsubLedgers);
 
-    // 4. Sales Invoices listener
+    // 4. Sales Invoices listener with non-destructive local merge
     const salesRef = collection(db, 'sales_invoices');
     const unsubSales = onSnapshot(salesRef, (snapshot) => {
       if (!snapshot.empty) {
@@ -219,9 +307,33 @@ export function initFirestoreSync(onDataUpdated?: () => void) {
         snapshot.forEach(docSnap => {
           remoteSales.push(docSnap.data() as SalesInvoice);
         });
-        if (remoteSales.length > 0) {
-          saveJson(STORAGE_KEYS.SALES_INVOICES, remoteSales);
+
+        const localSales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+        const salesMap = new Map<string, SalesInvoice>();
+        remoteSales.forEach(s => {
+          const id = (s.invoiceNo || '').trim().toLowerCase();
+          if (id) salesMap.set(id, s);
+        });
+
+        const unsyncedSales: SalesInvoice[] = [];
+        localSales.forEach(s => {
+          const id = (s.invoiceNo || '').trim().toLowerCase();
+          if (id && !salesMap.has(id)) {
+            salesMap.set(id, s);
+            unsyncedSales.push(s);
+          }
+        });
+
+        const mergedSales = Array.from(salesMap.values());
+        if (mergedSales.length > 0) {
+          saveJson(STORAGE_KEYS.SALES_INVOICES, mergedSales);
           if (onDataUpdated) onDataUpdated();
+        }
+
+        if (unsyncedSales.length > 0) {
+          for (const s of unsyncedSales) {
+            syncSalesInvoiceToFirestore(s).catch(() => {});
+          }
         }
       }
     }, (err) => {
@@ -229,7 +341,7 @@ export function initFirestoreSync(onDataUpdated?: () => void) {
     });
     unsubscribes.push(unsubSales);
 
-    // 5. Purchase Invoices listener
+    // 5. Purchase Invoices listener with non-destructive local merge
     const purchaseRef = collection(db, 'purchase_invoices');
     const unsubPurchase = onSnapshot(purchaseRef, (snapshot) => {
       if (!snapshot.empty) {
@@ -237,9 +349,33 @@ export function initFirestoreSync(onDataUpdated?: () => void) {
         snapshot.forEach(docSnap => {
           remotePurchases.push(docSnap.data() as PurchaseInvoice);
         });
-        if (remotePurchases.length > 0) {
-          saveJson(STORAGE_KEYS.PURCHASE_INVOICES, remotePurchases);
+
+        const localPurchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+        const purchaseMap = new Map<string, PurchaseInvoice>();
+        remotePurchases.forEach(p => {
+          const id = (p.billNo || '').trim().toLowerCase();
+          if (id) purchaseMap.set(id, p);
+        });
+
+        const unsyncedPurchases: PurchaseInvoice[] = [];
+        localPurchases.forEach(p => {
+          const id = (p.billNo || '').trim().toLowerCase();
+          if (id && !purchaseMap.has(id)) {
+            purchaseMap.set(id, p);
+            unsyncedPurchases.push(p);
+          }
+        });
+
+        const mergedPurchases = Array.from(purchaseMap.values());
+        if (mergedPurchases.length > 0) {
+          saveJson(STORAGE_KEYS.PURCHASE_INVOICES, mergedPurchases);
           if (onDataUpdated) onDataUpdated();
+        }
+
+        if (unsyncedPurchases.length > 0) {
+          for (const p of unsyncedPurchases) {
+            syncPurchaseInvoiceToFirestore(p).catch(() => {});
+          }
         }
       }
     }, (err) => {
@@ -247,7 +383,7 @@ export function initFirestoreSync(onDataUpdated?: () => void) {
     });
     unsubscribes.push(unsubPurchase);
 
-    // 6. Vouchers listener
+    // 6. Vouchers listener with non-destructive local merge
     const vouchersRef = collection(db, 'vouchers');
     const unsubVouchers = onSnapshot(vouchersRef, (snapshot) => {
       if (!snapshot.empty) {
@@ -255,9 +391,33 @@ export function initFirestoreSync(onDataUpdated?: () => void) {
         snapshot.forEach(docSnap => {
           remoteVouchers.push(docSnap.data() as Voucher);
         });
-        if (remoteVouchers.length > 0) {
-          saveJson(STORAGE_KEYS.VOUCHERS, remoteVouchers);
+
+        const localVouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+        const voucherMap = new Map<string, Voucher>();
+        remoteVouchers.forEach(v => {
+          const id = (v.voucherNo || '').trim().toLowerCase();
+          if (id) voucherMap.set(id, v);
+        });
+
+        const unsyncedVouchers: Voucher[] = [];
+        localVouchers.forEach(v => {
+          const id = (v.voucherNo || '').trim().toLowerCase();
+          if (id && !voucherMap.has(id)) {
+            voucherMap.set(id, v);
+            unsyncedVouchers.push(v);
+          }
+        });
+
+        const mergedVouchers = Array.from(voucherMap.values());
+        if (mergedVouchers.length > 0) {
+          saveJson(STORAGE_KEYS.VOUCHERS, mergedVouchers);
           if (onDataUpdated) onDataUpdated();
+        }
+
+        if (unsyncedVouchers.length > 0) {
+          for (const v of unsyncedVouchers) {
+            syncVoucherToFirestore(v).catch(() => {});
+          }
         }
       }
     }, (err) => {
@@ -276,57 +436,77 @@ export function initFirestoreSync(onDataUpdated?: () => void) {
 }
 
 /**
- * Bulk upload local data to Firestore if Firestore is empty on first setup
+ * Bulk upload local data to Firestore if Firestore is empty on first setup,
+ * or reconcile any missing local items/ledgers with Firestore.
  */
 export async function seedInitialLocalDataToFirestore() {
   try {
-    // Check if items collection already has documents in Firestore
     const itemsRef = collection(db, 'items');
     const existingSnap = await getDocs(query(itemsRef, limit(1)));
-    if (!existingSnap.empty) {
-      console.log('Firestore already contains items. Skipping initial seeding.');
+    if (existingSnap.empty) {
+      notifyStatus('syncing', 'Seeding initial data to Cloud Firestore...');
+
+      const initial = getInitialData();
+
+      if (initial.config) {
+        await syncConfigToFirestore(initial.config);
+      }
+
+      if (initial.items && initial.items.length > 0) {
+        await syncItemsBatchToFirestore(initial.items);
+      }
+
+      if (initial.ledgers && initial.ledgers.length > 0) {
+        for (const ledger of initial.ledgers) {
+          await syncLedgerToFirestore(ledger);
+        }
+      }
+
+      const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+      for (const s of sales) {
+        await syncSalesInvoiceToFirestore(s);
+      }
+
+      const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+      for (const p of purchases) {
+        await syncPurchaseInvoiceToFirestore(p);
+      }
+
+      const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+      for (const v of vouchers) {
+        await syncVoucherToFirestore(v);
+      }
+
+      notifyStatus('connected', 'Database synced to Cloud Firestore');
+    } else {
+      // Reconcile: Ensure any local items that exist in localStorage but missing in Firestore are safely synced
+      const localItems = loadJson<Item[]>(STORAGE_KEYS.ITEMS, []);
+      const deletedItems = new Set(
+        loadJson<string[]>(STORAGE_KEYS.DELETED_ITEMS, []).map(c => (c || '').trim().toLowerCase())
+      );
+      if (localItems.length > 0) {
+        const allRemoteDocs = await getDocs(collection(db, 'items'));
+        const remoteCodes = new Set<string>();
+        allRemoteDocs.forEach(d => {
+          const itm = d.data() as Item;
+          const c = (itm['Item Code'] || itm.Barcode || d.id || '').trim().toLowerCase();
+          if (c) remoteCodes.add(c);
+        });
+
+        const missingInFirestore = localItems.filter(item => {
+          const code = (item['Item Code'] || item.Barcode || '').trim().toLowerCase();
+          return code && !remoteCodes.has(code) && !deletedItems.has(code);
+        });
+
+        if (missingInFirestore.length > 0) {
+          console.log(`Reconciling: Uploading ${missingInFirestore.length} local items to Cloud Firestore...`);
+          await syncItemsBatchToFirestore(missingInFirestore);
+        }
+      }
       notifyStatus('connected', 'Cloud Firestore Active');
-      return;
     }
-
-    notifyStatus('syncing', 'Seeding initial data to Cloud Firestore...');
-
-    const initial = getInitialData();
-
-    if (initial.config) {
-      await syncConfigToFirestore(initial.config);
-    }
-
-    if (initial.items && initial.items.length > 0) {
-      for (const item of initial.items) {
-        await syncItemToFirestore(item);
-      }
-    }
-
-    if (initial.ledgers && initial.ledgers.length > 0) {
-      for (const ledger of initial.ledgers) {
-        await syncLedgerToFirestore(ledger);
-      }
-    }
-
-    const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
-    for (const s of sales) {
-      await syncSalesInvoiceToFirestore(s);
-    }
-
-    const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
-    for (const p of purchases) {
-      await syncPurchaseInvoiceToFirestore(p);
-    }
-
-    const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
-    for (const v of vouchers) {
-      await syncVoucherToFirestore(v);
-    }
-
-    notifyStatus('connected', 'Database synced to Cloud Firestore');
   } catch (err: any) {
-    console.warn('Seed Error:', err);
-    notifyStatus('error', 'Seeding failed');
+    console.warn('Seed/Reconcile Error:', err);
+    notifyStatus('error', 'Sync reconciliation issue');
   }
 }

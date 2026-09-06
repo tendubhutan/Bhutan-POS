@@ -397,7 +397,19 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                       <React.Fragment key={groupNode.id}>
                         {/* Group Header Row */}
                         <tr
-                          onClick={() => toggleNode(groupNode.id)}
+                          onClick={() => {
+                            if (!groupNode.children || groupNode.children.length === 0) {
+                              const gLower = groupNode.name.toLowerCase();
+                              if (gLower.includes('opening stock') || gLower.includes('stock-in-hand') || gLower.includes('stock in hand')) {
+                                onDrillGroup && onDrillGroup('Opening Stock', fromDate, toDate);
+                                return;
+                              } else if (gLower.includes('closing stock')) {
+                                onDrillGroup && onDrillGroup('Closing Stock', fromDate, toDate);
+                                return;
+                              }
+                            }
+                            toggleNode(groupNode.id);
+                          }}
                           className="bg-slate-50/80 hover:bg-indigo-50/70 cursor-pointer font-bold text-slate-900 transition border-b border-slate-200/80"
                         >
                           <td className="py-3 px-4 sm:px-6">
@@ -418,6 +430,19 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                                 <span className="text-[10px] text-indigo-700 font-semibold bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-md">
                                   {groupNode.children.length} {groupNode.children.length === 1 ? 'account' : 'accounts'}
                                 </span>
+                              )}
+                              {(groupNode.name.toLowerCase().includes('stock-in-hand') || groupNode.name.toLowerCase().includes('stock in hand')) && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDrillGroup && onDrillGroup('Opening Stock', fromDate, toDate);
+                                  }}
+                                  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-md cursor-pointer transition shadow-2xs"
+                                  title="Click to drill down into Opening Stock item details"
+                                >
+                                  Drill Down Stock ↗
+                                </button>
                               )}
                             </div>
                           </td>
@@ -447,7 +472,17 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                           return (
                             <tr
                               key={child.id}
-                              onClick={() => onDrillLedger && onDrillLedger(child.name)}
+                              onClick={() => {
+                                const cLower = child.name.toLowerCase();
+                                const gLower = groupNode.name.toLowerCase();
+                                if (cLower.includes('opening stock') || cLower === 'stock-in-hand' || cLower === 'stock in hand' || gLower === 'stock-in-hand' || gLower === 'stock in hand') {
+                                  onDrillGroup ? onDrillGroup('Opening Stock', fromDate, toDate) : (onDrillLedger && onDrillLedger(child.name));
+                                } else if (cLower.includes('closing stock')) {
+                                  onDrillGroup ? onDrillGroup('Closing Stock', fromDate, toDate) : (onDrillLedger && onDrillLedger(child.name));
+                                } else {
+                                  onDrillLedger && onDrillLedger(child.name);
+                                }
+                              }}
                               className="hover:bg-indigo-50/50 cursor-pointer text-slate-700 transition"
                             >
                               <td className="py-2 px-4 sm:px-6 pl-10 sm:pl-14 font-medium italic text-slate-700 flex items-center gap-2">
@@ -596,13 +631,19 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
 
                     <div className="space-y-3.5">
                       {/* Opening Stock */}
-                      <div className="space-y-1">
-                        <div className="flex justify-between items-center font-bold text-slate-900">
-                          <span>Opening Stock</span>
-                          <span className="font-mono text-slate-900">{fmt(pnlData.os)}</span>
+                      <div
+                        onClick={() => onDrillGroup && onDrillGroup('Opening Stock', fromDate, toDate)}
+                        className="space-y-1 p-2 -mx-2 rounded-xl hover:bg-indigo-50/80 cursor-pointer transition border border-transparent hover:border-indigo-100 group/os"
+                        title="Click to drill down into Opening Stock item details"
+                      >
+                        <div className="flex justify-between items-center font-bold text-slate-900 group-hover/os:text-indigo-600">
+                          <span className="flex items-center gap-1.5 underline decoration-dotted decoration-slate-400 group-hover/os:decoration-indigo-500 underline-offset-4">
+                            Opening Stock
+                          </span>
+                          <span className="font-mono text-slate-900 group-hover/os:text-indigo-700">{fmt(pnlData.os)}</span>
                         </div>
-                        {depth !== 'summary' && pnlData.os > 0 && (
-                          <div className="pl-4 flex justify-between items-center text-xs text-slate-500">
+                        {depth !== 'summary' && (
+                          <div className="pl-4 flex justify-between items-center text-xs text-slate-500 group-hover/os:text-indigo-600">
                             <span>Stock on Hand (Opening Balance)</span>
                             <span className="font-mono">{fmt(pnlData.os)}</span>
                           </div>
@@ -694,13 +735,19 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                       </div>
 
                       {/* Closing Stock */}
-                      <div className="space-y-1">
-                        <div className="flex justify-between items-center font-bold text-slate-900">
-                          <span>Closing Stock</span>
-                          <span className="font-mono text-slate-900">{fmt(pnlData.cs)}</span>
+                      <div
+                        onClick={() => onDrillGroup && onDrillGroup('Closing Stock', fromDate, toDate)}
+                        className="space-y-1 p-2 -mx-2 rounded-xl hover:bg-indigo-50/80 cursor-pointer transition border border-transparent hover:border-indigo-100 group/cs"
+                        title="Click to drill down into Closing Stock item details"
+                      >
+                        <div className="flex justify-between items-center font-bold text-slate-900 group-hover/cs:text-indigo-600">
+                          <span className="flex items-center gap-1.5 underline decoration-dotted decoration-slate-400 group-hover/cs:decoration-indigo-500 underline-offset-4">
+                            Closing Stock
+                          </span>
+                          <span className="font-mono text-slate-900 group-hover/cs:text-indigo-700">{fmt(pnlData.cs)}</span>
                         </div>
                         {depth !== 'summary' && (
-                          <div className="pl-4 flex justify-between items-center text-xs text-slate-500">
+                          <div className="pl-4 flex justify-between items-center text-xs text-slate-500 group-hover/cs:text-indigo-600">
                             <span>Stock on Hand (Closing Valuation)</span>
                             <span className="font-mono">{fmt(pnlData.cs)}</span>
                           </div>
@@ -1064,9 +1111,13 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                       </div>
                       {depth !== 'summary' && (
                         <div className="pl-4 space-y-1 text-xs text-slate-600">
-                          <div className="flex justify-between items-center font-semibold text-slate-800">
-                            <span>Closing Stock (Valuation)</span>
-                            <span className="font-mono">{fmt(bsData.stockVal)}</span>
+                          <div
+                            onClick={() => onDrillGroup && onDrillGroup('Closing Stock', fromDate, toDate)}
+                            className="flex justify-between items-center font-semibold text-slate-800 hover:text-indigo-600 cursor-pointer transition p-1.5 -mx-1.5 rounded-lg hover:bg-indigo-50/70 border border-transparent hover:border-indigo-100 group/bs"
+                            title="Click to drill down into Closing Stock valuation item details"
+                          >
+                            <span className="underline decoration-dotted decoration-slate-400 group-hover/bs:decoration-indigo-500 underline-offset-2">Closing Stock (Valuation)</span>
+                            <span className="font-mono text-slate-900 group-hover/bs:text-indigo-700">{fmt(bsData.stockVal)}</span>
                           </div>
                           {bsData.currentAssetLedgers.map((l: any, i: number) => (
                             <div

@@ -36,6 +36,7 @@ import {
 import {
   syncConfigToFirestore,
   syncItemToFirestore,
+  syncItemsBatchToFirestore,
   deleteItemFromFirestore,
   syncLedgerToFirestore,
   deleteLedgerFromFirestore,
@@ -72,7 +73,8 @@ export const STORAGE_KEYS = {
   USERS: 'deep_pos_users',
   TRASH_LOG: 'deep_pos_trash',
   BANK_RECON: 'deep_pos_bank_recon',
-  DELETED_LEDGERS: 'deep_pos_deleted_ledgers'
+  DELETED_LEDGERS: 'deep_pos_deleted_ledgers',
+  DELETED_ITEMS: 'deep_pos_deleted_items'
 };
 
 export const DEFAULT_CONFIG: Config = {
@@ -809,6 +811,25 @@ export function loadJson<T>(key: string, fallback: T): T {
   }
 }
 
+export function migrateExistingItemsOpeningAmount() {
+  const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, []);
+  let modified = false;
+  const newItems = items.map(item => {
+    if (item['Opening Amount'] === undefined && Number(item['Opening Stock']) > 0) {
+      modified = true;
+      return {
+        ...item,
+        'Opening Amount': Number(item['Opening Stock']) * (Number(item['Purchase Rate']) || 0)
+      };
+    }
+    return item;
+  });
+
+  if (modified) {
+    saveJson(STORAGE_KEYS.ITEMS, newItems);
+  }
+}
+
 export function saveJson<T>(key: string, val: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(val));
@@ -1223,6 +1244,173 @@ export function generateMissingBarcodes(): { count: number; items: Item[] } {
   return { count: updatedCount, items: updatedList };
 }
 
+export interface BulkImportItem {
+  name: string;
+  baseUnit: string;
+  altUnit?: string;
+  conversionFactor?: number;
+  openingQty: number;
+  purchaseRate: number;
+  saleRate: number;
+  wholesaleRate?: number;
+  altPurchaseRate?: number;
+  altSaleRate?: number;
+  altWholesaleRate?: number;
+  mrp: number;
+  altMrp?: number;
+  barcode?: string;
+  group?: string;
+  category?: string;
+  serials?: string[];
+}
+
+export function bulkImportItems(itemsToImport: BulkImportItem[]) {
+  const itemsList = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+  const groupsList = loadJson<ItemGroup[]>(STORAGE_KEYS.ITEM_GROUPS, DEFAULT_ITEM_GROUPS);
+  const catsList = loadJson<string[]>(STORAGE_KEYS.ITEM_CATEGORIES, DEFAULT_ITEM_CATEGORIES);
+  const unitsList = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
+  const deletedItems = loadJson<string[]>(STORAGE_KEYS.DELETED_ITEMS, []);
+  let deletedListChanged = false;
+
+  let addedItems = 0;
+  const newlyAddedItems: Item[] = [];
+  let skippedItems: string[] = [];
+  let barcodeCounter = nextCounter('InternalBarcode');
+  let itemCodeCounter = Date.now();
+
+  for (const importItem of itemsToImport) {
+    const cleanName = String(importItem.name || '').trim();
+    if (!cleanName) continue;
+
+    // Check if item already exists by name
+    if (itemsList.some(i => i['Item Name'].toLowerCase() === cleanName.toLowerCase())) {
+      skippedItems.push(cleanName);
+      continue; // Skip duplicates for now, or we could update
+    }
+
+    const groupName = String(importItem.group || '').trim() || 'Primary';
+    if (!groupsList.some(g => g['Group Name'].toLowerCase() === groupName.toLowerCase())) {
+      groupsList.push({ 'Group Name': groupName });
+    }
+
+    if (importItem.category && String(importItem.category).trim()) {
+      const catName = String(importItem.category).trim();
+      if (!catsList.some(c => c.toLowerCase() === catName.toLowerCase())) {
+        catsList.push(catName);
+      }
+    }
+
+    const baseUnitName = String(importItem.baseUnit || 'Pcs').trim();
+    if (!unitsList.some(u => u['Unit Name'].toLowerCase() === baseUnitName.toLowerCase())) {
+      unitsList.push({ 'Unit Name': baseUnitName, Symbol: baseUnitName, Group: 'Primary', 'Conversion Factor': 1 });
+    }
+
+    if (importItem.altUnit && String(importItem.altUnit).trim()) {
+      const altUnitName = String(importItem.altUnit).trim();
+      if (!unitsList.some(u => u['Unit Name'].toLowerCase() === altUnitName.toLowerCase())) {
+        unitsList.push({ 'Unit Name': altUnitName, Symbol: altUnitName, Group: 'Primary', 'Conversion Factor': 1 });
+      }
+    }
+
+    const rawBarcode = importItem.barcode !== undefined && importItem.barcode !== null ? String(importItem.barcode).trim() : '';
+    const barcode = rawBarcode || String(100000 + barcodeCounter++);
+    const itemCode = 'ITM' + (itemCodeCounter++).toString().slice(-8);
+
+    const isSerialized = importItem.serials && importItem.serials.length > 0 ? 'Y' : 'N';
+    const openingSerials = isSerialized === 'Y' ? importItem.serials!.join('\n') : '';
+
+    let convFactor = Number(importItem.conversionFactor) || 1;
+    let basePurchaseRate = Number(importItem.purchaseRate) || 0;
+    let baseSaleRate = Number(importItem.saleRate) || 0;
+    let baseWholesaleRate = importItem.wholesaleRate ? Number(importItem.wholesaleRate) : undefined;
+    let baseMrp = Number(importItem.mrp) || 0;
+
+    // If only alt rates are provided, calculate base rates
+    if (importItem.altPurchaseRate && !basePurchaseRate) {
+      basePurchaseRate = Number((importItem.altPurchaseRate / convFactor).toFixed(2));
+    }
+    if (importItem.altWholesaleRate && baseWholesaleRate === undefined) {
+      baseWholesaleRate = Number((importItem.altWholesaleRate / convFactor).toFixed(2));
+    }
+    if (importItem.altMrp && !baseMrp) {
+      baseMrp = Number((importItem.altMrp / convFactor).toFixed(2));
+    }
+
+    const newItem: Item = {
+      'Item Code': itemCode,
+      Barcode: barcode,
+      'Item Name': cleanName,
+      'Print Name': cleanName,
+      Group: groupName,
+      Category: importItem.category ? String(importItem.category).trim() : undefined,
+      Unit: baseUnitName,
+      'Purchase Rate': basePurchaseRate,
+      'Sale Rate': baseSaleRate,
+      'Wholesale Rate': baseWholesaleRate,
+      MRP: baseMrp,
+      'GST %': 5,
+      'Zero Rated (Y/N)': 'N',
+      'Is Serialized': isSerialized,
+      'Maintain Stock': 'Y',
+      'HSN/SAC': '',
+      'Opening Stock': Number(importItem.openingQty) || 0,
+      'Opening Amount': (Number(importItem.openingQty) || 0) * basePurchaseRate,
+      'Current Stock': Number(importItem.openingQty) || 0,
+      'Reorder Level': 0,
+      'Opening Serials': openingSerials
+    };
+
+    if (importItem.altUnit && String(importItem.altUnit).trim() && convFactor > 1) {
+      const trimmedAltUnit = String(importItem.altUnit).trim();
+      newItem.multiUnits = [{
+        unit: trimmedAltUnit,
+        conversionFactor: convFactor,
+        purchaseRate: Number(importItem.altPurchaseRate) || (basePurchaseRate * convFactor),
+        saleRate: Number(importItem.altSaleRate) || (baseSaleRate * convFactor),
+        wholesaleRate: importItem.altWholesaleRate !== undefined ? Number(importItem.altWholesaleRate) : (baseWholesaleRate !== undefined ? baseWholesaleRate * convFactor : undefined),
+        mrp: Number(importItem.altMrp) || (baseMrp * convFactor)
+      }];
+    }
+
+    itemsList.push(newItem);
+    newlyAddedItems.push(newItem);
+    addedItems++;
+
+    // Un-delete if previously in deleted items
+    const cNorm = itemCode.toLowerCase();
+    const bNorm = barcode.toLowerCase();
+    const dIdx = deletedItems.findIndex(d => d === cNorm || d === bNorm);
+    if (dIdx > -1) {
+      deletedItems.splice(dIdx, 1);
+      deletedListChanged = true;
+    }
+  }
+
+  if (deletedListChanged) {
+    saveJson(STORAGE_KEYS.DELETED_ITEMS, deletedItems);
+  }
+
+  // Save next counter
+  const counters = loadJson<Record<string, number>>(STORAGE_KEYS.COUNTERS, {});
+  counters['InternalBarcode'] = barcodeCounter;
+  saveJson(STORAGE_KEYS.COUNTERS, counters);
+
+  // Save all lists locally
+  saveJson(STORAGE_KEYS.ITEMS, itemsList);
+  saveJson(STORAGE_KEYS.ITEM_GROUPS, groupsList);
+  saveJson(STORAGE_KEYS.ITEM_CATEGORIES, catsList);
+  saveJson(STORAGE_KEYS.UNITS, unitsList);
+
+  // Immediately push newly added items to Firestore in batch
+  if (newlyAddedItems.length > 0) {
+    syncItemsBatchToFirestore(newlyAddedItems).catch(err => {
+      console.warn('Failed to batch sync imported items to Firestore:', err);
+    });
+  }
+
+  return { ok: true, added: addedItems, skipped: skippedItems, newItems: newlyAddedItems };
+}
+
 export function saveItem(item: Item) {
   const list = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const isNew = !item.oldCode;
@@ -1254,6 +1442,16 @@ export function saveItem(item: Item) {
   const idx = list.findIndex(i => i['Item Code'] === (item.oldCode || item['Item Code']));
   if (idx > -1) list[idx] = item; else list.push(item);
   saveJson(STORAGE_KEYS.ITEMS, list);
+
+  // Un-delete if code or barcode was in DELETED_ITEMS
+  const deleted = loadJson<string[]>(STORAGE_KEYS.DELETED_ITEMS, []);
+  const cNorm = (item['Item Code'] || '').trim().toLowerCase();
+  const bNorm = (item.Barcode || '').trim().toLowerCase();
+  const filteredDeleted = deleted.filter(d => d !== cNorm && d !== bNorm);
+  if (filteredDeleted.length !== deleted.length) {
+    saveJson(STORAGE_KEYS.DELETED_ITEMS, filteredDeleted);
+  }
+
   syncItemToFirestore(item).catch(() => {});
 
   if (isNew && Number(item['Opening Stock']) > 0) {
@@ -1312,6 +1510,13 @@ export function deleteItem(code: string) {
   let list = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   list = list.filter(i => (i['Item Code'] || '').trim().toLowerCase() !== target.toLowerCase());
   saveJson(STORAGE_KEYS.ITEMS, list);
+
+  // Record in DELETED_ITEMS so Firestore sync listener does not restore it
+  const deleted = loadJson<string[]>(STORAGE_KEYS.DELETED_ITEMS, []);
+  if (!deleted.includes(target.toLowerCase())) {
+    deleted.push(target.toLowerCase());
+    saveJson(STORAGE_KEYS.DELETED_ITEMS, deleted);
+  }
 
   // Clean orphan stock logs for deleted item
   const stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
@@ -1709,6 +1914,18 @@ export function saveSalesInvoice(payload: {
   const effNum = rawCount < startNum ? startNum : rawCount;
   const iNo = invoiceNo || formatVoucherNumber(invPrefix, effNum, matchedVt?.zeroPadding, matchedVt?.suffix);
 
+  if (invoiceNo && invPrefix && invoiceNo.startsWith(invPrefix)) {
+    const numPart = invoiceNo.slice(invPrefix.length).replace(/[^\d]/g, '');
+    const pVal = parseInt(numPart, 10);
+    if (!isNaN(pVal)) {
+      const counters = loadJson<Record<string, number>>(STORAGE_KEYS.COUNTERS, {});
+      if ((counters[counterKey] || 0) < pVal) {
+        counters[counterKey] = pVal;
+        saveJson(STORAGE_KEYS.COUNTERS, counters);
+      }
+    }
+  }
+
   let cash = Number(payment.cash) || 0, b1 = Number(payment.bank1) || 0, b2 = Number(payment.bank2) || 0;
   const sLg = customer.name?.trim() || customer.ledger?.trim() || 'Cash Customer';
   const sLgLower = sLg.toLowerCase();
@@ -1717,7 +1934,19 @@ export function saveSalesInvoice(payload: {
   if (isCashParty && cash === 0 && b1 === 0 && b2 === 0) {
     cash = finalTot;
   }
-  const cr = round2(finalTot - cash - b1 - b2);
+  let cr = round2(finalTot - cash - b1 - b2);
+  
+  // If overpaid (meaning change was given to the customer), we should not log negative credit.
+  // Instead, the net cash collected by the drawer is just the amount needed for the bill.
+  if (cr < -0.009) {
+    if (cash >= Math.abs(cr)) {
+      cash = round2(cash + cr);
+      cr = 0;
+    } else {
+      cr = 0; // Fallback for edge cases
+    }
+  }
+
   const st = cr > 0.009 ? ((cash + b1 + b2) > 0 ? 'Partial Credit' : 'Credit') : 'Paid';
 
   // Automatically compile predefined terms & conditions if none passed
@@ -2113,6 +2342,9 @@ export function getVoucherPrefix(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN
 }
 
 export function peekNextVoucherNo(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'PHYSICAL_STOCK' | 'QUOTATION', cfg?: Config): string {
+  if (type === 'S') {
+    return peekNextInvoiceNumber(false);
+  }
   const px = getVoucherPrefix(type, cfg);
   const counters = loadJson<Record<string, number>>(STORAGE_KEYS.COUNTERS, {
     InternalBarcode: 5,
@@ -2136,6 +2368,43 @@ export function peekNextVoucherNo(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'C
     type === 'QUOTATION' ? 'Quotation' : 'Voucher';
   const val = (counters[counterKey] || counters['Voucher'] || 0) + 1;
   return `${px}${val}`;
+}
+
+export function peekNextInvoiceNumber(isPOS: boolean = false, voucherTypeId?: string): string {
+  const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
+  const allVTypes = getVoucherTypes();
+  const matchedVt = voucherTypeId ? allVTypes.find(v => v.id === voucherTypeId) : null;
+  const defaultPrefix = isPOS ? (cfg.POSInvoicePrefix || 'POS-') : (cfg.SalesInvoicePrefix || 'SAL-');
+  const invPrefix = matchedVt?.prefix !== undefined ? matchedVt.prefix : defaultPrefix;
+  const counterKey = matchedVt ? `Voucher_${matchedVt.id}` : (isPOS ? 'POSInvoice' : 'SalesInvoice');
+  const counters = loadJson<Record<string, number>>(STORAGE_KEYS.COUNTERS, {
+    InternalBarcode: 5,
+    SalesInvoice: 32,
+    POSInvoice: 0,
+    PurchaseInvoice: 12
+  });
+
+  let currentCount = counters[counterKey] || 0;
+
+  // Scan existing sales invoices to prevent backward collision
+  const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+  sales.forEach(s => {
+    const no = (s.invoiceNo || (s as any).billNo || '').trim();
+    if (invPrefix && no.startsWith(invPrefix)) {
+      const remainder = no.slice(invPrefix.length);
+      const match = remainder.match(/^(\d+)/);
+      if (match) {
+        const val = parseInt(match[1], 10);
+        if (!isNaN(val) && val > currentCount) {
+          currentCount = val;
+        }
+      }
+    }
+  });
+
+  const startNum = Number(matchedVt?.startingNumber) || 1;
+  const nextNum = Math.max(startNum, currentCount + 1);
+  return formatVoucherNumber(invPrefix, nextNum, matchedVt?.zeroPadding, matchedVt?.suffix);
 }
 
 export function saveMultiLineVoucher(payload: {
@@ -3935,11 +4204,23 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
         itemCode: i['Item Code'],
         itemName: i['Item Name'],
         group: i.Group,
+        category: i.Category || '',
+        barcode: i.Barcode || '',
         unit: i.Unit,
         currentStock: Number(i['Current Stock']) || 0,
         reorderLevel: Number(i['Reorder Level']) || 0,
         saleRate: Number(i['Sale Rate']) || 0,
-        purchaseRate: Number(i['Purchase Rate']) || 0
+        purchaseRate: Number(i['Purchase Rate']) || 0,
+        wholesaleRate: Number(i['Wholesale Rate']) || 0,
+        mrp: Number(i.MRP) || 0,
+        gstRate: Number(i['GST %']) || 0,
+        zeroRated: i['Zero Rated (Y/N)'] || 'N',
+        maintainStock: i['Maintain Stock'] || 'Y',
+        hsnSac: i['HSN/SAC'] || '',
+        openingStock: Number(i['Opening Stock']) || 0,
+        printName: i['Print Name'] || '',
+        isSerialized: i['Is Serialized'] || 'N',
+        rawItem: i
       }));
   }
   if (type === 'serials') {
@@ -4070,6 +4351,45 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
     topQty: pList.slice().sort((a, b) => b.qty - a.qty).slice(0, 15),
     topAmt: pList.slice().sort((a, b) => b.saleAmt - a.saleAmt).slice(0, 15)
   };
+}
+
+export function getStockBalancesAsOfDate(asOfDate?: string): Record<string, number> {
+  const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+  const sLog = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const isTodayOrFuture = !asOfDate || asOfDate >= todayStr;
+  const toDt = asOfDate ? new Date(asOfDate).setHours(23, 59, 59, 999) : Date.now();
+  const map: Record<string, number> = {};
+
+  items.forEach(i => {
+    const c = i['Item Code'];
+    if (i['Maintain Stock'] === 'N') {
+      map[c] = Number(i['Current Stock']) || 0;
+      return;
+    }
+
+    if (isTodayOrFuture) {
+      map[c] = Number(i['Current Stock']) || 0;
+      return;
+    }
+
+    const opStock = Number(i['Opening Stock']) || 0;
+    let net = opStock;
+    sLog.filter(l => l['Item Code'] === c).forEach(log => {
+      if (log.Type === 'Opening' || (log['Ref No'] && log['Ref No'].startsWith('OPENING'))) {
+        return;
+      }
+      const d = new Date(log.DateIso).getTime();
+      const li = Number(log['Qty In']) || 0;
+      const lo = Number(log['Qty Out']) || 0;
+      if (d <= toDt) {
+        net += (li - lo);
+      }
+    });
+    map[c] = net;
+  });
+
+  return map;
 }
 
 export function getFinancialReports(type: string, from: string, to: string) {
@@ -4319,6 +4639,26 @@ export function getFinancialReports(type: string, from: string, to: string) {
     else if (path.includes('Current Assets') && !path.includes('Sundry Debtors') && !path.includes('Bank Accounts') && !path.includes('Cash-in-Hand')) bs.ca += bal;
     else if (nat === 'Asset' && !path.includes('Fixed Assets') && !path.includes('Current Assets')) bs.ca += bal;
   });
+
+  // Ensure Opening/Current Stock is represented in Trial Balance under Stock-in-Hand when accounts are integrated with inventory
+  if (integrateInv && (effOpeningStock > 0 || effClosingStock > 0)) {
+    const hasStockInTb = tb.some(t => t.grp === 'Stock-in-Hand' || t.name.toLowerCase().includes('stock-in-hand') || t.name.toLowerCase().includes('opening stock'));
+    if (!hasStockInTb) {
+      const stockAmt = effOpeningStock > 0 ? effOpeningStock : effClosingStock;
+      const stockName = effOpeningStock > 0 ? 'Opening Stock' : 'Stock-in-Hand';
+      tb.push({
+        name: stockName,
+        grp: 'Stock-in-Hand',
+        dr: stockAmt,
+        cr: 0,
+        nat: 'Asset',
+        opDr: stockAmt,
+        opCr: 0,
+        periodDr: 0,
+        periodCr: 0
+      });
+    }
+  }
 
   // Fallback if sales/purchase ledger log entries are missing for the selected date range
   if (pnl.s === 0 && sales.length > 0) {
@@ -4599,28 +4939,110 @@ export function getCategoryLedgerBreakdown(category: string, from?: string, to?:
   const toDt = to ? new Date(to).setHours(23, 59, 59, 999) : new Date(2099, 11, 31).getTime();
   const catLower = (category || '').trim().toLowerCase();
 
-  // 1. Stock Valuation
-  if (catLower === 'stock valuation' || catLower === 'closing stock' || catLower === 'closing stock valuation') {
+  // 1. Opening Stock Breakdown
+  if (
+    catLower === 'opening stock' ||
+    catLower === 'opening stock valuation' ||
+    catLower === 'opening inventory' ||
+    catLower.includes('opening stock')
+  ) {
     const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
     const stockLog = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+    let totalQty = 0;
+    let totalValuation = 0;
     const rows = items
       .filter(i => i['Maintain Stock'] !== 'N')
       .map(i => {
-      const c = i['Item Code'], pr = Number(i['Purchase Rate']) || 0;
-      let stock = 0;
-      stockLog.filter(l => l['Item Code'] === c).forEach(l => {
-        const d = new Date(l.DateIso).getTime();
-        if (d <= toDt) stock += ((Number(l['Qty In']) || 0) - (Number(l['Qty Out']) || 0));
-      });
-      return {
-        code: c,
-        name: i['Item Name'],
-        stock,
-        rate: pr,
-        valuation: stock * pr
-      };
-    }).filter(x => Math.abs(x.valuation) > 0.01 || Math.abs(x.stock) > 0);
-    return { type: 'stock', rows };
+        const c = i['Item Code'];
+        const pr = Number(i['Purchase Rate']) || 0;
+        const opStock = Number(i['Opening Stock']) || 0;
+        let o = opStock;
+        stockLog.filter(l => l['Item Code'] === c).forEach(l => {
+          if (l.Type === 'Opening' || (l['Ref No'] && l['Ref No'].startsWith('OPENING'))) return;
+          const d = new Date(l.DateIso).getTime();
+          const df = (Number(l['Qty In']) || 0) - (Number(l['Qty Out']) || 0);
+          if (d < fr) { o += df; }
+        });
+        const val = (o === opStock && i['Opening Amount'] !== undefined)
+          ? (Number(i['Opening Amount']) || (o * pr))
+          : (o * pr);
+        totalQty += o;
+        totalValuation += val;
+        return {
+          code: c,
+          name: i['Item Name'],
+          group: i['Item Group'] || i.Group || '',
+          unit: i['Base Unit'] || i.Unit || 'Pcs',
+          stock: o,
+          rate: pr,
+          valuation: val
+        };
+      })
+      .filter(x => Math.abs(x.valuation) > 0.001 || Math.abs(x.stock) > 0);
+
+    return {
+      type: 'stock',
+      stockType: 'opening',
+      stockLabel: 'Opening Qty',
+      title: 'Opening Stock Breakdown',
+      totalQty,
+      totalValuation,
+      rows
+    };
+  }
+
+  // 2. Closing Stock / Stock Valuation Breakdown
+  if (
+    catLower === 'stock valuation' ||
+    catLower === 'closing stock' ||
+    catLower === 'closing stock valuation' ||
+    catLower === 'closing inventory' ||
+    catLower.includes('closing stock') ||
+    catLower === 'stock-in-hand' ||
+    catLower === 'stock in hand' ||
+    catLower.includes('stock-in-hand')
+  ) {
+    const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+    const stockLog = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+    let totalQty = 0;
+    let totalValuation = 0;
+    const rows = items
+      .filter(i => i['Maintain Stock'] !== 'N')
+      .map(i => {
+        const c = i['Item Code'];
+        const pr = Number(i['Purchase Rate']) || 0;
+        const opStock = Number(i['Opening Stock']) || 0;
+        let cl = opStock;
+        stockLog.filter(l => l['Item Code'] === c).forEach(l => {
+          if (l.Type === 'Opening' || (l['Ref No'] && l['Ref No'].startsWith('OPENING'))) return;
+          const d = new Date(l.DateIso).getTime();
+          const df = (Number(l['Qty In']) || 0) - (Number(l['Qty Out']) || 0);
+          if (d <= toDt) cl += df;
+        });
+        const val = cl * pr;
+        totalQty += cl;
+        totalValuation += val;
+        return {
+          code: c,
+          name: i['Item Name'],
+          group: i['Item Group'] || i.Group || '',
+          unit: i['Base Unit'] || i.Unit || 'Pcs',
+          stock: cl,
+          rate: pr,
+          valuation: val
+        };
+      })
+      .filter(x => Math.abs(x.valuation) > 0.001 || Math.abs(x.stock) > 0);
+
+    return {
+      type: 'stock',
+      stockType: 'closing',
+      stockLabel: 'Closing Qty',
+      title: 'Closing Stock Valuation Breakdown',
+      totalQty,
+      totalValuation,
+      rows
+    };
   }
 
   // 2. Net Profit Breakdown

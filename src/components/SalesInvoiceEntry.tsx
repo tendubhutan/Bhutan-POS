@@ -15,6 +15,7 @@ import {
   getVoucherDetails,
   saveLedger,
   getSerialNumbersStockReport,
+  peekNextInvoiceNumber,
 } from "../services/storageService";
 import {
   Plus,
@@ -31,6 +32,8 @@ import {
   Tag,
   Printer,
   FileText,
+  Receipt,
+  Calendar,
 } from "lucide-react";
 import { SerialModal } from "./SerialModal";
 import { ThermalReceiptModal } from "./ThermalReceiptModal";
@@ -185,14 +188,29 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   const [billDate, setBillDate] = useState(
     new Date().toISOString().split("T")[0],
   );
-  const [billNo, setBillNo] = useState("");
-  const [orderNo, setOrderNo] = useState("");
-  const [orderDate, setOrderDate] = useState("");
-  const [deliveryNoteNo, setDeliveryNoteNo] = useState("");
+  const [billNo, setBillNo] = useState<string>(() => {
+    try {
+      return peekNextInvoiceNumber(false);
+    } catch {
+      return "";
+    }
+  });
 
   const [editingBillNo, setEditingBillNo] = useState<string | null>(null);
   const [savedInvoice, setSavedInvoice] = useState<any>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
+
+  // Ensure next auto invoice number is visible when not altering an existing invoice
+  useEffect(() => {
+    if (!editingBillNo && !billNo) {
+      try {
+        setBillNo(peekNextInvoiceNumber(false));
+      } catch {}
+    }
+  }, [editingBillNo]);
+  const [orderNo, setOrderNo] = useState("");
+  const [orderDate, setOrderDate] = useState("");
+  const [deliveryNoteNo, setDeliveryNoteNo] = useState("");
 
   const getDefaultTerms = (cfg: Config) => {
     if (
@@ -796,7 +814,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         bank2Ledger: config.Bank2Ledger || "BNBL Account",
       },
       notes: narration,
-      invoiceNo: editingBillNo || undefined,
+      invoiceNo: editingBillNo || (billNo.trim() ? billNo.trim() : undefined),
       date: billDate ? new Date(billDate).toISOString() : undefined,
       isEdit: Boolean(editingBillNo),
     });
@@ -812,7 +830,14 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     setShowPrintModal(true);
     setEditingBillNo(null);
     setCart([]);
-    setBillNo("");
+    setBillDate(new Date().toISOString().split("T")[0]);
+    setTimeout(() => {
+      try {
+        setBillNo(peekNextInvoiceNumber(false));
+      } catch {
+        setBillNo("");
+      }
+    }, 50);
     setCustomerName("");
     setOrderNo("");
     setOrderDate("");
@@ -844,7 +869,12 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
             onClick={() => {
               setEditingBillNo(null);
               setCart([]);
-              setBillNo('');
+              setBillDate(new Date().toISOString().split("T")[0]);
+              try {
+                setBillNo(peekNextInvoiceNumber(false));
+              } catch {
+                setBillNo('');
+              }
               setCustomerName('');
               setOrderNo('');
               setOrderDate('');
@@ -883,7 +913,29 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          {/* Bill/Invoice No & Date Indicator */}
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/90 rounded-xl px-2.5 py-1 text-xs shadow-2xs">
+            <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
+              <Receipt className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Invoice No</span>
+              <span className="font-mono text-xs font-black text-slate-900 bg-white px-1.5 py-0.5 rounded border border-slate-200 shadow-2xs">
+                {editingBillNo || billNo || 'Auto'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Date</span>
+              <input
+                type="date"
+                value={billDate}
+                onChange={(e) => setBillDate(e.target.value)}
+                className="text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200 cursor-pointer shadow-2xs"
+                title="Invoice Date (Click to adjust)"
+              />
+            </div>
+          </div>
+
           {config.EnableWholesalePrice !== 'false' && (
             <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
               <button
@@ -965,14 +1017,16 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                 <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">
                   Date
                 </span>
-                <span className="font-bold text-slate-800">{billDate}</span>
+                <span className="font-bold text-slate-800">
+                  {billDate ? new Date(billDate + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : billDate}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">
-                  Ref No
+                  Invoice No
                 </span>
-                <span className="font-bold text-slate-800">
-                  {billNo || "-"}
+                <span className="font-bold text-slate-800 font-mono">
+                  {editingBillNo || billNo || "-"}
                 </span>
               </div>
             </div>
@@ -1055,8 +1109,11 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                  Invoice Date
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5 flex items-center justify-between">
+                  <span>Invoice Date</span>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    {billDate ? new Date(billDate + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: 'short' }) : ''}
+                  </span>
                 </label>
                 <input
                   id="sale-date-input"
@@ -1075,12 +1132,15 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                       billNoRef.current?.select();
                     }
                   }}
-                  className="w-full h-8.5 rounded-lg border border-slate-300 px-2.5 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
+                  className="w-full h-8.5 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none cursor-pointer"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                  Invoice / Ref No
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5 flex items-center justify-between">
+                  <span>Invoice / Bill No</span>
+                  <span className="text-[10px] text-emerald-600 font-medium">
+                    {editingBillNo ? 'Altering' : 'Auto / Custom'}
+                  </span>
                 </label>
                 <input
                   ref={billNoRef}
@@ -1097,8 +1157,8 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                       billDateRef.current?.focus();
                     }
                   }}
-                  placeholder="e.g. SUP-90812"
-                  className="w-full h-8.5 rounded-lg border border-slate-300 px-2.5 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
+                  placeholder="e.g. SAL-1"
+                  className="w-full h-8.5 rounded-lg border border-slate-300 px-2.5 text-xs font-mono font-bold text-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none"
                 />
               </div>
             </div>

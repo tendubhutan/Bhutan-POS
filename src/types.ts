@@ -118,6 +118,7 @@ export interface Item {
   'Maintain Stock'?: 'Y' | 'N';
   'HSN/SAC': string;
   'Opening Stock': number;
+  'Opening Amount'?: number;
   'Current Stock': number;
   'Reorder Level': number;
   'Opening Serials'?: string;

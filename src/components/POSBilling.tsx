@@ -29,7 +29,8 @@ import {
   round2,
   getVoucherTypes,
   getSerialNumbersStockReport,
-  getActiveUser
+  getActiveUser,
+  peekNextInvoiceNumber
 } from '../services/storageService';
 import {
   playScanBeep,
@@ -66,7 +67,8 @@ import {
   Check,
   FileDown,
   Share2,
-  FileText
+  FileText,
+  Calendar
 } from 'lucide-react';
 import { SerialModal } from './SerialModal';
 import { ThermalReceiptModal } from './ThermalReceiptModal';
@@ -87,6 +89,7 @@ interface POSBillingProps {
   onOpenNewLedgerModal: (group?: string, onSelect?: (name: string) => void) => void;
   onEditLedger: (name: string) => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
+  onBack?: () => void;
 }
 
 export const POSBilling: React.FC<POSBillingProps> = ({
@@ -100,7 +103,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   onOpenNewItemModal,
   onOpenNewLedgerModal,
   onEditLedger,
-  initialVoucherTarget
+  initialVoucherTarget,
+  onBack
 }) => {
   // POS Preferences & Workflow Settings
   const [posSettings, setPosSettings] = useState<POSSettings>(() => loadPOSSettings());
@@ -162,6 +166,33 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   
   const [editingInvoiceNo, setEditingInvoiceNo] = useState<string | null>(null);
   const [editingInvoiceDate, setEditingInvoiceDate] = useState<string | null>(null);
+  const [posBillNo, setPosBillNo] = useState<string>(() => {
+    try {
+      return peekNextInvoiceNumber(true, selectedVoucherType?.id);
+    } catch {
+      return 'POS-1';
+    }
+  });
+  const [posBillDate, setPosBillDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+
+  // Keep posBillNo and posBillDate synchronized with editing state and active voucher series
+  useEffect(() => {
+    if (editingInvoiceNo) {
+      setPosBillNo(editingInvoiceNo);
+      if (editingInvoiceDate) {
+        try {
+          const d = new Date(editingInvoiceDate);
+          if (!isNaN(d.getTime())) {
+            setPosBillDate(d.toISOString().split('T')[0]);
+          }
+        } catch {}
+      }
+    } else {
+      try {
+        setPosBillNo(peekNextInvoiceNumber(true, activeVoucherType?.id));
+      } catch {}
+    }
+  }, [editingInvoiceNo, editingInvoiceDate, activeVoucherType]);
 
   useEffect(() => {
     if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
@@ -471,6 +502,19 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           setShowDropdown(false);
           return;
         }
+
+        if (entrySearch) {
+          setEntrySearch('');
+          itemInputRef.current?.focus();
+          return;
+        }
+
+        if (onBack) {
+          e.preventDefault();
+          onBack();
+          return;
+        }
+
         // Return focus to item input
         itemInputRef.current?.focus();
         return;
@@ -1452,7 +1496,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       voucherTypeId: activeVoucherType?.id,
       voucherTypeName: activeVoucherType?.name,
       invoiceNo: editingInvoiceNo || undefined,
-      date: editingInvoiceDate || undefined,
+      date: editingInvoiceDate || (posBillDate ? new Date(posBillDate + 'T12:00:00').toISOString() : undefined),
       isEdit: Boolean(editingInvoiceNo),
       isPOS: true
     });
@@ -1466,6 +1510,12 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     
     setEditingInvoiceNo(null);
     setEditingInvoiceDate(null);
+    setPosBillDate(new Date().toISOString().split('T')[0]);
+    setTimeout(() => {
+      try {
+        setPosBillNo(peekNextInvoiceNumber(true, activeVoucherType?.id));
+      } catch {}
+    }, 50);
 
     if (result) {
       // Audio Chime
@@ -1651,59 +1701,95 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           </div>
         </div>
 
-        {/* Retail / Wholesale Toggle Button */}
-        {config.EnableWholesalePrice !== 'false' && (
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
-            <button
-              type="button"
-              onClick={() => handlePricingModeChange('retail')}
-              className={`px-3 py-1 text-xs font-extrabold rounded-lg transition cursor-pointer ${
-                pricingMode === 'retail'
-                  ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Retail
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePricingModeChange('wholesale')}
-              className={`px-3 py-1 text-xs font-extrabold rounded-lg transition cursor-pointer ${
-                pricingMode === 'wholesale'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Wholesale
-            </button>
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          {/* Bill No & Date Indicator */}
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/90 rounded-xl px-2.5 py-1 text-xs shadow-2xs">
+            <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
+              <Receipt className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Bill No</span>
+              <span className="font-mono text-xs font-black text-slate-900 bg-white px-1.5 py-0.5 rounded border border-slate-200 shadow-2xs">
+                {editingInvoiceNo || posBillNo || 'Auto'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Date</span>
+              <input
+                type="date"
+                value={posBillDate}
+                onChange={(e) => setPosBillDate(e.target.value)}
+                className="text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 cursor-pointer shadow-2xs"
+                title="POS Bill Date (Click to adjust)"
+              />
+            </div>
           </div>
-        )}
+
+          {/* Retail / Wholesale Toggle Button */}
+          {config.EnableWholesalePrice !== 'false' && (
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => handlePricingModeChange('retail')}
+                className={`px-3 py-1 text-xs font-extrabold rounded-lg transition cursor-pointer ${
+                  pricingMode === 'retail'
+                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Retail
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePricingModeChange('wholesale')}
+                className={`px-3 py-1 text-xs font-extrabold rounded-lg transition cursor-pointer ${
+                  pricingMode === 'wholesale'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Wholesale
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Mobile-only switcher between Cart and Checkout */}
-      <div className="flex sm:hidden rounded-xl bg-slate-100 p-0.5 border border-slate-200 shrink-0">
-        <button
-          type="button"
-          onClick={() => setMobileTab('cart')}
-          className={`flex-1 py-1 text-xs font-black rounded-lg transition ${
-            mobileTab === 'cart'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-slate-700 hover:text-slate-900'
-          }`}
-        >
-          Cart ({cart.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setMobileTab('payment')}
-          className={`flex-1 py-1 text-xs font-black rounded-lg transition ${
-            mobileTab === 'payment'
-              ? 'bg-indigo-600 text-white shadow-xs'
-              : 'text-slate-700 hover:text-slate-900'
-          }`}
-        >
-          Pay ({config.CurrencySymbol || 'Nu.'} {totals.total.toFixed(2)})
-        </button>
+      <div className="flex sm:hidden flex-col gap-1 shrink-0">
+        <div className="flex items-center justify-between px-2.5 py-1 bg-white border border-slate-200 rounded-xl text-xs">
+          <span className="font-mono font-bold text-slate-900 flex items-center gap-1.5">
+            <Receipt className="h-3 w-3 text-indigo-600" />
+            <span>Bill: {editingInvoiceNo || posBillNo || 'Auto'}</span>
+          </span>
+          <span className="text-slate-600 text-[11px] font-semibold flex items-center gap-1">
+            <Calendar className="h-3 w-3 text-slate-400" />
+            <span>{posBillDate}</span>
+          </span>
+        </div>
+        <div className="flex rounded-xl bg-slate-100 p-0.5 border border-slate-200">
+          <button
+            type="button"
+            onClick={() => setMobileTab('cart')}
+            className={`flex-1 py-1 text-xs font-black rounded-lg transition ${
+              mobileTab === 'cart'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-700 hover:text-slate-900'
+            }`}
+          >
+            Cart ({cart.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab('payment')}
+            className={`flex-1 py-1 text-xs font-black rounded-lg transition ${
+              mobileTab === 'payment'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-700 hover:text-slate-900'
+            }`}
+          >
+            Pay ({config.CurrencySymbol || 'Nu.'} {totals.total.toFixed(2)})
+          </button>
+        </div>
       </div>
 
       {/* Main Workspace: Left Sale Screen & Right Checkout Screen */}
@@ -2203,8 +2289,21 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
         {/* Right Workspace: Balanced, Compact Checkout & Customer Panel */}
         <div className={`w-full lg:w-[340px] xl:w-[360px] shrink-0 h-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-sm flex flex-col space-y-2.5 ${mobileTab === 'cart' ? 'hidden sm:flex' : 'flex'}`}>
-        {/* Customer Selection Header & Controls */}
-        <div className="space-y-1.5">
+          {/* Bill No & Date Summary Badge */}
+          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200/90 text-xs">
+            <div className="flex items-center gap-1.5">
+              <Receipt className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Bill:</span>
+              <span className="font-mono font-black text-slate-900 text-xs">{editingInvoiceNo || posBillNo || 'Auto'}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-slate-700 font-bold text-[11px]">
+              <Calendar className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+              <span>{posBillDate ? new Date(posBillDate + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : posBillDate}</span>
+            </div>
+          </div>
+
+          {/* Customer Selection Header & Controls */}
+          <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <label htmlFor="customer-ledger-select" className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
               <span>Customer / Ledger</span>
@@ -2582,12 +2681,10 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 className={`h-8 rounded-lg px-2 flex items-center justify-center font-mono font-black text-xs truncate ${
                   balance > 0.005
                     ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                    : balance < -0.005
-                    ? 'bg-blue-100 text-blue-900 border border-blue-300'
                     : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
                 }`}
               >
-                {balance > 0.005 ? `Due: ${balance.toFixed(2)}` : balance < -0.005 ? `Change: ${Math.abs(balance).toFixed(2)}` : '✓ Settled'}
+                {balance > 0.005 ? `Due: ${balance.toFixed(2)}` : '✓ Settled'}
               </div>
             </div>
           </div>
