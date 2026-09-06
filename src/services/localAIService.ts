@@ -194,6 +194,8 @@ export function searchAllEntries(query: string): SearchResult[] {
 
 // Basic fuzzy match / synonym checking
 const synonyms = {
+  top_items: ['top', 'best', 'highest', 'most sold', 'trending'],
+  outstanding: ['outstanding', 'receivable', 'payable', 'due', 'owe'],
   sales: ['sale', 'sales', 'revenue', 'sold', 'income', 'earning'],
   purchases: ['purchase', 'purchases', 'bought', 'buy', 'expense', 'spent'],
   stock: ['stock balance', 'stock', 'inventory', 'item', 'items', 'qty', 'quantity', 'product', 'products', 'low stock'],
@@ -364,32 +366,223 @@ function determineIntent(query: string, entity: any) {
   return bestIntent;
 }
 
+
+function getItemHistoryContext(searchWords: string[], qLower: string): string {
+  const items = loadJson<any[]>(STORAGE_KEYS.ITEMS, []);
+  
+  const itemMatches = items.filter(it => {
+    const nameLower = (it['Item Name'] || '').toLowerCase();
+    const codeLower = (it['Item Code'] || '').toLowerCase();
+    
+    // Very basic match
+    return (searchWords.length > 0 && searchWords.some(w => (nameLower.includes(w) || codeLower.includes(w)))) ||
+           nameLower.includes(qLower) || codeLower.includes(qLower);
+  }).slice(0, 3); // top 3 items to avoid huge context
+
+  if (itemMatches.length === 0) return '';
+
+  const sales = loadJson<any[]>(STORAGE_KEYS.SALES_INVOICES, []);
+  const purchases = loadJson<any[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+
+  let ctx = "\n\nDetailed Item History:\n";
+
+  for (const it of itemMatches) {
+    const itemName = it['Item Name'];
+    ctx += `- Item: ${itemName} (Code: ${it['Item Code']})\n`;
+    ctx += `  Current Master Sale Rate: ${it['Sale Rate'] || 0}, Master Purchase Rate: ${it['Purchase Rate'] || 0}, MRP: ${it['MRP'] || 0}, Stock: ${it['Current Stock'] || 0}\n`;
+
+    // Find latest sales
+    const itemSales = sales
+      .filter(s => s.status !== 'Cancelled' && s.items && s.items.some((si: any) => si.itemName === itemName))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 3); // last 3 sales
+
+    if (itemSales.length > 0) {
+      ctx += `  Last 3 Sales:\n`;
+      for (const s of itemSales) {
+        const lineItem = s.items.find((si: any) => si.itemName === itemName);
+        const party = typeof s.customer === 'object' ? (s.customer.name || 'Cash') : (s.customer || 'Cash');
+        const discStr = lineItem.discount ? (lineItem.discountType === 'percent' ? `${lineItem.discount}%` : `Nu. ${lineItem.discount}`) : '0';
+        ctx += `    * Date: ${s.date}, Invoice: ${s.invoiceNo}, Party: ${party}, Qty: ${lineItem.qty}, Rate: Nu. ${lineItem.rate}, Discount Given: ${discStr}, Net Amount: Nu. ${lineItem.amount}\n`;
+      }
+    } else {
+      ctx += `  No recent sales found.\n`;
+    }
+
+    // Find latest purchases
+    const itemPurchases = purchases
+      .filter(p => p.items && p.items.some((pi: any) => pi.itemName === itemName))
+      .sort((a, b) => new Date(b.date || b.billDate).getTime() - new Date(a.date || a.billDate).getTime())
+      .slice(0, 3); // last 3 purchases
+
+    if (itemPurchases.length > 0) {
+      ctx += `  Last 3 Purchases:\n`;
+      for (const p of itemPurchases) {
+        const lineItem = p.items.find((pi: any) => pi.itemName === itemName);
+        const party = p.partyName || p.supplier || 'Unknown Supplier';
+        const discStr = lineItem.discount ? (lineItem.discountType === 'percent' ? `${lineItem.discount}%` : `Nu. ${lineItem.discount}`) : '0';
+        ctx += `    * Date: ${p.date || p.billDate}, Bill: ${p.billNumber || p.invoiceNo}, Supplier: ${party}, Qty: ${lineItem.qty}, Rate: Nu. ${lineItem.rate}, Discount: ${discStr}\n`;
+      }
+    } else {
+      ctx += `  No recent purchases found.\n`;
+    }
+  }
+
+  return ctx;
+}
+
 export async function processLocalQuery(query: string, history: any[] = []): Promise<string> {
   // Simulate slight thinking delay for UI polish
   await new Promise(r => setTimeout(r, 600));
 
-  // 1. First search for specific entry matches (Transaction ID, Cheque No, Narration, Voucher No, Item/Serial, etc.)
-  const entryMatches = searchAllEntries(query);
-  if (entryMatches.length > 0) {
-    let msg = `🔍 **Found ${entryMatches.length} matching entry${entryMatches.length > 1 ? 'ies' : ''} for "${query}"**:\n\n`;
-    entryMatches.slice(0, 6).forEach(m => {
-      msg += `• **${m.typeLabel} ${m.refNo}** (${m.date}) - **Nu. ${m.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**\n`;
-      msg += `  Party/Account: ${m.party}\n`;
-      if (m.matchedField && m.matchedText) {
-        msg += `  Matched ${m.matchedField}: _"${m.matchedText}"_\n`;
+  const qLower = query.toLowerCase();
+
+  // 1. Navigation Commands & Settings Commands
+  const navs = [
+    { words: ['pos', 'billing', 'point of sale', 'register'], view: 'pos' },
+    { words: ['normal sale', 'invoice'], view: 'normalsale' },
+    { words: ['purchase entry', 'buy entry'], view: 'purchase' },
+    { words: ['dashboard', 'home', 'main'], view: 'dashboard' },
+    { words: ['masters', 'items master', 'ledger master'], view: 'masters' },
+    { words: ['vouchers', 'all entries', 'daybook'], view: 'vouchers' },
+    { words: ['settings', 'configuration'], view: 'settings' },
+  ];
+  
+  if (qLower.includes('go to') || qLower.includes('open') || qLower.includes('navigate') || qLower.includes('show me the') || qLower.includes('take me to')) {
+      for (const n of navs) {
+          if (n.words.some(w => qLower.includes(w))) {
+              let msg = `Navigating to ${n.view.toUpperCase()}...`;
+              msg += `
+
+\`\`\`json
+{
+  "action": "NAVIGATE",
+  "payload": {
+    "view": "${n.view}"
+  }
+}
+\`\`\``;
+              return msg;
+          }
       }
-      msg += `  [View Voucher: ${m.refNo}]\n\n`;
-    });
-    if (entryMatches.length > 6) {
-      msg += `_Showing top 6 of ${entryMatches.length} total matches._\n`;
+      
+      // Check for specific reports
+      const reports = [
+         { words: ['itemwise profit', 'item profit'], target: 'item-profit' },
+         { words: ['sales'], target: 'sales' },
+         { words: ['stock', 'inventory'], target: 'stock' },
+         { words: ['gst', 'tax'], target: 'gst' },
+         { words: ['trial balance'], target: 'trial balance' },
+         { words: ['profit & loss', 'profit and loss', 'pnl'], target: 'profit & loss' },
+         { words: ['balance sheet'], target: 'balance sheet' },
+      ];
+      for (const r of reports) {
+          if (r.words.some(w => qLower.includes(w))) {
+              let msg = `Opening the ${r.target} report...`;
+              msg += `
+
+\`\`\`json
+{
+  "action": "NAVIGATE",
+  "payload": {
+    "view": "reports",
+    "report": "${r.target}"
+  }
+}
+\`\`\``;
+              return msg;
+          }
+      }
+  }
+
+  
+  
+  // 2. Settings changes
+  if (qLower.includes('enable item discount') || (qLower.includes('turn on') && qLower.includes('item discount'))) {
+      return 'Enabling Item Discount in POS settings.\n\n```json\n{\n  "action": "UPDATE_POS_SETTINGS",\n  "payload": { "enableItemDiscount": true }\n}\n```';
+  }
+  if (qLower.includes('disable item discount') || (qLower.includes('turn off') && qLower.includes('item discount'))) {
+      return 'Disabling Item Discount in POS settings.\n\n```json\n{\n  "action": "UPDATE_POS_SETTINGS",\n  "payload": { "enableItemDiscount": false }\n}\n```';
+  }
+  if (qLower.includes('enable bill discount') || (qLower.includes('turn on') && qLower.includes('bill discount'))) {
+      return 'Enabling Bill Discount in POS settings.\n\n```json\n{\n  "action": "UPDATE_POS_SETTINGS",\n  "payload": { "enableBillDiscount": true }\n}\n```';
+  }
+  if (qLower.includes('disable bill discount') || (qLower.includes('turn off') && qLower.includes('bill discount'))) {
+      return 'Disabling Bill Discount in POS settings.\n\n```json\n{\n  "action": "UPDATE_POS_SETTINGS",\n  "payload": { "enableBillDiscount": false }\n}\n```';
+  }
+  
+  if (qLower.includes('enable asset management') || (qLower.includes('turn on') && qLower.includes('asset management'))) {
+      return 'Enabling Asset Management module.\n\n```json\n{\n  "action": "UPDATE_CONFIG",\n  "payload": { "EnableAssetManagement": "true" }\n}\n```';
+  }
+  if (qLower.includes('disable asset management') || (qLower.includes('turn off') && qLower.includes('asset management'))) {
+      return 'Disabling Asset Management module.\n\n```json\n{\n  "action": "UPDATE_CONFIG",\n  "payload": { "EnableAssetManagement": "false" }\n}\n```';
+  }
+  
+  if (qLower.includes('enable payroll') || (qLower.includes('turn on') && qLower.includes('payroll'))) {
+      return 'Enabling Payroll module.\n\n```json\n{\n  "action": "UPDATE_CONFIG",\n  "payload": { "EnablePayroll": "true" }\n}\n```';
+  }
+  if (qLower.includes('disable payroll') || (qLower.includes('turn off') && qLower.includes('payroll'))) {
+      return 'Disabling Payroll module.\n\n```json\n{\n  "action": "UPDATE_CONFIG",\n  "payload": { "EnablePayroll": "false" }\n}\n```';
+  }
+
+  // 3. Search exact vouchers/entries or items
+
+
+
+  const itemsFallback = loadJson<any[]>(STORAGE_KEYS.ITEMS, []);
+  const numbersInQueryFallback: string[] = query.match(/\d+(\.\d+)?/g) || [];
+  const stopWords = ['what', 'is', 'the', 'purchase', 'price', 'of', 'sale', 'how', 'much', 'does', 'cost', 'find', 'out', 'search', 'item', 'with', 'selling', 'rate', 'latest', 'last', 'first', 'show', 'me', 'tell', 'about', 'for', 'any'];
+  const searchWordsFallback = (qLower.match(/[a-z0-9]+/gi) || []).filter(w => w.length > 1 && !stopWords.includes(w));
+  
+  const itemMatchesFallback = itemsFallback.filter(it => {
+    const nameLower = (it['Item Name'] || '').toLowerCase();
+    const codeLower = (it['Item Code'] || '').toLowerCase();
+    const catLower = (it.Category || '').toLowerCase();
+    
+    const matchesWord = searchWordsFallback.length > 0 && searchWordsFallback.some(w => (nameLower.includes(w) || codeLower.includes(w) || catLower.includes(w)));
+    const matchesQuery = nameLower.includes(qLower) || codeLower.includes(qLower);
+    
+    return matchesWord || matchesQuery ||
+    numbersInQueryFallback.includes(it['Sale Rate']?.toString()) ||
+    numbersInQueryFallback.includes(it['Purchase Rate']?.toString()) ||
+    numbersInQueryFallback.includes(it['MRP']?.toString());
+  }).slice(0, 6);
+
+  const entryMatches = searchAllEntries(query);
+
+  if (entryMatches.length > 0 || itemMatchesFallback.length > 0) {
+    let msg = `🔍 **Found ${entryMatches.length + itemMatchesFallback.length} matching record${(entryMatches.length + itemMatchesFallback.length) > 1 ? 's' : ''} for "${query}"**:\n\n`;
+    
+    if (itemMatchesFallback.length > 0) {
+      msg += `**Items:**\n`;
+      itemMatchesFallback.forEach(it => {
+        msg += `• **${it['Item Name']}** (Code: ${it['Item Code']})\n  Sale Rate: Nu. ${it['Sale Rate']} | Purchase Rate: Nu. ${it['Purchase Rate']} | MRP: Nu. ${it['MRP']} | Stock: ${it['Current Stock']}\n\n`;
+      });
+      // Add historical context for the first item matched!
+      const historyCtx = getItemHistoryContext(searchWordsFallback, qLower);
+      if (historyCtx) {
+          msg += `**Recent Activity:**\n${historyCtx}\n`;
+      }
     }
+
+    if (entryMatches.length > 0) {
+      msg += `**Vouchers & Transactions:**\n`;
+      entryMatches.slice(0, 6).forEach(m => {
+        msg += `• **${m.typeLabel} ${m.refNo}** (${m.date}) - **Nu. ${m.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}**\n`;
+        msg += `  Party/Account: ${m.party}\n`;
+        if (m.matchedField && m.matchedText) {
+          msg += `  Matched ${m.matchedField}: _"${m.matchedText}"_\n`;
+        }
+        msg += `  [View Voucher: ${m.refNo}]\n\n`;
+      });
+    }
+    
     return msg;
   }
 
-  // 2. Fall back to Report Intent Analysis
+  // 4. Fall back to Report Intent Analysis
   const ledgers = loadJson<any[]>(STORAGE_KEYS.LEDGERS, []);
   const items = loadJson<any[]>(STORAGE_KEYS.ITEMS, []);
-
   const { fromStr, toStr, label } = parseDateRange(query);
   const entity = findEntity(query, ledgers, items);
   const intent = determineIntent(query, entity);
@@ -399,6 +592,51 @@ export async function processLocalQuery(query: string, history: any[] = []): Pro
 
   try {
     switch (intent) {
+      case 'top_items': {
+        const sales = loadJson(STORAGE_KEYS.SALES_INVOICES, []);
+        const itemCounts = {};
+        sales.forEach(s => {
+          if (s.status !== 'Cancelled' && s.items) {
+             s.items.forEach(i => {
+                itemCounts[i.itemName] = (itemCounts[i.itemName] || 0) + (Number(i.qty) || 0);
+             });
+          }
+        });
+        const sorted = Object.entries(itemCounts).sort((a,b) => b[1] - a[1]).slice(0, 5);
+        if (sorted.length === 0) return 'No sales data found to determine top items.';
+        let resMsg = '🏆 **Top Selling Items:**\n\n';
+        sorted.forEach((s, idx) => {
+           resMsg += `${idx + 1}. **${s[0]}** (${s[1]} units sold)\n`;
+        });
+        return resMsg;
+      }
+      
+      case 'outstanding': {
+        const ledgersData = loadJson(STORAGE_KEYS.LEDGERS, []);
+        let receivables = 0;
+        let payables = 0;
+        let resMsg = '📊 **Outstanding Balances:**\n\n';
+        ledgersData.forEach(l => {
+           const grp = (l.Group || '').toLowerCase();
+           if (grp.includes('sundry debtor') || grp.includes('customer')) {
+              const stmt = getFullLedgerStatement(l['Ledger Name']);
+              let bal = stmt.openingBalance;
+              stmt.rows.forEach(r => bal += (Number(r.Debit)||0) - (Number(r.Credit)||0));
+              if (bal > 0) receivables += bal;
+           }
+           if (grp.includes('sundry creditor') || grp.includes('supplier')) {
+              const stmt = getFullLedgerStatement(l['Ledger Name']);
+              let bal = stmt.openingBalance;
+              stmt.rows.forEach(r => bal += (Number(r.Debit)||0) - (Number(r.Credit)||0));
+              if (bal < 0) payables += Math.abs(bal);
+           }
+        });
+        resMsg += `**Total Receivables (Customers owe you):** ${formatNu(receivables)}\n`;
+        resMsg += `**Total Payables (You owe suppliers):** ${formatNu(payables)}\n\n`;
+        resMsg += '[View Balance Sheet: ' + dateTag + ']';
+        return resMsg;
+      }
+
       case 'sales': {
         const { pnl } = getFinancialReports('', fromStr, toStr);
         return `Your total sales revenue for ${label} is ${formatNu(pnl.s)}. \n\n[View Sales Report: ${dateTag}]`;
@@ -457,7 +695,14 @@ export async function processLocalQuery(query: string, history: any[] = []): Pro
       }
 
       default:
-        return `I'm an offline Smart Assistant. I understand keywords related to Sales, Purchases, Profit, GST, Stock, and specific Ledgers. Try asking things like "August GST", "Sales today", or "Ledger for Cash-in-Hand".`;
+        // Try a conversational fallback
+        if (qLower.includes('hello') || qLower.includes('hi ')) {
+           return "Hello! I am your local smart assistant. I can help you find items, look up vouchers, analyze profits, and navigate around the app without needing the internet. What can I help you with?";
+        }
+        if (qLower.includes('help')) {
+           return "I can help you analyze your data entirely locally! Try asking:\n- 'What is my total sales for today?'\n- 'What is the stock and last purchase price of [item]?'\n- 'Go to POS'\n- 'Show me the GST report for this month'\n- 'Enable item discount'";
+        }
+        return `I'm your Offline Smart Assistant. I can understand keywords related to Sales, Purchases, Profit, GST, Stock, and Ledgers. Try asking things like "August GST", "Sales today", or "Ledger for Cash-in-Hand".`;
     }
   } catch (error) {
     console.error("Local AI Error:", error);

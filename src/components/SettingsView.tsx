@@ -34,7 +34,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   ledgers,
   onDataRefresh
 }) => {
+
   const [form, setForm] = useState<Config>({ ...config });
+
+  useEffect(() => {
+    setForm({ ...config });
+  }, [config]);
+
   const [showAcceptModal, setShowAcceptModal] = useState<{ type: string; sectionKey?: string; label?: string; updatedUsers?: AppUser[]; newSettings?: POSSettings } | false>(false);
   const [counters, setCounters] = useState<Record<string, number>>(() => loadJson(STORAGE_KEYS.COUNTERS, {}));
   
@@ -44,7 +50,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setCounters(updated);
     saveJson(STORAGE_KEYS.COUNTERS, updated);
   };
+
   const [posSettings, setPosSettings] = useState<POSSettings>(loadPOSSettings());
+
+  useEffect(() => {
+    const handlePosChanged = (e: any) => {
+      if (e.detail) {
+        setPosSettings(e.detail);
+      }
+    };
+    window.addEventListener('pos_settings_changed', handlePosChanged);
+    return () => window.removeEventListener('pos_settings_changed', handlePosChanged);
+  }, []);
+
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [justSavedSection, setJustSavedSection] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'company' | 'inventory' | 'features' | 'vouchers' | 'invoice' | 'security' | 'pos'>('company');
@@ -824,6 +842,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div>
                     <span className="font-extrabold text-slate-900 text-xs">Maintain Bill-wise Details for Debtors & Creditors</span>
                     <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Show outstanding bills list to select and settle invoices against payments to creditors and receipts from debtors.</p>
+                  </div>
+                </label>
+
+                {/* Advanced Gemini AI Assistant */}
+                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition col-span-1 sm:col-span-2">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                      checked={form.EnableAdvancedAI === 'true'}
+                      onChange={e => setForm({ ...form, EnableAdvancedAI: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Advanced AI Assistant (Gemini)</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Empowers the AI Assistant button with conversational reporting, predictive inventory, and data insights using Google Gemini. When disabled, the AI button functions as a normal local search.</p>
                   </div>
                 </label>
 

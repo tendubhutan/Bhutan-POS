@@ -1,40 +1,23 @@
 const fs = require('fs');
-let content = fs.readFileSync('src/components/Vouchers.tsx', 'utf8');
+const file = 'src/services/storageService.ts';
+let content = fs.readFileSync(file, 'utf8');
 
-content = content.replace(
-`        setNarration('');
-        handleVTypeChange(activeVType);
-      }
-    } else {`,
-`        setNarration('');
-        handleVTypeChange(activeVType);
-        
-        if (action === 'share') {
-          setViewVoucher(savedObj);
-        }
-      }
-    } else {`
-);
+const target1 = "const agg: Record<string, { name: string; qty: number; sAmt: number; cAmt: number; code: string }> = {};";
+const repl1 = "const agg: Record<string, { name: string; qty: number; sAmt: number; cAmt: number; code: string; group: string; category: string }> = {};";
 
-content = content.replace(
-`        setTransactionId('');
-        handleVTypeChange(activeVType);
-      } else {
-        alert(result.error || 'Failed to save voucher');
-      }
-    }
-  };`,
-`        setTransactionId('');
-        handleVTypeChange(activeVType);
-        
-        if (action === 'share') {
-          setViewVoucher(savedObj);
-        }
-      } else {
-        alert(result.error || 'Failed to save voucher');
-      }
-    }
-  };`
-);
+const target2 = "if (!agg[c]) agg[c] = { name: r['Item Name'], qty: 0, sAmt: 0, cAmt: 0, code: c };";
+const repl2 = "const i = items.find(x => x['Item Code'] === c);\n      if (!agg[c]) agg[c] = { name: r['Item Name'], qty: 0, sAmt: 0, cAmt: 0, code: c, group: i?.Group || '', category: i?.Category || '' };";
 
-fs.writeFileSync('src/components/Vouchers.tsx', content);
+const target3 = "const i = items.find(x => x['Item Code'] === c);\n      agg[c].cAmt += (q * (i ? (Number(i['Purchase Rate']) || 0) : 0));";
+const repl3 = "agg[c].cAmt += (q * (i ? (Number(i['Purchase Rate']) || 0) : 0));";
+
+const target4 = "profit: k.sAmt - k.cAmt\n  }));";
+const repl4 = "profit: k.sAmt - k.cAmt,\n    group: k.group,\n    category: k.category\n  }));";
+
+content = content.replace(target1, repl1);
+content = content.replace(target2, repl2);
+content = content.replace(target3, repl3);
+content = content.replace(target4, repl4);
+
+fs.writeFileSync(file, content, 'utf8');
+console.log('Patched');

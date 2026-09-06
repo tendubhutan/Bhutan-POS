@@ -1991,6 +1991,7 @@ export function saveSalesInvoice(payload: {
     narration: notes,
     bankTxnNo: payment.bankTxnNo || '',
     bank2TxnNo: payment.bank2TxnNo || '',
+    isPOS: isPOS,
     items: itemsRows
   };
 
@@ -3810,7 +3811,7 @@ export function getVoucherDetails(refNo: string) {
   return null;
 }
 
-export function getItemStockLedger(code: string): StockLedgerEntry[] {
+export function getItemStockLedger(code: string, fromDate?: string, toDate?: string): StockLedgerEntry[] {
   const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const cleanCode = (code || '').trim().toLowerCase();
   const it = items.find(i => String(i['Item Code'] || '').trim().toLowerCase() === cleanCode || String(i['Item Name'] || '').trim().toLowerCase() === cleanCode);
@@ -3818,6 +3819,8 @@ export function getItemStockLedger(code: string): StockLedgerEntry[] {
 
   const baseOpening = it ? (Number(it['Opening Stock']) || 0) : 0;
   const rawLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+  
+  // Sort everything chronologically
   const itemLogs = rawLogs
     .filter(r => String(r['Item Code'] || '').trim().toLowerCase() === cleanCode || String(r['Item Name'] || '').trim().toLowerCase() === cleanCode)
     .sort((a, b) => new Date(a.DateIso).getTime() - new Date(b.DateIso).getTime());
@@ -3826,8 +3829,43 @@ export function getItemStockLedger(code: string): StockLedgerEntry[] {
   const hasOpeningEntry = itemLogs.some(r => r.Type === 'Opening' || (r['Ref No'] && r['Ref No'].startsWith('OPENING')));
 
   const finalLogs: StockLedgerEntry[] = [];
-  if (!hasOpeningEntry && it) {
-    // Prepend Master Opening Balance line
+  
+  const fromMs = fromDate ? new Date(fromDate).setHours(0,0,0,0) : 0;
+  const toMs = toDate ? new Date(toDate).setHours(23,59,59,999) : 9999999999999;
+  
+  let runningBalance = hasOpeningEntry ? 0 : baseOpening;
+  let openingBalAtFromDate = runningBalance;
+  
+  // First pass: Calculate running balance and find opening balance at fromDate
+  itemLogs.forEach(r => {
+    const qIn = Number(r['Qty In']) || 0;
+    const qOut = Number(r['Qty Out']) || 0;
+    const logTime = new Date(r.DateIso).getTime();
+    
+    if (r.Type === 'Opening' || (r['Ref No'] && r['Ref No'].startsWith('OPENING'))) {
+      runningBalance = qIn || baseOpening;
+      if (logTime < fromMs) openingBalAtFromDate = runningBalance;
+    } else {
+      runningBalance += (qIn - qOut);
+      if (logTime < fromMs) openingBalAtFromDate = runningBalance;
+    }
+  });
+
+  // Reset and build final logs in period
+  runningBalance = openingBalAtFromDate;
+  
+  if (fromDate) {
+    finalLogs.push({
+      DateIso: new Date(fromDate).toISOString(),
+      'Item Code': it ? it['Item Code'] : code,
+      'Item Name': it ? it['Item Name'] : code,
+      Type: 'Opening Balance',
+      'Qty In': openingBalAtFromDate >= 0 ? openingBalAtFromDate : 0,
+      'Qty Out': openingBalAtFromDate < 0 ? Math.abs(openingBalAtFromDate) : 0,
+      Balance: openingBalAtFromDate,
+      'Ref No': 'OPENING'
+    });
+  } else if (!hasOpeningEntry && it) {
     finalLogs.push({
       DateIso: new Date(2025, 0, 1).toISOString(),
       'Item Code': it['Item Code'],
@@ -3840,18 +3878,18 @@ export function getItemStockLedger(code: string): StockLedgerEntry[] {
     });
   }
 
-  let runningBalance = hasOpeningEntry ? 0 : baseOpening;
   itemLogs.forEach(r => {
-    const qIn = Number(r['Qty In']) || 0;
-    const qOut = Number(r['Qty Out']) || 0;
-    if (r.Type === 'Opening' || (r['Ref No'] && r['Ref No'].startsWith('OPENING'))) {
-      runningBalance = qIn || baseOpening;
-      finalLogs.push({
-        ...r,
-        Balance: runningBalance
-      });
-    } else {
-      runningBalance += (qIn - qOut);
+    const logTime = new Date(r.DateIso).getTime();
+    if (logTime >= fromMs && logTime <= toMs) {
+      const qIn = Number(r['Qty In']) || 0;
+      const qOut = Number(r['Qty Out']) || 0;
+      
+      if (r.Type === 'Opening' || (r['Ref No'] && r['Ref No'].startsWith('OPENING'))) {
+        runningBalance = qIn || baseOpening;
+      } else {
+        runningBalance += (qIn - qOut);
+      }
+      
       finalLogs.push({
         ...r,
         Balance: runningBalance
@@ -4280,17 +4318,17 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
     return d >= fr && d <= toDt;
   });
 
-  const agg: Record<string, { name: string; qty: number; sAmt: number; cAmt: number; code: string }> = {};
+  const agg: Record<string, { name: string; qty: number; sAmt: number; cAmt: number; code: string; group: string; category: string }> = {};
 
   inPeriodInvs.forEach(inv => {
     inv.items.forEach(r => {
       const c = r['Item Code'];
-      if (!agg[c]) agg[c] = { name: r['Item Name'], qty: 0, sAmt: 0, cAmt: 0, code: c };
+      const i = items.find(x => x['Item Code'] === c);
+      if (!agg[c]) agg[c] = { name: r['Item Name'], qty: 0, sAmt: 0, cAmt: 0, code: c, group: i?.Group || '', category: i?.Category || '' };
       const q = Number(r.Qty) || 0;
       const lTot = (q * (Number(r.Rate) || 0)) - (Number(r.Discount) || 0);
       agg[c].qty += q;
       agg[c].sAmt += lTot;
-      const i = items.find(x => x['Item Code'] === c);
       agg[c].cAmt += (q * (i ? (Number(i['Purchase Rate']) || 0) : 0));
     });
   });
@@ -4301,7 +4339,9 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
     qty: k.qty,
     saleAmt: k.sAmt,
     costAmt: k.cAmt,
-    profit: k.sAmt - k.cAmt
+    profit: k.sAmt - k.cAmt,
+    group: k.group,
+    category: k.category
   }));
 
   if (type === 'mov') {
@@ -6053,3 +6093,64 @@ export function updateTransactionReference(refNo: string, transactionId: string,
   return { ok: true };
 }
 
+
+
+export function getItemProfitabilityDetail(itemCode: string, from?: string, to?: string) {
+  const fr = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
+  const toDt = to ? new Date(to).setHours(23, 59, 59, 999) : Date.now();
+  
+  const items = loadJson(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+  const masterItem = items.find((i: any) => i['Item Code'] === itemCode);
+  const purchaseRate = masterItem ? (Number(masterItem['Purchase Rate']) || 0) : 0;
+  
+  const sales = getDeduplicatedSales();
+  const inPeriodInvs = sales.filter((r: any) => {
+    const d = new Date(r.date).getTime();
+    return d >= fr && d <= toDt;
+  });
+
+  const detailRows: Array<{
+    date: string;
+    invoiceNo: string;
+    qty: number;
+    purchasePrice: number;
+    salePrice: number;
+    totalRevenue: number;
+    grossProfit: number;
+    profitPct: number;
+  }> = [];
+
+  inPeriodInvs.forEach((inv: any) => {
+    inv.items.forEach((r: any) => {
+      if (r['Item Code'] === itemCode) {
+        const q = Number(r.Qty) || 0;
+        if (q > 0) {
+          const lTot = (q * (Number(r.Rate) || 0)) - (Number(r.Discount) || 0);
+          const salePricePerUnit = lTot / q;
+          const grossProfit = lTot - (purchaseRate * q);
+          const profitPct = lTot !== 0 ? (grossProfit / Math.abs(lTot)) * 100 : 0;
+
+          detailRows.push({
+            date: inv.date,
+            invoiceNo: inv.invoiceNo,
+            qty: q,
+            purchasePrice: purchaseRate,
+            salePrice: salePricePerUnit,
+            totalRevenue: lTot,
+            grossProfit: grossProfit,
+            profitPct: profitPct
+          });
+        }
+      }
+    });
+  });
+
+  // Sort by date descending
+  detailRows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  return {
+    itemCode,
+    itemName: masterItem ? masterItem['Item Name'] : itemCode,
+    rows: detailRows
+  };
+}

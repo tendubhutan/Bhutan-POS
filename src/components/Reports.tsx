@@ -34,6 +34,7 @@ interface ReportsProps {
   onDrillVoucher: (refNo: string) => void;
   onDrillLedger: (name: string) => void;
   onDrillStock: (code: string) => void;
+  onDrillItemProfit?: (code: string) => void;
   onDrillGroup?: (category: string, fromDate?: string, toDate?: string) => void;
   initialReportTarget?: ReportTarget | null;
 }
@@ -124,6 +125,7 @@ export const Reports: React.FC<ReportsProps> = ({
   onDrillVoucher,
   onDrillLedger,
   onDrillStock,
+  onDrillItemProfit,
   onDrillGroup,
   initialReportTarget
 }) => {
@@ -354,13 +356,7 @@ export const Reports: React.FC<ReportsProps> = ({
   // Keyboard navigation and shortcuts (Escape, Ctrl+L, Alt+F2, Alt+Left / Alt+Right)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Direct Alt+F2 or Alt+D shortcut for Change Period anywhere in Reports
-      if (e.altKey && (e.key === 'F2' || e.code === 'F2' || e.key === 'd' || e.key === 'D')) {
-        e.preventDefault();
-        e.stopPropagation();
-        openChangePeriod();
-        return;
-      }
+      // Alt+F2 is now handled globally by App.tsx to prevent duplicate dialogs when DrillModal is active
 
       // Direct Ctrl+L shortcut for opening Quick Ledger Search anywhere in Reports
       if ((e.ctrlKey || e.metaKey) && (e.key === 'l' || e.key === 'L' || e.code === 'KeyL')) {
@@ -627,20 +623,36 @@ export const Reports: React.FC<ReportsProps> = ({
         ];
       } else if (invSubTab === 'prof' && reportData?.profit) {
         reportTitle = 'Item Profitability Analysis';
-        headers = ['Item Name', 'Qty Sold', 'Sales Revenue (Nu.)', 'Cost Amount (Nu.)', 'Gross Profit (Nu.)'];
+        headers = ['Item Name', 'Qty Sold', 'Sales Revenue (Nu.)', 'Cost Amount (Nu.)', 'Gross Profit (Nu.)', 'Profit %'];
         let totSales = 0;
         let totCost = 0;
         let totProfit = 0;
-        reportData.profit.forEach((p: any) => {
+        
+        const filteredProfit = reportData.profit.filter((p: any) => {
+          if (stockFilters.group !== 'ALL' && p.group !== stockFilters.group) return false;
+          if (stockFilters.category !== 'ALL' && p.category !== stockFilters.category) return false;
+          if (stockFilters.item && stockFilters.item !== 'ALL' && !p.name?.toLowerCase().includes(stockFilters.item.toLowerCase())) return false;
+          return true;
+        });
+
+        filteredProfit.forEach((p: any) => {
           totSales += Number(p.saleAmt) || 0;
           totCost += Number(p.costAmt) || 0;
           totProfit += Number(p.profit) || 0;
-          rows.push([p.name, Number(p.qty) || 0, fmt(p.saleAmt), fmt(p.costAmt), fmt(p.profit)]);
+          
+          const saleAmt = Number(p.saleAmt) || 0;
+          const profitAmt = Number(p.profit) || 0;
+          const pct = saleAmt !== 0 ? (profitAmt / Math.abs(saleAmt)) * 100 : 0;
+
+          rows.push([p.name, Number(p.qty) || 0, fmt(p.saleAmt), fmt(p.costAmt), fmt(p.profit), `${pct.toFixed(2)}%`]);
         });
-        totalsRow = ['TOTAL', '', fmt(totSales), fmt(totCost), fmt(totProfit)];
+        
+        const totPct = totSales !== 0 ? (totProfit / Math.abs(totSales)) * 100 : 0;
+        totalsRow = ['TOTAL', '', fmt(totSales), fmt(totCost), fmt(totProfit), `${totPct.toFixed(2)}%`];
         summaryCards = [
           { label: 'Total Sales Revenue', value: `Nu. ${fmt(totSales)}` },
-          { label: 'Total Gross Profit', value: `Nu. ${fmt(totProfit)}` }
+          { label: 'Total Gross Profit', value: `Nu. ${fmt(totProfit)}` },
+          { label: 'Avg Profit %', value: `${totPct.toFixed(2)}%` }
         ];
       } else if (invSubTab === 'top' && reportData?.topQty) {
         reportTitle = 'Top Sellers Report';
@@ -2222,7 +2234,49 @@ export const Reports: React.FC<ReportsProps> = ({
                   );
                 })()}
 
-                {invSubTab === 'prof' && reportData?.profit && (
+                {invSubTab === 'prof' && reportData?.profit && (() => {
+                  const filteredProfit = reportData.profit.filter((p: any) => {
+                    if (stockFilters.group !== 'ALL' && p.group !== stockFilters.group) return false;
+                    if (stockFilters.category !== 'ALL' && p.category !== stockFilters.category) return false;
+                    if (stockFilters.item && stockFilters.item !== 'ALL' && !p.name?.toLowerCase().includes(stockFilters.item.toLowerCase())) return false;
+                    return true;
+                  });
+                  return (
+                  <div className="flex flex-col space-y-3">
+                    <div className="bg-slate-50 border-b border-slate-200 p-3 flex flex-wrap items-center gap-3 rounded-xl border">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={stockFilters.group || 'ALL'}
+                          onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
+                          className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[120px] truncate"
+                        >
+                          <option value="ALL">All Groups</option>
+                          {Array.from(new Set(reportData.profit.map((d:any) => d.group).filter(Boolean))).sort().map((g:any) => (
+                            <option key={g} value={g}>{g}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={stockFilters.category || 'ALL'}
+                          onChange={e => setStockFilters({ ...stockFilters, category: e.target.value })}
+                          className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[120px] truncate"
+                        >
+                          <option value="ALL">All Brands</option>
+                          {Array.from(new Set(reportData.profit.map((d:any) => d.category).filter(Boolean))).sort().map((c:any) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-1 min-w-[180px] bg-white border border-slate-300 rounded-xl px-3 h-8">
+                        <Search className="h-3.5 w-3.5 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Search items..."
+                          value={stockFilters.item || ''}
+                          onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
+                          className="bg-transparent text-xs w-full focus:outline-none font-medium"
+                        />
+                      </div>
+                    </div>
                   <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
                     <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
                       <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
@@ -2231,11 +2285,16 @@ export const Reports: React.FC<ReportsProps> = ({
                         <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Sales Revenue</th>
                         <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Cost Price</th>
                         <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Gross Profit</th>
+                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Profit %</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {reportData.profit.map((p: any, idx: number) => (
-                        <tr key={idx} onClick={() => onDrillStock(p.code)} className="hover:bg-slate-50 cursor-pointer">
+                      {filteredProfit.map((p: any, idx: number) => {
+                        const saleAmt = Number(p.saleAmt) || 0;
+                        const profitAmt = Number(p.profit) || 0;
+                        const pct = saleAmt !== 0 ? (profitAmt / Math.abs(saleAmt)) * 100 : 0;
+                        return (
+                        <tr key={idx} onClick={() => onDrillItemProfit ? onDrillItemProfit(p.code) : onDrillStock(p.code)} className="hover:bg-slate-50 cursor-pointer">
                           <td className="py-2 px-3 font-semibold text-slate-800">{p.name}</td>
                           <td className="py-2 px-3 text-center font-mono">{p.qty}</td>
                           <td className="py-2 px-3 text-right font-mono">{fmt(p.saleAmt)}</td>
@@ -2243,11 +2302,15 @@ export const Reports: React.FC<ReportsProps> = ({
                           <td className={`py-2 px-3 text-right font-mono font-bold ${p.profit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
                             {fmt(p.profit)}
                           </td>
+                          <td className={`py-2 px-3 text-right font-mono font-bold ${pct >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                            {pct.toFixed(2)}%
+                          </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
-                )}
+                  </div>
+                )})()}
 
                 {invSubTab === 'top' && reportData?.topQty && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

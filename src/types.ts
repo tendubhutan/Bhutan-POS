@@ -60,6 +60,7 @@ export interface Config {
   EnableBankTxnId?: string; // "true" | "false"
   EnableWholesalePrice?: string; // "true" | "false"
   EnableBillWiseDetails?: string; // "true" | "false"
+  EnableAdvancedAI?: string; // "true" | "false"
 }
 
 export interface BillAllocation {
@@ -215,6 +216,7 @@ export interface PaymentDetails {
 }
 
 export interface SalesInvoice {
+  isPOS?: boolean;
   invoiceNo: string;
   orderNo?: string;
   orderDate?: string;

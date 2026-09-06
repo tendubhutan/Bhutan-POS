@@ -1,0 +1,25 @@
+  });
+
+  const agg: Record<string, { name: string; qty: number; sAmt: number; cAmt: number; code: string }> = {};
+
+  inPeriodInvs.forEach(inv => {
+    inv.items.forEach(r => {
+      const c = r['Item Code'];
+      if (!agg[c]) agg[c] = { name: r['Item Name'], qty: 0, sAmt: 0, cAmt: 0, code: c };
+      const q = Number(r.Qty) || 0;
+      const lTot = (q * (Number(r.Rate) || 0)) - (Number(r.Discount) || 0);
+      agg[c].qty += q;
+      agg[c].sAmt += lTot;
+      const i = items.find(x => x['Item Code'] === c);
+      agg[c].cAmt += (q * (i ? (Number(i['Purchase Rate']) || 0) : 0));
+    });
+  });
+
+  const pList = Object.values(agg).map(k => ({
+    name: k.name,
+    code: k.code,
+    qty: k.qty,
+    saleAmt: k.sAmt,
+    costAmt: k.cAmt,
+    profit: k.sAmt - k.cAmt
+  }));

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getInitialData, getVoucherTypes, saveLedger, getVoucherDetails, migrateExistingItemsOpeningAmount } from './services/storageService';
+import { getInitialData, getVoucherTypes, saveLedger, getVoucherDetails, migrateExistingItemsOpeningAmount, saveConfig } from './services/storageService';
 import { initFirestoreSync, subscribeFirebaseStatus, seedInitialLocalDataToFirestore } from './services/firebaseSyncService';
 import { Config, Item, Unit, UnitGroup, ItemGroup, Ledger, LedgerGroup, HeldBill, BarcodeQueueItem, VoucherType } from './types';
 import { Header } from './components/Header';
@@ -24,7 +24,7 @@ import { TrashModal } from './components/TrashModal';
 import { BulkDeleteModal } from './components/BulkDeleteModal';
 
 interface DrillReturnContext {
-  activeDrill: { type: 'group' | 'stock' | 'ledger' | 'voucher'; targetId: string; fromDate?: string; toDate?: string };
+  activeDrill: { type: 'group' | 'stock' | 'ledger' | 'voucher' | 'item-profit'; targetId: string; fromDate?: string; toDate?: string };
   drillHistory: TargetState[];
   fromView: string;
 }
@@ -37,7 +37,7 @@ export default function App() {
 
   // Drilldown Modal State & History Stack
   const [drillModal, setDrillModal] = useState<{
-    type: 'group' | 'stock' | 'ledger' | 'voucher' | null;
+    type: 'group' | 'stock' | 'ledger' | 'voucher' | 'item-profit' | null;
     targetId: string | null;
     fromDate?: string;
     toDate?: string;
@@ -94,35 +94,28 @@ export default function App() {
     const handled = window.dispatchEvent(backEvent);
     if (!handled) return;
 
-    // 3. If we came from a Drilldown (via Open in Entry), restore the DrillModal with its exact history
+    // 3. If we came from a Drilldown (via Open in Entry), go back to the original view but DO NOT restore the floating modal
     if (drillReturnContext) {
-      const { activeDrill, drillHistory, fromView } = drillReturnContext;
+      const { fromView } = drillReturnContext;
       setDrillReturnContext(null);
       setCurrentView(fromView);
-      setDrillInitialHistory(drillHistory);
-      setDrillModal({
-        type: activeDrill.type,
-        targetId: activeDrill.targetId,
-        fromDate: activeDrill.fromDate,
-        toDate: activeDrill.toDate
+      setViewHistory(prev => {
+        const idx = prev.lastIndexOf(fromView);
+        if (idx !== -1) {
+          return prev.slice(0, idx + 1);
+        }
+        return ['dashboard', fromView];
       });
       return;
     }
 
-    // 4. Pop standard view history
+    // 4. Pop standard view history relative to currentView
     setViewHistory(prev => {
-      if (prev.length > 1) {
-        const updated = [...prev];
-        updated.pop(); // Pop current
-        const targetView = updated[updated.length - 1] || 'dashboard';
-        setCurrentView(targetView);
-        return updated;
-      } else {
-        if (currentView !== 'dashboard') {
-          setCurrentView('dashboard');
-        }
-        return ['dashboard'];
-      }
+      const idx = prev.lastIndexOf(currentView);
+      const updated = idx !== -1 ? prev.slice(0, idx) : prev.slice(0, -1);
+      const targetView = updated.length > 0 ? updated[updated.length - 1] : 'dashboard';
+      setCurrentView(targetView);
+      return updated.length > 0 ? updated : ['dashboard'];
     });
   };
 
@@ -184,8 +177,23 @@ export default function App() {
     setHeldBills(data.heldBills);
   };
 
+
+  useEffect(() => {
+    const handleUpdateConfig = (e: any) => {
+      if (e.detail && typeof e.detail === 'object') {
+        saveConfig(e.detail);
+        refreshData();
+      }
+    };
+    window.addEventListener('app:updateConfig', handleUpdateConfig);
+    return () => {
+      window.removeEventListener('app:updateConfig', handleUpdateConfig);
+    };
+  }, []);
+
   useEffect(() => {
     migrateExistingItemsOpeningAmount();
+
     refreshData();
     
     // Subscribe to Firestore sync status updates
@@ -205,26 +213,27 @@ export default function App() {
     const handleAppNavigate = (e: any) => {
       if (e.detail?.view) {
         if (e.detail.view === 'reports') {
-          // parse the report target
-          const r = e.detail.report?.toLowerCase() || '';
-          if (!r && !e.detail.ledgerName && !e.detail.category) {
-            setReportTarget(null);
-            navigateTo('reports', null);
-          } else {
-            const target: any = { timestamp: Date.now() };
-            
-            if (e.detail.fromDate) target.fromDate = e.detail.fromDate;
-            if (e.detail.toDate) target.toDate = e.detail.toDate;
+          const target: any = { timestamp: Date.now(), ...e.detail };
+          delete target.view;
+          delete target.report;
 
+          // Legacy mappings
+          const r = e.detail.report?.toLowerCase() || '';
+          if (r) {
             if (r.includes('sales')) target.category = 'daily';
             else if (r.includes('stock')) target.category = 'inv';
             else if (r.includes('gst')) target.category = 'gst';
             else if (r.includes('ledger')) { target.category = 'fin'; target.finSubTab = 'LED'; target.ledgerName = e.detail.ledgerName; }
             else if (r.includes('trial')) { target.category = 'fin'; target.finSubTab = 'TB'; }
+            else if (r.includes('itemwise') || r.includes('item-profit') || r.includes('item profit')) { target.category = 'inv'; target.invSubTab = 'prof'; }
             else if (r.includes('profit')) { target.category = 'fin'; target.finSubTab = 'PNL'; }
             else if (r.includes('balance')) { target.category = 'fin'; target.finSubTab = 'BS'; }
-            else if (e.detail.category) target.category = e.detail.category;
-            
+          }
+          
+          if (!target.category && !target.ledgerName) {
+            setReportTarget(null);
+            navigateTo('reports', null);
+          } else {
             setReportTarget(target);
             navigateTo('reports', target);
           }
@@ -290,6 +299,11 @@ export default function App() {
       if (e.altKey && (e.key === 'F2' || e.code === 'F2' || rawKey === 'd' || e.code === 'KeyD')) {
         e.preventDefault();
         e.stopPropagation();
+        if (drillModal.type !== null) {
+          window.dispatchEvent(new CustomEvent('app:drill-open-change-period'));
+          return;
+        }
+
         const t = { category: 'daily' as const, openChangePeriod: true, timestamp: Date.now() };
         setReportTarget(t);
         navigateTo('reports', t);
@@ -536,6 +550,7 @@ export default function App() {
               onDrillVoucher={refNo => setDrillModal({ type: 'voucher', targetId: refNo })}
               onDrillLedger={name => setDrillModal({ type: 'ledger', targetId: name })}
               onDrillStock={code => setDrillModal({ type: 'stock', targetId: code })}
+              onDrillItemProfit={code => setDrillModal({ type: 'item-profit', targetId: code })}
               onDrillGroup={(cat, from, to) => setDrillModal({ type: 'group', targetId: cat, fromDate: from, toDate: to })}
             />
           )}
@@ -619,14 +634,14 @@ export default function App() {
           if (vType === 'INV' || vType === 'S') {
             const details = getVoucherDetails(refNo);
             const inv = details?.header as any;
-            const isNormalSale = inv && (
+            const isNormalSale = inv && inv.isPOS !== true && (
               inv.isPOS === false || 
               inv.voucherTypeId === 'VT-SALE-NORMAL' || 
               inv.invoiceNo?.startsWith('SAL-') || 
               inv.invoiceNo?.startsWith('INV-B2B-') || 
               Boolean(inv.orderNo) || 
               Boolean(inv.deliveryNoteNo) || 
-              Boolean(inv.termsAndConditions)
+              (Boolean(inv.termsAndConditions) && !inv.invoiceNo?.startsWith('POS-'))
             );
             if (isNormalSale && config.EnableNormalSale !== 'false') {
               navigateTo('normalsale');

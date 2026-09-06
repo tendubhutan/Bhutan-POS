@@ -5,6 +5,7 @@ import {
   getFullLedgerStatement,
   getVoucherDetails,
   getCategoryLedgerBreakdown,
+  getItemProfitabilityDetail,
   cancelVoucherByRef,
   deleteVoucherPermanentByRef,
   DEFAULT_CONFIG
@@ -38,12 +39,13 @@ import {
   generatePhysicalStockPDF,
   generateVoucherSlipPDF,
   shareOrDownloadPDF,
-  printPdfDoc
+  printPdfDoc,
+  generateReportPDF
 } from '../utils/pdfExport';
 import { ThermalReceiptModal } from './ThermalReceiptModal';
 
 interface DrillModalProps {
-  type: 'group' | 'stock' | 'ledger' | 'voucher' | null;
+  type: 'group' | 'stock' | 'ledger' | 'voucher' | 'item-profit' | null;
   targetId: string | null;
   initialHistory?: TargetState[];
   config?: Config;
@@ -58,7 +60,7 @@ interface DrillModalProps {
 }
 
 export interface TargetState {
-  type: 'group' | 'stock' | 'ledger' | 'voucher';
+  type: 'group' | 'stock' | 'ledger' | 'voucher' | 'item-profit';
   targetId: string;
 }
 
@@ -77,12 +79,20 @@ export const DrillModal: React.FC<DrillModalProps> = ({
   onOpenVoucherInEntry
 }) => {
   const [active, setActive] = useState<TargetState | null>(null);
+  const [localFrom, setLocalFrom] = useState(fromDate || '');
+  const [localTo, setLocalTo] = useState(toDate || '');
+
+  useEffect(() => {
+    if (fromDate) setLocalFrom(fromDate);
+    if (toDate) setLocalTo(toDate);
+  }, [fromDate, toDate]);
   const [history, setHistory] = useState<TargetState[]>([]);
 
   const [groupData, setGroupData] = useState<any>(null);
   const [stockLogs, setStockLogs] = useState<StockLedgerEntry[]>([]);
   const [ledgerLog, setLedgerLog] = useState<{ openingBalance: number; rows: LedgerLogEntry[] }>({ openingBalance: 0, rows: [] });
   const [voucherData, setVoucherData] = useState<any>(null);
+  const [itemProfitData, setItemProfitData] = useState<any>(null);
 
   // Action Dialog States
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -90,6 +100,9 @@ export const DrillModal: React.FC<DrillModalProps> = ({
   const [isCancelling, setIsCancelling] = useState(false);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showChangePeriodModal, setShowChangePeriodModal] = useState(false);
+  const [tempFrom, setTempFrom] = useState(localFrom);
+  const [tempTo, setTempTo] = useState(localTo);
   const [isDeletingPermanent, setIsDeletingPermanent] = useState(false);
 
   const [showShareModal, setShowShareModal] = useState(false);
@@ -153,22 +166,25 @@ export const DrillModal: React.FC<DrillModalProps> = ({
       targetLower === 'stock in hand';
 
     if (active.type === 'group' || (isStockGroup && (active.type === 'stock' || active.type === 'ledger'))) {
-      const data = getCategoryLedgerBreakdown(active.targetId, fromDate, toDate);
+      const data = getCategoryLedgerBreakdown(active.targetId, localFrom, localTo);
       setGroupData(data);
       if (active.type !== 'group' && isStockGroup) {
         setActive(prev => (prev ? { ...prev, type: 'group' } : null));
       }
     } else if (active.type === 'stock') {
-      const data = getItemStockLedger(active.targetId);
+      const data = getItemStockLedger(active.targetId, localFrom, localTo);
       setStockLogs(data);
     } else if (active.type === 'ledger') {
-      const data = getFullLedgerStatement(active.targetId, fromDate, toDate);
+      const data = getFullLedgerStatement(active.targetId, localFrom, localTo);
       setLedgerLog(data);
+    } else if (active.type === 'item-profit') {
+      const data = getItemProfitabilityDetail(active.targetId, localFrom, localTo);
+      setItemProfitData(data);
     } else if (active.type === 'voucher') {
       const data = getVoucherDetails(active.targetId);
       setVoucherData(data);
     }
-  }, [active, fromDate, toDate]);
+  }, [active, localFrom, localTo]);
 
   const handleBack = () => {
     if (history.length > 0) {
@@ -180,12 +196,74 @@ export const DrillModal: React.FC<DrillModalProps> = ({
     }
   };
 
+
+  useEffect(() => {
+    const handleDrillChangePeriod = () => {
+      setTempFrom(localFrom);
+      setTempTo(localTo);
+      setShowChangePeriodModal(true);
+    };
+    window.addEventListener('app:drill-open-change-period', handleDrillChangePeriod);
+    return () => window.removeEventListener('app:drill-open-change-period', handleDrillChangePeriod);
+  }, [localFrom, localTo]);
+
+  const applyPreset = (preset: string) => {
+    const now = new Date();
+    const formatYMD = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+    const todayStr = formatYMD(now);
+    let startStr = todayStr;
+    let endStr = todayStr;
+
+    if (preset === 'today') {
+      // already set
+    } else if (preset === 'yesterday') {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      startStr = formatYMD(y);
+      endStr = formatYMD(y);
+    } else if (preset === 'this_week') {
+      const d = new Date(now);
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      d.setDate(diff);
+      startStr = formatYMD(d);
+    } else if (preset === 'this_month') {
+      startStr = formatYMD(new Date(now.getFullYear(), now.getMonth(), 1));
+      endStr = formatYMD(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    } else if (preset === 'last_month') {
+      startStr = formatYMD(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+      endStr = formatYMD(new Date(now.getFullYear(), now.getMonth(), 0));
+    } else if (preset === 'this_quarter') {
+      const q = Math.floor(now.getMonth() / 3);
+      startStr = formatYMD(new Date(now.getFullYear(), q * 3, 1));
+      endStr = formatYMD(new Date(now.getFullYear(), q * 3 + 3, 0));
+    } else if (preset === 'this_fy') {
+      const currentMonth = now.getMonth() + 1;
+      const fyStartYear = currentMonth >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+      startStr = `${fyStartYear}-04-01`;
+      endStr = `${fyStartYear + 1}-03-31`;
+    }
+    
+    setLocalFrom(startStr);
+    setLocalTo(endStr);
+    setShowChangePeriodModal(false);
+  };
+
   // Listen to app:back event dispatched from Header or App.tsx
   useEffect(() => {
     if (!active || !active.type || !active.targetId) return;
     const handleAppBack = (e: CustomEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      if (showChangePeriodModal) {
+        setShowChangePeriodModal(false);
+        return;
+      }
       if (showCancelModal || showDeleteModal || showShareModal || showReceiptModal) {
         resetActionModals();
         return;
@@ -195,7 +273,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
 
     window.addEventListener('app:back' as any, handleAppBack);
     return () => window.removeEventListener('app:back' as any, handleAppBack);
-  }, [active, history, showCancelModal, showDeleteModal, showShareModal, showReceiptModal, onClose]);
+  }, [active, history, showCancelModal, showDeleteModal, showShareModal, showReceiptModal, showChangePeriodModal, onClose]);
 
   // Keyboard Escape Handler (Steps back drilled history, or closes modal) - runs in capture phase
   useEffect(() => {
@@ -205,6 +283,10 @@ export const DrillModal: React.FC<DrillModalProps> = ({
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation?.();
+        if (showChangePeriodModal) {
+          setShowChangePeriodModal(false);
+          return;
+        }
         if (showCancelModal || showDeleteModal || showShareModal || showReceiptModal) {
           resetActionModals();
           return;
@@ -214,7 +296,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [active, history, showCancelModal, showDeleteModal, showShareModal, showReceiptModal, onClose]);
+  }, [active, history, showCancelModal, showDeleteModal, showShareModal, showReceiptModal, showChangePeriodModal, onClose]);
 
   if (!active || !active.type || !active.targetId) return null;
 
@@ -296,6 +378,109 @@ export const DrillModal: React.FC<DrillModalProps> = ({
 
   const getEffectiveConfig = (): Config => {
     return config || DEFAULT_CONFIG;
+  };
+
+  const fmtMoney = (val: number | string) => (Number(val) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const generateReportDoc = () => {
+    if (!active) return null;
+    const cfg = getEffectiveConfig();
+    let title = '';
+    let headers: string[] = [];
+    let rows: string[][] = [];
+
+    if (active.type === 'ledger') {
+      title = `Ledger Statement: ${active.targetId}`;
+      headers = ['Date', 'Type', 'Ref No', 'Narration', 'Debit', 'Credit'];
+      rows.push(['', 'Opening Balance', '', '', '', ledgerLog.openingBalance >= 0 ? `${fmtMoney(ledgerLog.openingBalance)} Dr` : `${fmtMoney(Math.abs(ledgerLog.openingBalance))} Cr`]);
+      let totalDr = ledgerLog.openingBalance > 0 ? ledgerLog.openingBalance : 0;
+      let totalCr = ledgerLog.openingBalance < 0 ? Math.abs(ledgerLog.openingBalance) : 0;
+      ledgerLog.rows.forEach(r => {
+        rows.push([formatDateStr(r.DateIso), r.Type || '', r['Ref No'] || '', r.Narration || '', r.Debit ? fmtMoney(r.Debit) : '', r.Credit ? fmtMoney(r.Credit) : '']);
+        totalDr += Number(r.Debit) || 0;
+        totalCr += Number(r.Credit) || 0;
+      });
+      const closingBal = totalDr - totalCr;
+      rows.push(['', 'Closing Balance', '', '', '', closingBal >= 0 ? `${fmtMoney(closingBal)} Dr` : `${fmtMoney(Math.abs(closingBal))} Cr`]);
+    } else if (active.type === 'stock') {
+      title = `Stock Ledger: ${active.targetId}`;
+      headers = ['Date', 'Type', 'Ref No', 'Qty In', 'Qty Out', 'Balance'];
+      let running = 0;
+      stockLogs.forEach(r => {
+        running += (r['Qty In'] || 0) - (r['Qty Out'] || 0);
+        rows.push([formatDateStr(r.DateIso), r.Type || '', r['Ref No'] || '', r['Qty In'] ? String(r['Qty In']) : '', r['Qty Out'] ? String(r['Qty Out']) : '', String(running)]);
+      });
+    } else if (active.type === 'item-profit' && itemProfitData) {
+      title = `Item Profitability Detail: ${active.targetId}`;
+      headers = ['Date', 'Ref No', 'Qty Sold', 'Cost', 'Sale Price', 'Total Rev', 'Gross Profit', 'Profit %'];
+      let totQty = 0, totRev = 0, totProf = 0, totCost = 0;
+      itemProfitData.rows.forEach((r: any) => {
+        totQty += r.qty;
+        totRev += r.totalRevenue;
+        totProf += r.grossProfit;
+        totCost += r.qty * r.purchasePrice;
+        rows.push([
+          formatDateStr(r.date),
+          r.invoiceNo,
+          String(r.qty),
+          fmtMoney(r.purchasePrice),
+          fmtMoney(r.salePrice),
+          fmtMoney(r.totalRevenue),
+          fmtMoney(r.grossProfit),
+          `${r.profitPct.toFixed(2)}%`
+        ]);
+      });
+      const avgPct = totRev !== 0 ? (totProf / Math.abs(totRev)) * 100 : 0;
+      rows.push(['TOTAL', '', String(totQty), fmtMoney(totCost / totQty || 0), '', fmtMoney(totRev), fmtMoney(totProf), `${avgPct.toFixed(2)}%`]);
+    } else if (active.type === 'group' && groupData) {
+      title = groupData.title || `Category Breakdown: ${active.targetId}`;
+      headers = ['Account Name', 'Group', 'Amount', 'Type'];
+      (groupData.rows || []).forEach((r: any) => {
+        rows.push([r.name, r.group, fmtMoney(Math.abs(r.amount)), r.amount >= 0 ? 'Dr' : 'Cr']);
+      });
+    } else {
+      return null;
+    }
+
+    const doc = generateReportPDF(
+      title,
+      cfg,
+      localFrom || '',
+      localTo || '',
+      headers,
+      rows,
+      [],
+      [],
+      '',
+      null,
+      'detailed'
+    );
+    return { doc, filename: `${title.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.pdf` };
+  };
+
+  const handlePrintLedger = () => {
+    const res = generateReportDoc();
+    if (res) printPdfDoc(res.doc);
+  };
+  
+  const handleSaveLedgerPdf = () => {
+    const res = generateReportDoc();
+    if (res) {
+      res.doc.save(res.filename);
+      setActionFeedback({ type: 'success', message: `Saved ${res.filename} to downloads.` });
+    }
+  };
+
+  const handleShareLedgerPdf = async () => {
+    const res = generateReportDoc();
+    if (res) {
+      const shareRes = await shareOrDownloadPDF(res.doc, res.filename, `Report: ${active?.targetId}`);
+      if (shareRes.method === 'shared') {
+        setActionFeedback({ type: 'success', message: 'Shared successfully.' });
+      } else {
+        setActionFeedback({ type: 'success', message: `Saved ${res.filename} to downloads.` });
+      }
+    }
   };
 
   // 1. Print handler
@@ -505,6 +690,12 @@ export const DrillModal: React.FC<DrillModalProps> = ({
                   <span>Stock Ledger: {active.targetId}</span>
                 </span>
               )}
+              {active.type === 'item-profit' && (
+                <span className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-indigo-600" />
+                  <span>Item Profitability Detail: {active.targetId}</span>
+                </span>
+              )}
               {active.type === 'ledger' && `Ledger Statement: ${active.targetId}`}
               {active.type === 'voucher' && (
                 <span className="flex items-center gap-2">
@@ -514,9 +705,57 @@ export const DrillModal: React.FC<DrillModalProps> = ({
               )}
             </h3>
           </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-full cursor-pointer">
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+
+            {(active.type === 'item-profit' || active.type === 'ledger' || active.type === 'group' || active.type === 'stock') && (
+              <div className="flex items-center gap-2 mr-2">
+                <input
+                  type="date"
+                  value={localFrom}
+                  onChange={e => setLocalFrom(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 text-slate-700 text-[11px] rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 font-medium"
+                />
+                <span className="text-slate-400 text-xs">to</span>
+                <input
+                  type="date"
+                  value={localTo}
+                  onChange={e => setLocalTo(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 text-slate-700 text-[11px] rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400 font-medium"
+                />
+              </div>
+            )}
+            {(active.type === 'ledger' || active.type === 'stock' || active.type === 'group' || active.type === 'item-profit') && (
+              <div className="flex items-center gap-1.5 mr-2">
+                <button
+                  type="button"
+                  onClick={handlePrintLedger}
+                  className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                  title="Print Report"
+                >
+                  <Printer className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveLedgerPdf}
+                  className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                  title="Download PDF"
+                >
+                  <Download className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShareLedgerPdf}
+                  className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                  title="Share PDF"
+                >
+                  <Share2 className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-full cursor-pointer">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Global Feedback Banner */}
@@ -757,6 +996,75 @@ export const DrillModal: React.FC<DrillModalProps> = ({
                   ))
                 )}
               </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ITEM PROFITABILITY DETAIL */}
+        {active.type === 'item-profit' && itemProfitData && (
+          <div className="overflow-auto max-h-[65vh] text-xs">
+            <table className="w-full border-collapse">
+              <thead className="sticky top-0 z-10 bg-slate-100 shadow-sm">
+                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
+                  <th className="py-2 px-3 text-left">Date</th>
+                  <th className="py-2 px-3 text-left">Invoice No</th>
+                  <th className="py-2 px-3 text-center">Qty Sold</th>
+                  <th className="py-2 px-3 text-right">Unit Cost</th>
+                  <th className="py-2 px-3 text-right">Sale Price</th>
+                  <th className="py-2 px-3 text-right">Total Rev</th>
+                  <th className="py-2 px-3 text-right">Gross Profit</th>
+                  <th className="py-2 px-3 text-right">Profit %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {itemProfitData.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-6 text-center text-slate-400 italic">
+                      No sales found for this item in the selected period.
+                    </td>
+                  </tr>
+                ) : (
+                  itemProfitData.rows.map((r: any, idx: number) => (
+                    <tr
+                      key={idx}
+                      onClick={() => navigateTo('voucher', r.invoiceNo)}
+                      className="hover:bg-indigo-50/60 cursor-pointer transition"
+                    >
+                      <td className="py-2 px-3 font-mono text-slate-500">{formatDateStr(r.date)}</td>
+                      <td className="py-2 px-3 font-bold text-indigo-600">{r.invoiceNo}</td>
+                      <td className="py-2 px-3 text-center font-mono font-bold">{r.qty}</td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-600">{fmtMoney(r.purchasePrice)}</td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-600">{fmtMoney(r.salePrice)}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold">{fmtMoney(r.totalRevenue)}</td>
+                      <td className={`py-2 px-3 text-right font-mono font-bold ${r.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{fmtMoney(r.grossProfit)}</td>
+                      <td className={`py-2 px-3 text-right font-mono font-bold ${r.profitPct >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{r.profitPct.toFixed(2)}%</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {itemProfitData.rows.length > 0 && (() => {
+                let totQty = 0, totRev = 0, totProf = 0, totCost = 0;
+                itemProfitData.rows.forEach((r: any) => {
+                  totQty += r.qty;
+                  totRev += r.totalRevenue;
+                  totProf += r.grossProfit;
+                  totCost += r.qty * r.purchasePrice;
+                });
+                const avgPct = totRev !== 0 ? (totProf / Math.abs(totRev)) * 100 : 0;
+                return (
+                  <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                    <tr>
+                      <td className="py-2.5 px-3 uppercase text-slate-800" colSpan={2}>TOTAL</td>
+                      <td className="py-2.5 px-3 text-center font-mono">{totQty}</td>
+                      <td className="py-2.5 px-3 text-right font-mono">{fmtMoney(totCost / totQty || 0)}</td>
+                      <td className="py-2.5 px-3"></td>
+                      <td className="py-2.5 px-3 text-right font-mono">{fmtMoney(totRev)}</td>
+                      <td className={`py-2.5 px-3 text-right font-mono ${totProf >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{fmtMoney(totProf)}</td>
+                      <td className={`py-2.5 px-3 text-right font-mono ${avgPct >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{avgPct.toFixed(2)}%</td>
+                    </tr>
+                  </tfoot>
+                );
+              })()}
             </table>
           </div>
         )}
@@ -1435,6 +1743,104 @@ export const DrillModal: React.FC<DrillModalProps> = ({
           invoice={voucherData.header}
           config={getEffectiveConfig()}
         />
+      )}
+
+      {/* Change Period Modal (Z-index 60 to overlay DrillModal) */}
+      {showChangePeriodModal && (
+        <div
+          className="fixed inset-0 z-[60] flex items-start justify-center pt-16 sm:pt-24 p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setShowChangePeriodModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-base">Change Drill Period</h3>
+                <kbd className="text-[10px] bg-slate-800 border border-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-mono font-bold">Alt+F2</kbd>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChangePeriodModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {/* Content */}
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                  1-Click Presets
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: 'today', label: 'Today' },
+                    { id: 'yesterday', label: 'Yesterday' },
+                    { id: 'this_week', label: 'This Week' },
+                    { id: 'this_month', label: 'This Month' },
+                    { id: 'last_month', label: 'Last Month' },
+                    { id: 'this_quarter', label: 'This Quarter' },
+                    { id: 'this_fy', label: 'Financial Year (FY)' },
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => applyPreset(p.id)}
+                      className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <hr className="border-slate-200" />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">From Date</label>
+                  <input
+                    type="date"
+                    value={tempFrom}
+                    onChange={(e) => setTempFrom(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">To Date</label>
+                  <input
+                    type="date"
+                    value={tempTo}
+                    onChange={(e) => setTempTo(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 text-slate-900 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
+                  />
+                </div>
+              </div>
+            </div>
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowChangePeriodModal(false)}
+                className="px-4 py-2 text-slate-600 font-bold hover:bg-slate-200 rounded-xl transition cursor-pointer text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLocalFrom(tempFrom);
+                  setLocalTo(tempTo);
+                  setShowChangePeriodModal(false);
+                }}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition cursor-pointer text-sm"
+              >
+                Apply Custom Period
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

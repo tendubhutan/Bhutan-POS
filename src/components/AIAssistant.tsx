@@ -96,7 +96,33 @@ export const AIAssistant: React.FC = () => {
     setLoading(true);
 
     try {
-      const responseText = await processLocalQuery(query, newHistory);
+      let responseText = await processLocalQuery(query, newHistory);
+      
+      // Parse for ACTION JSON
+      const actionMatch = responseText.match(/```json[\s\n]*([\s\S]*?)[\s\n]*```/i);
+      if (actionMatch) {
+        try {
+          const actionData = JSON.parse(actionMatch[1]);
+          if (actionData.action === 'UPDATE_CONFIG' && actionData.payload) {
+            window.dispatchEvent(new CustomEvent('app:updateConfig', { detail: actionData.payload }));
+            responseText = responseText.replace(actionMatch[0], '').trim();
+          } else if (actionData.action === 'UPDATE_POS_SETTINGS' && actionData.payload) {
+            const savedStr = localStorage.getItem('tally_pos_settings_v1');
+            let curSettings = {};
+            if (savedStr) curSettings = JSON.parse(savedStr);
+            const newSettings = { ...curSettings, ...actionData.payload };
+            localStorage.setItem('tally_pos_settings_v1', JSON.stringify(newSettings));
+            window.dispatchEvent(new CustomEvent('pos_settings_changed', { detail: newSettings }));
+            responseText = responseText.replace(actionMatch[0], '').trim();
+          } else if (actionData.action === 'NAVIGATE' && actionData.payload) {
+             window.dispatchEvent(new CustomEvent('app:navigate', { detail: actionData.payload }));
+             responseText = responseText.replace(actionMatch[0], '').trim();
+          }
+        } catch (err) {
+          console.error("Failed to parse AI action JSON", err);
+        }
+      }
+
       setHistory([...newHistory, { role: 'model', parts: [{ text: responseText }] }]);
     } catch (error: any) {
       console.error(error);
