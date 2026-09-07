@@ -166,6 +166,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   
   const [editingInvoiceNo, setEditingInvoiceNo] = useState<string | null>(null);
   const [editingInvoiceDate, setEditingInvoiceDate] = useState<string | null>(null);
+  const loadedTargetKeyRef = useRef<string | null>(null);
   const [posBillNo, setPosBillNo] = useState<string>(() => {
     try {
       return peekNextInvoiceNumber(true, selectedVoucherType?.id);
@@ -196,73 +197,95 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   useEffect(() => {
     if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
-      import('../services/storageService').then(m => {
-        const details = m.getVoucherDetails(initialVoucherTarget.voucherNo);
-        if (details && (details.type === 'INV' || details.type === 'S')) {
-          const inv = details.header as any;
-          if (inv && (inv.isPOS === false || inv.voucherTypeId === 'VT-SALE-NORMAL')) {
-            return;
-          }
-          const newCart: CartLine[] = (inv.items || []).map((it: any) => {
-            const itemMatch = items.find(i => i['Item Code'] === (it['Item Code'] || it.itemCode));
-            const isZeroRated = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
-            const rawRate = Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0));
-            const rawQty = Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : 1));
-            const rawDisc = Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0));
-            return {
-              itemCode: it['Item Code'] || it.itemCode || '',
-              itemName: it['Item Name'] || it.itemName || '',
-              description: it.description || it['Item Description'] || '',
-              lineDescription: it.lineDescription || '',
-              qty: rawQty,
-              rate: rawRate,
-              discount: rawDisc,
-              discountType: (it['Discount %'] && Number(it['Discount %']) > 0) ? ('percent' as const) : ('flat' as const),
-              unit: it.Unit || it.unit || itemMatch?.Unit || 'Pcs',
-              gstPct: Number(it['GST %'] !== undefined ? it['GST %'] : (it.gstPct !== undefined ? it.gstPct : (itemMatch?.['GST %'] || 0))),
-              gstAmt: Number(it['GST Amount'] !== undefined ? it['GST Amount'] : (it.gstAmt !== undefined ? it.gstAmt : 0)),
-              zeroRated: isZeroRated ? ('Y' as const) : ('N' as const),
-              purchaseRate: Number(it.purchaseRate || itemMatch?.['Purchase Rate'] || 0),
-              isSerialized: (it.isSerialized || itemMatch?.['Is Serialized'] || 'N') as 'Y' | 'N',
-              serials: typeof it['Serial Numbers'] === 'string'
-                ? it['Serial Numbers'].split(',').map((s: string) => s.trim()).filter(Boolean) 
-                : (Array.isArray(it.serials) ? it.serials : [])
-            };
-          });
-          setCart(newCart);
-          
-          if (inv.customer) {
-            if (typeof inv.customer === 'object') {
-              setCustomerName(inv.customer.ledger || inv.customer.name || '');
-              setWalkInDetails(inv.customer);
-            } else {
-              setCustomerName(inv.customer);
+      const key = `${initialVoucherTarget.voucherNo}_${initialVoucherTarget.timestamp}`;
+      if (loadedTargetKeyRef.current !== key) {
+        loadedTargetKeyRef.current = key;
+        import('../services/storageService').then(m => {
+          const details = m.getVoucherDetails(initialVoucherTarget.voucherNo);
+          if (details && (details.type === 'INV' || details.type === 'S')) {
+            const inv = details.header as any;
+            if (inv && (inv.isPOS === false || inv.voucherTypeId === 'VT-SALE-NORMAL')) {
+              return;
+            }
+            const newCart: CartLine[] = (inv.items || []).map((it: any) => {
+              const itemMatch = items.find(i => i['Item Code'] === (it['Item Code'] || it.itemCode));
+              const isZeroRated = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
+              const rawRate = Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0));
+              const rawQty = Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : 1));
+              const rawDisc = Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0));
+              return {
+                itemCode: it['Item Code'] || it.itemCode || '',
+                itemName: it['Item Name'] || it.itemName || '',
+                description: it.description || it['Item Description'] || '',
+                lineDescription: it.lineDescription || '',
+                qty: rawQty,
+                rate: rawRate,
+                discount: rawDisc,
+                discountType: (it['Discount %'] && Number(it['Discount %']) > 0) ? ('percent' as const) : ('flat' as const),
+                unit: it.Unit || it.unit || itemMatch?.Unit || 'Pcs',
+                gstPct: Number(it['GST %'] !== undefined ? it['GST %'] : (it.gstPct !== undefined ? it.gstPct : (itemMatch?.['GST %'] || 0))),
+                gstAmt: Number(it['GST Amount'] !== undefined ? it['GST Amount'] : (it.gstAmt !== undefined ? it.gstAmt : 0)),
+                zeroRated: isZeroRated ? ('Y' as const) : ('N' as const),
+                purchaseRate: Number(it.purchaseRate || itemMatch?.['Purchase Rate'] || 0),
+                isSerialized: (it.isSerialized || itemMatch?.['Is Serialized'] || 'N') as 'Y' | 'N',
+                serials: typeof it['Serial Numbers'] === 'string'
+                  ? it['Serial Numbers'].split(',').map((s: string) => s.trim()).filter(Boolean) 
+                  : (Array.isArray(it.serials) ? it.serials : [])
+              };
+            });
+            setCart(newCart);
+            
+            if (inv.customer) {
+              if (typeof inv.customer === 'object') {
+                setCustomerName(inv.customer.ledger || inv.customer.name || '');
+                setWalkInDetails(inv.customer);
+              } else {
+                setCustomerName(inv.customer);
+              }
+            }
+
+            const cashAmt = Number(inv.cash ?? inv.payment?.cash ?? 0);
+            setCash(cashAmt > 0 ? cashAmt : '');
+
+            const bank1Amt = Number(inv.bank1 ?? inv.payment?.bank1 ?? 0);
+            setBank1(bank1Amt > 0 ? bank1Amt : '');
+
+            const bank2Amt = Number(inv.bank2 ?? inv.payment?.bank2 ?? 0);
+            setBank2(bank2Amt > 0 ? bank2Amt : '');
+
+            setBankTxnNo(inv.bankTxnNo || inv.payment?.bank1TxnNo || inv.payment?.bankTxnNo || '');
+            setBank2TxnNo(inv.bank2TxnNo || inv.payment?.bank2TxnNo || '');
+
+            const discVal = inv.discount ?? inv.billDiscount ?? inv.payment?.discount ?? '';
+            setBillDiscount(discVal !== '' ? Number(discVal) : '');
+            
+            setEditingInvoiceNo(inv.invoiceNo || inv.billNo);
+            if (inv.date) {
+              setEditingInvoiceDate(inv.date);
             }
           }
-
-          const cashAmt = Number(inv.cash ?? inv.payment?.cash ?? 0);
-          setCash(cashAmt > 0 ? cashAmt : '');
-
-          const bank1Amt = Number(inv.bank1 ?? inv.payment?.bank1 ?? 0);
-          setBank1(bank1Amt > 0 ? bank1Amt : '');
-
-          const bank2Amt = Number(inv.bank2 ?? inv.payment?.bank2 ?? 0);
-          setBank2(bank2Amt > 0 ? bank2Amt : '');
-
-          setBankTxnNo(inv.bankTxnNo || inv.payment?.bank1TxnNo || inv.payment?.bankTxnNo || '');
-          setBank2TxnNo(inv.bank2TxnNo || inv.payment?.bank2TxnNo || '');
-
-          const discVal = inv.discount ?? inv.billDiscount ?? inv.payment?.discount ?? '';
-          setBillDiscount(discVal !== '' ? Number(discVal) : '');
-          
-          setEditingInvoiceNo(inv.invoiceNo || inv.billNo);
-          if (inv.date) {
-            setEditingInvoiceDate(inv.date);
-          }
-        }
-      });
+        });
+      }
+    } else {
+      if (loadedTargetKeyRef.current !== null) {
+        loadedTargetKeyRef.current = null;
+        setEditingInvoiceNo(null);
+        setEditingInvoiceDate(null);
+        setCart([]);
+        setCustomerName('');
+        setWalkInDetails(null);
+        setCash('');
+        setBank1('');
+        setBank2('');
+        setBillDiscount('');
+        setBankTxnNo('');
+        setBank2TxnNo('');
+        try {
+          setPosBillNo(peekNextInvoiceNumber(true, activeVoucherType?.id));
+        } catch {}
+      }
     }
-  }, [initialVoucherTarget, items]);
+  }, [initialVoucherTarget, items, activeVoucherType]);
 
   // Cart & Customer State
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -1660,6 +1683,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           <button
             type="button"
             onClick={() => {
+              loadedTargetKeyRef.current = null;
               setEditingInvoiceNo(null);
               setEditingInvoiceDate(null);
               setCart([]);

@@ -228,12 +228,38 @@ export const Vouchers: React.FC<VouchersProps> = ({
     }
   };
 
+  const loadedTargetKeyRef = useRef<string | null>(null);
+
   // Listen to incoming initialVoucherTarget from reports or drilldown
   useEffect(() => {
     if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
-      const details = getVoucherDetails(initialVoucherTarget.voucherNo);
-      if (details) {
-        loadVoucherIntoEntry(details.header || details);
+      const key = `${initialVoucherTarget.voucherNo}_${initialVoucherTarget.timestamp}`;
+      if (loadedTargetKeyRef.current !== key) {
+        loadedTargetKeyRef.current = key;
+        const details = getVoucherDetails(initialVoucherTarget.voucherNo);
+        if (details) {
+          loadVoucherIntoEntry(details.header || details);
+        }
+      }
+    } else {
+      if (loadedTargetKeyRef.current !== null) {
+        loadedTargetKeyRef.current = null;
+        setEditingVoucherNo(null);
+        setAmount('');
+        setPartyLedger('');
+        setModeLedger('');
+        setDebitLedger('');
+        setCreditLedger('');
+        setFromAccount('');
+        setToAccount('');
+        setTransactionId('');
+        setLines([
+          { id: '1', type: 'Dr', ledger: '', debit: '', credit: '', narration: '' },
+          { id: '2', type: 'Cr', ledger: '', debit: '', credit: '', narration: '' }
+        ]);
+        if (isAutoMode && activeVType && ['P', 'R', 'J', 'C'].includes(activeVType)) {
+          setVoucherNo(peekNextVoucherNo(activeVType as any, config));
+        }
       }
     }
   }, [initialVoucherTarget]);
@@ -546,12 +572,19 @@ export const Vouchers: React.FC<VouchersProps> = ({
   // Global Keyboard Shortcuts (F4, F5, F6, F7, F8, F9, F10, F2, Alt+C, Alt+A, Escape)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { if (e.defaultPrevented) return;
+      if (e.key === 'Escape') {
+        if (e.defaultPrevented) return;
         const handled = handleVoucherBack();
         if (handled) {
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation?.();
+          return;
+        }
+        if (onNavigateTo) {
+          e.preventDefault();
+          e.stopPropagation();
+          onNavigateTo('dashboard');
           return;
         }
       }

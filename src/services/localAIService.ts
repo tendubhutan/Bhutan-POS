@@ -594,7 +594,7 @@ export async function processLocalQuery(query: string, history: any[] = []): Pro
     switch (intent) {
       case 'top_items': {
         const sales = loadJson(STORAGE_KEYS.SALES_INVOICES, []);
-        const itemCounts = {};
+        const itemCounts: Record<string, number> = {};
         sales.forEach(s => {
           if (s.status !== 'Cancelled' && s.items) {
              s.items.forEach(i => {
@@ -602,7 +602,7 @@ export async function processLocalQuery(query: string, history: any[] = []): Pro
              });
           }
         });
-        const sorted = Object.entries(itemCounts).sort((a,b) => b[1] - a[1]).slice(0, 5);
+        const sorted = Object.entries(itemCounts).sort((a,b) => (b[1] as number) - (a[1] as number)).slice(0, 5);
         if (sorted.length === 0) return 'No sales data found to determine top items.';
         let resMsg = '🏆 **Top Selling Items:**\n\n';
         sorted.forEach((s, idx) => {

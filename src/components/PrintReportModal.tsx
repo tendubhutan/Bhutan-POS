@@ -800,6 +800,11 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        if (showPhonePrompt) {
+          setShowPhonePrompt(false);
+          return;
+        }
         onClose();
         return;
       }
@@ -811,9 +816,9 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
         return;
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, handleExecutePrint]);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isOpen, showPhonePrompt, onClose, handleExecutePrint]);
 
   if (!isOpen) return null;
 

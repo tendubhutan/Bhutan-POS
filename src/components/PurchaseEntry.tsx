@@ -45,65 +45,79 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
   const [isGstMode, setIsGstMode] = useState(true);
   
   const [editingBillNo, setEditingBillNo] = useState<string | null>(null);
+  const loadedTargetKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
-      const details = getVoucherDetails(initialVoucherTarget.voucherNo);
-      if (details && details.type === 'PUR') {
-        const inv = details.header as any;
-        const newCart = (inv.items || []).map((it: any) => {
-          const itemMatch = items.find(i => i['Item Code'] === (it['Item Code'] || it.itemCode));
-          const isZeroRated = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
-          return {
-            itemCode: it['Item Code'] || it.itemCode || '',
-            itemName: it['Item Name'] || it.itemName || '',
-            description: it.description || it['Item Description'] || '',
-            lineDescription: it.lineDescription || '',
-            qty: Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : 1)),
-            rate: Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0)),
-            discount: Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0)),
-            discountType: (it['Discount %'] && Number(it['Discount %']) > 0) ? ('percent' as const) : ('flat' as const),
-            unit: it.Unit || it.unit || itemMatch?.Unit || 'Pcs',
-            gstPct: Number(it['GST %'] !== undefined ? it['GST %'] : (it.gstPct !== undefined ? it.gstPct : (itemMatch?.['GST %'] || 0))),
-            gstAmt: Number(it['GST Amount'] !== undefined ? it['GST Amount'] : (it.gstAmt !== undefined ? it.gstAmt : 0)),
-            zeroRated: isZeroRated ? ('Y' as const) : ('N' as const),
-            purchaseRate: Number(it.purchaseRate || itemMatch?.['Purchase Rate'] || 0),
-            isSerialized: (it.isSerialized || itemMatch?.['Is Serialized'] || 'N') as 'Y' | 'N',
-            serials: typeof it['Serial Numbers'] === 'string'
-              ? it['Serial Numbers'].split(',').map((s: string) => s.trim()).filter(Boolean) 
-              : (Array.isArray(it.serials) ? it.serials : [])
-          };
-        });
-        setCart(newCart);
+      const key = `${initialVoucherTarget.voucherNo}_${initialVoucherTarget.timestamp}`;
+      if (loadedTargetKeyRef.current !== key) {
+        loadedTargetKeyRef.current = key;
+        const details = getVoucherDetails(initialVoucherTarget.voucherNo);
+        if (details && details.type === 'PUR') {
+          const inv = details.header as any;
+          const newCart = (inv.items || []).map((it: any) => {
+            const itemMatch = items.find(i => i['Item Code'] === (it['Item Code'] || it.itemCode));
+            const isZeroRated = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
+            return {
+              itemCode: it['Item Code'] || it.itemCode || '',
+              itemName: it['Item Name'] || it.itemName || '',
+              description: it.description || it['Item Description'] || '',
+              lineDescription: it.lineDescription || '',
+              qty: Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : 1)),
+              rate: Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0)),
+              discount: Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0)),
+              discountType: (it['Discount %'] && Number(it['Discount %']) > 0) ? ('percent' as const) : ('flat' as const),
+              unit: it.Unit || it.unit || itemMatch?.Unit || 'Pcs',
+              gstPct: Number(it['GST %'] !== undefined ? it['GST %'] : (it.gstPct !== undefined ? it.gstPct : (itemMatch?.['GST %'] || 0))),
+              gstAmt: Number(it['GST Amount'] !== undefined ? it['GST Amount'] : (it.gstAmt !== undefined ? it.gstAmt : 0)),
+              zeroRated: isZeroRated ? ('Y' as const) : ('N' as const),
+              purchaseRate: Number(it.purchaseRate || itemMatch?.['Purchase Rate'] || 0),
+              isSerialized: (it.isSerialized || itemMatch?.['Is Serialized'] || 'N') as 'Y' | 'N',
+              serials: typeof it['Serial Numbers'] === 'string'
+                ? it['Serial Numbers'].split(',').map((s: string) => s.trim()).filter(Boolean) 
+                : (Array.isArray(it.serials) ? it.serials : [])
+            };
+          });
+          setCart(newCart);
 
-        const hasAnyGst = (inv.items || []).some((it: any) => (Number(it['GST Amount']) > 0 || Number(it['GST %']) > 0));
-        const totalGstAmt = Number(inv.gstAmt || 0);
-        if (totalGstAmt > 0 || hasAnyGst) {
-          setIsGstMode(true);
-        } else if (inv.items && inv.items.length > 0) {
-          setIsGstMode(false);
-        }
-        
-        if (inv.supplier) {
-          if (typeof inv.supplier === 'object') {
-            setSupplierName(inv.supplier.ledger || inv.supplier.name || '');
-          } else {
-            setSupplierName(inv.supplier);
+          const hasAnyGst = (inv.items || []).some((it: any) => (Number(it['GST Amount']) > 0 || Number(it['GST %']) > 0));
+          const totalGstAmt = Number(inv.gstAmt || 0);
+          if (totalGstAmt > 0 || hasAnyGst) {
+            setIsGstMode(true);
+          } else if (inv.items && inv.items.length > 0) {
+            setIsGstMode(false);
           }
-        }
+          
+          if (inv.supplier) {
+            if (typeof inv.supplier === 'object') {
+              setSupplierName(inv.supplier.ledger || inv.supplier.name || '');
+            } else {
+              setSupplierName(inv.supplier);
+            }
+          }
 
-        setBillNo(inv.supplierBillNo || inv.billNo || inv.invoiceNo || '');
-        if (inv.date) {
-           const d = new Date(inv.date);
-           if (!isNaN(d.getTime())) setBillDate(d.toISOString().split('T')[0]);
+          setBillNo(inv.supplierBillNo || inv.billNo || inv.invoiceNo || '');
+          if (inv.date) {
+             const d = new Date(inv.date);
+             if (!isNaN(d.getTime())) setBillDate(d.toISOString().split('T')[0]);
+          }
+          if (Array.isArray(inv.additionalExpenses)) {
+            setAdditionalExpenses(inv.additionalExpenses);
+          }
+          setEditingBillNo(inv.billNo || inv.invoiceNo);
         }
-        if (Array.isArray(inv.additionalExpenses)) {
-          setAdditionalExpenses(inv.additionalExpenses);
-        }
-        setEditingBillNo(inv.billNo || inv.invoiceNo);
+      }
+    } else {
+      if (loadedTargetKeyRef.current !== null) {
+        loadedTargetKeyRef.current = null;
+        setEditingBillNo(null);
+        setCart([]);
+        setSupplierName('');
+        setBillNo('');
+        setAdditionalExpenses([]);
       }
     }
-  }, [initialVoucherTarget]);
+  }, [initialVoucherTarget, items]);
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [showAcceptModal, setShowAcceptModal] = useState(false);

@@ -338,9 +338,9 @@ export const Reports: React.FC<ReportsProps> = ({
       setShowQuickLedgerModal(false);
       return true;
     }
-    // If a drill modal or floating dialog is active, do not hijack the back/escape action
+    // If a drill modal or floating dialog is active, do not hijack the back/escape action and do NOT exit to dashboard
     if (document.querySelector('[data-drill-modal="true"]')) {
-      return false;
+      return true;
     }
     if (isPrintModalOpen) {
       setIsPrintModalOpen(false);
@@ -366,12 +366,19 @@ export const Reports: React.FC<ReportsProps> = ({
         return;
       }
 
-      if (e.key === 'Escape') { if (e.defaultPrevented) return;
+      if (e.key === 'Escape') {
+        if (e.defaultPrevented) return;
         const handled = handleReportsBack();
         if (handled) {
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation?.();
+          return;
+        }
+        if (onBack) {
+          e.preventDefault();
+          e.stopPropagation();
+          onBack();
           return;
         }
       }
@@ -413,7 +420,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [allReportsList, mainCategory, itemWise, invSubTab, finSubTab, isPrintModalOpen, showReportCatalog]);
+  }, [allReportsList, mainCategory, itemWise, invSubTab, finSubTab, isPrintModalOpen, showReportCatalog, showChangePeriodModal, showQuickLedgerModal, onBack]);
 
   // Intercept app:back event from Header/App navigation
   useEffect(() => {
@@ -425,7 +432,7 @@ export const Reports: React.FC<ReportsProps> = ({
     };
     window.addEventListener('app:back' as any, handleBackEvent);
     return () => window.removeEventListener('app:back' as any, handleBackEvent);
-  }, [isPrintModalOpen, showReportCatalog, mainCategory]);
+  }, [isPrintModalOpen, showReportCatalog, mainCategory, showChangePeriodModal, showQuickLedgerModal]);
 
   // React to initial or keyboard shortcut triggered targets
   useEffect(() => {
@@ -3208,6 +3215,8 @@ export const Reports: React.FC<ReportsProps> = ({
                     }
                   } else if (e.key === 'Escape') {
                     e.preventDefault();
+                    e.stopPropagation();
+                    (e.nativeEvent as any)?.stopImmediatePropagation?.();
                     setShowQuickLedgerModal(false);
                   }
                 }}
@@ -3405,6 +3414,11 @@ export const Reports: React.FC<ReportsProps> = ({
                             }
                             periodToInputRef.current?.focus();
                             periodToInputRef.current?.select();
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            (e.nativeEvent as any)?.stopImmediatePropagation?.();
+                            setShowChangePeriodModal(false);
                           }
                         }}
                         placeholder="e.g. 8/8, 8.8"
@@ -3466,6 +3480,11 @@ export const Reports: React.FC<ReportsProps> = ({
                               setToDate(pTo);
                               setShowChangePeriodModal(false);
                             }
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            (e.nativeEvent as any)?.stopImmediatePropagation?.();
+                            setShowChangePeriodModal(false);
                           }
                         }}
                         placeholder="e.g. 15/8, 15.8"

@@ -251,76 +251,93 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     return rawDisc;
   };
 
+  const loadedTargetKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
-      const details = getVoucherDetails(initialVoucherTarget.voucherNo);
-      if (details) {
-        const inv = details.header as any;
-        if (inv && (inv.isPOS === true || inv.voucherTypeId === 'VT-SALE-POS')) {
-          return;
-        }
-        const newCart = (inv.items || []).map((it: any) => {
-          const itemMatch = items.find(i => i['Item Code'] === (it['Item Code'] || it.itemCode));
-          const isZeroRated = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
-          return {
-            itemCode: it["Item Code"] || it.itemCode || '',
-            itemName: it["Item Name"] || it.itemName || '',
-            description: it.description || it["Item Description"] || "",
-            lineDescription: it.lineDescription || "",
-            qty: Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : 1)),
-            rate: Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0)),
-            discount: Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0)),
-            discountType: (it['Discount %'] && Number(it['Discount %']) > 0) ? ('percent' as const) : ('flat' as const),
-            unit: it.Unit || it.unit || itemMatch?.Unit || "Pcs",
-            gstPct: Number(it["GST %"] !== undefined ? it["GST %"] : (it.gstPct !== undefined ? it.gstPct : (itemMatch?.["GST %"] || 0))),
-            gstAmt: Number(it["GST Amount"] !== undefined ? it["GST Amount"] : (it.gstAmt !== undefined ? it.gstAmt : 0)),
-            zeroRated: isZeroRated ? ("Y" as const) : ("N" as const),
-            purchaseRate: Number(it.purchaseRate || itemMatch?.["Purchase Rate"] || 0),
-            isSerialized: (it.isSerialized || itemMatch?.["Is Serialized"] || "N") as "Y" | "N",
-            serials: typeof it["Serial Numbers"] === "string"
-              ? it["Serial Numbers"]
-                  .split(",")
-                  .map((s: string) => s.trim())
-                  .filter(Boolean)
-              : (Array.isArray(it.serials) ? it.serials : [])
-          };
-        });
-        setCart(newCart);
-
-        const c = inv.customer || inv.supplier;
-        if (c) {
-          if (typeof c === "object") {
-            setCustomerName(c.ledger || c.name || "");
-          } else {
-            setCustomerName(c);
+      const key = `${initialVoucherTarget.voucherNo}_${initialVoucherTarget.timestamp}`;
+      if (loadedTargetKeyRef.current !== key) {
+        loadedTargetKeyRef.current = key;
+        const details = getVoucherDetails(initialVoucherTarget.voucherNo);
+        if (details) {
+          const inv = details.header as any;
+          if (inv && (inv.isPOS === true || inv.voucherTypeId === 'VT-SALE-POS')) {
+            return;
           }
-        }
+          const newCart = (inv.items || []).map((it: any) => {
+            const itemMatch = items.find(i => i['Item Code'] === (it['Item Code'] || it.itemCode));
+            const isZeroRated = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
+            return {
+              itemCode: it["Item Code"] || it.itemCode || '',
+              itemName: it["Item Name"] || it.itemName || '',
+              description: it.description || it["Item Description"] || "",
+              lineDescription: it.lineDescription || "",
+              qty: Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : 1)),
+              rate: Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0)),
+              discount: Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0)),
+              discountType: (it['Discount %'] && Number(it['Discount %']) > 0) ? ('percent' as const) : ('flat' as const),
+              unit: it.Unit || it.unit || itemMatch?.Unit || "Pcs",
+              gstPct: Number(it["GST %"] !== undefined ? it["GST %"] : (it.gstPct !== undefined ? it.gstPct : (itemMatch?.["GST %"] || 0))),
+              gstAmt: Number(it["GST Amount"] !== undefined ? it["GST Amount"] : (it.gstAmt !== undefined ? it.gstAmt : 0)),
+              zeroRated: isZeroRated ? ("Y" as const) : ("N" as const),
+              purchaseRate: Number(it.purchaseRate || itemMatch?.["Purchase Rate"] || 0),
+              isSerialized: (it.isSerialized || itemMatch?.["Is Serialized"] || "N") as "Y" | "N",
+              serials: typeof it["Serial Numbers"] === "string"
+                ? it["Serial Numbers"]
+                    .split(",")
+                    .map((s: string) => s.trim())
+                    .filter(Boolean)
+                : (Array.isArray(it.serials) ? it.serials : [])
+            };
+          });
+          setCart(newCart);
 
-        setBillNo(inv.invoiceNo || inv.billNo || "");
-        if (inv.date) {
-          const d = new Date(inv.date);
-          if (!isNaN(d.getTime())) setBillDate(d.toISOString().split("T")[0]);
+          const c = inv.customer || inv.supplier;
+          if (c) {
+            if (typeof c === "object") {
+              setCustomerName(c.ledger || c.name || "");
+            } else {
+              setCustomerName(c);
+            }
+          }
+
+          setBillNo(inv.invoiceNo || inv.billNo || "");
+          if (inv.date) {
+            const d = new Date(inv.date);
+            if (!isNaN(d.getTime())) setBillDate(d.toISOString().split("T")[0]);
+          }
+          if (Array.isArray(inv.additionalExpenses)) {
+            setAdditionalExpenses(inv.additionalExpenses);
+          } else {
+            setAdditionalExpenses([]);
+          }
+          if (inv.discount !== undefined || inv.billDiscount !== undefined) {
+            setBillDiscount(inv.discount ?? inv.billDiscount ?? "");
+          } else {
+            setBillDiscount("");
+          }
+          setNarration(inv.narration || inv.notes || '');
+          if (inv.termsAndConditions !== undefined) {
+            setTermsAndConditions(inv.termsAndConditions || "");
+          } else {
+            setTermsAndConditions(getDefaultTerms(config));
+          }
+          setEditingBillNo(inv.invoiceNo || inv.billNo);
         }
-        if (Array.isArray(inv.additionalExpenses)) {
-          setAdditionalExpenses(inv.additionalExpenses);
-        } else {
-          setAdditionalExpenses([]);
-        }
-        if (inv.discount !== undefined || inv.billDiscount !== undefined) {
-          setBillDiscount(inv.discount ?? inv.billDiscount ?? "");
-        } else {
-          setBillDiscount("");
-        }
-        setNarration(inv.narration || inv.notes || '');
-        if (inv.termsAndConditions !== undefined) {
-          setTermsAndConditions(inv.termsAndConditions || "");
-        } else {
-          setTermsAndConditions(getDefaultTerms(config));
-        }
-        setEditingBillNo(inv.invoiceNo || inv.billNo);
+      }
+    } else {
+      if (loadedTargetKeyRef.current !== null) {
+        loadedTargetKeyRef.current = null;
+        setEditingBillNo(null);
+        setCart([]);
+        setCustomerName('');
+        setBillNo('');
+        setBillDiscount('');
+        setNarration('');
+        setAdditionalExpenses([]);
       }
     }
-  }, [initialVoucherTarget]);
+  }, [initialVoucherTarget, items]);
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [showAcceptModal, setShowAcceptModal] = useState(false);

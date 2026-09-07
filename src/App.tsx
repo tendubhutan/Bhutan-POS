@@ -54,13 +54,14 @@ export default function App() {
   const [selectedSaleVoucherType, setSelectedSaleVoucherType] = useState<VoucherType | null>(null);
 
   // Sequential Navigation Functions
-  const navigateTo = (view: string, reportTargetOverride?: any) => {
+  const navigateTo = (view: string, reportTargetOverride?: any, keepTarget?: boolean) => {
+    if (!keepTarget) setVoucherTarget(null);
     if (view === 'trash') {
       setShowTrashModal(true);
       return;
     }
     if (view === 'pos') {
-      handleOpenPOSBilling();
+      handleOpenPOSBilling(keepTarget);
       return;
     }
     if (view === 'reports' && reportTargetOverride !== undefined) {
@@ -74,7 +75,8 @@ export default function App() {
     });
   };
 
-  const handleOpenPOSBilling = () => {
+  const handleOpenPOSBilling = (keepTarget?: boolean) => {
+    if (!keepTarget) setVoucherTarget(null);
     setSelectedSaleVoucherType(null);
     setCurrentView('pos');
     setViewHistory(prev => (prev[prev.length - 1] === 'pos' ? prev : [...prev, 'pos']));
@@ -94,11 +96,37 @@ export default function App() {
     const handled = window.dispatchEvent(backEvent);
     if (!handled) return;
 
-    // 3. If we came from a Drilldown (via Open in Entry), go back to the original view but DO NOT restore the floating modal
+    setVoucherTarget(null);
+
+    // 3. If we came from a Drilldown (via Open in Entry), go back to the original view
     if (drillReturnContext) {
-      const { fromView } = drillReturnContext;
+      const { fromView, activeDrill, drillHistory } = drillReturnContext;
       setDrillReturnContext(null);
       setCurrentView(fromView);
+
+      // If activeDrill was a voucher, we don't re-open the exact same voucher detailed view modal
+      // that we just opened in full entry! Instead, step back to its parent in drillHistory (if any).
+      if (activeDrill.type === 'voucher') {
+        if (drillHistory && drillHistory.length > 0) {
+          const parentDrill = drillHistory[drillHistory.length - 1];
+          const parentHistory = drillHistory.slice(0, -1);
+          setDrillInitialHistory(parentHistory);
+          setDrillModal({
+            type: parentDrill.type,
+            targetId: parentDrill.targetId
+          });
+        } else {
+          setDrillModal({ type: null, targetId: null });
+          setDrillInitialHistory([]);
+        }
+      } else {
+        setDrillInitialHistory(drillHistory);
+        setDrillModal({
+          type: activeDrill.type,
+          targetId: activeDrill.targetId
+        });
+      }
+
       setViewHistory(prev => {
         const idx = prev.lastIndexOf(fromView);
         if (idx !== -1) {
@@ -111,8 +139,10 @@ export default function App() {
 
     // 4. Pop standard view history relative to currentView
     setViewHistory(prev => {
-      const idx = prev.lastIndexOf(currentView);
-      const updated = idx !== -1 ? prev.slice(0, idx) : prev.slice(0, -1);
+      let updated = [...prev];
+      while (updated.length > 0 && updated[updated.length - 1] === currentView) {
+        updated.pop();
+      }
       const targetView = updated.length > 0 ? updated[updated.length - 1] : 'dashboard';
       setCurrentView(targetView);
       return updated.length > 0 ? updated : ['dashboard'];
@@ -333,7 +363,7 @@ export default function App() {
       }
 
       // Escape key: step back in navigation history until reaching Main Menu
-      if (e.key === 'Escape') { if (e.defaultPrevented) return;
+      if (e.key === 'Escape') {
         if (e.defaultPrevented) return;
 
         // 1. If drilldown modal is open, dispatch app:back so DrillModal steps back sequentially
@@ -352,8 +382,6 @@ export default function App() {
         // 3. If typing inside an input/select/textarea and not handled by modal, blur it
         if (isInput) {
           (activeEl as HTMLElement)?.blur?.();
-          e.preventDefault();
-          return;
         }
 
         // 4. Navigate back to previous screen in history stack or restore drilldown context
@@ -644,14 +672,14 @@ export default function App() {
               (Boolean(inv.termsAndConditions) && !inv.invoiceNo?.startsWith('POS-'))
             );
             if (isNormalSale && config.EnableNormalSale !== 'false') {
-              navigateTo('normalsale');
+              navigateTo('normalsale', undefined, true);
             } else {
-              navigateTo('pos');
+              navigateTo('pos', undefined, true);
             }
           } else if (vType === 'PUR') {
-            navigateTo('purchase');
+            navigateTo('purchase', undefined, true);
           } else {
-            navigateTo('vouchers');
+            navigateTo('vouchers', undefined, true);
           }
         }}
       />

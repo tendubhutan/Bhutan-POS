@@ -78,7 +78,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
   onDrillStock,
   onOpenVoucherInEntry
 }) => {
-  const [active, setActive] = useState<TargetState | null>(null);
+  const [active, setActive] = useState<TargetState | null>(() => (type && targetId ? { type, targetId } : null));
   const [localFrom, setLocalFrom] = useState(fromDate || '');
   const [localTo, setLocalTo] = useState(toDate || '');
 
