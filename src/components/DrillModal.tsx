@@ -244,10 +244,9 @@ export const DrillModal: React.FC<DrillModalProps> = ({
       startStr = formatYMD(new Date(now.getFullYear(), q * 3, 1));
       endStr = formatYMD(new Date(now.getFullYear(), q * 3 + 3, 0));
     } else if (preset === 'this_fy') {
-      const currentMonth = now.getMonth() + 1;
-      const fyStartYear = currentMonth >= 4 ? now.getFullYear() : now.getFullYear() - 1;
-      startStr = `${fyStartYear}-04-01`;
-      endStr = `${fyStartYear + 1}-03-31`;
+      const year = now.getFullYear();
+      startStr = `${year}-01-01`;
+      endStr = `${year}-12-31`;
     }
     
     setLocalFrom(startStr);

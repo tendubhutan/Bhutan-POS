@@ -340,12 +340,22 @@ export default function App() {
         return;
       }
 
-      // Change Report Period Shortcut (Alt+F2 / Alt+D)
+      // Change Period Shortcut (Alt+F2 / Alt+D)
       if (e.altKey && (e.key === 'F2' || e.code === 'F2' || rawKey === 'd' || e.code === 'KeyD')) {
         e.preventDefault();
         e.stopPropagation();
         if (drillModal.type !== null) {
           window.dispatchEvent(new CustomEvent('app:drill-open-change-period'));
+          return;
+        }
+
+        if (currentView === 'dashboard') {
+          window.dispatchEvent(new CustomEvent('app:dashboard-open-change-period'));
+          return;
+        }
+
+        if (currentView === 'reports') {
+          window.dispatchEvent(new CustomEvent('app:open-change-period'));
           return;
         }
 
@@ -523,6 +533,7 @@ export default function App() {
                 setReportTarget(t);
                 navigateTo('reports', t);
               }}
+              isActive={currentView === 'dashboard' && !isAnyModalOpen}
             />
           )}
 

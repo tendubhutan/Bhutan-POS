@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Config, Item, Ledger } from '../types';
 import { getAdvancedDashboardData } from '../services/storageService';
 import { ReportTarget } from './Reports';
+import { ChangePeriodModal, formatDisplayDate } from './ChangePeriodModal';
 import {
   TrendingUp,
   Package,
@@ -17,7 +18,8 @@ import {
   BarChart3,
   FileSpreadsheet,
   Layers,
-  Hash
+  Hash,
+  Calendar
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -30,6 +32,7 @@ interface DashboardProps {
   onDrillGroup?: (grp: string) => void;
   onDrillVoucher?: (refNo: string) => void;
   onDrillReport?: (target: ReportTarget) => void;
+  isActive?: boolean;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -41,10 +44,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onDrillLedger,
   onDrillGroup,
   onDrillVoucher,
-  onDrillReport
+  onDrillReport,
+  isActive = true
 }) => {
   const [fromDate, setFromDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [showPeriodModal, setShowPeriodModal] = useState(false);
 
   const [dashData, setDashData] = useState<{
     sale: number;
@@ -77,6 +82,41 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setDashData(data as any);
   }, [items, fromDate, toDate]);
 
+  // Handle Alt+D / Alt+F2 / app:dashboard-open-change-period and Escape back
+  useEffect(() => {
+    if (!isActive) return;
+
+    const handleOpenPeriod = () => {
+      setShowPeriodModal(true);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isAltD = e.altKey && (e.key === 'd' || e.key === 'D' || e.code === 'KeyD');
+      const isAltF2 = e.altKey && (e.key === 'F2' || e.code === 'F2');
+      if (isAltD || isAltF2) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowPeriodModal(true);
+      }
+    };
+
+    const handleBackEvent = (e: CustomEvent) => {
+      if (showPeriodModal) {
+        setShowPeriodModal(false);
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('app:dashboard-open-change-period' as any, handleOpenPeriod);
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('app:back' as any, handleBackEvent);
+    return () => {
+      window.removeEventListener('app:dashboard-open-change-period' as any, handleOpenPeriod);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('app:back' as any, handleBackEvent);
+    };
+  }, [isActive, showPeriodModal]);
+
   const currency = config.CurrencySymbol || 'Nu.';
 
   // Identify default cash & bank ledgers
@@ -94,21 +134,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl px-2 py-1 shadow-sm">
-            <input 
-              type="date" 
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="bg-transparent text-sm font-semibold text-slate-700 outline-none cursor-pointer"
-            />
-            <span className="text-slate-400 font-bold text-xs">to</span>
-            <input 
-              type="date" 
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="bg-transparent text-sm font-semibold text-slate-700 outline-none cursor-pointer"
-            />
-          </div>
+          {/* Quick Period Pill Button */}
+          <button
+            type="button"
+            onClick={() => setShowPeriodModal(true)}
+            className="flex items-center gap-2 bg-white hover:bg-slate-50 border border-slate-300 hover:border-indigo-400 rounded-xl px-3 py-2 shadow-xs transition cursor-pointer group"
+            title="Click or press Alt+D to change dashboard period"
+          >
+            <Calendar className="h-4 w-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+            <div className="text-xs font-bold text-slate-800">
+              <span>{formatDisplayDate(fromDate)}</span>
+              <span className="text-slate-400 mx-1.5 font-normal">to</span>
+              <span>{formatDisplayDate(toDate)}</span>
+            </div>
+            <kbd className="text-[10px] bg-slate-100 group-hover:bg-indigo-50 text-slate-600 group-hover:text-indigo-700 font-bold px-1.5 py-0.5 rounded border border-slate-200 transition-colors ml-1 font-mono">
+              Alt+D
+            </kbd>
+          </button>
+
           <button
             onClick={() => onNavigate('pos')}
             className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-md hover:bg-indigo-700 hover:shadow-lg transition-all active:scale-95 cursor-pointer"
@@ -462,6 +505,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </table>
         </div>
       </div>
+
+      <ChangePeriodModal
+        isOpen={showPeriodModal}
+        fromDate={fromDate}
+        toDate={toDate}
+        onApply={(f, t) => {
+          setFromDate(f);
+          setToDate(t);
+        }}
+        onClose={() => setShowPeriodModal(false)}
+        title="Filter Dashboard Period"
+      />
     </div>
   );
 };

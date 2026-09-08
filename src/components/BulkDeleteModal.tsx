@@ -84,9 +84,9 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({ isOpen, onClos
       setFromDate(firstDay);
       setToDate(lastDay);
     } else if (preset === 'this_fy') {
-      // Bhutan FY typically Jan 1 to Dec 31 or Apr 1 to Mar 31
-      const year = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
-      const fyStart = `${year}-04-01`;
+      // Financial Year is January 1 to December 31
+      const year = today.getFullYear();
+      const fyStart = `${year}-01-01`;
       setFromDate(fyStart);
       setToDate(todayStr);
     }
