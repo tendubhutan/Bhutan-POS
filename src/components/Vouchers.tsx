@@ -12,7 +12,8 @@ import {
   saveLedger,
   peekNextVoucherNo,
   getVoucherPrefix,
-  getVoucherDetails
+  getVoucherDetails,
+  getQuotations
 } from '../services/storageService';
 import {
   Plus,
@@ -143,6 +144,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
   const [editingVoucherNo, setEditingVoucherNo] = useState<string | null>(null);
   const [voucherNo, setVoucherNo] = useState(() => (isAutoMode ? peekNextVoucherNo('P', config) : ''));
+  const [quotationTab, setQuotationTab] = useState<'create' | 'register'>('create');
 
   // Method to load an existing voucher or report record directly into Entry screen
   const loadVoucherIntoEntry = (v: any) => {
@@ -696,6 +698,23 @@ export const Vouchers: React.FC<VouchersProps> = ({
     return true;
   };
 
+  const handleSubVoucherBack = () => {
+    if (voucherTypeHistory.length > 1) {
+      const updated = [...voucherTypeHistory];
+      updated.pop();
+      const prevType = updated[updated.length - 1] || 'P';
+      setVoucherTypeHistory(updated);
+      handleVTypeChange(prevType, false);
+    } else {
+      handleCancelOrResetEntry();
+      if (onBack) {
+        onBack(true);
+      } else {
+        window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
+      }
+    }
+  };
+
   // Global Keyboard Shortcuts (F4, F5, F6, F7, F8, F9, F10, F2, Alt+C, Alt+A, Escape)
   useEffect(() => {
     if (isActive === false) return;
@@ -715,10 +734,17 @@ export const Vouchers: React.FC<VouchersProps> = ({
           e.stopImmediatePropagation?.();
           return;
         }
-        if (onNavigateTo) {
+        if (onBack) {
           e.preventDefault();
           e.stopPropagation();
-          onNavigateTo('dashboard');
+          e.stopImmediatePropagation?.();
+          onBack(true);
+          return;
+        } else if (onNavigateTo) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation?.();
+          window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
           return;
         }
       }
@@ -1882,6 +1908,39 @@ export const Vouchers: React.FC<VouchersProps> = ({
 
               
 
+              {/* Quotation Mode Switcher */}
+              {activeVType === 'QUOTATION' && (
+                <div className="flex items-center gap-1 bg-violet-100/70 p-0.5 rounded-xl border border-violet-200">
+                  <button
+                    type="button"
+                    onClick={() => setQuotationTab('create')}
+                    className={`rounded-lg px-2.5 py-1 font-bold text-xs transition cursor-pointer ${
+                      quotationTab === 'create'
+                        ? 'bg-violet-600 text-white shadow-2xs'
+                        : 'text-violet-800 hover:bg-violet-200/60'
+                    }`}
+                  >
+                    + Create New Quotation
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuotationTab('register')}
+                    className={`rounded-lg px-2.5 py-1 font-bold text-xs transition cursor-pointer flex items-center gap-1.5 ${
+                      quotationTab === 'register'
+                        ? 'bg-violet-600 text-white shadow-2xs'
+                        : 'text-violet-800 hover:bg-violet-200/60'
+                    }`}
+                  >
+                    <span>📜 Quotation Register</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold font-mono ${
+                      quotationTab === 'register' ? 'bg-white/20 text-white' : 'bg-violet-200 text-violet-900'
+                    }`}>
+                      {getQuotations().length}
+                    </span>
+                  </button>
+                </div>
+              )}
+
               {/* Single / Double Mode toggle for financial vouchers */}
               {activeVType && ['P', 'R', 'J', 'C'].includes(activeVType) && (
                 <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
@@ -2322,10 +2381,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
           initialVoucherTarget={initialVoucherTarget}
           onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
           onOpenNewItemModal={onOpenNewItemModal}
-          onNavigateBack={() => {
-            setActiveVType('P');
-            setActiveCategory('financial');
-          }}
+          onNavigateBack={handleSubVoucherBack}
         />
       ) : activeVType === 'DN' ? (
         <DebitNoteEntry
@@ -2336,10 +2392,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
           initialVoucherTarget={initialVoucherTarget}
           onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
           onOpenNewItemModal={onOpenNewItemModal}
-          onNavigateBack={() => {
-            setActiveVType('P');
-            setActiveCategory('financial');
-          }}
+          onNavigateBack={handleSubVoucherBack}
         />
       ) : activeVType === 'DEL_NOTE' ? (
         <DeliveryNoteEntry
@@ -2350,10 +2403,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
           initialVoucherTarget={initialVoucherTarget}
           onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
           onOpenNewItemModal={onOpenNewItemModal}
-          onNavigateBack={() => {
-            setActiveVType('P');
-            setActiveCategory('financial');
-          }}
+          onNavigateBack={handleSubVoucherBack}
         />
       ) : activeVType === 'PHYSICAL_STOCK' ? (
         <PhysicalStockEntry
@@ -2362,10 +2412,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
           onDataRefresh={onDataRefresh}
           initialVoucherTarget={initialVoucherTarget}
           onOpenNewItemModal={onOpenNewItemModal}
-          onNavigateBack={() => {
-            setActiveVType('P');
-            setActiveCategory('financial');
-          }}
+          onNavigateBack={handleSubVoucherBack}
         />
       ) : activeVType === 'QUOTATION' ? (
         <QuotationEntry
@@ -2376,10 +2423,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
           initialVoucherTarget={initialVoucherTarget}
           onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
           onOpenNewItemModal={onOpenNewItemModal}
-          onNavigateBack={() => {
-            setActiveVType('P');
-            setActiveCategory('financial');
-          }}
+          onNavigateBack={handleSubVoucherBack}
+          activeTab={quotationTab}
+          onTabChange={setQuotationTab}
         />
       ) : activeVType && ['P', 'R', 'J', 'C'].includes(activeVType) ? (
         /* Financial Vouchers (Payment, Receipt, Journal, Contra) */
@@ -3962,7 +4008,15 @@ export const Vouchers: React.FC<VouchersProps> = ({
         onConfirm={() => {
           setShowQuitModal(false);
           handleCancelOrResetEntry();
-          if (onBack) {
+          if (voucherTypeHistory.length > 1) {
+            const updated = [...voucherTypeHistory];
+            updated.pop();
+            const prevType = updated[updated.length - 1] || 'P';
+            setVoucherTypeHistory(updated);
+            handleVTypeChange(prevType, false);
+          } else if (activeVType !== 'P') {
+            handleVTypeChange('P', false);
+          } else if (onBack) {
             onBack(true);
           } else {
             window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));

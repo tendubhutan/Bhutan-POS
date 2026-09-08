@@ -392,11 +392,17 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
         }
       }
     } else if (e.key === 'Escape') {
-      setIsOpen(false);
-      if (shouldClearOnSelect) {
-        setSearchTerm('');
-      } else {
-        setSearchTerm(selectedItem ? selectedItem['Item Name'] : '');
+      if (isOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        (e.nativeEvent as any)?.stopImmediatePropagation?.();
+        setIsOpen(false);
+        if (shouldClearOnSelect) {
+          setSearchTerm('');
+        } else {
+          setSearchTerm(selectedItem ? selectedItem['Item Name'] : '');
+        }
+        return;
       }
     }
   };

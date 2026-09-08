@@ -2324,19 +2324,6 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
         {/* Right Workspace: Balanced, Compact Checkout & Customer Panel */}
         <div className={`w-full lg:w-[340px] xl:w-[360px] shrink-0 h-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-sm flex flex-col space-y-2.5 ${mobileTab === 'cart' ? 'hidden sm:flex' : 'flex'}`}>
-          {/* Bill No & Date Summary Badge */}
-          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200/90 text-xs">
-            <div className="flex items-center gap-1.5">
-              <Receipt className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Bill:</span>
-              <span className="font-mono font-black text-slate-900 text-xs">{editingInvoiceNo || posBillNo || 'Auto'}</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-slate-700 font-bold text-[11px]">
-              <Calendar className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-              <span>{posBillDate ? new Date(posBillDate + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : posBillDate}</span>
-            </div>
-          </div>
-
           {/* Customer Selection Header & Controls */}
           <div className="space-y-1.5">
           <div className="flex items-center justify-between">

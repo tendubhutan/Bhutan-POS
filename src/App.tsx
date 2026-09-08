@@ -381,7 +381,34 @@ export default function App() {
       if (e.key === 'Escape') {
         if (e.defaultPrevented) return;
 
-        // 1. If drilldown modal is open, dispatch app:back so DrillModal steps back sequentially
+        // 1. Check if top-level global dialogs in App.tsx are open
+        if (showTrashModal) {
+          e.preventDefault();
+          setShowTrashModal(false);
+          return;
+        }
+        if (showBulkDeleteModal) {
+          e.preventDefault();
+          setShowBulkDeleteModal(false);
+          return;
+        }
+        if (showGlobalLedgerSearch) {
+          e.preventDefault();
+          setShowGlobalLedgerSearch(false);
+          return;
+        }
+        if (quickLedgerModalProps.isOpen) {
+          e.preventDefault();
+          setQuickLedgerModalProps(p => ({ ...p, isOpen: false }));
+          return;
+        }
+        if (quickItemModalProps.isOpen) {
+          e.preventDefault();
+          setQuickItemModalProps(p => ({ ...p, isOpen: false }));
+          return;
+        }
+
+        // 2. If drilldown modal is open, dispatch app:back so DrillModal steps back sequentially
         if (drillModal?.type) {
           e.preventDefault();
           const backEvent = new CustomEvent('app:back', { cancelable: true });
@@ -389,20 +416,20 @@ export default function App() {
           return;
         }
 
-        // 2. Dispatch app:back event so active screen/modal/sub-flow handles step-back first
+        // 3. Dispatch app:back event so active screen/modal/sub-flow handles step-back first
         const backEvent = new CustomEvent('app:back', { cancelable: true });
         const handled = window.dispatchEvent(backEvent);
         if (!handled) return;
 
-        // 3. If typing inside an input/select/textarea and not handled by modal, blur it
+        // 4. If typing inside an input/select/textarea and not handled by modal, blur it
         if (isInput) {
           (activeEl as HTMLElement)?.blur?.();
         }
 
-        // 4. Navigate back to previous screen in history stack or restore drilldown context
+        // 5. Navigate back to previous screen in history stack or restore drilldown context
         if (drillReturnContext || currentView !== 'dashboard' || viewHistory.length > 1) {
           e.preventDefault();
-          navigateBack();
+          navigateBackDirect();
           return;
         }
 

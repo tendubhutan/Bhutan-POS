@@ -434,7 +434,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
       !!vehicleNo ||
       Boolean(remarks.trim()) ||
       !!editingNoteNo ||
-      noteItems.length > 0;
+      (noteItems.length > 0 && noteItems.some(i => !!i.itemCode || Number(i.rate) > 0 || Number(i.qty) > 1));
 
     if (hasData) {
       setShowQuitModal(true);

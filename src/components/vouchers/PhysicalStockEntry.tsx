@@ -290,7 +290,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
       !!verifiedBy ||
       Boolean(remarks.trim()) ||
       !!editingVoucherNo ||
-      stockLines.length > 0;
+      (stockLines.length > 0 && stockLines.some(l => !!l.itemCode || Number(l.physicalQty) > 0));
 
     if (hasData) {
       setShowQuitModal(true);

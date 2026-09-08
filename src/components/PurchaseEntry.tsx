@@ -621,150 +621,136 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden transition-all duration-300">
         {isHeaderCollapsed ? (
           <div 
-            className="flex items-center justify-between p-3 cursor-pointer hover:bg-indigo-100 transition-colors bg-gradient-to-r from-indigo-50 to-blue-50 border-b-2 border-indigo-200"
+            className="flex items-center justify-between p-2.5 cursor-pointer hover:bg-indigo-50/60 transition-colors bg-gradient-to-r from-indigo-50/80 to-blue-50/80"
             onClick={() => setIsHeaderCollapsed(false)}
             title="Click to expand header details"
           >
-            <div className="flex items-center gap-6 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">Supplier</span>
+            <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px] bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs">Supplier</span>
                 <span className="font-extrabold text-indigo-900">{supplierName || <span className="text-rose-500">Not Selected</span>}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">Date</span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px] bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs">Date</span>
                 <span className="font-bold text-slate-800">{billDate}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">Ref No</span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px] bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs">Ref No</span>
                 <span className="font-bold text-slate-800">{billNo || '-'}</span>
               </div>
             </div>
-            <button className="flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-wide bg-white px-3 py-1 rounded-lg shadow-sm border border-indigo-100">
+            <button className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-white px-2.5 py-1 rounded-lg shadow-2xs border border-indigo-100 cursor-pointer">
               <span>Edit Header</span>
-              <ChevronDown className="h-4 w-4" />
+              <ChevronDown className="h-3.5 w-3.5" />
             </button>
           </div>
         ) : (
           <div className="p-2.5">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">Invoice Details</h3>
-              <button 
-                type="button"
-                onClick={() => setIsHeaderCollapsed(true)}
-                className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-wide cursor-pointer transition-colors"
-                title="Collapse to save space"
-              >
-                <span>Collapse</span>
-                <ChevronUp className="h-4 w-4" />
-              </button>
-            </div>
             {isSupplierGstExempted && (
               <div className="mb-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold shadow-2xs">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                 <span>GST Exempted Supplier — 0% Tax Applied (Unless Manually Overridden)</span>
               </div>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-0.5">Supplier Ledger *</label>
-            <SearchableLedgerSelect
-              ledgers={ledgers}
-              value={supplierName}
-              onChange={(val) => {
-                setSupplierName(val);
-                if (isBankLedger(val, ledgers, config)) {
-                  setBankTxnModalOpen(true);
-                }
-              }}
-              filterGroups={['Sundry Creditors', 'Cash-in-Hand', 'Bank Accounts']}
-              onCreateNew={() => onOpenNewLedgerModal('Sundry Creditors', (name) => setSupplierName(name))}
-              onEditLedger={name => {
-                const l = ledgers.find(x => x['Ledger Name'] === name);
-                if (l) {
-                  setLedgerToAlter(l);
-                  setShowLedgerAlterModal(true);
-                }
-              }}
-              onShowInfo={name => setDrillModalState({ type: 'ledger', targetId: name })}
-              onSaveVoucher={handleSavePurchase}
-              onFocusDate={() => billDateRef.current?.focus()}
-              placeholder="Select Supplier Ledger"
-              onEnterNext={() => {
-                billDateRef.current?.focus();
-              }}
-              onArrowRight={() => {
-                billDateRef.current?.focus();
-              }}
-              onArrowDown={() => {
-                billDateRef.current?.focus();
-              }}
-            />
+            <div className="flex flex-col md:flex-row md:items-center gap-2.5">
+              <div className="flex-1 min-w-[220px]">
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">Supplier Ledger *</label>
+                <SearchableLedgerSelect
+                  ledgers={ledgers}
+                  value={supplierName}
+                  onChange={(val) => {
+                    setSupplierName(val);
+                    if (isBankLedger(val, ledgers, config)) {
+                      setBankTxnModalOpen(true);
+                    }
+                  }}
+                  filterGroups={['Sundry Creditors', 'Cash-in-Hand', 'Bank Accounts']}
+                  onCreateNew={() => onOpenNewLedgerModal('Sundry Creditors', (name) => setSupplierName(name))}
+                  onEditLedger={name => {
+                    const l = ledgers.find(x => x['Ledger Name'] === name);
+                    if (l) {
+                      setLedgerToAlter(l);
+                      setShowLedgerAlterModal(true);
+                    }
+                  }}
+                  onShowInfo={name => setDrillModalState({ type: 'ledger', targetId: name })}
+                  onSaveVoucher={handleSavePurchase}
+                  onFocusDate={() => billDateRef.current?.focus()}
+                  placeholder="Select Supplier Ledger"
+                  onEnterNext={() => {
+                    billDateRef.current?.focus();
+                  }}
+                  onArrowRight={() => {
+                    billDateRef.current?.focus();
+                  }}
+                  onArrowDown={() => {
+                    billDateRef.current?.focus();
+                  }}
+                />
+              </div>
+              <div className="w-full md:w-44 shrink-0">
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">Supplier Bill Date</label>
+                <input
+                  id="pur-date-input"
+                  ref={billDateRef}
+                  type="date"
+                  value={billDate}
+                  onChange={e => setBillDate(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      billNoRef.current?.focus();
+                      billNoRef.current?.select();
+                    } else if (e.key === 'ArrowRight') {
+                      e.preventDefault();
+                      billNoRef.current?.focus();
+                      billNoRef.current?.select();
+                    }
+                  }}
+                  className="w-full h-8.5 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none cursor-pointer"
+                />
+              </div>
+              <div className="w-full md:w-48 shrink-0">
+                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">Supplier Bill / Ref No</label>
+                <input
+                  ref={billNoRef}
+                  type="text"
+                  value={billNo}
+                  onChange={e => setBillNo(e.target.value)}
+                  onFocus={e => e.target.select()}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      document.getElementById('pur-fast-item-picker')?.focus();
+                    } else if (e.key === 'ArrowLeft') {
+                      e.preventDefault();
+                      billDateRef.current?.focus();
+                    }
+                  }}
+                  placeholder="e.g. SUP-90812"
+                  className="w-full h-8.5 rounded-lg border border-slate-300 px-2.5 text-xs font-mono font-bold text-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
+                />
+              </div>
+              <div className="shrink-0 self-end md:self-center pt-1 md:pt-4">
+                <button 
+                  type="button"
+                  onClick={() => setIsHeaderCollapsed(true)}
+                  className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-wide cursor-pointer transition-colors px-2 py-1 rounded-lg hover:bg-slate-50"
+                  title="Collapse to save space"
+                >
+                  <span>Collapse</span>
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
           </div>
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-0.5">Supplier Bill Date</label>
-            <input
-              id="pur-date-input"
-              ref={billDateRef}
-              type="date"
-              value={billDate}
-              onChange={e => setBillDate(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  billNoRef.current?.focus();
-                  billNoRef.current?.select();
-                } else if (e.key === 'ArrowRight') {
-                  e.preventDefault();
-                  billNoRef.current?.focus();
-                  billNoRef.current?.select();
-                }
-              }}
-              className="w-full h-8.5 rounded-lg border border-slate-300 px-2.5 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-0.5">Supplier Bill / Ref No</label>
-            <input
-              ref={billNoRef}
-              type="text"
-              value={billNo}
-              onChange={e => setBillNo(e.target.value)}
-              onFocus={e => e.target.select()}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  document.getElementById('pur-fast-item-picker')?.focus();
-                } else if (e.key === 'ArrowLeft') {
-                  e.preventDefault();
-                  billDateRef.current?.focus();
-                }
-              }}
-              placeholder="e.g. SUP-90812"
-              className="w-full h-8.5 rounded-lg border border-slate-300 px-2.5 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none"
-            />
-          </div>
-        </div>
-        </div>
         )}
       </div>
 
       {/* In-Table Purchase Grid Container */}
-      <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs relative">
-        {/* Header Bar */}
-        <div className="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between gap-2 shrink-0 relative z-30">
-          <div className="flex items-center gap-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">PURCHASE PARTICULARS</h3>
-            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
-              {cart.length} line items
-            </span>
-          </div>
-          <span className="text-[11px] text-slate-500 font-medium italic hidden sm:inline">
-            Direct In-Table Search: Type or scan barcode inside the Item Name cell
-          </span>
-        </div>
-
+      <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs relative overflow-hidden">
         {/* Populated Table with Active Bottom Cell Entry Row */}
-        <div className="flex-1 min-h-0 overflow-y-auto rounded-b-xl">
+        <div className="flex-1 min-h-0 overflow-y-auto rounded-xl">
           <table className="w-full border-collapse text-xs sm:text-sm">
             <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[11px] tracking-wider">
               <tr>

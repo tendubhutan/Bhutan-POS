@@ -25,6 +25,8 @@ interface QuotationEntryProps {
   onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
   onPrintQuotation?: (quote: Quotation) => void;
   onNavigateBack?: () => void;
+  activeTab?: 'create' | 'register';
+  onTabChange?: (tab: 'create' | 'register') => void;
 }
 
 export const QuotationEntry: React.FC<QuotationEntryProps> = ({
@@ -36,7 +38,9 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
   onOpenQuickLedger,
   onOpenNewItemModal,
   onPrintQuotation,
-  onNavigateBack
+  onNavigateBack,
+  activeTab: propActiveTab,
+  onTabChange
 }) => {
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
   const [editingQuotationNo, setEditingQuotationNo] = useState<string | null>(null);
@@ -59,7 +63,12 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
   const [remarks, setRemarks] = useState('');
 
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'create' | 'register'>('create');
+  const [internalTab, setInternalTab] = useState<'create' | 'register'>('create');
+  const activeTab = propActiveTab ?? internalTab;
+  const setActiveTab = (tab: 'create' | 'register') => {
+    setInternalTab(tab);
+    if (onTabChange) onTabChange(tab);
+  };
   const [savedQuotes, setSavedQuotes] = useState<Quotation[]>([]);
   const [successModalDetails, setSuccessModalDetails] = useState<VoucherSuccessDetails | null>(null);
 
@@ -505,7 +514,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
       !!gstin ||
       Boolean(remarks.trim()) ||
       !!editingQuotationNo ||
-      quoteItems.length > 0;
+      (quoteItems.length > 0 && quoteItems.some(i => !!i.itemCode || Number(i.rate) > 0 || Number(i.qty) > 1));
 
     if (hasData) {
       setShowQuitModal(true);
@@ -634,66 +643,10 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
         </div>
       )}
 
-      {/* Top Banner & View Switcher */}
-      <div className="rounded-xl border border-violet-200 bg-linear-to-r from-violet-50/90 to-purple-50/70 px-3 py-1.5 shadow-xs flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          {onNavigateBack && (
-            <button
-              type="button"
-              onClick={handleQuoteBack}
-              className="flex items-center gap-1 h-8 px-2.5 rounded-lg bg-white hover:bg-violet-100 text-violet-900 font-bold text-xs border border-violet-200 shadow-2xs transition active:scale-95 cursor-pointer"
-              title="Return to Vouchers"
-            >
-              <ArrowLeft className="h-3.5 w-3.5 stroke-[2.5]" />
-              <span>Back</span>
-            </button>
-          )}
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 text-white shadow-xs">
-            <FileCheck2 className="h-4.5 w-4.5" />
-          </div>
-          <div>
-            <h2 className="text-sm sm:text-base font-extrabold text-violet-950 leading-tight">
-              Quotation & Price Estimate Generator
-            </h2>
-            <p className="text-[11px] text-violet-700 font-medium">
-              Create formal commercial proposals & estimates (Press <kbd className="font-mono font-bold bg-white px-1 py-0.2 rounded border border-violet-300 text-violet-900 text-[10px]">F2</kbd> to save)
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 bg-white/90 p-0.5 rounded-lg border border-violet-200 text-xs">
-          <button
-            type="button"
-            onClick={() => setActiveTab('create')}
-            className={`rounded-md px-2.5 py-1 font-bold transition cursor-pointer ${
-              activeTab === 'create'
-                ? 'bg-violet-600 text-white shadow-2xs'
-                : 'text-violet-800 hover:bg-violet-100/50'
-            }`}
-          >
-            + Create New Quotation
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('register');
-              loadSavedQuotations();
-            }}
-            className={`rounded-md px-2.5 py-1 font-bold transition cursor-pointer ${
-              activeTab === 'register'
-                ? 'bg-violet-600 text-white shadow-2xs'
-                : 'text-violet-800 hover:bg-violet-100/50'
-            }`}
-          >
-            📜 Quotation Register ({savedQuotes.length})
-          </button>
-        </div>
-      </div>
-
       {activeTab === 'create' ? (
         <form id="quotation-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col space-y-2">
           {/* Header Grid */}
-          <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden transition-all duration-300 mb-2">
+          <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden transition-all duration-300 mb-1">
             {isHeaderCollapsed ? (
               <div 
                 className="flex items-center justify-between p-3 cursor-pointer hover:bg-violet-100 transition-colors bg-gradient-to-r from-violet-50 to-purple-50 border-b-2 border-violet-200"
@@ -887,19 +840,9 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
           </div>
 
           {/* Line Items Table with Top Auto-Add Selector */}
-          <div className="flex-1 min-h-[220px] flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs relative text-xs">
+          <div className="flex-1 min-h-[220px] flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs relative text-xs overflow-hidden">
             {/* Top Quick Item Selection Bar */}
-            <div className="px-3 py-2 border-b border-slate-200 bg-violet-50/40 space-y-2 relative z-30">
-              <div className="flex justify-between items-center">
-                <h3 className="font-extrabold text-slate-900 flex items-center gap-1.5 text-xs">
-                  <Package className="h-4 w-4 text-violet-600" />
-                  <span>Select & Quote Items ({quoteItems.filter(i => i.itemCode).length} items added)</span>
-                </h3>
-                <span className="text-[11px] text-slate-500 italic hidden sm:inline">
-                  Search or scan item to auto-add immediately
-                </span>
-              </div>
-
+            <div className="px-3 py-2 border-b border-slate-200 bg-violet-50/40 relative z-30">
               {/* Fast Item Selector Top Row */}
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
                 <div className="sm:col-span-8">

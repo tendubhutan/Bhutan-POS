@@ -1007,14 +1007,23 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
             <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
               <Receipt className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Invoice No</span>
-              <span className="font-mono text-xs font-black text-slate-900 bg-white px-1.5 py-0.5 rounded border border-slate-200 shadow-2xs">
-                {editingBillNo || billNo || 'Auto'}
-              </span>
+              <input
+                ref={billNoRef}
+                type="text"
+                value={editingBillNo || billNo}
+                onChange={(e) => setBillNo(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                placeholder="Auto"
+                className="font-mono text-xs font-black text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs w-28 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200"
+                title="Invoice No (Auto or custom)"
+              />
             </div>
             <div className="flex items-center gap-1.5">
               <Calendar className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Date</span>
               <input
+                id="sale-date-input"
+                ref={billDateRef}
                 type="date"
                 value={billDate}
                 onChange={(e) => setBillDate(e.target.value)}
@@ -1086,168 +1095,115 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden transition-all duration-300">
         {isHeaderCollapsed ? (
           <div
-            className="flex items-center justify-between p-3 cursor-pointer hover:bg-indigo-100 transition-colors bg-gradient-to-r from-indigo-50 to-blue-50 border-b-2 border-indigo-200"
+            className="flex items-center justify-between p-2.5 cursor-pointer hover:bg-indigo-50/60 transition-colors bg-gradient-to-r from-indigo-50/80 to-blue-50/80"
             onClick={(e) => { if ((e.target as HTMLElement).closest('button')) return; setIsHeaderCollapsed(false); }}
             title="Click to expand header details"
           >
-            <div className="flex items-center gap-6 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">
-                  Customer
-                </span>
-                <span className="font-extrabold text-indigo-900">
-                  {customerName ? <div className="flex items-center gap-2"><span className="font-bold text-indigo-900 truncate">{customerName}</span><button type="button" onClick={(e) => { e.stopPropagation(); setCustomerDrawerOpen(true); }} className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold hover:bg-indigo-200 transition">Ledger</button></div> : (
-                    <span className="text-rose-500">Not Selected</span>
-                  )}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">
-                  Date
-                </span>
-                <span className="font-bold text-slate-800">
-                  {formatDateDMY(billDate)}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">
-                  Invoice No
-                </span>
-                <span className="font-bold text-slate-800 font-mono">
-                  {editingBillNo || billNo || "-"}
-                </span>
-              </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px] bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs">
+                Customer
+              </span>
+              <span className="font-extrabold text-indigo-900">
+                {customerName ? (
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-indigo-900">{customerName}</span>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setCustomerDrawerOpen(true); }} className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold hover:bg-indigo-200 transition">
+                      Ledger Profile
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-rose-500 font-semibold">Not Selected</span>
+                )}
+              </span>
             </div>
-            <button className="flex items-center gap-1.5 text-xs font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-wide bg-white px-3 py-1 rounded-lg shadow-sm border border-indigo-100">
-              <span>Edit Header</span>
-              <ChevronDown className="h-4 w-4" />
+            <button className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-white px-2.5 py-1 rounded-lg shadow-2xs border border-indigo-100 cursor-pointer">
+              <span>Change</span>
+              <ChevronDown className="h-3.5 w-3.5" />
             </button>
           </div>
         ) : (
           <div className="p-2.5">
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
-                Invoice Details
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsHeaderCollapsed(true)}
-                className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-wide cursor-pointer transition-colors"
-                title="Collapse to save space"
-              >
-                <span>Collapse</span>
-                <ChevronUp className="h-4 w-4" />
-              </button>
-            </div>
             {isCustomerGstExempted && (
               <div className="mb-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold shadow-2xs">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                 <span>
-                  GST Exempted Customer — 0% Tax Applied (Unless Manually
-                  Overridden)
+                  GST Exempted Customer — 0% Tax Applied (Unless Manually Overridden)
                 </span>
               </div>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                  Customer Ledger *
-                </label>
-                <SearchableLedgerSelect
-                  ledgers={ledgers}
-                  value={customerName}
-                  onChange={(val) => {
-                    setCustomerName(val);
-                    if (isBankLedger(val, ledgers, config)) {
-                      setBankTxnModalOpen(true);
-                    }
-                  }}
-                  filterGroups={[
-                    "Sundry Debtors",
-                    "Cash-in-Hand",
-                    "Bank Accounts",
-                  ]}
-                  onCreateNew={() =>
-                    onOpenNewLedgerModal("Sundry Debtors", (name) =>
-                      setCustomerName(name),
-                    )
-                  }
-                  onEditLedger={(name) => {
-                    const l = ledgers.find((x) => x["Ledger Name"] === name);
-                    if (l) {
-                      setLedgerToAlter(l);
-                      setShowLedgerAlterModal(true);
-                    }
-                  }}
-                  onShowInfo={(name) =>
-                    setDrillModalState({ type: "ledger", targetId: name })
-                  }
-                  onSaveVoucher={handleSaveInvoice}
-                  onFocusDate={() => billDateRef.current?.focus()}
-                  placeholder="Select Customer Ledger"
-                  onEnterNext={() => {
-                    billDateRef.current?.focus();
-                  }}
-                  onArrowRight={() => {
-                    billDateRef.current?.focus();
-                  }}
-                  onArrowDown={() => {
-                    billDateRef.current?.focus();
-                  }}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5 flex items-center justify-between">
-                  <span>Invoice Date</span>
-                  <span className="text-[10px] text-slate-400 font-normal">
-                    {billDate ? new Date(billDate + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: 'short' }) : ''}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-800 whitespace-nowrap">
+                    Customer Ledger <span className="text-rose-500">*</span>
                   </span>
-                </label>
-                <input
-                  id="sale-date-input"
-                  ref={billDateRef}
-                  type="date"
-                  value={billDate}
-                  onChange={(e) => setBillDate(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      billNoRef.current?.focus();
-                      billNoRef.current?.select();
-                    } else if (e.key === "ArrowRight") {
-                      e.preventDefault();
-                      billNoRef.current?.focus();
-                      billNoRef.current?.select();
+                </div>
+                <div className="flex-1 max-w-2xl min-w-[200px]">
+                  <SearchableLedgerSelect
+                    ledgers={ledgers}
+                    value={customerName}
+                    onChange={(val) => {
+                      setCustomerName(val);
+                      if (isBankLedger(val, ledgers, config)) {
+                        setBankTxnModalOpen(true);
+                      }
+                    }}
+                    filterGroups={[
+                      "Sundry Debtors",
+                      "Cash-in-Hand",
+                      "Bank Accounts",
+                    ]}
+                    onCreateNew={() =>
+                      onOpenNewLedgerModal("Sundry Debtors", (name) =>
+                        setCustomerName(name),
+                      )
                     }
-                  }}
-                  className="w-full h-8.5 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none cursor-pointer"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-0.5 flex items-center justify-between">
-                  <span>Invoice / Bill No</span>
-                  <span className="text-[10px] text-emerald-600 font-medium">
-                    {editingBillNo ? 'Altering' : 'Auto / Custom'}
-                  </span>
-                </label>
-                <input
-                  ref={billNoRef}
-                  type="text"
-                  value={billNo}
-                  onChange={(e) => setBillNo(e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
+                    onEditLedger={(name) => {
+                      const l = ledgers.find((x) => x["Ledger Name"] === name);
+                      if (l) {
+                        setLedgerToAlter(l);
+                        setShowLedgerAlterModal(true);
+                      }
+                    }}
+                    onShowInfo={(name) =>
+                      setDrillModalState({ type: "ledger", targetId: name })
+                    }
+                    onSaveVoucher={handleSaveInvoice}
+                    onFocusDate={() => billDateRef.current?.focus()}
+                    placeholder="Select Customer Ledger"
+                    onEnterNext={() => {
                       document.getElementById("pur-fast-item-picker")?.focus();
-                    } else if (e.key === "ArrowLeft") {
-                      e.preventDefault();
-                      billDateRef.current?.focus();
-                    }
-                  }}
-                  placeholder="e.g. SAL-1"
-                  className="w-full h-8.5 rounded-lg border border-slate-300 px-2.5 text-xs font-mono font-bold text-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none"
-                />
+                    }}
+                    onArrowRight={() => {
+                      document.getElementById("pur-fast-item-picker")?.focus();
+                    }}
+                    onArrowDown={() => {
+                      document.getElementById("pur-fast-item-picker")?.focus();
+                    }}
+                  />
+                </div>
+                {customerName && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomerDrawerOpen(true)}
+                    className="shrink-0 px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-bold hover:bg-indigo-100 transition cursor-pointer"
+                    title="View Customer Ledger Profile"
+                  >
+                    Ledger Profile
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                <button
+                  type="button"
+                  onClick={() => setIsHeaderCollapsed(true)}
+                  className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-indigo-600 uppercase tracking-wide cursor-pointer transition-colors px-2 py-1 rounded-lg hover:bg-slate-50"
+                  title="Collapse to save space"
+                >
+                  <span>Collapse</span>
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
           </div>

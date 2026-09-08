@@ -70,7 +70,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [justSavedSection, setJustSavedSection] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'company' | 'inventory' | 'features' | 'vouchers' | 'invoice' | 'security' | 'pos'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'features' | 'vouchers' | 'pos' | 'inventory' | 'invoice' | 'security'>('company');
 
   // Security Users State
   const [usersList, setUsersList] = useState<AppUser[]>([]);
@@ -85,12 +85,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const tabs = [
     { id: 'company', label: 'Company Profile', icon: Building2, desc: 'Identity & Tax' },
-    { id: 'inventory', label: 'Inventory Settings', icon: Layers, desc: 'Units, Serials & Categories' },
-    { id: 'features', label: 'Banking & Modules', icon: Sliders, desc: 'Recon, Txn ID & Accounting' },
-    { id: 'vouchers', label: 'Voucher Numbers', icon: Hash, desc: 'Prefixes & Modes' },
-    { id: 'invoice', label: 'Invoice & Branding', icon: PenTool, desc: 'Logo & Signature' },
-    { id: 'security', label: 'User Roles', icon: ShieldCheck, desc: 'Permissions' },
-    { id: 'pos', label: 'POS Settings', icon: ShoppingCart, desc: 'Billing & Keys' }
+    { id: 'features', label: 'General Settings', icon: Sliders, desc: 'Banking, Modules & Resets' },
+    { id: 'vouchers', label: 'Voucher Series', icon: Hash, desc: 'Prefixes & Numbers' },
+    { id: 'pos', label: 'POS Settings', icon: ShoppingCart, desc: 'Billing & Shortcuts' },
+    { id: 'inventory', label: 'Inventory Rules', icon: Layers, desc: 'Units, Serials & Stock' },
+    { id: 'invoice', label: 'Invoice & Print', icon: PenTool, desc: 'Logo, Signature & Terms' },
+    { id: 'security', label: 'User Roles', icon: ShieldCheck, desc: 'Permissions & Security' }
   ] as const;
 
   const tabButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -465,7 +465,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div 
         role="tablist"
         aria-label="Settings navigation tabs"
-        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200"
+        className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 bg-slate-100/90 p-2 rounded-2xl border border-slate-200/90 shadow-2xs"
       >
         {tabs.map((tab, idx) => {
           const Icon = tab.icon;
@@ -785,17 +785,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* TAB 3: Features & Toggles */}
+        {/* TAB 2: General Settings & System Modules */}
         {activeTab === 'features' && (
           <div className="space-y-5 text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Sliders className="h-4 w-4 text-blue-600" />
-                  <span>Banking & Accounting Feature Toggles</span>
+                  <span>General Settings & System Modules</span>
                 </h2>
                 <p className="text-[11px] text-slate-500">
-                  Enable or disable bank reconciliation, transaction ID prompts, financial detail levels, and modules.
+                  Configure core business modules, banking preferences, accounting reconciliation, and data management.
                 </p>
               </div>
             </div>
@@ -1080,15 +1080,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
 
             {/* Data Maintenance & Mass Reset Tools */}
-            <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3">
+            <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3 shadow-xs">
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="font-extrabold text-white text-xs flex items-center gap-2">
                     <Trash2 className="h-4 w-4 text-rose-400" />
-                    <span>Data Maintenance & System Resets</span>
+                    <span>Data Management & System Reset</span>
                   </h4>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Manage deleted records in Trash or perform bulk data resets for system testing.
+                    Filter and purge transaction records by date & voucher type, manage trash recycling bin, or perform full database reset.
                   </p>
                 </div>
               </div>
@@ -1109,7 +1109,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs flex items-center gap-2 shadow-sm transition cursor-pointer"
                 >
                   <AlertTriangle className="h-4 w-4 text-rose-200" />
-                  <span>Bulk Data Cleanup (Ctrl+Alt+D)</span>
+                  <span>Bulk Transaction Purge & Reset (Ctrl+Alt+D)</span>
                 </button>
               </div>
             </div>

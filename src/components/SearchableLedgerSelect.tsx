@@ -322,6 +322,7 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
       if (isOpen) {
         e.preventDefault();
         e.stopPropagation();
+        (e.nativeEvent as any)?.stopImmediatePropagation?.();
         setIsOpen(false);
         setUserQuery('');
         setSearchTerm(value || '');

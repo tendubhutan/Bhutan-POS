@@ -3221,27 +3221,140 @@ export function deleteVoucher(voucherNo: string) {
   return cancelVoucher(voucherNo);
 }
 
-export function bulkDeleteData(options: { deleteTransactions: boolean; deleteMasters: boolean; resetOpeningBalances: boolean }) {
-  if (options.deleteTransactions) {
-    saveJson(STORAGE_KEYS.SALES_INVOICES, []);
-    saveJson(STORAGE_KEYS.PURCHASE_INVOICES, []);
-    saveJson(STORAGE_KEYS.VOUCHERS, []);
-    saveJson(STORAGE_KEYS.QUOTATIONS, []);
-    saveJson(STORAGE_KEYS.DELIVERY_NOTES, []);
-    saveJson(STORAGE_KEYS.PHYSICAL_STOCK, []);
-    saveJson(STORAGE_KEYS.LEDGER_LOG, []);
-    saveJson(STORAGE_KEYS.STOCK_LEDGER, []);
-    saveJson(STORAGE_KEYS.HELD_BILLS, []);
-    saveJson(STORAGE_KEYS.MONTHLY_PAYROLLS, []);
-    saveJson(STORAGE_KEYS.EMPLOYEE_ADVANCES, []);
-    saveJson(STORAGE_KEYS.TRASH_LOG, []);
-    saveJson(STORAGE_KEYS.COUNTERS, {});
+export interface BulkDeleteOptions {
+  deleteTransactions: boolean;
+  deleteMasters: boolean;
+  resetOpeningBalances: boolean;
+  dateFilterMode?: 'all' | 'range';
+  fromDate?: string;
+  toDate?: string;
+  selectedVoucherCategories?: string[];
+}
 
-    const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
-    items.forEach(i => {
-      i['Current Stock'] = options.resetOpeningBalances ? 0 : (Number(i['Opening Stock']) || 0);
-    });
-    saveJson(STORAGE_KEYS.ITEMS, items);
+export function bulkDeleteData(options: BulkDeleteOptions) {
+  if (options.deleteTransactions) {
+    const isFiltered = options.dateFilterMode === 'range' || (options.selectedVoucherCategories && options.selectedVoucherCategories.length > 0 && options.selectedVoucherCategories.length < 13);
+    
+    if (isFiltered) {
+      const from = options.dateFilterMode === 'range' && options.fromDate ? options.fromDate.trim() : '';
+      const to = options.dateFilterMode === 'range' && options.toDate ? options.toDate.trim() : '';
+      
+      const inRange = (d?: string) => {
+        if (!d) return true;
+        const sub = d.slice(0, 10);
+        if (from && sub < from) return false;
+        if (to && sub > to) return false;
+        return true;
+      };
+
+      const cats = new Set(options.selectedVoucherCategories && options.selectedVoucherCategories.length > 0 
+        ? options.selectedVoucherCategories 
+        : ['sale_pos', 'sale_b2b', 'purchase', 'payment', 'receipt', 'journal', 'contra', 'credit_note', 'debit_note', 'quotation', 'delivery_note', 'physical_stock', 'payroll']
+      );
+
+      // 1. Sales Invoices
+      const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+      const remainingSales = sales.filter(s => {
+        const cat = s.isPOS ? 'sale_pos' : 'sale_b2b';
+        const shouldDelete = cats.has(cat) && inRange(s.date);
+        return !shouldDelete;
+      });
+      saveJson(STORAGE_KEYS.SALES_INVOICES, remainingSales);
+
+      // 2. Purchase Invoices
+      const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+      const remainingPurchases = purchases.filter(p => {
+        const shouldDelete = cats.has('purchase') && inRange(p.date);
+        return !shouldDelete;
+      });
+      saveJson(STORAGE_KEYS.PURCHASE_INVOICES, remainingPurchases);
+
+      // 3. Accounting Vouchers
+      const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+      const mapVoucherTypeToCat = (type?: string) => {
+        if (type === 'P') return 'payment';
+        if (type === 'R') return 'receipt';
+        if (type === 'J') return 'journal';
+        if (type === 'C') return 'contra';
+        if (type === 'CN' || type === 'CreditNote') return 'credit_note';
+        if (type === 'DN' || type === 'DebitNote') return 'debit_note';
+        return 'journal';
+      };
+      const remainingVouchers = vouchers.filter(v => {
+        const cat = mapVoucherTypeToCat(v.type);
+        const shouldDelete = cats.has(cat) && inRange(v.date);
+        return !shouldDelete;
+      });
+      saveJson(STORAGE_KEYS.VOUCHERS, remainingVouchers);
+
+      // 4. Quotations
+      if (cats.has('quotation')) {
+        const quotations = loadJson<Quotation[]>(STORAGE_KEYS.QUOTATIONS, []);
+        const remainingQuotes = quotations.filter(q => !inRange(q.date));
+        saveJson(STORAGE_KEYS.QUOTATIONS, remainingQuotes);
+      }
+
+      // 5. Delivery Notes
+      if (cats.has('delivery_note')) {
+        const deliveryNotes = loadJson<DeliveryNote[]>(STORAGE_KEYS.DELIVERY_NOTES, []);
+        const remainingDNs = deliveryNotes.filter(dn => !inRange(dn.date));
+        saveJson(STORAGE_KEYS.DELIVERY_NOTES, remainingDNs);
+      }
+
+      // 6. Physical Stock
+      if (cats.has('physical_stock')) {
+        const physicalStock = loadJson<PhysicalStockVoucher[]>(STORAGE_KEYS.PHYSICAL_STOCK, []);
+        const remainingPS = physicalStock.filter(ps => !inRange(ps.date));
+        saveJson(STORAGE_KEYS.PHYSICAL_STOCK, remainingPS);
+      }
+
+      // 7. Payroll & Advances
+      if (cats.has('payroll')) {
+        const payrolls = loadJson<MonthlyPayroll[]>(STORAGE_KEYS.MONTHLY_PAYROLLS, []);
+        const remainingPR = payrolls.filter(pr => !inRange(pr.month || (pr as any).date));
+        saveJson(STORAGE_KEYS.MONTHLY_PAYROLLS, remainingPR);
+
+        const advances = loadJson<any[]>(STORAGE_KEYS.EMPLOYEE_ADVANCES, []);
+        const remainingAdv = advances.filter(adv => !inRange(adv.date));
+        saveJson(STORAGE_KEYS.EMPLOYEE_ADVANCES, remainingAdv);
+      }
+
+      // Rebuild accounting logs & stock ledgers
+      rebuildAccountingLogs();
+
+      // Recalculate item stock based on surviving stock ledger entries
+      const stockLedger = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+      const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+      items.forEach(i => {
+        const opening = options.resetOpeningBalances ? 0 : (Number(i['Opening Stock']) || 0);
+        const itemEntries = stockLedger.filter(e => e['Item Code'] === i['Item Code']);
+        const totalIn = itemEntries.reduce((acc, e) => acc + (Number(e['Qty In']) || 0), 0);
+        const totalOut = itemEntries.reduce((acc, e) => acc + (Number(e['Qty Out']) || 0), 0);
+        i['Current Stock'] = opening + totalIn - totalOut;
+      });
+      saveJson(STORAGE_KEYS.ITEMS, items);
+
+    } else {
+      saveJson(STORAGE_KEYS.SALES_INVOICES, []);
+      saveJson(STORAGE_KEYS.PURCHASE_INVOICES, []);
+      saveJson(STORAGE_KEYS.VOUCHERS, []);
+      saveJson(STORAGE_KEYS.QUOTATIONS, []);
+      saveJson(STORAGE_KEYS.DELIVERY_NOTES, []);
+      saveJson(STORAGE_KEYS.PHYSICAL_STOCK, []);
+      saveJson(STORAGE_KEYS.LEDGER_LOG, []);
+      saveJson(STORAGE_KEYS.STOCK_LEDGER, []);
+      saveJson(STORAGE_KEYS.HELD_BILLS, []);
+      saveJson(STORAGE_KEYS.MONTHLY_PAYROLLS, []);
+      saveJson(STORAGE_KEYS.EMPLOYEE_ADVANCES, []);
+      saveJson(STORAGE_KEYS.TRASH_LOG, []);
+      saveJson(STORAGE_KEYS.COUNTERS, {});
+
+      const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+      items.forEach(i => {
+        i['Current Stock'] = options.resetOpeningBalances ? 0 : (Number(i['Opening Stock']) || 0);
+      });
+      saveJson(STORAGE_KEYS.ITEMS, items);
+    }
   }
 
   if (options.deleteMasters) {
