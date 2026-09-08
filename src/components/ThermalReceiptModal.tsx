@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { SalesInvoice, Config } from '../types';
 import { X, Printer, Share2, Mail, MessageCircle, FileText, Check, Copy, FileDown } from 'lucide-react';
 import { generateInvoicePDF, shareOrDownloadPDF, resolveBankDetailsForPrint } from '../utils/pdfExport';
+import { formatDateDMY, formatDateTimeDMY } from '../utils/dateUtils';
 import { GlowButton } from './common/GlowButton';
 
 interface ThermalReceiptModalProps {
@@ -307,7 +308,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
 
           <div>
             <div><b>Inv #:</b> ${invoice.invoiceNo}</div>
-            <div><b>Date:</b> ${new Date(invoice.date).toLocaleString()}</div>
+            <div><b>Date:</b> ${formatDateTimeDMY(invoice.date)}</div>
             <div><b>Customer:</b> ${invoice.customer?.name || 'Cash Customer'}</div>
             ${invoice.customer?.phone ? `<div><b>Ph:</b> ${invoice.customer.phone}</div>` : ''}
             ${invoice.customer?.address ? `<div><b>Addr:</b> ${invoice.customer.address}</div>` : ''}
@@ -876,7 +877,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
 
               <div className="space-y-0.5">
                 <div><b>Inv:</b> {invoice.invoiceNo}</div>
-                <div><b>Dt:</b> {new Date(invoice.date).toLocaleString()}</div>
+                <div><b>Dt:</b> {formatDateTimeDMY(invoice.date)}</div>
                 <div><b>Buyer:</b> {invoice.customer?.name || 'Cash Customer'}</div>
                 {invoice.customer?.phone && <div><b>Ph:</b> {invoice.customer.phone}</div>}
                 {invoice.customer?.address && <div><b>Addr:</b> {invoice.customer.address}</div>}
@@ -990,7 +991,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                 </div>
                 <div className="text-right">
                   <span className="text-slate-400 font-bold uppercase text-[9px] block">Date</span>
-                  <span className="font-semibold text-slate-700">{new Date(invoice.date).toLocaleDateString()}</span>
+                  <span className="font-semibold text-slate-700">{formatDateDMY(invoice.date)}</span>
                 </div>
               </div>
 

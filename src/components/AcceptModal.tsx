@@ -21,7 +21,7 @@ export const AcceptModal: React.FC<AcceptModalProps> = ({
       
       const handleGlobalKeyDown = (e: KeyboardEvent) => {
         const key = e.key.toLowerCase();
-        if (key === 'y' || key === 'enter') {
+        if (key === 'y' || key === 'enter' || e.key === 'F2' || e.code === 'F2') {
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation?.();

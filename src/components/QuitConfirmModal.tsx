@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, ArrowRight, X } from 'lucide-react';
+import { LogOut, ArrowLeft, X } from 'lucide-react';
+import { playPromptSound } from '../utils/audio';
 
 interface QuitConfirmModalProps {
   isOpen: boolean;
@@ -19,11 +20,14 @@ export function QuitConfirmModal({
   useEffect(() => {
     if (!isOpen) return;
 
-    // Reset selection to 'yes' when modal opens
+    // Subtle audio cue
+    playPromptSound();
+
+    // Default selection to 'yes'
     setSelectedOption('yes');
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Prevent other handlers while quit dialog is open
+      // Prevent other background key handlers while quit dialog is active
       e.stopPropagation();
 
       const key = e.key.toLowerCase();
@@ -59,96 +63,89 @@ export function QuitConfirmModal({
   return (
     <div
       id="quit-confirm-backdrop"
-      className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[9999] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
       onClick={onCancel}
     >
       <div
         id="quit-confirm-dialog"
-        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden transform scale-100 transition-all"
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-sm w-full p-5 flex flex-col items-center text-center animate-in zoom-in-95 duration-150 relative overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
-        {/* Header Bar */}
-        <div className="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center font-bold">
-              <LogOut className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="font-extrabold text-sm tracking-wide">Quit Confirmation</h3>
-              <p className="text-[11px] text-slate-400">Exit to Main Menu?</p>
-            </div>
-          </div>
+        {/* Decorative Top Gradient Accent Bar */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-500 via-amber-500 to-red-500" />
+
+        {/* Top-right subtle close button */}
+        <button
+          type="button"
+          onClick={onCancel}
+          className="absolute top-3 right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+          title="Stay & Keep Editing (Esc)"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Compact Icon Badge */}
+        <div className="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/60 flex items-center justify-center text-rose-600 dark:text-rose-400 mb-3 shadow-inner">
+          <LogOut className="w-5 h-5 ml-0.5 stroke-[2.2]" />
+        </div>
+
+        {/* Title */}
+        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1 leading-snug">
+          Do you want to quit?
+        </h3>
+
+        {/* Concise Description */}
+        <p className="text-xs text-slate-600 dark:text-slate-400 mb-5 max-w-[290px] leading-relaxed">
+          Exit <span className="font-semibold text-slate-800 dark:text-slate-200">{viewName}</span>? Any unsaved changes will be discarded.
+        </p>
+
+        {/* Action Buttons - Beautifully styled matching Save buttons */}
+        <div className="flex items-center justify-center gap-2.5 w-full">
           <button
+            id="quit-confirm-no-btn"
             type="button"
             onClick={onCancel}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
-            title="Cancel & Stay (Esc)"
+            onMouseEnter={() => setSelectedOption('no')}
+            className={`flex-1 py-2.5 px-3 rounded-xl font-semibold text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer border ${
+              selectedOption === 'no'
+                ? 'bg-slate-200/90 dark:bg-slate-700 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600 shadow-sm ring-2 ring-slate-400/30'
+                : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700/60'
+            }`}
           >
-            <X className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+            <span>No, Stay</span>
+            <kbd className="hidden sm:inline-block text-[10px] bg-slate-200 dark:bg-slate-700/80 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded font-mono">
+              Esc
+            </kbd>
+          </button>
+
+          <button
+            id="quit-confirm-yes-btn"
+            type="button"
+            onClick={onConfirm}
+            onMouseEnter={() => setSelectedOption('yes')}
+            className={`flex-1 py-2.5 px-3 rounded-xl font-semibold text-xs sm:text-sm text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md active:scale-95 ${
+              selectedOption === 'yes'
+                ? 'bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 shadow-rose-600/30 ring-2 ring-rose-500/40'
+                : 'bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 shadow-rose-600/20'
+            }`}
+          >
+            <LogOut className="w-4 h-4 stroke-[2.2]" />
+            <span>Yes, Quit</span>
+            <kbd className="hidden sm:inline-block text-[10px] bg-white/25 text-white px-1.5 py-0.5 rounded font-mono">
+              Y
+            </kbd>
           </button>
         </div>
 
-        {/* Content Body */}
-        <div className="p-6 text-center">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-amber-50 text-amber-600 border border-amber-200 mb-4 shadow-sm">
-            <span className="text-2xl font-black">?</span>
-          </div>
-
-          <h4 className="text-lg font-black text-slate-900 mb-1">
-            Do you want to quit?
-          </h4>
-          <p className="text-xs text-slate-600 mb-6 leading-relaxed">
-            Exit <span className="font-bold text-slate-800 underline decoration-indigo-300">{viewName}</span> and return to the <span className="font-semibold text-slate-800">Main Menu (Dashboard)</span>?
-          </p>
-
-          {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              id="quit-confirm-yes-btn"
-              type="button"
-              onClick={onConfirm}
-              onMouseEnter={() => setSelectedOption('yes')}
-              className={`py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition cursor-pointer shadow-sm ${
-                selectedOption === 'yes'
-                  ? 'bg-rose-600 text-white ring-4 ring-rose-100 shadow-md scale-[1.02]'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-              }`}
-            >
-              <span>Yes, Quit</span>
-              <kbd className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase ${
-                selectedOption === 'yes' ? 'bg-rose-700 text-rose-100' : 'bg-slate-200 text-slate-600'
-              }`}>
-                Y / ↵
-              </kbd>
-            </button>
-
-            <button
-              id="quit-confirm-no-btn"
-              type="button"
-              onClick={onCancel}
-              onMouseEnter={() => setSelectedOption('no')}
-              className={`py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition cursor-pointer shadow-sm ${
-                selectedOption === 'no'
-                  ? 'bg-indigo-600 text-white ring-4 ring-indigo-100 shadow-md scale-[1.02]'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
-              }`}
-            >
-              <span>No, Stay</span>
-              <kbd className={`px-1.5 py-0.5 rounded text-[10px] font-black uppercase ${
-                selectedOption === 'no' ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-200 text-slate-600'
-              }`}>
-                Esc / N
-              </kbd>
-            </button>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-600 flex items-center justify-center gap-3">
-            <span>Press <strong className="text-slate-800 font-bold">Y</strong> to Quit</span>
-            <span>&bull;</span>
-            <span>Press <strong className="text-slate-800 font-bold">Esc / N</strong> to Stay</span>
-          </div>
+        {/* Keyboard shortcut legend */}
+        <div className="mt-3.5 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 w-full text-[11px] text-slate-600 dark:text-slate-400 flex items-center justify-center gap-2">
+          <span>Press <strong className="font-semibold text-slate-700 dark:text-slate-300">Y</strong> or <strong className="font-semibold text-slate-700 dark:text-slate-300">↵</strong> to quit</span>
+          <span>•</span>
+          <span><strong className="font-semibold text-slate-700 dark:text-slate-300">Esc</strong> to stay</span>
         </div>
       </div>
     </div>
   );
 }
+

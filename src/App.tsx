@@ -83,19 +83,7 @@ export default function App() {
     setIsMobileOpen(false);
   };
 
-  const navigateBack = () => {
-    // 1. If drilldown modal is open, dispatch app:back so DrillModal steps back sequentially
-    if (drillModal?.type) {
-      const backEvent = new CustomEvent('app:back', { cancelable: true });
-      window.dispatchEvent(backEvent);
-      return;
-    }
-
-    // 2. Allow active sub-screen or modal to handle back navigation first
-    const backEvent = new CustomEvent('app:back', { cancelable: true });
-    const handled = window.dispatchEvent(backEvent);
-    if (!handled) return;
-
+  const navigateBackDirect = () => {
     setVoucherTarget(null);
 
     // 3. If we came from a Drilldown (via Open in Entry), go back to the original view
@@ -147,6 +135,27 @@ export default function App() {
       setCurrentView(targetView);
       return updated.length > 0 ? updated : ['dashboard'];
     });
+  };
+
+  const navigateBack = (forceDirect: boolean = false) => {
+    if (forceDirect === true) {
+      navigateBackDirect();
+      return;
+    }
+
+    // 1. If drilldown modal is open, dispatch app:back so DrillModal steps back sequentially
+    if (drillModal?.type) {
+      const backEvent = new CustomEvent('app:back', { cancelable: true });
+      window.dispatchEvent(backEvent);
+      return;
+    }
+
+    // 2. Allow active sub-screen or modal to handle back navigation first
+    const backEvent = new CustomEvent('app:back', { cancelable: true });
+    const handled = window.dispatchEvent(backEvent);
+    if (!handled) return;
+
+    navigateBackDirect();
   };
 
   // Store State
@@ -280,7 +289,12 @@ export default function App() {
       }
     };
 
+    const handleDirectBack = () => {
+      navigateBackDirect();
+    };
+
     window.addEventListener('app:navigate', handleAppNavigate);
+    window.addEventListener('app:navigate-back-direct', handleDirectBack);
     window.addEventListener('app:openTrash', handleOpenTrash);
     window.addEventListener('app:openBulkDelete', handleOpenBulkDelete);
     window.addEventListener('app:openVoucher', handleOpenVoucher);
@@ -289,6 +303,7 @@ export default function App() {
       unsubStatus();
       unsubFirestore();
       window.removeEventListener('app:navigate', handleAppNavigate);
+      window.removeEventListener('app:navigate-back-direct', handleDirectBack);
       window.removeEventListener('app:openTrash', handleOpenTrash);
       window.removeEventListener('app:openBulkDelete', handleOpenBulkDelete);
       window.removeEventListener('app:openVoucher', handleOpenVoucher);
@@ -431,6 +446,15 @@ export default function App() {
 
   const isHighDensityView = currentView === 'pos' || currentView === 'purchase' || currentView === 'normalsale' || currentView === 'vouchers';
 
+  const isAnyModalOpen = Boolean(
+    drillModal.type ||
+    showGlobalLedgerSearch ||
+    showTrashModal ||
+    showBulkDeleteModal ||
+    quickLedgerModalProps.isOpen ||
+    quickItemModalProps.isOpen
+  );
+
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
       {/* Sidebar Navigation */}
@@ -495,6 +519,7 @@ export default function App() {
                 setOpenLedgerModalGroup('Sundry Debtors');
                 navigateTo('masters');
               }}
+              isActive={currentView === 'pos' && !isAnyModalOpen}
             />
           </div>
 
@@ -506,8 +531,10 @@ export default function App() {
                 ledgers={ledgers}
                 onDataRefresh={refreshData}
                 initialVoucherTarget={voucherTarget}
+                onBack={navigateBack}
                 onOpenNewItemModal={(onSelect) => setQuickItemModalProps({isOpen: true, onSelect})}
                 onOpenNewLedgerModal={(group, onSelect) => setQuickLedgerModalProps({isOpen: true, group: group || 'Sundry Debtors', onSelect})}
+                isActive={currentView === 'normalsale' && !isAnyModalOpen}
               />
             </div>
           )}
@@ -518,12 +545,14 @@ export default function App() {
               ledgers={ledgers}
               onDataRefresh={refreshData}
               initialVoucherTarget={voucherTarget}
+              onBack={navigateBack}
               onOpenNewItemModal={(onSelect) => setQuickItemModalProps({isOpen: true, onSelect})}
               onOpenNewLedgerModal={(group, onSelect) => setQuickLedgerModalProps({isOpen: true, group: group || 'Sundry Creditors', onSelect})}
               onPrintPurchaseBarcodes={queue => {
                 setBarcodeQueueInitial(queue);
                 navigateTo('barcode');
               }}
+              isActive={currentView === 'purchase' && !isAnyModalOpen}
             />
           </div>
 
@@ -534,9 +563,11 @@ export default function App() {
               ledgers={ledgers}
               onDataRefresh={refreshData}
               onNavigateTo={navigateTo}
+              onBack={navigateBack}
               onOpenNewItemModal={(onSelect) => setQuickItemModalProps({isOpen: true, onSelect})}
               onOpenNewLedgerModal={(group, onSelect) => setQuickLedgerModalProps({isOpen: true, group: group || 'Sundry Creditors', onSelect})}
               initialVoucherTarget={voucherTarget}
+              isActive={currentView === 'vouchers' && !isAnyModalOpen}
             />
           )}
 
@@ -553,6 +584,7 @@ export default function App() {
               onDataRefresh={refreshData}
               openItemModalCode={openItemModalCode}
               openLedgerModalGroup={openLedgerModalGroup}
+              isActive={currentView === 'masters' && !isAnyModalOpen}
             />
           )}
 
@@ -580,6 +612,7 @@ export default function App() {
               onDrillStock={code => setDrillModal({ type: 'stock', targetId: code })}
               onDrillItemProfit={code => setDrillModal({ type: 'item-profit', targetId: code })}
               onDrillGroup={(cat, from, to) => setDrillModal({ type: 'group', targetId: cat, fromDate: from, toDate: to })}
+              isActive={currentView === 'reports' && !isAnyModalOpen}
             />
           )}
 
@@ -590,6 +623,7 @@ export default function App() {
               config={config}
               ledgers={ledgers}
               onDataRefresh={refreshData}
+              isActive={currentView === 'settings' && !isAnyModalOpen}
             />
           )}
           <QuickLedgerModal

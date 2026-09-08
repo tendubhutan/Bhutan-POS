@@ -43,6 +43,7 @@ interface MastersProps {
   onDataRefresh: () => void;
   openItemModalCode?: string | null;
   openLedgerModalGroup?: string | null;
+  isActive?: boolean;
 }
 
 export const Masters: React.FC<MastersProps> = ({
@@ -56,7 +57,8 @@ export const Masters: React.FC<MastersProps> = ({
   ledgerGroups,
   onDataRefresh,
   openItemModalCode,
-  openLedgerModalGroup
+  openLedgerModalGroup,
+  isActive = true
 }) => {
   const [activeTab, setActiveTab] = useState<'items' | 'ledgers' | 'vouchertypes' | 'itemgroups' | 'units' | 'unitgroups' | 'ledgergroups'>('items');
   const [tabHistory, setTabHistory] = useState<('items' | 'ledgers' | 'vouchertypes' | 'itemgroups' | 'units' | 'unitgroups' | 'ledgergroups')[]>(['items']);
@@ -83,6 +85,8 @@ export const Masters: React.FC<MastersProps> = ({
 
   // Arrow key navigation between Masters tabs (ArrowLeft, ArrowRight, Home, End, Alt+Arrows)
   useEffect(() => {
+    if (!isActive) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
       const isInputFocused =
@@ -123,7 +127,7 @@ export const Masters: React.FC<MastersProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTab]);
+  }, [isActive, activeTab]);
 
   // Categories list state
   const [categoryList, setCategoryList] = useState<string[]>([]);
@@ -281,6 +285,8 @@ export const Masters: React.FC<MastersProps> = ({
 
   // Close active modals or step back on Escape key / Save on F2
   useEffect(() => {
+    if (!isActive) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F2' || e.code === 'F2') {
         e.preventDefault();
@@ -298,6 +304,7 @@ export const Masters: React.FC<MastersProps> = ({
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [
+    isActive,
     showOpeningSerialModal,
     showQuickGroupModal,
     showQuickUnitModal,
@@ -328,6 +335,8 @@ export const Masters: React.FC<MastersProps> = ({
 
   // Intercept app:back and app:save events from Header/App navigation
   useEffect(() => {
+    if (!isActive) return;
+
     const handleBackEvent = (e: CustomEvent) => {
       const handled = handleMastersBack();
       if (handled) {
@@ -345,6 +354,7 @@ export const Masters: React.FC<MastersProps> = ({
       window.removeEventListener('app:save' as any, handleSaveEvent);
     };
   }, [
+    isActive,
     showOpeningSerialModal,
     showQuickGroupModal,
     showQuickUnitModal,

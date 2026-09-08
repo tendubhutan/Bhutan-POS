@@ -166,6 +166,36 @@ export async function syncPurchaseInvoiceToFirestore(invoice: PurchaseInvoice) {
   }
 }
 
+export async function deleteSalesInvoiceFromFirestore(invoiceNo: string) {
+  try {
+    const safeId = String(invoiceNo).replace(/\//g, '_');
+    const ref = doc(db, 'sales_invoices', safeId);
+    await deleteDoc(ref);
+  } catch (err) {
+    console.warn('Firestore Delete Sales Invoice Error:', err);
+  }
+}
+
+export async function deletePurchaseInvoiceFromFirestore(billNo: string) {
+  try {
+    const safeId = String(billNo).replace(/\//g, '_');
+    const ref = doc(db, 'purchase_invoices', safeId);
+    await deleteDoc(ref);
+  } catch (err) {
+    console.warn('Firestore Delete Purchase Invoice Error:', err);
+  }
+}
+
+export async function deleteVoucherFromFirestore(voucherNo: string) {
+  try {
+    const safeId = String(voucherNo).replace(/\//g, '_');
+    const ref = doc(db, 'vouchers', safeId);
+    await deleteDoc(ref);
+  } catch (err) {
+    console.warn('Firestore Delete Voucher Error:', err);
+  }
+}
+
 export async function syncVoucherToFirestore(voucher: Voucher) {
   try {
     const id = voucher.voucherNo;
@@ -309,16 +339,19 @@ export function initFirestoreSync(onDataUpdated?: () => void) {
         });
 
         const localSales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+        const deletedSales = new Set(
+          loadJson<string[]>(STORAGE_KEYS.DELETED_SALES_INVOICES, []).map(s => (s || '').trim().toLowerCase())
+        );
         const salesMap = new Map<string, SalesInvoice>();
         remoteSales.forEach(s => {
           const id = (s.invoiceNo || '').trim().toLowerCase();
-          if (id) salesMap.set(id, s);
+          if (id && !deletedSales.has(id)) salesMap.set(id, s);
         });
 
         const unsyncedSales: SalesInvoice[] = [];
         localSales.forEach(s => {
           const id = (s.invoiceNo || '').trim().toLowerCase();
-          if (id && !salesMap.has(id)) {
+          if (id && !deletedSales.has(id) && !salesMap.has(id)) {
             salesMap.set(id, s);
             unsyncedSales.push(s);
           }
@@ -351,16 +384,19 @@ export function initFirestoreSync(onDataUpdated?: () => void) {
         });
 
         const localPurchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+        const deletedPurchases = new Set(
+          loadJson<string[]>(STORAGE_KEYS.DELETED_PURCHASE_INVOICES, []).map(p => (p || '').trim().toLowerCase())
+        );
         const purchaseMap = new Map<string, PurchaseInvoice>();
         remotePurchases.forEach(p => {
           const id = (p.billNo || '').trim().toLowerCase();
-          if (id) purchaseMap.set(id, p);
+          if (id && !deletedPurchases.has(id)) purchaseMap.set(id, p);
         });
 
         const unsyncedPurchases: PurchaseInvoice[] = [];
         localPurchases.forEach(p => {
           const id = (p.billNo || '').trim().toLowerCase();
-          if (id && !purchaseMap.has(id)) {
+          if (id && !deletedPurchases.has(id) && !purchaseMap.has(id)) {
             purchaseMap.set(id, p);
             unsyncedPurchases.push(p);
           }
@@ -393,16 +429,19 @@ export function initFirestoreSync(onDataUpdated?: () => void) {
         });
 
         const localVouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+        const deletedVouchers = new Set(
+          loadJson<string[]>(STORAGE_KEYS.DELETED_VOUCHERS, []).map(v => (v || '').trim().toLowerCase())
+        );
         const voucherMap = new Map<string, Voucher>();
         remoteVouchers.forEach(v => {
           const id = (v.voucherNo || '').trim().toLowerCase();
-          if (id) voucherMap.set(id, v);
+          if (id && !deletedVouchers.has(id)) voucherMap.set(id, v);
         });
 
         const unsyncedVouchers: Voucher[] = [];
         localVouchers.forEach(v => {
           const id = (v.voucherNo || '').trim().toLowerCase();
-          if (id && !voucherMap.has(id)) {
+          if (id && !deletedVouchers.has(id) && !voucherMap.has(id)) {
             voucherMap.set(id, v);
             unsyncedVouchers.push(v);
           }

@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Config, SalesInvoice, PurchaseInvoice, DeliveryNote, Quotation, Voucher } from '../types';
 import { getLedgers } from '../services/storageService';
+import { formatDateDMY, formatDateTimeDMY } from './dateUtils';
 
 export function resolveBankDetailsForPrint(config: Config): string {
   if (config.PrintBankDetailsOnInvoice === 'false') return '';
@@ -177,7 +178,9 @@ function drawReportHeaderBox(
   doc.setTextColor(30, 27, 75);
   doc.text(reportTitle.toUpperCase(), textCenterX, textStartY + 9.5, { align: 'center' });
 
-  const periodStr = reportType === 'BS' ? `As at: ${toDate}` : `Period: ${fromDate} to ${toDate}`;
+  const periodStr = reportType === 'BS' 
+    ? `As at: ${toDate ? formatDateDMY(toDate) : '-'}` 
+    : `Period: ${fromDate ? formatDateDMY(fromDate) : 'Start'} to ${toDate ? formatDateDMY(toDate) : 'End'}`;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
   const periodWidth = doc.getTextWidth(periodStr) + 8;
@@ -1190,7 +1193,7 @@ export function generateInvoicePDF(invoice: SalesInvoice | any, config: Config, 
 export function generatePurchaseBillPDF(purchase: PurchaseInvoice | any, config: Config): jsPDF {
   const meta = [
     { label: 'Bill No', value: purchase.billNo },
-    { label: 'Date', value: new Date(purchase.date).toLocaleDateString() },
+    { label: 'Date', value: formatDateDMY(purchase.date) },
     { label: 'Supplier Ref', value: purchase.supplierInvoiceNo || '' }
   ];
   const supp = purchase.supplier || {};
@@ -1217,8 +1220,8 @@ export function generatePurchaseBillPDF(purchase: PurchaseInvoice | any, config:
 export function generateQuotationPDF(quote: Quotation | any, config: Config): jsPDF {
   const meta = [
     { label: 'Quote No', value: quote.quotationNo || quote.quoteNo || '' },
-    { label: 'Date', value: quote.date ? new Date(quote.date).toLocaleDateString() : new Date().toLocaleDateString() },
-    { label: 'Valid Until', value: quote.validUntil ? new Date(quote.validUntil).toLocaleDateString() : '' }
+    { label: 'Date', value: formatDateDMY(quote.date) },
+    { label: 'Valid Until', value: quote.validUntil ? formatDateDMY(quote.validUntil) : '' }
   ];
   const cust = quote.customer || {};
   const entName = typeof cust === 'object' ? (cust.name || cust.ledger || 'Customer') : (cust || 'Customer');
@@ -1245,7 +1248,7 @@ export function generateQuotationPDF(quote: Quotation | any, config: Config): js
 export function generateDeliveryNotePDF(note: DeliveryNote | any, config: Config): jsPDF {
   const meta = [
     { label: 'Note No', value: note.noteNo || '' },
-    { label: 'Date', value: note.date ? new Date(note.date).toLocaleDateString() : new Date().toLocaleDateString() },
+    { label: 'Date', value: formatDateDMY(note.date) },
     { label: 'Order Ref', value: note.orderRefNo || '' }
   ];
   const cust = note.customer || {};
@@ -1285,7 +1288,7 @@ export function generateVoucherSlipPDF(voucher: any, config: Config): jsPDF {
 
   const meta = [
     { label: 'Voucher No', value: voucher.voucherNo || voucher.no || 'VOUCHER' },
-    { label: 'Date', value: voucher.date ? new Date(voucher.date).toLocaleDateString() : new Date().toLocaleDateString() }
+    { label: 'Date', value: formatDateDMY(voucher.date) }
   ];
   
   const entName = voucher.partyLedger || (vType === 'P' || vType === 'C' ? voucher.creditLedger : voucher.debitLedger) || voucher.fromAccount || 'Primary Account';
@@ -1318,7 +1321,7 @@ export function generateCreditNotePDF(note: any, config: Config): jsPDF {
     note,
     config,
     'CREDIT NOTE',
-    [{ label: 'Note No', value: note.noteNo || '' }, { label: 'Date', value: note.date ? new Date(note.date).toLocaleDateString() : new Date().toLocaleDateString() }],
+    [{ label: 'Note No', value: note.noteNo || '' }, { label: 'Date', value: formatDateDMY(note.date) }],
     'ISSUED TO:',
     entName,
     [],
@@ -1342,7 +1345,7 @@ export function generateDebitNotePDF(note: any, config: Config): jsPDF {
     note,
     config,
     'DEBIT NOTE',
-    [{ label: 'Note No', value: note.noteNo || '' }, { label: 'Date', value: note.date ? new Date(note.date).toLocaleDateString() : new Date().toLocaleDateString() }],
+    [{ label: 'Note No', value: note.noteNo || '' }, { label: 'Date', value: formatDateDMY(note.date) }],
     'ISSUED TO:',
     entName,
     [],
@@ -1364,7 +1367,7 @@ export function generatePhysicalStockPDF(voucher: any, config: Config): jsPDF {
     voucher,
     config,
     'PHYSICAL STOCK VOUCHER',
-    [{ label: 'Voucher No', value: voucher.voucherNo || '' }, { label: 'Date', value: voucher.date ? new Date(voucher.date).toLocaleDateString() : new Date().toLocaleDateString() }],
+    [{ label: 'Voucher No', value: voucher.voucherNo || '' }, { label: 'Date', value: formatDateDMY(voucher.date) }],
     'LOCATION / REMARKS:',
     voucher.remarks || 'Main Location',
     [],
@@ -1392,11 +1395,15 @@ export function generateVoucherRegisterPDF(
   const currency = config.CurrencySymbol || 'Nu.';
 
   const dividerY = drawVoucherHeader(doc, config, 'ACCOUNTING VOUCHER REGISTER', [
-    { label: 'Generated', value: new Date().toLocaleString() }
+    { label: 'Generated', value: formatDateTimeDMY(new Date()) }
   ]);
 
   const filterParts = [];
-  if (filters?.startDate || filters?.endDate) filterParts.push(`Period: ${filters.startDate || 'Beginning'} to ${filters.endDate || 'Present'}`);
+  if (filters?.startDate || filters?.endDate) {
+    const sStr = filters.startDate ? formatDateDMY(filters.startDate) : 'Beginning';
+    const eStr = filters.endDate ? formatDateDMY(filters.endDate) : 'Present';
+    filterParts.push(`Period: ${sStr} to ${eStr}`);
+  }
   if (filters?.vType && filters.vType !== 'ALL') filterParts.push(`Type: ${filters.vType}`);
   if (filters?.status && filters.status !== 'ALL') filterParts.push(`Status: ${filters.status}`);
   if (filters?.ledger) filterParts.push(`Ledger: ${filters.ledger}`);
@@ -1415,7 +1422,7 @@ export function generateVoucherRegisterPDF(
     const account = v.lines ? 'Multi-Account' : v.creditLedger || '-';
     const amt = Number(v.totalAmount || v.amount || 0);
     return [
-      new Date(v.date).toLocaleDateString('en-GB'),
+      formatDateDMY(v.date),
       v.voucherNo || '-',
       vTypeLabel,
       isCancelled ? 'Cancelled' : 'Active',

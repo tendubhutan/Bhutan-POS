@@ -206,11 +206,6 @@ export function handleGridKeyDown(
     } else if (searchPickerId) {
       focusAndSelect(searchPickerId);
     }
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
-    if (searchPickerId) {
-      focusAndSelect(searchPickerId);
-    }
   }
 }
 

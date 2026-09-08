@@ -1,3 +1,4 @@
+import { QuitConfirmModal } from "./QuitConfirmModal";
 import { loadJson, STORAGE_KEYS, DEFAULT_UNITS } from '../services/storageService';
 import { GlowButton } from './common/GlowButton';
 import { AlertCircle } from 'lucide-react';
@@ -8,6 +9,7 @@ import {
 import { Config, Item, Ledger, CartLine, Unit, BarcodeQueueItem } from "../types";
 import { BankTransactionIdModal } from "./BankTransactionIdModal";
 import { isBankLedger } from "../utils/ledgerUtils";
+import { formatDateDMY } from "../utils/dateUtils";
 import {
   saveSalesInvoice,
   getFullLedgerStatement,
@@ -58,6 +60,8 @@ interface SalesInvoiceEntryProps {
   ) => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onPrintBarcodes?: (queue: BarcodeQueueItem[]) => void;
+  onBack?: (forceDirect?: boolean) => void;
+  isActive?: boolean;
 }
 
 
@@ -153,7 +157,7 @@ const CustomerLedgerDrawer = ({
                     <tbody className="divide-y divide-slate-100">
                       {report.slice(-10).reverse().map((r, i) => (
                         <tr key={i} className="hover:bg-slate-50">
-                          <td className="px-2 py-1.5 whitespace-nowrap">{r.DateIso ? new Date(r.DateIso).toLocaleDateString() : '-'}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{formatDateDMY(r.DateIso)}</td>
                           <td className="px-2 py-1.5 truncate max-w-[100px]" title={r['Ref No']}>{r['Ref No'] || r.Type}</td>
                           <td className="px-2 py-1.5 text-right text-emerald-600 font-medium">{r.Debit ? Number(r.Debit).toFixed(2) : ''}</td>
                           <td className="px-2 py-1.5 text-right text-rose-600 font-medium">{r.Credit ? Number(r.Credit).toFixed(2) : ''}</td>
@@ -183,6 +187,8 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   onOpenNewLedgerModal,
   onPrintBarcodes,
   initialVoucherTarget,
+  onBack,
+  isActive = true,
 }) => {
   const [customerName, setCustomerName] = useState("");
   const [billDate, setBillDate] = useState(
@@ -341,6 +347,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
+  const [showQuitModal, setShowQuitModal] = useState(false);
   const [pricingMode, setPricingMode] = useState<'retail' | 'wholesale'>('retail');
 
   const getItemRate = (item: Item): number => {
@@ -481,7 +488,35 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     dateInputId: "sale-date-input",
   });
 
+  const resetForm = () => {
+    setEditingBillNo(null);
+    setCart([]);
+    setBillDate(new Date().toISOString().split("T")[0]);
+    setTimeout(() => {
+      try {
+        setBillNo(peekNextInvoiceNumber(false));
+      } catch {
+        setBillNo("");
+      }
+    }, 50);
+    setCustomerName("");
+    setOrderNo("");
+    setOrderDate("");
+    setDeliveryNoteNo("");
+    setAdditionalExpenses([]);
+    setBillDiscount("");
+    setTermsAndConditions(getDefaultTerms(config));
+  };
+
   const handleSalesBack = (): boolean => {
+    if (showQuitModal) {
+      setShowQuitModal(false);
+      return true;
+    }
+    if (bankTxnModalOpen) {
+      setBankTxnModalOpen(false);
+      return true;
+    }
     if (serialModalOpen) {
       setSerialModalOpen(false);
       return true;
@@ -494,11 +529,36 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       setDrillModalState({ type: null, targetId: null });
       return true;
     }
-    return false;
+
+    const hasData =
+      cart.length > 0 ||
+      !!customerName ||
+      !!editingBillNo ||
+      !!orderNo ||
+      !!deliveryNoteNo ||
+      (billDiscount !== "" && Number(billDiscount) > 0) ||
+      !!bankTxnNo ||
+      !!narration ||
+      (Array.isArray(additionalExpenses) && additionalExpenses.length > 0);
+    if (hasData) {
+      setShowQuitModal(true);
+      return true;
+    }
+
+    // Clean form: directly step back
+    resetForm();
+    if (onBack) {
+      onBack(true);
+    } else {
+      window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
+    }
+    return true;
   };
 
   // Global Keyboard Shortcuts (F2 Accept/Save, Ctrl+A Accept/Save, F7/Ctrl+I Item/Ledger Info, ESC Back)
   useEffect(() => {
+    if (isActive === false) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl + A or F2: Accept and Save Invoice
       const isCtrlA =
@@ -553,12 +613,11 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         return;
       }
 
-      if (e.key === 'Escape') { if (e.defaultPrevented) return;
-        const handled = handleSalesBack();
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        handleSalesBack();
       }
     };
 
@@ -574,22 +633,33 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
     window.addEventListener("app:save", handleSaveEvent);
     window.addEventListener("app:back", handleBackEvent);
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("app:save", handleSaveEvent);
       window.removeEventListener("app:back", handleBackEvent);
     };
   }, [
+    isActive,
     cart,
     customerName,
     billDate,
     billNo,
+    orderNo,
+    deliveryNoteNo,
+    editingBillNo,
+    bankTxnModalOpen,
     serialModalOpen,
     customerDrawerOpen,
     drillModalState,
+    showQuitModal,
+    bankTxnNo,
+    narration,
+    additionalExpenses,
+    billDiscount,
+    onBack
   ]);
 
   const selectItem = (item: Item, autoAdd: boolean = true, preSelectedSerial?: string) => {
@@ -831,7 +901,8 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         bank2Ledger: config.Bank2Ledger || "BNBL Account",
       },
       notes: narration,
-      invoiceNo: editingBillNo || (billNo.trim() ? billNo.trim() : undefined),
+      invoiceNo: billNo.trim() || undefined,
+      originalInvoiceNo: editingBillNo || undefined,
       date: billDate ? new Date(billDate).toISOString() : undefined,
       isEdit: Boolean(editingBillNo),
     });
@@ -1035,7 +1106,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                   Date
                 </span>
                 <span className="font-bold text-slate-800">
-                  {billDate ? new Date(billDate + 'T00:00:00').toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' }) : billDate}
+                  {formatDateDMY(billDate)}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -1794,6 +1865,21 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
             document.getElementById('sale-fast-item-picker')?.focus();
           }, 50);
         }}
+      />
+
+      <QuitConfirmModal
+        isOpen={showQuitModal}
+        viewName="Sales Invoice Entry"
+        onConfirm={() => {
+          setShowQuitModal(false);
+          resetForm();
+          if (onBack) {
+            onBack(true);
+          } else {
+            window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
+          }
+        }}
+        onCancel={() => setShowQuitModal(false)}
       />
     </div>
   );

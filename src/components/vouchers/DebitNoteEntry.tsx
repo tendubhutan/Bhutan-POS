@@ -7,6 +7,7 @@ import { SearchableLedgerSelect } from '../SearchableLedgerSelect';
 import { SearchableItemSelect } from '../SearchableItemSelect';
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './VoucherSuccessActionModal';
 import { AcceptModal } from '../AcceptModal';
+import { QuitConfirmModal } from '../QuitConfirmModal';
 import { generateDebitNotePDF, shareOrDownloadPDF } from '../../utils/pdfExport';
 import {
   RotateCcw, Plus, Trash2, CheckCircle2, AlertCircle, Package, Printer, Share2, Download, ChevronDown, ChevronUp } from 'lucide-react';
@@ -48,6 +49,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
   const [editingVoucherNo, setEditingVoucherNo] = useState<string | null>(null);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
+  const [showQuitModal, setShowQuitModal] = useState(false);
   const [voucherNo, setVoucherNo] = useState(() => (isAutoMode ? peekNextVoucherNo('DN', config) : ''));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [supplierLedger, setSupplierLedger] = useState('');
@@ -235,6 +237,7 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
 
     const payload = {
       voucherNo: voucherNo.trim() || undefined,
+      originalVoucherNo: editingVoucherNo || undefined,
       date: new Date(date).toISOString(),
       supplierLedger,
       supplierAddress: suppObj?.Address || '',
@@ -338,20 +341,77 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
     }, 20);
   };
 
+  const resetForm = () => {
+    setEditingVoucherNo(null);
+    if (isAutoMode) {
+      setVoucherNo(peekNextVoucherNo('DN', config));
+    }
+    setDate(new Date().toISOString().split('T')[0]);
+    setSupplierLedger('');
+    setPurchaseReturnLedger('Purchase Account');
+    setOriginalBillRef('');
+    setNarration('');
+    setLumpSumAmount('');
+    setLumpSumGst(0);
+    setItemLines([
+      {
+        id: '1',
+        itemCode: '',
+        itemName: '',
+        qty: 1,
+        rate: 0,
+        gstPct: 0,
+        amount: 0
+      }
+    ]);
+  };
+
+  const handleDebitBack = (): boolean => {
+    if (showQuitModal) {
+      setShowQuitModal(false);
+      return true;
+    }
+    if (showAcceptModal) {
+      setShowAcceptModal(false);
+      return true;
+    }
+    if (successModalDetails) {
+      setSuccessModalDetails(null);
+      return true;
+    }
+
+    const hasData =
+      !!supplierLedger ||
+      (Number(lumpSumAmount) > 0) ||
+      (Number(lumpSumGst) > 0) ||
+      !!originalBillRef ||
+      Boolean(narration.trim()) ||
+      !!editingVoucherNo ||
+      (itemLines.length > 0 && itemLines.some(l => !!l.itemCode || !!l.itemName || (Number(l.rate) > 0) || (Number(l.amount) > 0)));
+
+    if (hasData) {
+      setShowQuitModal(true);
+      return true;
+    }
+
+    resetForm();
+    if (onNavigateBack) {
+      onNavigateBack();
+      return true;
+    }
+    return false;
+  };
+
   // Global F2, Escape, and app event listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { if (e.defaultPrevented) return;
-        if (successModalDetails) {
-          setSuccessModalDetails(null);
+      if (e.key === 'Escape') {
+        if (e.defaultPrevented) return;
+        const handled = handleDebitBack();
+        if (handled) {
           e.preventDefault();
           e.stopPropagation();
-          return;
-        }
-        if (onNavigateBack) {
-          onNavigateBack();
-          e.preventDefault();
-          e.stopPropagation();
+          e.stopImmediatePropagation?.();
           return;
         }
       }
@@ -365,11 +425,8 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
     };
 
     const handleBackEvent = (e: CustomEvent) => {
-      if (successModalDetails) {
-        setSuccessModalDetails(null);
-        e.preventDefault();
-      } else if (onNavigateBack) {
-        onNavigateBack();
+      const handled = handleDebitBack();
+      if (handled) {
         e.preventDefault();
       }
     };
@@ -390,7 +447,21 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
       window.removeEventListener('app:back' as any, handleBackEvent);
       window.removeEventListener('app:save' as any, handleSaveEvent);
     };
-  }, [totalDebitAmount, supplierLedger, date, originalBillRef, itemLines, lumpSumAmount, lumpSumGst, successModalDetails, onNavigateBack]);
+  }, [
+    totalDebitAmount,
+    supplierLedger,
+    date,
+    originalBillRef,
+    itemLines,
+    lumpSumAmount,
+    lumpSumGst,
+    narration,
+    editingVoucherNo,
+    showQuitModal,
+    showAcceptModal,
+    successModalDetails,
+    onNavigateBack
+  ]);
 
   return (
     <form id="debit-note-form" onSubmit={handleSubmit} className="flex flex-col h-full min-h-0 space-y-2">
@@ -399,6 +470,18 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
         title={editingVoucherNo ? `Save changes to ${editingVoucherNo}?` : "Save Debit Note?"}
         onConfirm={proceedSave}
         onCancel={() => setShowAcceptModal(false)}
+      />
+      <QuitConfirmModal
+        isOpen={showQuitModal}
+        viewName="Debit Note"
+        onConfirm={() => {
+          setShowQuitModal(false);
+          resetForm();
+          if (onNavigateBack) {
+            onNavigateBack();
+          }
+        }}
+        onCancel={() => setShowQuitModal(false)}
       />
       {/* Toast Notification */}
       {toastMsg && (

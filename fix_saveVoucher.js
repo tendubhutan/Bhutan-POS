@@ -1,0 +1,35 @@
+const fs = require('fs');
+let code = fs.readFileSync('src/services/storageService.ts', 'utf8');
+code = code.replace(/export function saveVoucher\(t: 'P' \| 'R' \| 'J' \| 'C', v: \{[^\}]+\}\) \{/, 
+`export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: { 
+  voucherNo?: string; 
+  isEdit?: boolean;
+  date?: string; 
+  ledger?: string; 
+  amount: number; 
+  mode?: string; 
+  debitLedger?: string; 
+  creditLedger?: string; 
+  toAccount?: string; 
+  fromAccount?: string; 
+  narration?: string;
+  transactionId?: string;
+  bankTxnNo?: string;
+  chequeNo?: string;
+  billNo?: string;
+  billAllocations?: BillAllocation[];
+  gstInputType?: 'Local Purchase' | 'Local Expenses' | 'Bank Charges' | 'Import Customs GST Payment' | 'Import Purchase' | 'None';
+  supplierName?: string;
+  supplierGstNo?: string;
+  supplierCountry?: string;
+  invoiceNo?: string;
+  invoiceDate?: string;
+  referenceNo?: string;
+  declarationNo?: string;
+  declarationDate?: string;
+  taxableAmount?: number;
+  exemptedAmount?: number;
+  gstAmount?: number;
+  totalImportAmount?: number;
+}) {`);
+fs.writeFileSync('src/services/storageService.ts', code);

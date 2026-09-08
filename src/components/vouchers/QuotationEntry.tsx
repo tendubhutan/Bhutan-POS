@@ -10,6 +10,7 @@ import { SearchableItemSelect } from '../SearchableItemSelect';
 import { handleGridKeyDown } from '../../utils/gridKeyboardNav';
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './VoucherSuccessActionModal';
 import { AcceptModal } from '../AcceptModal';
+import { QuitConfirmModal } from '../QuitConfirmModal';
 import {
   FileCheck2, Plus, Trash2, CheckCircle2, AlertCircle, Package, Printer, Calendar, Send, ArrowRight, Sparkles, Share2, Download, ArrowLeft, ChevronUp, ChevronDown } from 'lucide-react';
 import { generateQuotationPDF, shareOrDownloadPDF } from '../../utils/pdfExport';
@@ -40,6 +41,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
   const [editingQuotationNo, setEditingQuotationNo] = useState<string | null>(null);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
+  const [showQuitModal, setShowQuitModal] = useState(false);
   const [quotationNo, setQuotationNo] = useState(() => (isAutoMode ? peekNextVoucherNo('QUOTATION', config) : ''));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   
@@ -347,6 +349,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
 
     const payload = {
       quotationNo: quotationNo.trim() || undefined,
+      originalQuotationNo: editingQuotationNo || undefined,
       date: new Date(date).toISOString(),
       validUntil: new Date(validUntil).toISOString(),
       customer: {
@@ -459,7 +462,33 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
     }, 20);
   };
 
+  const resetForm = () => {
+    setEditingQuotationNo(null);
+    if (isAutoMode) {
+      setQuotationNo(peekNextVoucherNo('QUOTATION', config));
+    }
+    setDate(new Date().toISOString().split('T')[0]);
+    setValidUntil(defaultValidDate);
+    setCustomerName('');
+    setContactNo('');
+    setAddress('');
+    setGstin('');
+    setTermsAndConditions(
+      '1. Prices are valid for 15 days.\n2. Goods once sold will not be taken back.\n3. Payment terms: 100% advance or on delivery.'
+    );
+    setRemarks('');
+    setQuoteItems([]);
+  };
+
   const handleQuoteBack = () => {
+    if (showQuitModal) {
+      setShowQuitModal(false);
+      return true;
+    }
+    if (showAcceptModal) {
+      setShowAcceptModal(false);
+      return true;
+    }
     if (successModalDetails) {
       setSuccessModalDetails(null);
       return true;
@@ -468,6 +497,22 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
       setActiveTab('create');
       return true;
     }
+
+    const hasData =
+      !!customerName ||
+      !!contactNo ||
+      !!address ||
+      !!gstin ||
+      Boolean(remarks.trim()) ||
+      !!editingQuotationNo ||
+      quoteItems.length > 0;
+
+    if (hasData) {
+      setShowQuitModal(true);
+      return true;
+    }
+
+    resetForm();
     if (onNavigateBack) {
       onNavigateBack();
       return true;
@@ -478,7 +523,8 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
   // Global F2, Escape, and shortcut listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { if (e.defaultPrevented) return;
+      if (e.key === 'Escape') {
+        if (e.defaultPrevented) return;
         const handled = handleQuoteBack();
         if (handled) {
           e.preventDefault();
@@ -497,7 +543,23 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTab, customerName, netQuotationTotal, quoteItems, date, validUntil, successModalDetails, onNavigateBack]);
+  }, [
+    activeTab,
+    customerName,
+    contactNo,
+    address,
+    gstin,
+    remarks,
+    editingQuotationNo,
+    showQuitModal,
+    showAcceptModal,
+    netQuotationTotal,
+    quoteItems,
+    date,
+    validUntil,
+    successModalDetails,
+    onNavigateBack
+  ]);
 
   useEffect(() => {
     const handleBackEvent = (e: CustomEvent) => {
@@ -521,7 +583,20 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
       window.removeEventListener('app:back' as any, handleBackEvent);
       window.removeEventListener('app:save' as any, handleSaveEvent);
     };
-  }, [activeTab, successModalDetails, onNavigateBack]);
+  }, [
+    activeTab,
+    customerName,
+    contactNo,
+    address,
+    gstin,
+    remarks,
+    editingQuotationNo,
+    showQuitModal,
+    showAcceptModal,
+    quoteItems,
+    successModalDetails,
+    onNavigateBack
+  ]);
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2">
@@ -530,6 +605,18 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
         title={editingQuotationNo ? `Save changes to ${editingQuotationNo}?` : "Save Quotation / Estimate?"}
         onConfirm={proceedSaveQuotation}
         onCancel={() => setShowAcceptModal(false)}
+      />
+      <QuitConfirmModal
+        isOpen={showQuitModal}
+        viewName="Quotation / Estimate"
+        onConfirm={() => {
+          setShowQuitModal(false);
+          resetForm();
+          if (onNavigateBack) {
+            onNavigateBack();
+          }
+        }}
+        onCancel={() => setShowQuitModal(false)}
       />
       {/* Toast */}
       {toastMsg && (

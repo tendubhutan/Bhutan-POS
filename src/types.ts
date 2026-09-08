@@ -1,3 +1,20 @@
+export type GstSourceType = 'manual' | 'ledger' | 'voucher' | 'formula';
+
+export interface GstFieldConfig {
+  id: string;
+  label: string;
+  dataType: 'text' | 'number' | 'date';
+  sourceType: GstSourceType;
+  sourceValue?: string;
+  showInReport?: boolean;
+  order: number;
+}
+
+export interface GstInputTypeConfig {
+  typeId: string;
+  fields: GstFieldConfig[];
+}
+
 export interface Config {
   CompanyName: string;
   Address: string;
@@ -12,6 +29,8 @@ export interface Config {
   Bank2Ledger: string;
   CompanyBankDetails: string;
   EnableGST: string; // "true" | "false"
+  EnableGSTInputTax?: string; // "true" | "false"
+  gstInputConfigs?: string; // JSON encoded GstInputTypeConfig[]
   EnableSerials: string; // "true" | "false"
   EnableItemDiscount?: string; // "true" | "false"
   ItemDiscountType?: "flat" | "percent";
@@ -61,6 +80,27 @@ export interface Config {
   EnableWholesalePrice?: string; // "true" | "false"
   EnableBillWiseDetails?: string; // "true" | "false"
   EnableAdvancedAI?: string; // "true" | "false"
+  EnableAuditTrail?: string; // "true" | "false"
+  PrintAuditStamp?: string; // "true" | "false"
+}
+
+export type AuditActionType = 'ENTERED' | 'ALTERED' | 'CANCELLED' | 'DELETED';
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string; // ISO string
+  date: string; // YYYY-MM-DD
+  time: string; // e.g. 08:30:15 PM
+  action: AuditActionType;
+  userId: string;
+  userName: string;
+  userRole: string;
+  module: string; // e.g. "Sales Invoice", "POS Billing", "Purchase Bill", "Payment", "Receipt", "Journal", "Contra", "Credit Note", "Debit Note", "Quotation", "Delivery Note", "Physical Stock", "Item Master", "Ledger Master"
+  recordId: string; // Ref No, Voucher No, Item Code, or Ledger Name
+  partyName?: string;
+  amount?: number;
+  prevAmount?: number;
+  details?: string;
 }
 
 export interface BillAllocation {
@@ -416,6 +456,21 @@ export interface Voucher {
   partyName?: string;
   originalInvoiceRef?: string;
   billNo?: string;
+  // GST Input Tracking Fields
+  gstInputType?: 'Local Purchase' | 'Local Expenses' | 'Bank Charges' | 'Import Customs GST Payment' | 'Import Purchase' | 'None';
+  supplierName?: string;
+  supplierGstNo?: string;
+  supplierCountry?: string;
+  invoiceNo?: string;
+  invoiceDate?: string;
+  referenceNo?: string;
+  declarationNo?: string;
+  declarationDate?: string;
+  taxableAmount?: number;
+  exemptedAmount?: number;
+  gstAmount?: number;
+  totalImportAmount?: number;
+  customGstData?: Record<string, any>;
   billAllocations?: BillAllocation[];
   items?: Array<{
     itemCode: string;

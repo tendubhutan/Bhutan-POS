@@ -1,3 +1,4 @@
+import { QuitConfirmModal } from './QuitConfirmModal';
 import { GlowButton } from './common/GlowButton';
 import { Unit } from '../types';
 import { loadJson, saveJson, STORAGE_KEYS, DEFAULT_UNITS } from '../services/storageService';
@@ -89,7 +90,8 @@ interface POSBillingProps {
   onOpenNewLedgerModal: (group?: string, onSelect?: (name: string) => void) => void;
   onEditLedger: (name: string) => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
-  onBack?: () => void;
+  onBack?: (forceDirect?: boolean) => void;
+  isActive?: boolean;
 }
 
 export const POSBilling: React.FC<POSBillingProps> = ({
@@ -104,7 +106,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   onOpenNewLedgerModal,
   onEditLedger,
   initialVoucherTarget,
-  onBack
+  onBack,
+  isActive = true
 }) => {
   // POS Preferences & Workflow Settings
   const [posSettings, setPosSettings] = useState<POSSettings>(() => loadPOSSettings());
@@ -289,6 +292,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   // Cart & Customer State
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [showQuitModal, setShowQuitModal] = useState(false);
   const [pricingMode, setPricingMode] = useState<'retail' | 'wholesale'>('retail');
 
   const getItemRate = (item: Item): number => {
@@ -472,74 +476,99 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     setTimeout(() => itemInputRef.current?.focus(), 50);
   };
 
+  const resetPosForm = () => {
+    setCart([]);
+    setCustomerName('');
+    setWalkInDetails(null);
+    setEditingInvoiceNo(null);
+    setEditingInvoiceDate(null);
+    setCash('');
+    setBank1('');
+    setBank2('');
+    setBillDiscount('');
+    setBankTxnNo('');
+    setBank2TxnNo('');
+    setEntrySearch('');
+  };
+
+  const handlePosBack = (): boolean => {
+    if (showQuitModal) {
+      setShowQuitModal(false);
+      return true;
+    }
+    if (changeModalData) {
+      setCash(changeModalData.billAmount);
+      setChangeModalData(null);
+      return true;
+    }
+    if (receiptModalOpen) {
+      setReceiptModalOpen(false);
+      return true;
+    }
+    if (showWalkInModal) {
+      setShowWalkInModal(false);
+      return true;
+    }
+    if (showCustomerModal) {
+      setShowCustomerModal(false);
+      return true;
+    }
+    if (showShortcutsModal) {
+      setShowShortcutsModal(false);
+      return true;
+    }
+    if (showSettingsModal) {
+      setShowSettingsModal(false);
+      return true;
+    }
+    if (serialModalOpen) {
+      setSerialModalOpen(false);
+      return true;
+    }
+    if (showDropdown) {
+      setShowDropdown(false);
+      return true;
+    }
+    if (entrySearch) {
+      setEntrySearch('');
+      itemInputRef.current?.focus();
+      return true;
+    }
+
+    const hasData =
+      cart.length > 0 ||
+      (!!customerName && customerName !== 'Cash Sale') ||
+      !!editingInvoiceNo ||
+      !!walkInDetails ||
+      (Number(billDiscount) > 0) ||
+      !!cash ||
+      !!bank1 ||
+      !!bank2;
+    if (hasData) {
+      setShowQuitModal(true);
+      return true;
+    }
+
+    resetPosForm();
+    if (onBack) {
+      onBack(true);
+    } else {
+      window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
+    }
+    return true;
+  };
+
   // ESC and Global Keyboard Shortcuts
   useEffect(() => {
+    if (isActive === false) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      // ESC closes open modals
-      if (e.key === 'Escape') { if (e.defaultPrevented) return;
-        if (changeModalData) {
-          e.preventDefault();
-          setCash(changeModalData.billAmount);
-          setChangeModalData(null);
-          setTimeout(() => cashInputRef.current?.focus(), 50);
-          return;
-        }
-        if (showSettingsModal) {
-          e.preventDefault();
-          setShowSettingsModal(false);
-          itemInputRef.current?.focus();
-          return;
-        }
-        if (showShortcutsModal) {
-          e.preventDefault();
-          setShowShortcutsModal(false);
-          itemInputRef.current?.focus();
-          return;
-        }
-        if (showCustomerModal) {
-          e.preventDefault();
-          setShowCustomerModal(false);
-          itemInputRef.current?.focus();
-          return;
-        }
-        if (showWalkInModal) {
-          e.preventDefault();
-          setShowWalkInModal(false);
-          itemInputRef.current?.focus();
-          return;
-        }
-        if (serialModalOpen) {
-          e.preventDefault();
-          setSerialModalOpen(false);
-          itemInputRef.current?.focus();
-          return;
-        }
-        if (receiptModalOpen) {
-          e.preventDefault();
-          setReceiptModalOpen(false);
-          itemInputRef.current?.focus();
-          return;
-        }
-        // If dropdown is open, close it
-        if (showDropdown) {
-          setShowDropdown(false);
-          return;
-        }
-
-        if (entrySearch) {
-          setEntrySearch('');
-          itemInputRef.current?.focus();
-          return;
-        }
-
-        if (onBack) {
-          e.preventDefault();
-          onBack();
-          return;
-        }
-
-        // Return focus to item input
-        itemInputRef.current?.focus();
+      // ESC closes open modals or triggers quit confirmation
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        handlePosBack();
         return;
       }
 
@@ -550,8 +579,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         return;
       }
 
-      // F2: Fast Checkout
-      if (e.key === 'F2') {
+      // F2: Fast Checkout / Save
+      if (e.key === 'F2' || e.code === 'F2') {
         e.preventDefault();
         handleCheckout();
         return;
@@ -660,72 +689,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         billDiscountInputRef.current?.select();
         return;
       }
-      if (e.key === 'Escape') {
-        const handled = handlePosBack();
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    showSettingsModal,
-    showShortcutsModal,
-    showCustomerModal,
-    showWalkInModal,
-    serialModalOpen,
-    receiptModalOpen,
-    showDropdown,
-    cart,
-    customerName,
-    cash,
-    bank1,
-    bank2,
-    billDiscount,
-    heldBills
-  ]);
-
-  const handlePosBack = (): boolean => {
-    if (changeModalData) {
-      setCash(changeModalData.billAmount);
-      setChangeModalData(null);
-      return true;
-    }
-    if (receiptModalOpen) {
-      setReceiptModalOpen(false);
-      return true;
-    }
-    if (showWalkInModal) {
-      setShowWalkInModal(false);
-      return true;
-    }
-    if (showCustomerModal) {
-      setShowCustomerModal(false);
-      return true;
-    }
-    if (showShortcutsModal) {
-      setShowShortcutsModal(false);
-      return true;
-    }
-    if (showSettingsModal) {
-      setShowSettingsModal(false);
-      return true;
-    }
-    if (serialModalOpen) {
-      setSerialModalOpen(false);
-      return true;
-    }
-    if (showDropdown) {
-      setShowDropdown(false);
-      return true;
-    }
-    return false;
-  };
-
-  useEffect(() => {
     const handleSaveEvent = (e: Event) => {
       e.preventDefault();
       handleCheckout();
@@ -738,25 +703,35 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       }
     };
 
+    window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('app:save', handleSaveEvent);
     window.addEventListener('app:back', handleBackEvent);
     return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('app:save', handleSaveEvent);
       window.removeEventListener('app:back', handleBackEvent);
     };
   }, [
-    receiptModalOpen,
-    showWalkInModal,
-    showCustomerModal,
-    showShortcutsModal,
+    isActive,
     showSettingsModal,
+    showShortcutsModal,
+    showCustomerModal,
+    showWalkInModal,
     serialModalOpen,
+    receiptModalOpen,
     showDropdown,
+    changeModalData,
+    showQuitModal,
     cart,
     customerName,
     cash,
     bank1,
-    bank2
+    bank2,
+    billDiscount,
+    heldBills,
+    entrySearch,
+    editingInvoiceNo,
+    onBack
   ]);
 
   // Calculations with Lumpsum / Bill Discount support & GST Exemption
@@ -802,35 +777,69 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   };
 
   const totals = calculateTotals();
-
   const prevTotalRef = useRef(totals.total);
+  const prevInvoiceNoRef = useRef(editingInvoiceNo);
+  const prevCustomerRef = useRef(customerName);
 
   // Auto set payment defaults:
   // - If customer is selected, default to 100% Due (Cash and Bank remain 0 unless entered manually)
   // - If no customer selected (Cash Sale), default cash to full total
   useEffect(() => {
-    if (editingInvoiceNo) {
-      prevTotalRef.current = totals.total;
-      return; // Prevent overwriting existing payment data when editing a voucher
-    }
+    const totalChanged = totals.total !== prevTotalRef.current;
+    const justEnteredEditMode = editingInvoiceNo && prevInvoiceNoRef.current !== editingInvoiceNo;
+    const customerChanged = customerName !== prevCustomerRef.current;
+    
+    prevInvoiceNoRef.current = editingInvoiceNo;
+    prevCustomerRef.current = customerName;
 
     if (cart.length === 0) {
-      setCash('');
-      setBank1('');
-      setBank2('');
+      if (!editingInvoiceNo) {
+        setCash('');
+        setBank1('');
+        setBank2('');
+      }
       prevTotalRef.current = totals.total;
       return;
     }
 
-    if (customerName) {
-      // If customer is selected and cash was set to exact total automatically, clear it so it shows in Due
-      if ((cash === totals.total || cash === prevTotalRef.current) && bank1 === '' && bank2 === '') {
-        setCash('');
+    if (editingInvoiceNo) {
+      // In edit mode, only auto-update cash if the cart total actually changed or customer changed
+      if ((totalChanged || customerChanged) && !justEnteredEditMode) {
+        const isCashCustomer = !customerName || customerName.toLowerCase().includes('cash');
+        if (isCashCustomer) {
+          // Cash customers cannot have credit. Auto-fill any remaining balance to Cash
+          const cBank1 = Number(bank1) || 0;
+          const cBank2 = Number(bank2) || 0;
+          const remaining = Math.max(0, totals.total - cBank1 - cBank2);
+          setCash(remaining > 0 ? remaining : '');
+        } else {
+          if (bank1 === '' && bank2 === '') {
+            // Only auto-update if it's a named customer who was explicitly paying 100% in cash
+            if (cash === prevTotalRef.current || cash === '') {
+              setCash(totals.total);
+            }
+          }
+        }
       }
-    } else {
-      // Walk-in / Cash customer
-      if ((cash === '' || cash === prevTotalRef.current) && bank1 === '' && bank2 === '') {
-        setCash(totals.total);
+      prevTotalRef.current = totals.total;
+      return;
+    }
+
+    // New Sale Mode (Not Editing)
+    if (totalChanged || customerChanged || cash === '') {
+      const isCashCustomer = !customerName || customerName.toLowerCase().includes('cash');
+      
+      if (!isCashCustomer) {
+        // If customer is selected and cash was set to exact total automatically, clear it so it shows in Due
+        if ((cash === totals.total || cash === prevTotalRef.current) && bank1 === '' && bank2 === '') {
+          setCash('');
+        }
+      } else {
+        // Walk-in / Cash customer: ALWAYS auto-adjust cash to cover the balance so Due is 0.
+        const cBank1 = Number(bank1) || 0;
+        const cBank2 = Number(bank2) || 0;
+        const remaining = Math.max(0, totals.total - cBank1 - cBank2);
+        setCash(remaining > 0 ? remaining : '');
       }
     }
     
@@ -1346,7 +1355,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   const handleCashInput = (val: number | '') => {
     setCash(val);
-    if (!customerName) {
+    const isCashCustomer = !customerName || customerName.toLowerCase().includes('cash');
+    if (isCashCustomer) {
       const c = Number(val) || 0;
       if (c < totals.total) {
         setBank1(totals.total - c);
@@ -1360,7 +1370,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   const handleBank1Input = (val: number | '') => {
     setBank1(val);
-    if (!customerName) {
+    const isCashCustomer = !customerName || customerName.toLowerCase().includes('cash');
+    if (isCashCustomer) {
       const c = Number(cash) || 0;
       const b1 = Number(val) || 0;
       if (c + b1 < totals.total) {
@@ -1503,7 +1514,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       email
     };
 
-    if (balance > 0.005 && (custLedger === 'Cash' || custLedger === 'Cash Customer')) {
+    if (balance > 0.005 && (!custLedger || custLedger.toLowerCase().includes('cash'))) {
       if (posSettings.enableSoundFeedback) playWarningTone();
       alert('Walk-in cash customer requires full settlement.');
       return;
@@ -1518,7 +1529,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       billDiscountValue: totals.discountValue,
       voucherTypeId: activeVoucherType?.id,
       voucherTypeName: activeVoucherType?.name,
-      invoiceNo: editingInvoiceNo || undefined,
+      originalInvoiceNo: editingInvoiceNo || undefined,
       date: editingInvoiceDate || (posBillDate ? new Date(posBillDate + 'T12:00:00').toISOString() : undefined),
       isEdit: Boolean(editingInvoiceNo),
       isPOS: true
@@ -3163,6 +3174,21 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           if (act) handleCheckout(act, true);
         }}
         onCancel={() => setShowAcceptModal(false)}
+      />
+
+      <QuitConfirmModal
+        isOpen={showQuitModal}
+        viewName="POS Billing"
+        onConfirm={() => {
+          setShowQuitModal(false);
+          resetPosForm();
+          if (onBack) {
+            onBack(true);
+          } else {
+            window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
+          }
+        }}
+        onCancel={() => setShowQuitModal(false)}
       />
     </div>
   );

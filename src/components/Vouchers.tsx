@@ -1,5 +1,7 @@
+import { QuitConfirmModal } from './QuitConfirmModal';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Config, Item, Ledger } from '../types';
+import { getGstFieldsForType, evaluateGstFormula } from '../utils/gstConfigUtils';
 import {
   saveVoucher,
   saveMultiLineVoucher,
@@ -47,6 +49,7 @@ import {
 import XLSX from 'xlsx-js-style';
 import { SearchableLedgerSelect } from './SearchableLedgerSelect';
 import { AcceptModal } from './AcceptModal';
+import { formatDateDMY } from '../utils/dateUtils';
 import {
   VoucherCatalogModal,
   VoucherActionType,
@@ -83,6 +86,8 @@ interface VouchersProps {
   onNavigateTo?: (view: string) => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onDrillVoucher?: (refNo: string) => void;
+  onBack?: (forceDirect?: boolean) => void;
+  isActive?: boolean;
 }
 
 interface VoucherGridLine {
@@ -119,7 +124,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
   onOpenNewItemModal,
   onNavigateTo,
   initialVoucherTarget,
-  onDrillVoucher
+  onDrillVoucher,
+  onBack,
+  isActive = true
 }) => {
   // Navigation & Category states
   const [mainTab, setMainTab] = useState<'entry' | 'register'>('entry');
@@ -203,6 +210,23 @@ export const Vouchers: React.FC<VouchersProps> = ({
           setToAccount(v.toAccount || v.debitLedger || '');
         }
       }
+
+      // Load GST Input Tracking Fields
+      setGstInputType(v.gstInputType || 'None');
+      setSupplierName(v.supplierName || '');
+      setSupplierGstNo(v.supplierGstNo || '');
+      setSupplierCountry(v.supplierCountry || '');
+      setInvoiceNo(v.invoiceNo || '');
+      setInvoiceDate(v.invoiceDate || '');
+      setReferenceNo(v.referenceNo || '');
+      setDeclarationNo(v.declarationNo || '');
+      setDeclarationDate(v.declarationDate || '');
+      setTaxableAmount(v.taxableAmount !== undefined ? v.taxableAmount : '');
+      setExemptedAmount(v.exemptedAmount !== undefined ? v.exemptedAmount : '');
+      setGstAmount(v.gstAmount !== undefined ? v.gstAmount : '');
+      setTotalImportAmount(v.totalImportAmount !== undefined ? v.totalImportAmount : '');
+      setCustomGstData(v.customGstData || {});
+
     } else if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION'].includes(vType)) {
       setMainTab('entry');
       handleVTypeChange(vType as any);
@@ -229,6 +253,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
   };
 
   const loadedTargetKeyRef = useRef<string | null>(null);
+  const [showQuitModal, setShowQuitModal] = useState(false);
 
   // Listen to incoming initialVoucherTarget from reports or drilldown
   useEffect(() => {
@@ -281,6 +306,23 @@ export const Vouchers: React.FC<VouchersProps> = ({
   const [fromAccount, setFromAccount] = useState('');
   const [toAccount, setToAccount] = useState('');
   const [transactionId, setTransactionId] = useState('');
+  
+  // GST Input Tracking State
+  const [gstInputType, setGstInputType] = useState<'Local Purchase' | 'Local Expenses' | 'Bank Charges' | 'Import Customs GST Payment' | 'Import Purchase' | 'None'>('None');
+  const [supplierName, setSupplierName] = useState('');
+  const [supplierGstNo, setSupplierGstNo] = useState('');
+  const [supplierCountry, setSupplierCountry] = useState('');
+  const [invoiceNo, setInvoiceNo] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
+  const [referenceNo, setReferenceNo] = useState('');
+  const [declarationNo, setDeclarationNo] = useState('');
+  const [declarationDate, setDeclarationDate] = useState('');
+  const [taxableAmount, setTaxableAmount] = useState<number | ''>('');
+  const [exemptedAmount, setExemptedAmount] = useState<number | ''>('');
+  const [gstAmount, setGstAmount] = useState<number | ''>('');
+  const [totalImportAmount, setTotalImportAmount] = useState<number | ''>('');
+  const [customGstData, setCustomGstData] = useState<Record<string, any>>({});
+
   const [bankTxnModal, setBankTxnModal] = useState<{
     isOpen: boolean;
     bankLedgerName: string;
@@ -335,10 +377,87 @@ export const Vouchers: React.FC<VouchersProps> = ({
     }
   }, [ledgers, entryMode, lines, partyLedger, modeLedger, debitLedger, creditLedger, fromAccount, toAccount]);
 
+
   const linesRef = useRef(lines);
   useEffect(() => {
     linesRef.current = lines;
   }, [lines]);
+
+  const lastDerivedGst = useRef({
+    supplierName: '',
+    taxableAmount: '',
+    gstAmount: '',
+    referenceNo: '',
+    invoiceDate: ''
+  });
+
+  useEffect(() => {
+    if (activeVType === 'P' && config.EnableGSTInputTax === 'true' && gstInputType !== 'None') {
+      let bankLg = '';
+      let expenseAmt = 0;
+      let gstAmt = 0;
+      
+      if (entryMode === 'multi') {
+        lines.forEach(l => {
+          if (!l.ledger || !l.type) return;
+          const lgObj = ledgers.find(lg => lg['Ledger Name'] === l.ledger);
+          const grp = lgObj?.Group || '';
+          const amt = Number(l.debit) || Number(l.credit) || 0;
+          if (l.type === 'Cr' && (grp === 'Bank Accounts' || grp === 'Cash-in-Hand')) {
+            bankLg = l.ledger;
+          }
+          if (l.type === 'Dr') {
+            if (grp === 'Duties & Taxes' || l.ledger.toLowerCase().includes('gst')) {
+              gstAmt += amt;
+            } else {
+              expenseAmt += amt;
+            }
+          }
+        });
+      } else {
+        const lgObj = ledgers.find(lg => lg['Ledger Name'] === modeLedger);
+        if (lgObj && (lgObj.Group === 'Bank Accounts' || lgObj.Group === 'Cash-in-Hand')) {
+          bankLg = modeLedger;
+        }
+        expenseAmt = Number(amount) || 0;
+      }
+
+      const derivedSupplier = (gstInputType === 'Bank Charges' && bankLg) ? bankLg : '';
+      let derivedTaxable = expenseAmt > 0 ? expenseAmt.toString() : '';
+      let derivedGst = gstAmt > 0 ? gstAmt.toString() : (expenseAmt > 0 && gstInputType !== 'Import Customs GST Payment' ? (expenseAmt * 0.05).toFixed(2) : '');
+      
+      if (gstInputType === 'Import Customs GST Payment') {
+        const currentGst = gstAmt > 0 ? gstAmt : (Number(amount) || 0);
+        derivedGst = currentGst > 0 ? currentGst.toString() : '';
+        derivedTaxable = currentGst > 0 ? (currentGst * 100).toString() : '';
+      }
+      
+      const derivedRef = transactionId || '';
+      const derivedDate = date || '';
+
+      if (derivedSupplier && (!supplierName || supplierName === lastDerivedGst.current.supplierName)) {
+        setSupplierName(derivedSupplier);
+        lastDerivedGst.current.supplierName = derivedSupplier;
+      }
+      if (derivedTaxable && (!taxableAmount || taxableAmount.toString() === lastDerivedGst.current.taxableAmount)) {
+        setTaxableAmount(Number(derivedTaxable));
+        lastDerivedGst.current.taxableAmount = derivedTaxable;
+      }
+      if (derivedGst && (!gstAmount || gstAmount.toString() === lastDerivedGst.current.gstAmount)) {
+        setGstAmount(Number(derivedGst));
+        lastDerivedGst.current.gstAmount = derivedGst;
+      }
+      if (derivedRef && (!referenceNo || referenceNo === lastDerivedGst.current.referenceNo)) {
+        setReferenceNo(derivedRef);
+        lastDerivedGst.current.referenceNo = derivedRef;
+      }
+      if (derivedDate && (!invoiceDate || invoiceDate === lastDerivedGst.current.invoiceDate)) {
+        setInvoiceDate(derivedDate);
+        lastDerivedGst.current.invoiceDate = derivedDate;
+      }
+    }
+  }, [gstInputType, lines, amount, partyLedger, modeLedger, transactionId, date, entryMode, ledgers, config.EnableGSTInputTax, activeVType]);
+
 
   // Quick Ledger Modal State (Create & Edit Mode)
   const [showLedgerModal, setShowLedgerModal] = useState(false);
@@ -465,6 +584,10 @@ export const Vouchers: React.FC<VouchersProps> = ({
   };
 
   const handleVoucherBack = () => {
+    if (showQuitModal) {
+      setShowQuitModal(false);
+      return true;
+    }
     if (billModalOpen) {
       setBillModalOpen(false);
       setBillModalTargetLineId(null);
@@ -510,13 +633,6 @@ export const Vouchers: React.FC<VouchersProps> = ({
       setSuccessModalDetails(null);
       return true;
     }
-    // If inside non-financial sub-vouchers (Quotation, Delivery Note, Credit Note, Debit Note, Physical Stock)
-    if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION'].includes(activeVType)) {
-      setActiveVType('P');
-      setActiveCategory('financial');
-      setVoucherTypeHistory(['P']);
-      return true;
-    }
     // If in register tab
     if (mainTab === 'register') {
       const hasActiveFilters = Boolean(
@@ -543,15 +659,18 @@ export const Vouchers: React.FC<VouchersProps> = ({
       setMainTab('entry');
       return true;
     }
-    // If in entry mode with dirty inputs or draft form
+    // If in entry mode with dirty inputs, party/account selected, or editing existing voucher
     if (mainTab === 'entry') {
-      const isDirty = (Number(amount) > 0) || Boolean(narration.trim()) || (lines.length > 0 && lines.some(l => (Number(l.debit) > 0) || (Number(l.credit) > 0)));
+      const isDirty = (Number(amount) > 0) || Boolean(narration.trim()) || !!partyLedger || !!debitLedger || !!creditLedger || !!fromAccount || !!toAccount || !!editingVoucherNo || (lines.length > 0 && lines.some(l => (Number(l.debit) > 0) || (Number(l.credit) > 0) || !!l.ledger));
       if (isDirty) {
-        setAmount('');
-        setNarration('');
-        handleVTypeChange(activeVType, false);
+        setShowQuitModal(true);
         return true;
       }
+    }
+    // If inside non-financial sub-vouchers (Quotation, Delivery Note, Credit Note, Debit Note, Physical Stock)
+    if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION'].includes(activeVType)) {
+      // Let the active sub-component handle its own back/quit confirmation
+      return false;
     }
     // If in entry mode with voucher type history
     if (voucherTypeHistory.length > 1) {
@@ -566,12 +685,27 @@ export const Vouchers: React.FC<VouchersProps> = ({
       handleVTypeChange('P', false);
       return true;
     }
-    return false;
+    
+    // Clean entry screen: navigate back directly
+    handleCancelOrResetEntry();
+    if (onBack) {
+      onBack(true);
+    } else {
+      window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
+    }
+    return true;
   };
 
   // Global Keyboard Shortcuts (F4, F5, F6, F7, F8, F9, F10, F2, Alt+C, Alt+A, Escape)
   useEffect(() => {
+    if (isActive === false) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      // If currently on a sub-voucher component, let the sub-component handle Escape, F2, etc.
+      if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION'].includes(activeVType)) {
+        return;
+      }
+
       if (e.key === 'Escape') {
         if (e.defaultPrevented) return;
         const handled = handleVoucherBack();
@@ -642,6 +776,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [
+    isActive,
     mainTab,
     activeVType,
     date,
@@ -675,7 +810,12 @@ export const Vouchers: React.FC<VouchersProps> = ({
 
   // Intercept app:back and app:save events from Header/App navigation
   useEffect(() => {
+    if (isActive === false) return;
+
     const handleBackEvent = (e: CustomEvent) => {
+      if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION'].includes(activeVType)) {
+        return;
+      }
       const handled = handleVoucherBack();
       if (handled) {
         e.preventDefault();
@@ -694,6 +834,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
       window.removeEventListener('app:save' as any, handleSaveEvent);
     };
   }, [
+    isActive,
     activeVType,
     amount,
     partyLedger,
@@ -1059,7 +1200,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
       const isEditingThis = Boolean(editingVoucherNo && voucherNo.trim() && editingVoucherNo.toLowerCase() === voucherNo.trim().toLowerCase());
       const vPayload: any = {
         voucherNo: voucherNo.trim() || undefined,
-        isEdit: isEditingThis,
+        originalVoucherNo: editingVoucherNo || undefined,
+        isEdit: isEditingThis || Boolean(editingVoucherNo),
         type: activeVType as 'P' | 'R' | 'J' | 'C',
         date: new Date(date).toISOString(),
         narration: narration.trim(),
@@ -1068,7 +1210,25 @@ export const Vouchers: React.FC<VouchersProps> = ({
         bankTxnNo: transactionId.trim() || undefined,
         billAllocations: allBillAllocations.length > 0 ? allBillAllocations : undefined,
         billNo: allBillAllocations.length > 0 ? allBillAllocations.map(b => b.billNo).join(', ') : undefined,
-        lines: formattedLines
+        lines: formattedLines,
+        
+        // GST Input Tracking Fields
+        ...(activeVType === 'P' && config.EnableGSTInputTax === 'true' && gstInputType !== 'None' ? {
+          gstInputType,
+          supplierName,
+          supplierGstNo,
+          supplierCountry,
+          invoiceNo,
+          invoiceDate,
+          referenceNo,
+          declarationNo,
+          declarationDate,
+          taxableAmount: Number(taxableAmount) || undefined,
+          exemptedAmount: Number(exemptedAmount) || undefined,
+          gstAmount: Number(gstAmount) || undefined,
+          totalImportAmount: Number(totalImportAmount) || undefined,
+          customGstData
+        } : {})
       };
 
       const result = saveMultiLineVoucher(vPayload);
@@ -1170,7 +1330,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
       const isEditingThis = Boolean(editingVoucherNo && voucherNo.trim() && editingVoucherNo.toLowerCase() === voucherNo.trim().toLowerCase());
       const vPayload: any = {
         voucherNo: voucherNo.trim() || undefined,
-        isEdit: isEditingThis,
+        originalVoucherNo: editingVoucherNo || undefined,
+        isEdit: isEditingThis || Boolean(editingVoucherNo),
         type: activeVType as 'P' | 'R' | 'J' | 'C',
         date: new Date(date).toISOString(),
         amount: amt,
@@ -1180,7 +1341,25 @@ export const Vouchers: React.FC<VouchersProps> = ({
         transactionId: transactionId.trim() || undefined,
         bankTxnNo: transactionId.trim() || undefined,
         billAllocations: billAllocations.length > 0 ? billAllocations : undefined,
-        billNo: billAllocations.length > 0 ? billAllocations.map(b => b.billNo).join(', ') : undefined
+        billNo: billAllocations.length > 0 ? billAllocations.map(b => b.billNo).join(', ') : undefined,
+        
+        // GST Input Tracking Fields
+        ...(activeVType === 'P' && config.EnableGSTInputTax === 'true' && gstInputType !== 'None' ? {
+          gstInputType,
+          supplierName,
+          supplierGstNo,
+          supplierCountry,
+          invoiceNo,
+          invoiceDate,
+          referenceNo,
+          declarationNo,
+          declarationDate,
+          taxableAmount: Number(taxableAmount) || undefined,
+          exemptedAmount: Number(exemptedAmount) || undefined,
+          gstAmount: Number(gstAmount) || undefined,
+          totalImportAmount: Number(totalImportAmount) || undefined,
+          customGstData
+        } : {})
       };
 
       const result = saveVoucher(activeVType as any, vPayload);
@@ -1510,7 +1689,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
         const amt = Number(v.totalAmount || v.total || 0);
 
         aoa.push([
-          new Date(v.date).toLocaleDateString('en-GB'),
+          formatDateDMY(v.date),
           v.voucherNo || '-',
           vTypeLabel,
           isCancelled ? 'Cancelled' : 'Active',
@@ -2045,7 +2224,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                           title="Click row to drill down into full voucher details, cancel/void, print, share, or edit"
                         >
                           <td className="py-2.5 px-3 font-semibold text-slate-700 whitespace-nowrap">
-                            {new Date(v.date).toLocaleDateString('en-GB')}
+                            {formatDateDMY(v.date)}
                           </td>
                           <td className="py-2.5 px-3 font-mono font-bold text-indigo-700 whitespace-nowrap">
                             <span className={isCancelled ? 'line-through text-slate-400' : 'group-hover:underline'}>
@@ -2205,7 +2384,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
       ) : activeVType && ['P', 'R', 'J', 'C'].includes(activeVType) ? (
         /* Financial Vouchers (Payment, Receipt, Journal, Contra) */
         <div className="flex-1 min-h-0 flex flex-col space-y-2">
-          {/* Editing Voucher Indicator */}
+          {/* Scrollable Form Body */}
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
+            {/* Editing Voucher Indicator */}
           {editingVoucherNo && (
             <div className="flex items-center justify-between px-3 py-2 bg-amber-50 border border-amber-300/80 rounded-xl text-amber-900 text-xs shadow-2xs">
               <div className="flex items-center gap-2 font-medium">
@@ -2744,6 +2925,118 @@ export const Vouchers: React.FC<VouchersProps> = ({
             </div>
           )}
 
+
+
+          {/* GST Input Claim Tracking Form (Only for Payment Vouchers) */}
+          {activeVType === 'P' && config.EnableGSTInputTax === 'true' && (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-3 shadow-xs space-y-3 text-xs">
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-bold text-indigo-900">GST Input Claim Details</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-indigo-600 font-medium">Transaction Type:</span>
+                  <select
+                    className="rounded border border-indigo-300 bg-white px-2 py-1 text-[11px] font-bold text-indigo-900 outline-none focus:border-indigo-500"
+                    value={gstInputType}
+                    onChange={(e: any) => setGstInputType(e.target.value)}
+                  >
+                    <option value="None">Not Applicable</option>
+                    <option value="Local Purchase">Local Purchase</option>
+                    <option value="Local Expenses">Local Expenses</option>
+                    <option value="Bank Charges">Bank Charges</option>
+                    <option value="Import Customs GST Payment">Import Customs GST Payment</option>
+                    <option value="Import Purchase">Import Purchase</option>
+                  </select>
+                </div>
+              </div>
+
+              {gstInputType !== 'None' && (() => {
+                const activeFields = getGstFieldsForType(config.gstInputConfigs, gstInputType);
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 bg-white p-3 rounded-lg border border-indigo-100 shadow-sm">
+                    {activeFields.map(field => {
+                      let val: any = '';
+                      let handleChange = (eVal: any) => {};
+
+                      if (field.id === 'supplierName') {
+                        val = supplierName;
+                        handleChange = (v) => setSupplierName(v);
+                      } else if (field.id === 'supplierGstNo') {
+                        val = supplierGstNo;
+                        handleChange = (v) => setSupplierGstNo(v);
+                      } else if (field.id === 'invoiceNo') {
+                        val = invoiceNo;
+                        handleChange = (v) => setInvoiceNo(v);
+                      } else if (field.id === 'invoiceDate') {
+                        val = invoiceDate;
+                        handleChange = (v) => setInvoiceDate(v);
+                      } else if (field.id === 'referenceNo') {
+                        val = referenceNo;
+                        handleChange = (v) => setReferenceNo(v);
+                      } else if (field.id === 'declarationNo') {
+                        val = declarationNo;
+                        handleChange = (v) => setDeclarationNo(v);
+                      } else if (field.id === 'declarationDate') {
+                        val = declarationDate;
+                        handleChange = (v) => setDeclarationDate(v);
+                      } else if (field.id === 'taxableAmount') {
+                        val = taxableAmount !== undefined && taxableAmount !== null ? taxableAmount : '';
+                        handleChange = (v) => setTaxableAmount(v === '' ? '' : Number(v));
+                      } else if (field.id === 'exemptedAmount') {
+                        val = exemptedAmount !== undefined && exemptedAmount !== null ? exemptedAmount : '';
+                        handleChange = (v) => setExemptedAmount(v === '' ? '' : Number(v));
+                      } else if (field.id === 'gstAmount') {
+                        val = gstAmount !== undefined && gstAmount !== null ? gstAmount : '';
+                        handleChange = (v) => {
+                          const num = v === '' ? '' : Number(v);
+                          setGstAmount(num);
+                          if (typeof num === 'number') {
+                            const taxField = activeFields.find(f => f.id === 'taxableAmount');
+                            if (taxField && taxField.sourceType === 'formula' && taxField.sourceValue) {
+                              const calc = evaluateGstFormula(taxField.sourceValue, { gstAmount: num, amount: Number(amount) || totalDr || 0 });
+                              setTaxableAmount(calc);
+                            } else if (!taxField || taxField.sourceType === 'formula') {
+                              setTaxableAmount(num * 20);
+                            }
+                          }
+                        };
+                      } else if (field.id === 'totalImportAmount') {
+                        val = totalImportAmount !== undefined && totalImportAmount !== null ? totalImportAmount : '';
+                        handleChange = (v) => setTotalImportAmount(v === '' ? '' : Number(v));
+                      } else {
+                        val = customGstData[field.id] !== undefined ? customGstData[field.id] : '';
+                        handleChange = (v) => setCustomGstData(prev => ({ ...prev, [field.id]: v }));
+                      }
+
+                      const isFullWidth = field.id === 'supplierName' && activeFields.some(f => f.id === 'supplierGstNo');
+
+                      return (
+                        <div key={field.id} className={isFullWidth ? 'sm:col-span-2' : ''}>
+                          <label className={`block text-[10px] font-bold mb-0.5 ${field.id === 'gstAmount' ? 'text-indigo-700' : 'text-slate-600'}`}>
+                            {field.label}
+                            {field.sourceType === 'formula' && <span className="ml-1 text-[9px] text-purple-600 font-mono">(Formula)</span>}
+                          </label>
+                          <input
+                            type={field.dataType === 'number' ? 'number' : field.dataType === 'date' ? 'date' : 'text'}
+                            step={field.dataType === 'number' ? 'any' : undefined}
+                            className={`w-full rounded border px-2 py-1.5 text-xs outline-none ${
+                              field.id === 'gstAmount' 
+                                ? 'border-indigo-300 bg-indigo-50 font-bold text-indigo-900 focus:border-indigo-500' 
+                                : field.sourceType === 'formula' 
+                                ? 'border-purple-200 bg-purple-50/30 focus:border-purple-500' 
+                                : 'border-slate-300 focus:border-indigo-500'
+                            }`}
+                            value={val}
+                            onChange={e => handleChange(e.target.value)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
           {/* Overall Narration at bottom of voucher entry */}
           <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs text-xs shrink-0">
             <div className="flex items-center justify-between mb-1">
@@ -2785,6 +3078,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
               className="w-full rounded-lg border border-slate-300 bg-slate-50/50 px-3 py-1.5 font-medium text-slate-900 outline-none focus:border-indigo-600 focus:bg-white text-xs transition"
             />
           </div>
+        </div>
 
           {/* Action Bar */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2 shadow-xs flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
@@ -3168,7 +3462,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
               <div className="flex justify-between">
                 <span className="text-slate-500 font-semibold">Date:</span>
                 <span className="font-semibold text-slate-900">
-                  {new Date(viewVoucher.date).toLocaleDateString('en-GB')}
+                  {formatDateDMY(viewVoucher.date)}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -3660,6 +3954,21 @@ export const Vouchers: React.FC<VouchersProps> = ({
             }
           }, 50);
         }}
+      />
+
+      <QuitConfirmModal
+        isOpen={showQuitModal}
+        viewName="Voucher Entry"
+        onConfirm={() => {
+          setShowQuitModal(false);
+          handleCancelOrResetEntry();
+          if (onBack) {
+            onBack(true);
+          } else {
+            window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
+          }
+        }}
+        onCancel={() => setShowQuitModal(false)}
       />
     </div>
   );

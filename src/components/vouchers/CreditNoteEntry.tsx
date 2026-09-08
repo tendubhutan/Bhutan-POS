@@ -7,6 +7,7 @@ import { SearchableLedgerSelect } from '../SearchableLedgerSelect';
 import { SearchableItemSelect } from '../SearchableItemSelect';
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './VoucherSuccessActionModal';
 import { AcceptModal } from '../AcceptModal';
+import { QuitConfirmModal } from '../QuitConfirmModal';
 import { generateCreditNotePDF, shareOrDownloadPDF } from '../../utils/pdfExport';
 import {
   Undo2, Plus, Trash2, CheckCircle2, AlertCircle, Package, Printer, Sparkles, Receipt, Share2, Download, ChevronDown, ChevronUp } from 'lucide-react';
@@ -48,6 +49,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
   const [editingVoucherNo, setEditingVoucherNo] = useState<string | null>(null);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
+  const [showQuitModal, setShowQuitModal] = useState(false);
   const [voucherNo, setVoucherNo] = useState(() => (isAutoMode ? peekNextVoucherNo('CN', config) : ''));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [partyLedger, setPartyLedger] = useState('');
@@ -235,6 +237,7 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
 
     const payload = {
       voucherNo: voucherNo.trim() || undefined,
+      originalVoucherNo: editingVoucherNo || undefined,
       date: new Date(date).toISOString(),
       partyLedger,
       partyAddress: partyObj?.Address || '',
@@ -338,20 +341,77 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
     }, 20);
   };
 
+  const resetForm = () => {
+    setEditingVoucherNo(null);
+    if (isAutoMode) {
+      setVoucherNo(peekNextVoucherNo('CN', config));
+    }
+    setDate(new Date().toISOString().split('T')[0]);
+    setPartyLedger('');
+    setSalesReturnLedger('Sales Account');
+    setOriginalInvoiceRef('');
+    setNarration('');
+    setLumpSumAmount('');
+    setLumpSumGst(0);
+    setItemLines([
+      {
+        id: '1',
+        itemCode: '',
+        itemName: '',
+        qty: 1,
+        rate: 0,
+        gstPct: 0,
+        amount: 0
+      }
+    ]);
+  };
+
+  const handleCreditBack = (): boolean => {
+    if (showQuitModal) {
+      setShowQuitModal(false);
+      return true;
+    }
+    if (showAcceptModal) {
+      setShowAcceptModal(false);
+      return true;
+    }
+    if (successModalDetails) {
+      setSuccessModalDetails(null);
+      return true;
+    }
+
+    const hasData =
+      !!partyLedger ||
+      (Number(lumpSumAmount) > 0) ||
+      (Number(lumpSumGst) > 0) ||
+      !!originalInvoiceRef ||
+      Boolean(narration.trim()) ||
+      !!editingVoucherNo ||
+      (itemLines.length > 0 && itemLines.some(l => !!l.itemCode || !!l.itemName || (Number(l.rate) > 0) || (Number(l.amount) > 0)));
+
+    if (hasData) {
+      setShowQuitModal(true);
+      return true;
+    }
+
+    resetForm();
+    if (onNavigateBack) {
+      onNavigateBack();
+      return true;
+    }
+    return false;
+  };
+
   // Global F2, Escape, and app event listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { if (e.defaultPrevented) return;
-        if (successModalDetails) {
-          setSuccessModalDetails(null);
+      if (e.key === 'Escape') {
+        if (e.defaultPrevented) return;
+        const handled = handleCreditBack();
+        if (handled) {
           e.preventDefault();
           e.stopPropagation();
-          return;
-        }
-        if (onNavigateBack) {
-          onNavigateBack();
-          e.preventDefault();
-          e.stopPropagation();
+          e.stopImmediatePropagation?.();
           return;
         }
       }
@@ -365,11 +425,8 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
     };
 
     const handleBackEvent = (e: CustomEvent) => {
-      if (successModalDetails) {
-        setSuccessModalDetails(null);
-        e.preventDefault();
-      } else if (onNavigateBack) {
-        onNavigateBack();
+      const handled = handleCreditBack();
+      if (handled) {
         e.preventDefault();
       }
     };
@@ -390,7 +447,21 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
       window.removeEventListener('app:back' as any, handleBackEvent);
       window.removeEventListener('app:save' as any, handleSaveEvent);
     };
-  }, [totalCreditAmount, partyLedger, date, originalInvoiceRef, itemLines, lumpSumAmount, lumpSumGst, successModalDetails, onNavigateBack]);
+  }, [
+    totalCreditAmount,
+    partyLedger,
+    date,
+    originalInvoiceRef,
+    itemLines,
+    lumpSumAmount,
+    lumpSumGst,
+    narration,
+    editingVoucherNo,
+    showQuitModal,
+    showAcceptModal,
+    successModalDetails,
+    onNavigateBack
+  ]);
 
   return (
     <form id="credit-note-form" onSubmit={handleSubmit} className="flex flex-col h-full min-h-0 space-y-2">
@@ -399,6 +470,18 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
         title={editingVoucherNo ? `Save changes to ${editingVoucherNo}?` : "Save Credit Note?"}
         onConfirm={proceedSave}
         onCancel={() => setShowAcceptModal(false)}
+      />
+      <QuitConfirmModal
+        isOpen={showQuitModal}
+        viewName="Credit Note"
+        onConfirm={() => {
+          setShowQuitModal(false);
+          resetForm();
+          if (onNavigateBack) {
+            onNavigateBack();
+          }
+        }}
+        onCancel={() => setShowQuitModal(false)}
       />
       {/* Toast Notification */}
       {toastMsg && (

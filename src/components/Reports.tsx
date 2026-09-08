@@ -1,20 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Config, Item, Ledger } from '../types';
 import {
-  getDailyColumnarReport, getGSTReport, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig,
-  getPartyOutstandingBills, saveVoucher
+  getDailyColumnarReport, getGSTReport, getGSTInputDomReport, getGSTInputImpReport, getGSTSummaryReport, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig,
+  getPartyOutstandingBills, saveVoucher, canUserViewAuditTrail, getActiveUser
 } from '../services/storageService';
 import XLSX from 'xlsx-js-style';
 import {
-  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight
+  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History
 } from 'lucide-react';
 import { PrintReportModal } from './PrintReportModal';
 import { generateReportPDF, shareOrDownloadPDF } from '../utils/pdfExport';
+import { formatDateDMY } from '../utils/dateUtils';
 import { TallyPrimeView, ReportDetailDepth } from './TallyPrimeView';
 import { BillWiseModal } from './BillWiseModal';
+import { AuditLogView } from './AuditLogView';
+import { getGstFieldLabel, getGstFieldsForType } from '../utils/gstConfigUtils';
 
 export interface ReportTarget {
-  category: 'daily' | 'gst' | 'inv' | 'fin' | 'reg';
+  category: 'daily' | 'gst' | 'inv' | 'fin' | 'reg' | 'audit';
   finSubTab?: 'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED';
   invSubTab?: 'summary' | 'mov' | 'prof' | 'top' | 'serials';
   ledgerName?: string;
@@ -37,6 +40,7 @@ interface ReportsProps {
   onDrillItemProfit?: (code: string) => void;
   onDrillGroup?: (category: string, fromDate?: string, toDate?: string) => void;
   initialReportTarget?: ReportTarget | null;
+  isActive?: boolean;
 }
 
 export function parseSmartDate(inputStr: string): string | null {
@@ -127,9 +131,12 @@ export const Reports: React.FC<ReportsProps> = ({
   onDrillStock,
   onDrillItemProfit,
   onDrillGroup,
-  initialReportTarget
+  initialReportTarget,
+  isActive = true
 }) => {
-  const [mainCategory, setMainCategory] = useState<'daily' | 'gst' | 'inv' | 'fin' | 'reg'>('daily');
+  const [mainCategory, setMainCategory] = useState<'daily' | 'gst' | 'gst_summary' | 'gst_input_dom' | 'gst_input_imp' | 'inv' | 'fin' | 'reg' | 'audit'>('daily');
+  const activeUser = useMemo(() => getActiveUser(), []);
+  const canViewAudit = canUserViewAuditTrail(activeUser);
   const [invSubTab, setInvSubTab] = useState<'summary' | 'mov' | 'prof' | 'top' | 'serials'>('summary');
   const [finSubTab, setFinSubTab] = useState<'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED'>('TB');
   const [reportDepth, setReportDepth] = useState<ReportDetailDepth>(config?.ReportDetailDepth || 'detailed');
@@ -316,7 +323,13 @@ export const Reports: React.FC<ReportsProps> = ({
   const allReportsList = useMemo(() => [
     { cat: 'daily', itemWise: false, label: 'Daily Sales (Bill-wise)' },
     { cat: 'daily', itemWise: true, label: 'Daily Sales (Item-wise)' },
-    ...(showGst ? [{ cat: 'gst', label: 'GST Summary Report' }] : []),
+    ...(showGst ? [
+      { cat: 'gst', label: 'GST Output (Sales)' },
+      ...(config.EnableGSTInputTax === 'true' ? [
+        { cat: 'gst_input_dom', label: 'GST Input (Domestic Purchase & Expenses)' },
+        { cat: 'gst_input_imp', label: 'GST Input (Import Purchase)' }
+      ] : [])
+    ] : []),
     { cat: 'inv', invSub: 'summary', label: 'Stock Summary & Valuation' },
     { cat: 'inv', invSub: 'mov', label: 'Stock Movement (In / Out)' },
     { cat: 'inv', invSub: 'prof', label: 'Item Profitability' },
@@ -355,6 +368,8 @@ export const Reports: React.FC<ReportsProps> = ({
 
   // Keyboard navigation and shortcuts (Escape, Ctrl+L, Alt+F2, Alt+Left / Alt+Right)
   useEffect(() => {
+    if (!isActive) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Alt+F2 is now handled globally by App.tsx to prevent duplicate dialogs when DrillModal is active
 
@@ -420,10 +435,12 @@ export const Reports: React.FC<ReportsProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [allReportsList, mainCategory, itemWise, invSubTab, finSubTab, isPrintModalOpen, showReportCatalog, showChangePeriodModal, showQuickLedgerModal, onBack]);
+  }, [isActive, allReportsList, mainCategory, itemWise, invSubTab, finSubTab, isPrintModalOpen, showReportCatalog, showChangePeriodModal, showQuickLedgerModal, onBack]);
 
   // Intercept app:back event from Header/App navigation
   useEffect(() => {
+    if (!isActive) return;
+
     const handleBackEvent = (e: CustomEvent) => {
       const handled = handleReportsBack();
       if (handled) {
@@ -432,7 +449,7 @@ export const Reports: React.FC<ReportsProps> = ({
     };
     window.addEventListener('app:back' as any, handleBackEvent);
     return () => window.removeEventListener('app:back' as any, handleBackEvent);
-  }, [isPrintModalOpen, showReportCatalog, mainCategory, showChangePeriodModal, showQuickLedgerModal]);
+  }, [isActive, isPrintModalOpen, showReportCatalog, mainCategory, showChangePeriodModal, showQuickLedgerModal]);
 
   // React to initial or keyboard shortcut triggered targets
   useEffect(() => {
@@ -463,15 +480,28 @@ export const Reports: React.FC<ReportsProps> = ({
   }, [initialReportTarget]);
 
   const formatDateStr = (d: any) => {
-    if (!d) return '-';
-    const dt = new Date(d);
-    return isNaN(dt.getTime()) ? '-' : dt.toLocaleDateString();
+    return formatDateDMY(d);
   };
 
   const fmt = (v: any) => (Number(v) || 0).toFixed(2);
 
   useEffect(() => {
     runReport();
+  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, selectedLedger]);
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      runReport();
+    };
+    window.addEventListener('app:refresh-data', handleRefresh);
+    window.addEventListener('voucher:cancelled', handleRefresh);
+    window.addEventListener('voucher:deleted', handleRefresh);
+    
+    return () => {
+      window.removeEventListener('app:refresh-data', handleRefresh);
+      window.removeEventListener('voucher:cancelled', handleRefresh);
+      window.removeEventListener('voucher:deleted', handleRefresh);
+    };
   }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, selectedLedger]);
 
   const runReport = () => {
@@ -482,6 +512,15 @@ export const Reports: React.FC<ReportsProps> = ({
         setReportData(data);
       } else if (mainCategory === 'gst') {
         const data = getGSTReport(fromDate, toDate);
+        setReportData(data);
+      } else if (mainCategory === 'gst_summary') {
+        const data = getGSTSummaryReport(fromDate, toDate);
+        setReportData(data);
+      } else if (mainCategory === 'gst_input_dom') {
+        const data = getGSTInputDomReport(fromDate, toDate);
+        setReportData(data);
+      } else if (mainCategory === 'gst_input_imp') {
+        const data = getGSTInputImpReport(fromDate, toDate);
         setReportData(data);
       } else if (mainCategory === 'inv') {
         const data = getAdvancedReports(invSubTab, fromDate, toDate);
@@ -567,6 +606,72 @@ export const Reports: React.FC<ReportsProps> = ({
           { label: 'Taxable Amount', value: `Nu. ${fmt(reportData.totals.taxable)}` },
           { label: 'GST Collected', value: `Nu. ${fmt(reportData.totals.gstAmount)}` },
           { label: 'Total Gross Sales', value: `Nu. ${fmt(reportData.totals.total)}` }
+        ];
+      }
+    } else if (mainCategory === 'gst_summary') {
+      reportTitle = 'Net GST Summary Statement';
+      headers = ['Description', 'Taxable (Nu.)', 'GST Amount (Nu.)'];
+      if (reportData.totals) {
+        const t = reportData.totals;
+        rows.push(['Total Sales (Output GST)', fmt(t.outputSalesTaxable), fmt(t.outputSalesGST)]);
+        rows.push(['Domestic Purchase & Expenses (Input GST)', fmt(t.inputDomTaxable), fmt(t.inputDomGST)]);
+        rows.push(['Import Purchases (Input GST)', fmt(t.inputImpTotalAmount), fmt(t.inputImpGST)]);
+        
+        totalsRow = ['NET GST PAYABLE / (REFUNDABLE)', '', fmt(t.outputSalesGST - t.inputDomGST - t.inputImpGST)];
+        
+        summaryCards = [
+          { label: 'Total Output GST', value: `Nu. ${fmt(t.outputSalesGST)}` },
+          { label: 'Total Input GST', value: `Nu. ${fmt(t.inputDomGST + t.inputImpGST)}` },
+          { label: 'Net GST', value: `Nu. ${fmt(t.outputSalesGST - t.inputDomGST - t.inputImpGST)}` }
+        ];
+      }
+    } else if (mainCategory === 'gst_input_dom') {
+      reportTitle = 'GST Input - Domestic Purchase & Expenses';
+      const supplierLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'supplierName', 'Supplier / Payee');
+      const supplierGstLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'supplierGstNo', 'Supplier GST No');
+      const typeLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'transactionType', 'Transaction Type');
+      const invDateLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'invoiceDate', 'Invoice Date');
+      const invNoLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'invoiceNo', 'INVOICE/ REF No');
+      const taxableLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'taxableAmount', 'Taxable Value');
+      const exemptedLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'exemptedAmount', 'Exempted Value');
+      const gstLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'gstAmount', 'GST Amount');
+
+      headers = [supplierLabel, supplierGstLabel, typeLabel, invDateLabel, invNoLabel, taxableLabel, exemptedLabel, gstLabel, 'Total (Nu.)'];
+      (reportData.rows || []).forEach((r: any) => {
+        const totalRowVal = (Number(r.taxable) || 0) + (Number(r.exempted) || 0) + (Number(r.gstAmount) || 0);
+        rows.push([r.supplierName || '-', r.supplierGstNo || '-', r.transactionType || '-', formatDateStr(r.invoiceDate), r.invoiceNo || r.referenceNo || r.voucherNo || '-', fmt(r.taxable), fmt(r.exempted), fmt(r.gstAmount), fmt(totalRowVal)]);
+      });
+      if (reportData.totals) {
+        const totSum = (Number(reportData.totals.taxable) || 0) + (Number(reportData.totals.exempted) || 0) + (Number(reportData.totals.gstAmount) || 0);
+        totalsRow = ['TOTAL SUMMARY', '', '', '', '', fmt(reportData.totals.taxable), fmt(reportData.totals.exempted), fmt(reportData.totals.gstAmount), fmt(totSum)];
+        summaryCards = [
+          { label: 'Taxable Amount', value: `Nu. ${fmt(reportData.totals.taxable)}` },
+          { label: 'GST Claimable', value: `Nu. ${fmt(reportData.totals.gstAmount)}` }
+        ];
+      }
+    } else if (mainCategory === 'gst_input_imp') {
+      reportTitle = 'GST Input - Import Purchase';
+      const supplierLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'supplierName', 'Supplier Name');
+      const invDateLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'invoiceDate', 'Inv. Date');
+      const invNoLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'invoiceNo', 'Inv. No.');
+      const declDateLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'declarationDate', 'Decl. Date');
+      const declNoLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'declarationNo', 'Decl. Number');
+      const taxableLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'taxableAmount', 'Taxable Value');
+      const exemptedLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'exemptedAmount', 'Exempted Value');
+      const totalImportLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'totalImportAmount', 'Total Import Amount');
+      const gstLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'gstAmount', 'GST Amount Paid');
+
+      headers = [supplierLabelImp, invDateLabelImp, invNoLabelImp, declDateLabelImp, declNoLabelImp, taxableLabelImp, exemptedLabelImp, totalImportLabelImp, gstLabelImp];
+      (reportData.rows || []).forEach((r: any) => {
+        rows.push([r.supplierName, formatDateStr(r.invoiceDate), r.invoiceNo, formatDateStr(r.declarationDate), r.declarationNo, fmt(r.taxableAmount), fmt(r.exemptedAmount), fmt(r.totalImportAmount), fmt(r.gstAmount)]);
+      });
+      if (reportData.totals) {
+        totalsRow = ['TOTAL', '', '', '', '', fmt(reportData.totals.taxableAmount), fmt(reportData.totals.exemptedAmount), fmt(reportData.totals.totalImportAmount), fmt(reportData.totals.gstAmount)];
+        summaryCards = [
+          { label: 'Taxable Value', value: `Nu. ${fmt(reportData.totals.taxableAmount)}` },
+          { label: 'Exempted Value', value: `Nu. ${fmt(reportData.totals.exemptedAmount)}` },
+          { label: 'Total Import Amount', value: `Nu. ${fmt(reportData.totals.totalImportAmount)}` },
+          { label: 'GST Claimable', value: `Nu. ${fmt(reportData.totals.gstAmount)}` }
         ];
       }
     } else if (mainCategory === 'inv') {
@@ -1340,6 +1445,8 @@ export const Reports: React.FC<ReportsProps> = ({
 
   // Keyboard shortcut: Ctrl+P on Reports page triggers clean Report Print
   useEffect(() => {
+    if (!isActive) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
         e.preventDefault();
@@ -1349,7 +1456,7 @@ export const Reports: React.FC<ReportsProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isActive]);
 
   const handleDepthChange = (depth: ReportDetailDepth) => {
     setReportDepth(depth);
@@ -1423,20 +1530,23 @@ export const Reports: React.FC<ReportsProps> = ({
             <select
               value={
                 mainCategory === 'daily' ? (itemWise ? 'daily-item' : 'daily-bill') :
-                mainCategory === 'gst' ? 'gst' :
+                mainCategory === 'gst' ? 'gst' : mainCategory === 'gst_summary' ? 'gst_summary' : mainCategory === 'gst_input_dom' ? 'gst_input_dom' : mainCategory === 'gst_input_imp' ? 'gst_input_imp' :
                 mainCategory === 'inv' ? `inv-${invSubTab}` :
+                mainCategory === 'audit' ? 'audit' :
                 `fin-${finSubTab}`
               }
               onChange={(e) => {
                 const val = e.target.value;
-                if (val === 'daily-bill') {
+                if (val === 'audit') {
+                  setMainCategory('audit');
+                } else if (val === 'daily-bill') {
                   setMainCategory('daily');
                   setItemWise(false);
                 } else if (val === 'daily-item') {
                   setMainCategory('daily');
                   setItemWise(true);
-                } else if (val === 'gst') {
-                  setMainCategory('gst');
+                } else if (val === 'gst' || val === 'gst_summary' || val === 'gst_input_dom' || val === 'gst_input_imp') {
+                  setMainCategory(val as any);
                 } else if (val.startsWith('inv-')) {
                   setMainCategory('inv');
                   setInvSubTab(val.replace('inv-', '') as any);
@@ -1454,7 +1564,14 @@ export const Reports: React.FC<ReportsProps> = ({
               </optgroup>
               {showGst && (
                 <optgroup label="GST & Taxation">
-                  <option value="gst">GST Summary Report</option>
+                  <option value="gst">GST Output (Sales)</option>
+                  {config.EnableGSTInputTax === 'true' && (
+                    <>
+                      <option value="gst_summary">Net GST Summary</option>
+                      <option value="gst_input_dom">GST Input (Domestic Purchase & Expenses)</option>
+                      <option value="gst_input_imp">GST Input (Import Purchase)</option>
+                    </>
+                  )}
                 </optgroup>
               )}
               <optgroup label="Inventory & Stock">
@@ -1472,9 +1589,32 @@ export const Reports: React.FC<ReportsProps> = ({
                 <option value="fin-REC">Receivables (Debtors)</option>
                 <option value="fin-PAY">Payables (Creditors)</option>
               </optgroup>
+              {canViewAudit && (
+                <optgroup label="Compliance & Security">
+                  <option value="audit">Audit Trail & Activity Log</option>
+                </optgroup>
+              )}
             </select>
             <ChevronDown className="absolute right-2.5 top-2.5 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
           </div>
+
+          {/* Quick Audit Trail Tab Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setMainCategory('audit');
+              setShowReportCatalog(false);
+            }}
+            className={`h-8 px-2.5 rounded-xl border text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs cursor-pointer ${
+              mainCategory === 'audit'
+                ? 'bg-indigo-600 text-white border-indigo-700'
+                : 'bg-indigo-50/80 text-indigo-800 border-indigo-200 hover:bg-indigo-100/90'
+            }`}
+            title="Open System Audit Trail & Footprint History"
+          >
+            <History className="h-3.5 w-3.5 text-indigo-600" />
+            <span>Audit Trail Log</span>
+          </button>
 
           {/* Contextual Filter for Ledger Statement */}
           {mainCategory === 'fin' && finSubTab === 'LED' && (() => {
@@ -1755,15 +1895,15 @@ export const Reports: React.FC<ReportsProps> = ({
               </div>
             </div>
 
-            {/* GST Card */}
+{/* GST Card */}
             {showGst && (
               <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
                 <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
                   <CircleDollarSign className="h-4 w-4 text-indigo-600" />
                   <span>GST & Tax</span>
                 </div>
-                <p className="text-[11px] text-slate-500">Taxable amounts, GST tax collected, zero-rated summaries.</p>
-                <div className="pt-1">
+                <p className="text-[11px] text-slate-500">Taxable amounts, GST tax collected, zero-rated summaries, and GST Input Claims.</p>
+                <div className="pt-1 flex flex-col gap-1">
                   <button
                     onClick={() => {
                       setMainCategory('gst');
@@ -1771,8 +1911,39 @@ export const Reports: React.FC<ReportsProps> = ({
                     }}
                     className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition ${mainCategory === 'gst' ? 'bg-indigo-600 text-white' : 'bg-slate-50 hover:bg-indigo-50 text-slate-700'}`}
                   >
-                    GST Invoices & Summary
+                    GST Output (Sales)
                   </button>
+                  {config.EnableGSTInputTax === 'true' && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setMainCategory('gst_summary');
+                          setShowReportCatalog(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition ${mainCategory === 'gst_summary' ? 'bg-indigo-600 text-white' : 'bg-slate-50 hover:bg-indigo-50 text-slate-700'}`}
+                      >
+                        Net GST Summary
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMainCategory('gst_input_dom');
+                          setShowReportCatalog(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition ${mainCategory === 'gst_input_dom' ? 'bg-indigo-600 text-white' : 'bg-slate-50 hover:bg-indigo-50 text-slate-700'}`}
+                      >
+                        GST Input (Domestic & Exp)
+                      </button>
+                      <button
+                        onClick={() => {
+                          setMainCategory('gst_input_imp');
+                          setShowReportCatalog(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition ${mainCategory === 'gst_input_imp' ? 'bg-indigo-600 text-white' : 'bg-slate-50 hover:bg-indigo-50 text-slate-700'}`}
+                      >
+                        GST Input (Import Purchase)
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -1837,6 +2008,28 @@ export const Reports: React.FC<ReportsProps> = ({
                 ))}
               </div>
             </div>
+
+            {/* Security & Compliance Card */}
+            {canViewAudit && (
+              <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
+                  <ShieldCheck className="h-4 w-4 text-indigo-600" />
+                  <span>Audit Trail & Activity Log</span>
+                </div>
+                <p className="text-[11px] text-slate-500">Tamper-evident entered by, altered by, cancelled by, and deleted by history.</p>
+                <div className="pt-1">
+                  <button
+                    onClick={() => {
+                      setMainCategory('audit');
+                      setShowReportCatalog(false);
+                    }}
+                    className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition ${mainCategory === 'audit' ? 'bg-indigo-600 text-white' : 'bg-slate-50 hover:bg-indigo-50 text-slate-700'}`}
+                  >
+                    View Audit Trail Logs
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1846,11 +2039,22 @@ export const Reports: React.FC<ReportsProps> = ({
       
       {/* Report Container */}
       {(() => {
+        if (mainCategory === 'audit') {
+          return (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 sm:p-6 -mx-3 sm:-mx-6 mb-[-1.5rem] lg:mb-[-2rem]">
+              <AuditLogView config={config} onConfigChange={(newCfg) => saveConfig(newCfg)} />
+            </div>
+          );
+        }
+
         const isTallyPrime = mainCategory === 'fin' && (finSubTab === 'TB' || finSubTab === 'PNL' || finSubTab === 'BS');
         
         let reportTitle = 'Report View';
         if (mainCategory === 'daily') reportTitle = 'Daily Sales Report';
         if (mainCategory === 'gst') reportTitle = 'GST/Tax Report';
+        if (mainCategory === 'gst_summary') reportTitle = 'Net GST Summary Statement';
+        if (mainCategory === 'gst_input_dom') reportTitle = 'GST Input - Domestic Purchase & Expenses';
+        if (mainCategory === 'gst_input_imp') reportTitle = 'GST Input - Import Purchase';
         if (mainCategory === 'fin') {
           if (finSubTab === 'TB') reportTitle = 'Trial Balance Statement';
           if (finSubTab === 'PNL') reportTitle = 'Profit & Loss Account';
@@ -2056,6 +2260,208 @@ export const Reports: React.FC<ReportsProps> = ({
                 </tfoot>
               </table>
             )}
+
+            {/* Net GST Summary Report */}
+            {mainCategory === 'gst_summary' && reportData.totals && (
+              <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                  <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                    <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Description</th>
+                    <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Taxable Amount (Nu.)</th>
+                    <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">GST Amount (Nu.)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  <tr onClick={() => setMainCategory('gst')} className="hover:bg-indigo-50/50 transition cursor-pointer group" title="Click to view Output GST details">
+                    <td className="py-3 px-3 font-semibold text-slate-800 group-hover:text-indigo-700 flex items-center gap-2">
+                      Total Sales (Output GST)
+                      <span className="text-[10px] font-bold text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">View Details</span>
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono">{fmt(reportData.totals.outputSalesTaxable)}</td>
+                    <td className="py-3 px-3 text-right font-mono text-indigo-700">{fmt(reportData.totals.outputSalesGST)}</td>
+                  </tr>
+                  <tr onClick={() => setMainCategory('gst_input_dom')} className="hover:bg-indigo-50/50 transition cursor-pointer group" title="Click to view Domestic Input GST details">
+                    <td className="py-3 px-3 font-semibold text-slate-800 group-hover:text-indigo-700 flex items-center gap-2">
+                      Domestic Purchase & Expenses (Input GST)
+                      <span className="text-[10px] font-bold text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">View Details</span>
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono">{fmt(reportData.totals.inputDomTaxable)}</td>
+                    <td className="py-3 px-3 text-right font-mono text-indigo-700">{fmt(reportData.totals.inputDomGST)}</td>
+                  </tr>
+                  <tr onClick={() => setMainCategory('gst_input_imp')} className="hover:bg-indigo-50/50 transition cursor-pointer group" title="Click to view Import Input GST details">
+                    <td className="py-3 px-3 font-semibold text-slate-800 group-hover:text-indigo-700 flex items-center gap-2">
+                      Import Purchases (Input GST)
+                      <span className="text-[10px] font-bold text-indigo-500 bg-indigo-100 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">View Details</span>
+                    </td>
+                    <td className="py-3 px-3 text-right font-mono">{fmt(reportData.totals.inputImpTotalAmount)}</td>
+                    <td className="py-3 px-3 text-right font-mono text-indigo-700">{fmt(reportData.totals.inputImpGST)}</td>
+                  </tr>
+                </tbody>
+                <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                  <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
+                    <td className="bg-slate-100 bg-clip-padding py-4 px-3 text-left">NET GST PAYABLE / (REFUNDABLE)</td>
+                    <td className="bg-slate-100 bg-clip-padding py-4 px-3 text-right font-mono"></td>
+                    <td className={`bg-slate-100 bg-clip-padding py-4 px-3 text-right font-mono font-bold ${reportData.totals.netPayable > 0 ? 'text-red-600' : reportData.totals.netRefundable > 0 ? 'text-emerald-600' : ''}`}>
+                      {reportData.totals.netPayable > 0 ? fmt(reportData.totals.netPayable) : `(${fmt(reportData.totals.netRefundable)})`}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+
+            {/* GST Input (Domestic Purchase & Expenses) */}
+            {mainCategory === 'gst_input_dom' && (() => {
+              const supplierLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'supplierName', 'Supplier / Payee');
+              const supplierGstLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'supplierGstNo', 'Supplier GST No');
+              const typeLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'transactionType', 'Transaction Type');
+              const invDateLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'invoiceDate', 'Invoice Date');
+              const invNoLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'invoiceNo', 'INVOICE/ REF No');
+              const taxableLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'taxableAmount', 'Taxable Value');
+              const exemptedLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'exemptedAmount', 'Exempted Value');
+              const gstLabel = getGstFieldLabel(config.gstInputConfigs, 'Local Purchase', 'gstAmount', 'GST Amount');
+
+              return (
+                <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                  <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                    <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{supplierLabel}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{supplierGstLabel}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{typeLabel}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">{invDateLabel}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{invNoLabel}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{taxableLabel}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{exemptedLabel}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{gstLabel}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Total (Nu.)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(!reportData.rows || reportData.rows.length === 0) ? (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center text-slate-400 italic">
+                          No domestic purchase or expense GST input records found for this period
+                        </td>
+                      </tr>
+                    ) : (
+                      (reportData.rows || []).map((r: any, idx: number) => {
+                        const totalRowVal = (Number(r.taxable) || 0) + (Number(r.exempted) || 0) + (Number(r.gstAmount) || 0);
+                        return (
+                          <tr
+                            key={idx}
+                            onClick={() => onDrillVoucher(r.voucherNo || r.invoiceNo || r.referenceNo)}
+                            className="hover:bg-slate-50 cursor-pointer transition"
+                          >
+                            <td className="py-2.5 px-3 font-medium text-slate-800 text-left">{r.supplierName || '-'}</td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500 text-left">{r.supplierGstNo || '-'}</td>
+                            <td className="py-2.5 px-3 font-semibold text-indigo-700 text-left">
+                              <span className="inline-block px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11px] font-bold">
+                                {r.transactionType}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-center font-mono text-slate-600">{formatDateStr(r.invoiceDate)}</td>
+                            <td className="py-2.5 px-3 font-bold text-indigo-600 text-left">{r.invoiceNo || r.referenceNo || r.voucherNo || '-'}</td>
+                            <td className="py-2.5 px-3 text-right font-mono">{fmt(r.taxable)}</td>
+                            <td className="py-2.5 px-3 text-right font-mono text-slate-500">{fmt(r.exempted)}</td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-indigo-700">{fmt(r.gstAmount)}</td>
+                            <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">{fmt(totalRowVal)}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                  {reportData.rows && reportData.rows.length > 0 && (
+                    <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                      <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
+                        <td colSpan={5} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left">TOTAL SUMMARY</td>
+                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.taxable)}</td>
+                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-slate-600">{fmt(reportData.totals?.exempted)}</td>
+                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-indigo-800 font-bold">{fmt(reportData.totals?.gstAmount)}</td>
+                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-sm font-bold">
+                          {fmt((Number(reportData.totals?.taxable) || 0) + (Number(reportData.totals?.exempted) || 0) + (Number(reportData.totals?.gstAmount) || 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              );
+            })()}
+
+            {/* GST Input (Import Purchase) */}
+            {mainCategory === 'gst_input_imp' && (() => {
+              const supplierLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'supplierName', 'Supplier Name');
+              const invDateLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'invoiceDate', 'Inv. Date');
+              const invNoLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'invoiceNo', 'Inv. No.');
+              const declDateLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'declarationDate', 'Decl. Date');
+              const declNoLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'declarationNo', 'Decl. Number');
+              const taxableLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'taxableAmount', 'Taxable');
+              const exemptedLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'exemptedAmount', 'Exempted');
+              const totalImportLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'totalImportAmount', 'Total Import');
+              const gstLabelImp = getGstFieldLabel(config.gstInputConfigs, 'Import Purchase', 'gstAmount', 'GST Paid');
+
+              return (
+                <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                  <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                    <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{supplierLabelImp}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">{invDateLabelImp}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{invNoLabelImp}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">{declDateLabelImp}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{declNoLabelImp}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{taxableLabelImp}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{exemptedLabelImp}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{totalImportLabelImp}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{gstLabelImp}</th>
+                      <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Total (Nu.)</th>
+                    </tr>
+                  </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(!reportData.rows || reportData.rows.length === 0) ? (
+                    <tr>
+                      <td colSpan={10} className="py-12 text-center text-slate-400 italic">
+                        No import purchase GST input records found for this period
+                      </td>
+                    </tr>
+                  ) : (
+                    (reportData.rows || []).map((r: any, idx: number) => {
+                      const totalRowVal = (Number(r.totalImportAmount) || 0) + (Number(r.gstAmount) || 0);
+                      return (
+                        <tr
+                          key={idx}
+                          onClick={() => onDrillVoucher(r.voucherNo || r.declarationNo)}
+                          className="hover:bg-slate-50 cursor-pointer transition"
+                        >
+                          <td className="py-2.5 px-3 font-semibold text-slate-800 text-left">{r.supplierName || '-'}</td>
+                          <td className="py-2.5 px-3 text-center font-mono text-slate-600">{formatDateStr(r.invoiceDate)}</td>
+                          <td className="py-2.5 px-3 font-semibold text-slate-700 text-left">{r.invoiceNo || '-'}</td>
+                          <td className="py-2.5 px-3 text-center font-mono text-slate-600">{formatDateStr(r.declarationDate)}</td>
+                          <td className="py-2.5 px-3 font-bold text-indigo-600 text-left">{r.declarationNo || '-'}</td>
+                          <td className="py-2.5 px-3 text-right font-mono">{fmt(r.taxableAmount)}</td>
+                          <td className="py-2.5 px-3 text-right font-mono">{fmt(r.exemptedAmount)}</td>
+                          <td className="py-2.5 px-3 text-right font-mono">{fmt(r.totalImportAmount)}</td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-indigo-700">{fmt(r.gstAmount)}</td>
+                          <td className="py-2.5 px-3 text-right font-bold text-slate-900 font-mono">{fmt(totalRowVal)}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+                {reportData.rows && reportData.rows.length > 0 && (
+                  <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                    <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
+                      <td colSpan={5} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left">TOTAL SUMMARY</td>
+                      <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.taxableAmount)}</td>
+                      <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.exemptedAmount)}</td>
+                      <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.totalImportAmount)}</td>
+                      <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-indigo-800 font-bold">{fmt(reportData.totals?.gstAmount)}</td>
+                      <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-sm font-bold">
+                        {fmt((Number(reportData.totals?.totalImportAmount) || 0) + (Number(reportData.totals?.gstAmount) || 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            );
+          })()}
 
             {/* Inventory Reports */}
             {mainCategory === 'inv' && (

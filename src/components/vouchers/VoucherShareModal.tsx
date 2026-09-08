@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Config } from '../../types';
 import { generateVoucherSlipPDF, shareOrDownloadPDF } from '../../utils/pdfExport';
+import { formatDateDMY, formatDateTimeDMY } from '../../utils/dateUtils';
 
 export interface VoucherShareData {
   voucherNo: string;
@@ -75,7 +76,7 @@ export const VoucherShareModal: React.FC<VoucherShareModalProps> = ({
 
   const typeLabel = getTypeName(voucher.type, voucher.voucherTypeName);
   const companyName = config?.CompanyName || 'Accounting';
-  const formattedDate = voucher.date ? new Date(voucher.date).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB');
+  const formattedDate = formatDateDMY(voucher.date || new Date());
 
   // Build a clean, formatted text summary for WhatsApp and copying
   const generateTextSummary = () => {

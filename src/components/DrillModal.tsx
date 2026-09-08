@@ -11,6 +11,7 @@ import {
   DEFAULT_CONFIG
 } from '../services/storageService';
 import { Config, StockLedgerEntry, LedgerLogEntry } from '../types';
+import { formatDateDMY, formatDateTimeDMY } from '../utils/dateUtils';
 import {
   X,
   ArrowLeft,
@@ -307,15 +308,11 @@ export const DrillModal: React.FC<DrillModalProps> = ({
   };
 
   const formatDateStr = (d: any) => {
-    if (!d) return '-';
-    const dt = new Date(d);
-    return isNaN(dt.getTime()) ? '-' : dt.toLocaleDateString();
+    return formatDateDMY(d);
   };
 
   const formatDateTimeStr = (d: any) => {
-    if (!d) return '-';
-    const dt = new Date(d);
-    return isNaN(dt.getTime()) ? '-' : dt.toLocaleString();
+    return formatDateTimeDMY(d);
   };
 
   const fmt = (v: any) => (Number(v) || 0).toFixed(2);
@@ -510,11 +507,20 @@ export const DrillModal: React.FC<DrillModalProps> = ({
     setActionFeedback({ type: 'success', message: `Saved ${res.filename} to downloads.` });
   };
 
+  const getPrimaryRefNo = (h: any, type: string, targetId: string) => {
+    if (!h) return targetId;
+    if (type === 'INV') return h.invoiceNo || targetId;
+    if (type === 'PUR') return h.billNo || h.invoiceNo || targetId;
+    if (type === 'DLV') return h.noteNo || targetId;
+    if (type === 'QTN') return h.quotationNo || targetId;
+    return h.voucherNo || targetId; // For P, R, J, C, CN, DN, PHY
+  };
+
   // 3. Share Text Builder
   const buildShareSummaryText = (vData: any, cfg: Config) => {
     if (!vData || !vData.header) return '';
     const h = vData.header;
-    const refNo = h.invoiceNo || h.billNo || h.voucherNo || h.noteNo || h.quotationNo || active.targetId;
+    const refNo = getPrimaryRefNo(h, vData.type, active.targetId);
     const party =
       h.party ||
       (typeof h.customer === 'object' ? h.customer?.name || h.customer?.ledger : h.customer) ||
@@ -541,7 +547,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
     let text = `*${cfg?.CompanyName || 'BUSINESS'}*\n`;
     text += `📄 *${typeLabel}*\n`;
     text += `*Ref No:* ${refNo}\n`;
-    text += `*Date:* ${new Date(h.date || Date.now()).toLocaleDateString()}\n`;
+    text += `*Date:* ${formatDateDMY(h.date || Date.now())}\n`;
     text += `*Party:* ${party}\n`;
     text += `*Amount:* ${sym} ${total}\n`;
     if (h.status === 'Cancelled' || h.isCancelled) {
@@ -589,13 +595,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
 
   // 7. Confirm Cancellation (Void)
   const handleConfirmCancel = () => {
-    const refNo =
-      voucherData?.header?.invoiceNo ||
-      voucherData?.header?.billNo ||
-      voucherData?.header?.voucherNo ||
-      voucherData?.header?.noteNo ||
-      voucherData?.header?.quotationNo ||
-      active.targetId;
+    const refNo = getPrimaryRefNo(voucherData?.header, voucherData?.type || '', active.targetId);
 
     setIsCancelling(true);
     try {
@@ -624,13 +624,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
 
   // 8. Confirm Permanent Deletion
   const handleConfirmDeletePermanent = () => {
-    const refNo =
-      voucherData?.header?.invoiceNo ||
-      voucherData?.header?.billNo ||
-      voucherData?.header?.voucherNo ||
-      voucherData?.header?.noteNo ||
-      voucherData?.header?.quotationNo ||
-      active.targetId;
+    const refNo = getPrimaryRefNo(voucherData?.header, voucherData?.type || '', active.targetId);
 
     setIsDeletingPermanent(true);
     try {
@@ -1115,13 +1109,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
 
         {/* VOUCHER DETAILS WITH FULL ACTION SUITE */}
         {active.type === 'voucher' && voucherData && (() => {
-          const refNo =
-            voucherData.header?.invoiceNo ||
-            voucherData.header?.billNo ||
-            voucherData.header?.voucherNo ||
-            voucherData.header?.noteNo ||
-            voucherData.header?.quotationNo ||
-            active.targetId;
+          const refNo = getPrimaryRefNo(voucherData.header, voucherData.type, active.targetId);
           const isCancelled = voucherData.header?.status === 'Cancelled' || voucherData.header?.isCancelled;
           const currency = config?.CurrencySymbol || 'Nu.';
 

@@ -31,7 +31,9 @@ import {
   ModuleId,
   TrashEntry,
   BillAllocation,
-  BillWiseDetail
+  BillWiseDetail,
+  AuditLogEntry,
+  AuditActionType
 } from '../types';
 import {
   syncConfigToFirestore,
@@ -41,8 +43,11 @@ import {
   syncLedgerToFirestore,
   deleteLedgerFromFirestore,
   syncSalesInvoiceToFirestore,
+  deleteSalesInvoiceFromFirestore,
   syncPurchaseInvoiceToFirestore,
-  syncVoucherToFirestore
+  deletePurchaseInvoiceFromFirestore,
+  syncVoucherToFirestore,
+  deleteVoucherFromFirestore
 } from './firebaseSyncService';
 
 
@@ -74,7 +79,11 @@ export const STORAGE_KEYS = {
   TRASH_LOG: 'deep_pos_trash',
   BANK_RECON: 'deep_pos_bank_recon',
   DELETED_LEDGERS: 'deep_pos_deleted_ledgers',
-  DELETED_ITEMS: 'deep_pos_deleted_items'
+  DELETED_ITEMS: 'deep_pos_deleted_items',
+  DELETED_SALES_INVOICES: 'deep_pos_deleted_sales_invoices',
+  DELETED_PURCHASE_INVOICES: 'deep_pos_deleted_purchase_invoices',
+  DELETED_VOUCHERS: 'deep_pos_deleted_vouchers',
+  AUDIT_LOG: 'deep_pos_audit_log'
 };
 
 export const DEFAULT_CONFIG: Config = {
@@ -99,6 +108,8 @@ export const DEFAULT_CONFIG: Config = {
   EnableNormalSale: 'true',
   EnableEmployeeAdvances: 'true',
   EnableItemDescription: 'true',
+  EnableAuditTrail: 'true',
+  PrintAuditStamp: 'false',
   BarcodePrefix: '20',
   ReceiptHeaderImage: '',
   ReceiptSignatureImage: '',
@@ -1443,6 +1454,16 @@ export function saveItem(item: Item) {
   if (idx > -1) list[idx] = item; else list.push(item);
   saveJson(STORAGE_KEYS.ITEMS, list);
 
+  // Audit Trail Logging
+  addAuditLog({
+    action: isNew ? 'ENTERED' : 'ALTERED',
+    module: 'Item Master',
+    recordId: item['Item Code'],
+    partyName: cleanName,
+    amount: Number(item['Sale Rate']) || 0,
+    details: isNew ? `Created new item: ${cleanName} (Rate: Nu. ${item['Sale Rate']})` : `Updated item: ${cleanName} (Rate: Nu. ${item['Sale Rate']})`
+  });
+
   // Un-delete if code or barcode was in DELETED_ITEMS
   const deleted = loadJson<string[]>(STORAGE_KEYS.DELETED_ITEMS, []);
   const cNorm = (item['Item Code'] || '').trim().toLowerCase();
@@ -1526,6 +1547,15 @@ export function deleteItem(code: string) {
   }
 
   deleteItemFromFirestore(target).catch(() => {});
+
+  // Audit Trail Logging
+  addAuditLog({
+    action: 'DELETED',
+    module: 'Item Master',
+    recordId: target,
+    details: `Deleted item: ${target}`
+  });
+
   return { ok: true, items: list };
 }
 
@@ -1567,6 +1597,17 @@ export function saveLedger(l: Ledger) {
   list = sanitizeLedgers(list);
   saveJson(STORAGE_KEYS.LEDGERS, list);
   syncLedgerToFirestore(l).catch(() => {});
+
+  // Audit Trail Logging
+  addAuditLog({
+    action: isNew ? 'ENTERED' : 'ALTERED',
+    module: 'Ledger Master',
+    recordId: cleanName,
+    partyName: l.Group,
+    amount: Number(l['Opening Balance']) || 0,
+    details: isNew ? `Created new ledger: ${cleanName} (${l.Group})` : `Updated ledger: ${cleanName} (${l.Group})`
+  });
+
   return { ok: true, ledgers: list };
 }
 
@@ -1669,6 +1710,15 @@ export function deleteLedger(name: string) {
   }
 
   deleteLedgerFromFirestore(target).catch(() => {});
+
+  // Audit Trail Logging
+  addAuditLog({
+    action: 'DELETED',
+    module: 'Ledger Master',
+    recordId: target,
+    details: `Deleted ledger: ${target}`
+  });
+
   return { ok: true, ledgers: list };
 }
 
@@ -1796,6 +1846,7 @@ export function saveSalesInvoice(payload: {
   notes?: string;
   termsAndConditions?: string;
   invoiceNo?: string;
+  originalInvoiceNo?: string;
   date?: string;
   isEdit?: boolean;
   voucherTypeId?: string;
@@ -1805,10 +1856,11 @@ export function saveSalesInvoice(payload: {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const itemsList = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const ledgersList = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
-  const { cart, payment, customer, billDiscount = 0, billDiscountType = 'flat', billDiscountValue, additionalExpenses = [], termsAndConditions, orderNo, orderDate, deliveryNoteNo, voucherTypeId, voucherTypeName, invoiceNo, isPOS, notes } = payload;
+  const { cart, payment, customer, billDiscount = 0, billDiscountType = 'flat', billDiscountValue, additionalExpenses = [], termsAndConditions, orderNo, orderDate, deliveryNoteNo, voucherTypeId, voucherTypeName, invoiceNo, originalInvoiceNo, isPOS, notes } = payload;
   
   // Duplicate Serial Number Check (Must exist and not be sold)
   const serialStock = getSerialNumbersStockReport();
+  const targetCheckNo = (originalInvoiceNo || invoiceNo || '').trim();
   for (const l of cart) {
     if (l.serials && l.serials.length > 0) {
       for (const s of l.serials) {
@@ -1816,19 +1868,20 @@ export function saveSalesInvoice(payload: {
         if (!stockStatus) {
           return { ok: false, error: `Serial Number not found in stock: ${s}` };
         }
-        if (stockStatus.status === 'Sold' && stockStatus.refNo !== invoiceNo) {
+        if (stockStatus.status === 'Sold' && targetCheckNo && stockStatus.refNo.toLowerCase() !== targetCheckNo.toLowerCase()) {
           return { ok: false, error: `Serial Number already sold: ${s} (Sold in ${stockStatus.refNo})` };
         }
       }
     }
   }
 
-  const isEditing = Boolean(invoiceNo);
+  const isEditing = Boolean(payload.isEdit || originalInvoiceNo || invoiceNo);
   let originalDate: string | undefined;
 
-  if (isEditing && invoiceNo) {
+  const refToMatch = (originalInvoiceNo || invoiceNo || '').trim().toLowerCase();
+  if (refToMatch) {
     const existingSales = getDeduplicatedSales();
-    const oldInv = existingSales.find(s => s.invoiceNo.toLowerCase() === invoiceNo.toLowerCase());
+    const oldInv = existingSales.find(s => s.invoiceNo?.trim().toLowerCase() === refToMatch || (invoiceNo && s.invoiceNo?.trim().toLowerCase() === invoiceNo.trim().toLowerCase()));
     if (oldInv) {
       originalDate = oldInv.date;
       // 1. Revert previous stock deduction from the original sale
@@ -1842,12 +1895,18 @@ export function saveSalesInvoice(payload: {
 
     // 2. Remove old stock ledger entries for this invoice to prevent duplicate audit rows
     let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
-    stockLogs = stockLogs.filter(s => s['Ref No'] !== invoiceNo);
+    stockLogs = stockLogs.filter(s => {
+      const ref = s['Ref No']?.trim().toLowerCase();
+      return ref !== refToMatch && (!invoiceNo || ref !== invoiceNo.trim().toLowerCase());
+    });
     saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
 
     // 3. Clean out previous ledger logs for this invoice so previous amounts don't double up
     let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
-    logs = logs.filter(l => l['Ref No'] !== invoiceNo);
+    logs = logs.filter(l => {
+      const ref = l['Ref No']?.trim().toLowerCase();
+      return ref !== refToMatch && (!invoiceNo || ref !== invoiceNo.trim().toLowerCase());
+    });
     saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
   }
 
@@ -1909,13 +1968,15 @@ export function saveSalesInvoice(payload: {
   const defaultPrefix = isPOS ? (cfg.POSInvoicePrefix || 'POS-') : (cfg.SalesInvoicePrefix || 'SAL-');
   const invPrefix = matchedVt?.prefix || defaultPrefix;
   const counterKey = matchedVt ? `Voucher_${matchedVt.id}` : (isPOS ? 'POSInvoice' : 'SalesInvoice');
-  const rawCount = nextCounter(counterKey);
-  const startNum = Number(matchedVt?.startingNumber) || 1;
-  const effNum = rawCount < startNum ? startNum : rawCount;
-  const iNo = invoiceNo || formatVoucherNumber(invPrefix, effNum, matchedVt?.zeroPadding, matchedVt?.suffix);
 
-  if (invoiceNo && invPrefix && invoiceNo.startsWith(invPrefix)) {
-    const numPart = invoiceNo.slice(invPrefix.length).replace(/[^\d]/g, '');
+  let iNo = (originalInvoiceNo || invoiceNo)?.trim();
+  if (!iNo) {
+    const rawCount = nextCounter(counterKey);
+    const startNum = Number(matchedVt?.startingNumber) || 1;
+    const effNum = rawCount < startNum ? startNum : rawCount;
+    iNo = formatVoucherNumber(invPrefix, effNum, matchedVt?.zeroPadding, matchedVt?.suffix);
+  } else if (!isEditing && invPrefix && iNo.startsWith(invPrefix)) {
+    const numPart = iNo.slice(invPrefix.length).replace(/[^\d]/g, '');
     const pVal = parseInt(numPart, 10);
     if (!isNaN(pVal)) {
       const counters = loadJson<Record<string, number>>(STORAGE_KEYS.COUNTERS, {});
@@ -1996,7 +2057,9 @@ export function saveSalesInvoice(payload: {
   };
 
   const sales = getDeduplicatedSales();
-  const existIdx = sales.findIndex(s => s.invoiceNo.toLowerCase() === iNo.toLowerCase());
+  const matchTarget = (originalInvoiceNo || iNo || '').trim().toLowerCase();
+  const existIdx = sales.findIndex(s => s.invoiceNo?.trim().toLowerCase() === matchTarget || s.invoiceNo?.trim().toLowerCase() === iNo.toLowerCase());
+  const oldInv = existIdx >= 0 ? sales[existIdx] : null;
   if (existIdx >= 0) {
     sales[existIdx] = invoice;
   } else {
@@ -2004,6 +2067,36 @@ export function saveSalesInvoice(payload: {
   }
   saveJson(STORAGE_KEYS.SALES_INVOICES, sales);
   syncSalesInvoiceToFirestore(invoice).catch(() => {});
+
+  if (originalInvoiceNo && originalInvoiceNo.trim().toLowerCase() !== iNo.trim().toLowerCase()) {
+    deleteSalesInvoiceFromFirestore(originalInvoiceNo.trim()).catch(() => {});
+  }
+
+  // Audit Trail Logging
+  if (existIdx >= 0 || isEditing) {
+    const prevTotal = oldInv ? Number(oldInv.total) : undefined;
+    const detailStr = prevTotal !== undefined && prevTotal !== finalTot
+      ? `Updated total: Nu. ${prevTotal.toFixed(2)} → Nu. ${finalTot.toFixed(2)} (${itemsRows.length} items)`
+      : `Updated invoice (${itemsRows.length} items)`;
+    addAuditLog({
+      action: 'ALTERED',
+      module: isPOS ? 'POS Billing' : 'Sales Invoice',
+      recordId: iNo,
+      partyName: sLg,
+      amount: finalTot,
+      prevAmount: prevTotal,
+      details: detailStr
+    });
+  } else {
+    addAuditLog({
+      action: 'ENTERED',
+      module: isPOS ? 'POS Billing' : 'Sales Invoice',
+      recordId: iNo,
+      partyName: sLg,
+      amount: finalTot,
+      details: `Created invoice (${itemsRows.length} items, ${st})`
+    });
+  }
 
   // Stock logging & ledger balance
   cart.forEach(l => {
@@ -2033,7 +2126,7 @@ export function saveSalesInvoice(payload: {
   // Sales account adjusted by net sale (tax + zro minus lumpsum discount)
   const netSalesCredit = Math.max(0, round2((tax + zro) - appliedDiscount));
   adjustLedgerBalance('Sales Account', netSalesCredit, 'Cr', iNo, 'Sale ' + iNo, 'Sale');
-  if (gst > 0) adjustLedgerBalance('GST Payable', gst, 'Cr', iNo, 'GST ' + iNo, 'Sale');
+  if (gst > 0) adjustLedgerBalance(cfg.EnableGSTInputTax === 'true' ? 'GST Output' : 'GST Payable', gst, 'Cr', iNo, 'GST ' + iNo, 'Sale');
 
   if (isEditing) {
     recalculateLedgerBalances();
@@ -2115,6 +2208,7 @@ export function savePurchaseInvoice(payload: {
   notes?: string;
   additionalExpenses?: { ledger: string; amount: number }[];
   billNo?: string;
+  originalBillNo?: string;
   date?: string;
   isEdit?: boolean;
 }) {
@@ -2122,16 +2216,17 @@ export function savePurchaseInvoice(payload: {
   const itemsList = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const ledgersList = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
 
-  const { cart, supplier, payment, additionalExpenses = [] } = payload;
+  const { cart, supplier, payment, additionalExpenses = [], originalBillNo, billNo } = payload;
   
   const purchasesCheck = getDeduplicatedPurchases();
+  const currentTargetBill = (originalBillNo || billNo || '').trim();
   
   // Duplicate Supplier Bill Number Check
   if (payload.supplierBillNo && payload.supplierBillNo.trim()) {
     const dup = purchasesCheck.find(p => 
       p.supplierBillNo?.toLowerCase() === payload.supplierBillNo!.trim().toLowerCase() && 
       p.supplier.name === supplier.name &&
-      p.billNo !== payload.billNo
+      p.billNo?.toLowerCase() !== currentTargetBill.toLowerCase()
     );
     if (dup && (dup.status as string) !== 'Cancelled') {
       return { ok: false, error: `Duplicate Supplier Bill Number: ${payload.supplierBillNo}` };
@@ -2143,7 +2238,7 @@ export function savePurchaseInvoice(payload: {
   for (const l of cart) {
     if (l.serials && l.serials.length > 0) {
       for (const s of l.serials) {
-        const existing = serialStock.find(stock => stock.serialNo.toLowerCase() === s.toLowerCase() && stock.refNo !== payload.billNo);
+        const existing = serialStock.find(stock => stock.serialNo.toLowerCase() === s.toLowerCase() && currentTargetBill && stock.refNo.toLowerCase() !== currentTargetBill.toLowerCase());
         if (existing) {
           return { ok: false, error: `Duplicate Serial Number detected: ${s} (Already exists in ${existing.refNo})` };
         }
@@ -2151,12 +2246,14 @@ export function savePurchaseInvoice(payload: {
     }
   }
 
-  const isEditing = Boolean(payload.billNo);
+  const isEditing = Boolean(payload.isEdit || originalBillNo || billNo);
   let originalDate: string | undefined;
+  let oldPur: PurchaseInvoice | undefined;
 
-  if (isEditing && payload.billNo) {
+  const refToMatch = (originalBillNo || billNo || '').trim().toLowerCase();
+  if (refToMatch) {
     const existingPurchases = getDeduplicatedPurchases();
-    const oldPur = existingPurchases.find(p => p.billNo.toLowerCase() === payload.billNo!.toLowerCase());
+    oldPur = existingPurchases.find(p => p.billNo?.trim().toLowerCase() === refToMatch || (billNo && p.billNo?.trim().toLowerCase() === billNo.trim().toLowerCase()));
     if (oldPur) {
       originalDate = oldPur.date;
       // 1. Revert previous stock addition from original purchase
@@ -2170,12 +2267,18 @@ export function savePurchaseInvoice(payload: {
 
     // 2. Remove old stock ledger entries for this bill to prevent duplicate audit rows
     let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
-    stockLogs = stockLogs.filter(s => s['Ref No'] !== payload.billNo);
+    stockLogs = stockLogs.filter(s => {
+      const ref = s['Ref No']?.trim().toLowerCase();
+      return ref !== refToMatch && (!billNo || ref !== billNo.trim().toLowerCase());
+    });
     saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
 
     // 3. Clean out previous ledger logs for this bill so previous amounts don't double up
     let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
-    logs = logs.filter(l => l['Ref No'] !== payload.billNo);
+    logs = logs.filter(l => {
+      const ref = l['Ref No']?.trim().toLowerCase();
+      return ref !== refToMatch && (!billNo || ref !== billNo.trim().toLowerCase());
+    });
     saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
   }
   
@@ -2229,7 +2332,7 @@ export function savePurchaseInvoice(payload: {
   tax = round2(tax); zro = round2(zro); gst = round2(gst); tot = round2(tot);
   expensesTotal = round2(expensesTotal);
 
-  const bNo = payload.billNo || ('PUR-' + nextCounter('PurchaseInvoice'));
+  const bNo = (originalBillNo || billNo)?.trim() || ('PUR-' + nextCounter('PurchaseInvoice'));
 
   let cash = Number(payment.cash) || 0, b1 = Number(payment.bank1) || 0, b2 = Number(payment.bank2) || 0;
   const sLg = supplier.name?.trim() || 'Cash Supplier';
@@ -2267,7 +2370,8 @@ export function savePurchaseInvoice(payload: {
   };
 
   const purchases = getDeduplicatedPurchases();
-  const existIdx = purchases.findIndex(p => p.billNo.toLowerCase() === bNo.toLowerCase());
+  const matchTarget = (originalBillNo || bNo || '').trim().toLowerCase();
+  const existIdx = purchases.findIndex(p => p.billNo?.trim().toLowerCase() === matchTarget || p.billNo?.trim().toLowerCase() === bNo.toLowerCase());
   if (existIdx >= 0) {
     purchases[existIdx] = purchase;
   } else {
@@ -2275,6 +2379,36 @@ export function savePurchaseInvoice(payload: {
   }
   saveJson(STORAGE_KEYS.PURCHASE_INVOICES, purchases);
   syncPurchaseInvoiceToFirestore(purchase).catch(() => {});
+
+  if (originalBillNo && originalBillNo.trim().toLowerCase() !== bNo.trim().toLowerCase()) {
+    deletePurchaseInvoiceFromFirestore(originalBillNo.trim()).catch(() => {});
+  }
+
+  // Audit Trail Logging
+  if (existIdx >= 0 || isEditing) {
+    const prevTotal = oldPur ? Number(oldPur.total) : undefined;
+    const detailStr = prevTotal !== undefined && prevTotal !== tot
+      ? `Updated total: Nu. ${prevTotal.toFixed(2)} → Nu. ${tot.toFixed(2)} (${itemsRows.length} items)`
+      : `Updated purchase bill (${itemsRows.length} items)`;
+    addAuditLog({
+      action: 'ALTERED',
+      module: 'Purchase Bill',
+      recordId: bNo,
+      partyName: sLg,
+      amount: tot,
+      prevAmount: prevTotal,
+      details: detailStr
+    });
+  } else {
+    addAuditLog({
+      action: 'ENTERED',
+      module: 'Purchase Bill',
+      recordId: bNo,
+      partyName: sLg,
+      amount: tot,
+      details: `Created purchase bill (${itemsRows.length} items, ${st})`
+    });
+  }
 
   cart.forEach(l => {
     const nq = updateItemStock(l.itemCode, Number(l.qty), l.unit);
@@ -2295,7 +2429,7 @@ export function savePurchaseInvoice(payload: {
   if (cr > 0.009 && supplier.name) adjustLedgerBalance(supplier.name, cr, 'Cr', bNo, 'Credit purchase ' + bNo, 'Purchase');
   
   adjustLedgerBalance('Purchase Account', tax + zro, 'Dr', bNo, 'Purchase ' + bNo, 'Purchase');
-  if (gst > 0) adjustLedgerBalance('Duties & Taxes', gst, 'Dr', bNo, 'GST ' + bNo, 'Purchase');
+  if (gst > 0) adjustLedgerBalance(cfg.EnableGSTInputTax === 'true' ? 'GST Input' : 'GST Payable', gst, 'Dr', bNo, 'GST ' + bNo, 'Purchase');
 
   // Adjust expense ledgers
   additionalExpenses.forEach(exp => {
@@ -2411,6 +2545,7 @@ export function peekNextInvoiceNumber(isPOS: boolean = false, voucherTypeId?: st
 export function saveMultiLineVoucher(payload: {
   type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR';
   voucherNo?: string;
+  originalVoucherNo?: string;
   isEdit?: boolean;
   date?: string;
   narration?: string;
@@ -2419,6 +2554,19 @@ export function saveMultiLineVoucher(payload: {
   chequeNo?: string;
   billNo?: string;
   billAllocations?: BillAllocation[];
+  gstInputType?: 'Local Purchase' | 'Local Expenses' | 'Bank Charges' | 'Import Customs GST Payment' | 'Import Purchase' | 'None';
+  supplierName?: string;
+  supplierGstNo?: string;
+  supplierCountry?: string;
+  invoiceNo?: string;
+  invoiceDate?: string;
+  referenceNo?: string;
+  declarationNo?: string;
+  declarationDate?: string;
+  taxableAmount?: number;
+  exemptedAmount?: number;
+  gstAmount?: number;
+  totalImportAmount?: number;
   lines: Array<{
     type: 'Dr' | 'Cr';
     ledger: string;
@@ -2429,10 +2577,10 @@ export function saveMultiLineVoucher(payload: {
 }) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const px = getVoucherPrefix(payload.type, cfg);
-  let no = payload.voucherNo?.trim();
+  let no = (payload.originalVoucherNo || payload.voucherNo)?.trim();
   if (!no) {
     no = px + nextCounter('Voucher');
-  } else {
+  } else if (!payload.isEdit && !payload.originalVoucherNo) {
     // Check if the custom voucher number ends in a number and advance the counter if higher
     const match = no.match(/\d+$/);
     if (match) {
@@ -2458,10 +2606,27 @@ export function saveMultiLineVoucher(payload: {
   const mainCr = payload.lines.find(l => l.type === 'Cr')?.ledger || '';
 
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+  
+  // If editing, use the new voucherNo if provided, otherwise fallback to original
+  const finalNo = payload.voucherNo?.trim() || no;
+
   const newVoucher: Voucher = {
-    voucherNo: no,
+    voucherNo: finalNo,
     date: dateIso,
     type: payload.type,
+    gstInputType: payload.gstInputType,
+    supplierName: payload.supplierName,
+    supplierGstNo: payload.supplierGstNo,
+    supplierCountry: payload.supplierCountry,
+    invoiceNo: payload.invoiceNo,
+    invoiceDate: payload.invoiceDate,
+    referenceNo: payload.referenceNo,
+    declarationNo: payload.declarationNo,
+    declarationDate: payload.declarationDate,
+    taxableAmount: payload.taxableAmount,
+    exemptedAmount: payload.exemptedAmount,
+    gstAmount: payload.gstAmount,
+    totalImportAmount: payload.totalImportAmount,
     debitLedger: mainDr,
     creditLedger: mainCr,
     amount: round2(totalDebit),
@@ -2480,12 +2645,12 @@ export function saveMultiLineVoucher(payload: {
     }))
   };
 
-  const existIdx = vouchers.findIndex(v => v.voucherNo === no);
+  const existIdx = vouchers.findIndex(v => v.voucherNo?.trim().toLowerCase() === no.trim().toLowerCase() || v.voucherNo?.trim().toLowerCase() === finalNo.trim().toLowerCase());
   if (existIdx >= 0) {
     vouchers[existIdx] = newVoucher;
     // Clear out earlier ledger log rows for this voucher to prevent duplicate ledger balance postings
     let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
-    logs = logs.filter(l => l['Ref No'] !== no);
+    logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== no.trim().toLowerCase() && l['Ref No']?.trim().toLowerCase() !== finalNo.trim().toLowerCase());
     saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
   } else {
     vouchers.push(newVoucher);
@@ -2493,13 +2658,17 @@ export function saveMultiLineVoucher(payload: {
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
   syncVoucherToFirestore(newVoucher).catch(() => {});
 
+  if (payload.originalVoucherNo && payload.originalVoucherNo.trim().toLowerCase() !== finalNo.trim().toLowerCase()) {
+    deleteVoucherFromFirestore(payload.originalVoucherNo.trim()).catch(() => {});
+  }
+
   // Post to accounting ledger for each Dr/Cr line
   payload.lines.forEach(line => {
     if (line.ledger && Number(line.amount) > 0) {
       const lineTxn = line.transactionId || txnId;
       const txnSuffix = lineTxn ? ` (Txn/Ref: ${lineTxn})` : '';
       const lineNarr = line.narration ? `${overallNarration} (${line.narration})${txnSuffix}` : `${overallNarration}${txnSuffix}`;
-      adjustLedgerBalance(line.ledger, Number(line.amount), line.type, no, lineNarr.trim(), payload.type, lineTxn);
+      adjustLedgerBalance(line.ledger, Number(line.amount), line.type, finalNo, lineNarr.trim(), payload.type, lineTxn);
     }
   });
 
@@ -2508,7 +2677,7 @@ export function saveMultiLineVoucher(payload: {
   }
 
   const updatedLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
-  return { ok: true, voucherNo: no, ledgers: updatedLedgers };
+  return { ok: true, voucherNo: finalNo, ledgers: updatedLedgers };
 }
 
 
@@ -2607,6 +2776,7 @@ export function restoreAllFromTrash() {
 }
 
 export function recalculateLedgerBalances() {
+  const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const ledgers = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
   const logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
   
@@ -2673,7 +2843,7 @@ export function recalculateLedgerBalances() {
 
     const netSalesCredit = Math.max(0, round2((tax + zro) - appliedDiscount));
     adjustLedgerBalance('Sales Account', netSalesCredit, 'Cr', iNo, 'Sale ' + iNo, 'Sale');
-    if (gst > 0) adjustLedgerBalance('GST Payable', gst, 'Cr', iNo, 'GST ' + iNo, 'Sale');
+    if (gst > 0) adjustLedgerBalance(cfg.EnableGSTInputTax === 'true' ? 'GST Output' : 'GST Payable', gst, 'Cr', iNo, 'GST ' + iNo, 'Sale');
 
     (s.additionalExpenses || []).forEach(exp => {
       if (exp.ledger && Number(exp.amount) > 0) adjustLedgerBalance(exp.ledger, Number(exp.amount), 'Cr', iNo, 'Sales Additional Charge ' + iNo, 'Sale');
@@ -2697,7 +2867,7 @@ export function recalculateLedgerBalances() {
     if (cr > 0.009) adjustLedgerBalance(sLg, cr, 'Cr', bNo, 'Credit purchase ' + bNo, 'Purchase');
 
     adjustLedgerBalance('Purchase Account', tax + zro, 'Dr', bNo, 'Purchase ' + bNo, 'Purchase');
-    if (gst > 0) adjustLedgerBalance('Duties & Taxes', gst, 'Dr', bNo, 'GST ' + bNo, 'Purchase');
+    if (gst > 0) adjustLedgerBalance(cfg.EnableGSTInputTax === 'true' ? 'GST Input' : 'GST Payable', gst, 'Dr', bNo, 'GST ' + bNo, 'Purchase');
 
     (p.additionalExpenses || []).forEach(exp => {
       if (exp.ledger && Number(exp.amount) > 0) adjustLedgerBalance(exp.ledger, Number(exp.amount), 'Dr', bNo, 'Purchase Expense ' + bNo, 'Purchase');
@@ -2784,6 +2954,22 @@ export function cancelSalesInvoice(invoiceNo: string, reason?: string) {
   (target as any).cancelledAt = new Date().toISOString();
   (target as any).cancellationReason = reason || 'Cancelled by user';
   saveJson(STORAGE_KEYS.SALES_INVOICES, invoices);
+  syncSalesInvoiceToFirestore(target).catch(() => {});
+
+  let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== invoiceNo.trim().toLowerCase());
+  saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
+
+
+  // Audit Trail Logging
+  addAuditLog({
+    action: 'CANCELLED',
+    module: 'Sales Invoice',
+    recordId: invoiceNo,
+    partyName: target.customer?.ledger || target.customer?.name,
+    amount: Number(target.total) || 0,
+    details: reason ? `Reason: ${reason}` : 'Cancelled by user'
+  });
 
   recalculateLedgerBalances();
 
@@ -2798,24 +2984,48 @@ export function deleteSalesInvoice(invoiceNo: string) {
 
 export function deleteSalesInvoicePermanent(invoiceNo: string) {
   let invoices = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
-  const target = invoices.find(v => v.invoiceNo === invoiceNo);
+  const target = invoices.find(v => v.invoiceNo?.trim().toLowerCase() === invoiceNo.trim().toLowerCase());
   if (!target) return { ok: false, error: 'Invoice not found' };
 
+  const actualNo = target.invoiceNo || invoiceNo;
+
   addToTrash({
-    refNo: invoiceNo,
+    refNo: actualNo,
     type: 'Sale',
     amount: Number(target.total) || 0,
     date: target.date,
-    narration: `Permanent deletion of Sales Invoice ${invoiceNo}`,
+    narration: `Permanent deletion of Sales Invoice ${actualNo}`,
     originalData: target
   });
 
-  invoices = invoices.filter(v => v.invoiceNo !== invoiceNo);
+  invoices = invoices.filter(v => v.invoiceNo?.trim().toLowerCase() !== invoiceNo.trim().toLowerCase());
   saveJson(STORAGE_KEYS.SALES_INVOICES, invoices);
 
+  const deletedSales = loadJson<string[]>(STORAGE_KEYS.DELETED_SALES_INVOICES, []);
+  if (!deletedSales.includes(actualNo)) {
+    deletedSales.push(actualNo);
+    saveJson(STORAGE_KEYS.DELETED_SALES_INVOICES, deletedSales);
+  }
+  deleteSalesInvoiceFromFirestore(actualNo).catch(() => {});
+
+  let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== invoiceNo.trim().toLowerCase());
+  saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
+
   let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
-  stockLogs = stockLogs.filter(s => s['Ref No'] !== invoiceNo);
+  stockLogs = stockLogs.filter(s => s['Ref No']?.trim().toLowerCase() !== invoiceNo.trim().toLowerCase());
   saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
+
+  // Audit Trail Logging
+  addAuditLog({
+    action: 'DELETED',
+    module: 'Sales Invoice',
+    recordId: actualNo,
+    partyName: target.customer?.ledger || target.customer?.name,
+    amount: Number(target.total) || 0,
+    details: `Permanently deleted sales invoice ${actualNo}`
+  });
+
 
   recalculateLedgerBalances();
 
@@ -2843,6 +3053,22 @@ export function cancelPurchaseInvoice(billNo: string, reason?: string) {
   (target as any).cancelledAt = new Date().toISOString();
   (target as any).cancellationReason = reason || 'Cancelled by user';
   saveJson(STORAGE_KEYS.PURCHASE_INVOICES, purchases);
+  syncPurchaseInvoiceToFirestore(target).catch(() => {});
+
+  let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== billNo.trim().toLowerCase());
+  saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
+
+
+  // Audit Trail Logging
+  addAuditLog({
+    action: 'CANCELLED',
+    module: 'Purchase Bill',
+    recordId: billNo,
+    partyName: target.supplier?.name,
+    amount: Number(target.total) || 0,
+    details: reason ? `Reason: ${reason}` : 'Cancelled by user'
+  });
 
   recalculateLedgerBalances();
 
@@ -2857,10 +3083,10 @@ export function deletePurchaseInvoice(billNo: string) {
 
 export function deletePurchaseInvoicePermanent(billNo: string) {
   let purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
-  const target = purchases.find(v => v.billNo === billNo || v.invoiceNo === billNo);
+  const target = purchases.find(v => v.billNo?.trim().toLowerCase() === billNo.trim().toLowerCase() || v.invoiceNo?.trim().toLowerCase() === billNo.trim().toLowerCase());
   if (!target) return { ok: false, error: 'Purchase Invoice not found' };
 
-  const ref = target.billNo || target.invoiceNo;
+  const ref = target.billNo || target.invoiceNo || billNo;
   addToTrash({
     refNo: ref,
     type: 'Purchase',
@@ -2870,12 +3096,34 @@ export function deletePurchaseInvoicePermanent(billNo: string) {
     originalData: target
   });
 
-  purchases = purchases.filter(v => v.billNo !== ref && v.invoiceNo !== ref);
+  purchases = purchases.filter(v => v.billNo?.trim().toLowerCase() !== ref.trim().toLowerCase() && v.invoiceNo?.trim().toLowerCase() !== ref.trim().toLowerCase());
   saveJson(STORAGE_KEYS.PURCHASE_INVOICES, purchases);
 
+  const deletedPurchases = loadJson<string[]>(STORAGE_KEYS.DELETED_PURCHASE_INVOICES, []);
+  if (!deletedPurchases.includes(ref)) {
+    deletedPurchases.push(ref);
+    saveJson(STORAGE_KEYS.DELETED_PURCHASE_INVOICES, deletedPurchases);
+  }
+  deletePurchaseInvoiceFromFirestore(ref).catch(() => {});
+
+  let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== ref.trim().toLowerCase());
+  saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
+
   let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
-  stockLogs = stockLogs.filter(s => s['Ref No'] !== ref);
+  stockLogs = stockLogs.filter(s => s['Ref No']?.trim().toLowerCase() !== ref.trim().toLowerCase());
   saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
+
+  // Audit Trail Logging
+  addAuditLog({
+    action: 'DELETED',
+    module: 'Purchase Bill',
+    recordId: ref,
+    partyName: target.supplier?.name,
+    amount: Number(target.total) || 0,
+    details: `Permanently deleted purchase bill ${ref}`
+  });
+
 
   recalculateLedgerBalances();
 
@@ -2894,6 +3142,23 @@ export function cancelVoucher(voucherNo: string, reason?: string) {
   target.cancelledAt = new Date().toISOString();
   target.cancellationReason = reason || 'Cancelled by user';
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
+  syncVoucherToFirestore(target).catch(() => {});
+
+  let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== voucherNo.trim().toLowerCase());
+  saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
+
+
+  // Audit Trail Logging
+  const vTypeCancel = target.type === 'P' ? 'Payment' : target.type === 'R' ? 'Receipt' : target.type === 'J' ? 'Journal' : target.type === 'C' ? 'Contra' : (target.type || 'Voucher');
+  addAuditLog({
+    action: 'CANCELLED',
+    module: vTypeCancel,
+    recordId: voucherNo,
+    partyName: target.partyName || target.ledger || target.debitLedger || target.creditLedger,
+    amount: Number(target.totalAmount || target.amount || target.total) || 0,
+    details: reason ? `Reason: ${reason}` : 'Cancelled by user'
+  });
 
   recalculateLedgerBalances();
 
@@ -2903,20 +3168,48 @@ export function cancelVoucher(voucherNo: string, reason?: string) {
 
 export function deleteVoucherPermanent(voucherNo: string) {
   let vouchers = loadJson<any[]>(STORAGE_KEYS.VOUCHERS, []);
-  const target = vouchers.find(v => v.voucherNo === voucherNo);
+  const target = vouchers.find(v => v.voucherNo?.trim().toLowerCase() === voucherNo.trim().toLowerCase());
   if (!target) return { ok: false, error: 'Voucher not found' };
 
+  const actualNo = target.voucherNo || voucherNo;
+
   addToTrash({
-    refNo: voucherNo,
+    refNo: actualNo,
     type: target.type || 'Voucher',
     amount: Number(target.totalAmount || target.amount || target.total) || 0,
     date: target.date,
-    narration: `Permanent deletion of Voucher ${voucherNo}`,
+    narration: `Permanent deletion of Voucher ${actualNo}`,
     originalData: target
   });
 
-  vouchers = vouchers.filter(v => v.voucherNo !== voucherNo);
+  vouchers = vouchers.filter(v => v.voucherNo?.trim().toLowerCase() !== actualNo.trim().toLowerCase());
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
+
+  const deletedVouchers = loadJson<string[]>(STORAGE_KEYS.DELETED_VOUCHERS, []);
+  if (!deletedVouchers.includes(actualNo)) {
+    deletedVouchers.push(actualNo);
+    saveJson(STORAGE_KEYS.DELETED_VOUCHERS, deletedVouchers);
+  }
+  deleteVoucherFromFirestore(actualNo).catch(() => {});
+
+  let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== actualNo.trim().toLowerCase());
+  saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
+
+  let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+  stockLogs = stockLogs.filter(s => s['Ref No']?.trim().toLowerCase() !== actualNo.trim().toLowerCase());
+  saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
+
+  // Audit Trail Logging
+  const vTypeDel = target.type === 'P' ? 'Payment' : target.type === 'R' ? 'Receipt' : target.type === 'J' ? 'Journal' : target.type === 'C' ? 'Contra' : (target.type || 'Voucher');
+  addAuditLog({
+    action: 'DELETED',
+    module: vTypeDel,
+    recordId: actualNo,
+    partyName: target.partyName || target.ledger || target.debitLedger || target.creditLedger,
+    amount: Number(target.totalAmount || target.amount || target.total) || 0,
+    details: `Permanently deleted voucher ${actualNo}`
+  });
 
   recalculateLedgerBalances();
 
@@ -2988,7 +3281,8 @@ export function bulkDeleteData(options: { deleteTransactions: boolean; deleteMas
 }
 
 export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: { 
-  voucherNo?: string; 
+  voucherNo?: string;
+  originalVoucherNo?: string; 
   isEdit?: boolean;
   date?: string; 
   ledger?: string; 
@@ -3004,6 +3298,19 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
   chequeNo?: string;
   billNo?: string;
   billAllocations?: BillAllocation[];
+  gstInputType?: 'Local Purchase' | 'Local Expenses' | 'Bank Charges' | 'Import Customs GST Payment' | 'Import Purchase' | 'None';
+  supplierName?: string;
+  supplierGstNo?: string;
+  supplierCountry?: string;
+  invoiceNo?: string;
+  invoiceDate?: string;
+  referenceNo?: string;
+  declarationNo?: string;
+  declarationDate?: string;
+  taxableAmount?: number;
+  exemptedAmount?: number;
+  gstAmount?: number;
+  totalImportAmount?: number;
 }) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   
@@ -3013,16 +3320,16 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
   }
 
   let dr = '', cr = '';
-  if (t === 'P') { dr = v.ledger || ''; cr = v.mode || 'Cash'; }
-  else if (t === 'R') { dr = v.mode || 'Cash'; cr = v.ledger || ''; }
+  if (t === 'P') { dr = v.debitLedger || v.ledger || ''; cr = v.creditLedger || v.mode || 'Cash'; }
+  else if (t === 'R') { dr = v.debitLedger || v.mode || 'Cash'; cr = v.creditLedger || v.ledger || ''; }
   else if (t === 'J') { dr = v.debitLedger || ''; cr = v.creditLedger || ''; }
   else if (t === 'C') { dr = v.toAccount || ''; cr = v.fromAccount || ''; }
 
   const px = getVoucherPrefix(t, cfg);
-  let no = v.voucherNo?.trim();
+  let no = (v.originalVoucherNo || v.voucherNo)?.trim();
   if (!no) {
     no = px + nextCounter('Voucher');
-  } else {
+  } else if (!v.isEdit && !v.originalVoucherNo) {
     const match = no.match(/\d+$/);
     if (match) {
       const num = parseInt(match[0], 10);
@@ -3036,8 +3343,11 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
 
   const txnId = v.transactionId || v.bankTxnNo || v.chequeNo || '';
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+  
+  const finalNo = v.voucherNo?.trim() || no;
+
   const newV: Voucher = {
-    voucherNo: no,
+    voucherNo: finalNo,
     date: v.date || new Date().toISOString(),
     type: t,
     debitLedger: dr,
@@ -3048,32 +3358,82 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
     bankTxnNo: v.bankTxnNo || txnId,
     chequeNo: v.chequeNo || '',
     billNo: v.billNo,
-    billAllocations: v.billAllocations
+    billAllocations: v.billAllocations,
+    gstInputType: v.gstInputType,
+    supplierName: v.supplierName,
+    supplierGstNo: v.supplierGstNo,
+    supplierCountry: v.supplierCountry,
+    invoiceNo: v.invoiceNo,
+    invoiceDate: v.invoiceDate,
+    referenceNo: v.referenceNo,
+    declarationNo: v.declarationNo,
+    declarationDate: v.declarationDate,
+    taxableAmount: v.taxableAmount,
+    exemptedAmount: v.exemptedAmount,
+    gstAmount: v.gstAmount,
+    totalImportAmount: v.totalImportAmount
   };
-  const existIdx = vouchers.findIndex(x => x.voucherNo === no);
+  const existIdx = vouchers.findIndex(x => x.voucherNo?.trim().toLowerCase() === no.trim().toLowerCase() || x.voucherNo?.trim().toLowerCase() === finalNo.trim().toLowerCase());
   if (existIdx >= 0) {
     vouchers[existIdx] = newV;
     // Clear out earlier ledger log rows for this voucher to prevent duplicate ledger balance postings
     let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
-    logs = logs.filter(l => l['Ref No'] !== no);
+    logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== no.trim().toLowerCase() && l['Ref No']?.trim().toLowerCase() !== finalNo.trim().toLowerCase());
     saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
   } else {
     vouchers.push(newV);
   }
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
+  syncVoucherToFirestore(newV).catch(() => {});
+
+  if (v.originalVoucherNo && v.originalVoucherNo.trim().toLowerCase() !== finalNo.trim().toLowerCase()) {
+    deleteVoucherFromFirestore(v.originalVoucherNo.trim()).catch(() => {});
+  }
+
+  // Audit Trail Logging
+  const vTypeName = t === 'P' ? 'Payment' : t === 'R' ? 'Receipt' : t === 'J' ? 'Journal' : 'Contra';
+  const partyParty = (t === 'P' || t === 'R') ? (v.ledger || dr || cr) : `${dr} → ${cr}`;
+  if (existIdx >= 0) {
+    addAuditLog({
+      action: 'ALTERED',
+      module: vTypeName,
+      recordId: finalNo,
+      partyName: partyParty,
+      amount: Number(v.amount),
+      details: `Updated ${vTypeName} voucher (${dr} Dr, ${cr} Cr)`
+    });
+  } else {
+    addAuditLog({
+      action: 'ENTERED',
+      module: vTypeName,
+      recordId: finalNo,
+      partyName: partyParty,
+      amount: Number(v.amount),
+      details: `Created ${vTypeName} voucher (${dr} Dr, ${cr} Cr)`
+    });
+  }
 
   const txnSuffix = txnId ? ` (Txn/Ref: ${txnId})` : '';
   const narrWithTxn = v.narration ? `${v.narration}${txnSuffix}` : `${t}${txnSuffix}`;
 
-  adjustLedgerBalance(dr, Number(v.amount), 'Dr', no, narrWithTxn, t, txnId);
-  adjustLedgerBalance(cr, Number(v.amount), 'Cr', no, narrWithTxn, t, txnId);
+  if (t === 'P' && v.gstAmount && v.gstAmount > 0) {
+    const expenseAmt = Number(v.amount) - Number(v.gstAmount);
+    if (expenseAmt > 0) {
+      adjustLedgerBalance(dr, expenseAmt, 'Dr', finalNo, narrWithTxn, t, txnId);
+    }
+    adjustLedgerBalance('GST Input', Number(v.gstAmount), 'Dr', finalNo, narrWithTxn + ' (GST Input)', t, txnId);
+    adjustLedgerBalance(cr, Number(v.amount), 'Cr', finalNo, narrWithTxn, t, txnId);
+  } else {
+    adjustLedgerBalance(dr, Number(v.amount), 'Dr', finalNo, narrWithTxn, t, txnId);
+    adjustLedgerBalance(cr, Number(v.amount), 'Cr', finalNo, narrWithTxn, t, txnId);
+  }
 
   if (existIdx >= 0) {
     recalculateLedgerBalances();
   }
 
   const updatedLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
-  return { ok: true, voucherNo: no, ledgers: updatedLedgers };
+  return { ok: true, voucherNo: finalNo, ledgers: updatedLedgers };
 }
 
 /**
@@ -3230,6 +3590,7 @@ export function getPartyOutstandingBills(partyLedgerName: string, partyType?: 'd
 // -------------------------------------------------------------
 export function saveCreditNote(payload: {
   voucherNo?: string;
+  originalVoucherNo?: string;
   date?: string;
   partyLedger: string;
   salesReturnLedger?: string;
@@ -3252,12 +3613,14 @@ export function saveCreditNote(payload: {
 }) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const px = getVoucherPrefix('CN', cfg);
-  let no = payload.voucherNo?.trim();
+  let no = (payload.originalVoucherNo || payload.voucherNo)?.trim();
   if (!no) {
     no = px + nextCounter('CreditNote');
   }
 
   const dateIso = payload.date || new Date().toISOString();
+  
+  const finalNoCN = payload.voucherNo?.trim() || no;
   const salesReturnAcc = payload.salesReturnLedger || 'Sales Account';
   const partyAcc = payload.partyLedger;
   const totalAmt = round2(Number(payload.amount) || 0);
@@ -3268,7 +3631,7 @@ export function saveCreditNote(payload: {
   // 1. Save voucher entry
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
   const newV: Voucher = {
-    voucherNo: no,
+    voucherNo: finalNoCN,
     date: dateIso,
     type: 'CN',
     debitLedger: salesReturnAcc,
@@ -3279,31 +3642,57 @@ export function saveCreditNote(payload: {
     narration: narr,
     lines: [
       { type: 'Dr', ledger: salesReturnAcc, amount: taxableAmt, narration: 'Sales Return' },
-      ...(gstAmt > 0 ? [{ type: 'Dr' as const, ledger: 'Duties & Taxes', amount: gstAmt, narration: 'GST Output Reversal' }] : []),
+      ...(gstAmt > 0 ? [{ type: 'Dr' as const, ledger: cfg.EnableGSTInputTax === 'true' ? 'GST Output' : 'GST Payable', amount: gstAmt, narration: 'GST Output Reversal' }] : []),
       { type: 'Cr', ledger: partyAcc, amount: totalAmt, narration: `Credit allowed to ${partyAcc}` }
     ],
     items: payload.items
   };
-  const existIdxCN = vouchers.findIndex(x => x.voucherNo === no);
+  const existIdxCN = vouchers.findIndex(x => x.voucherNo?.trim().toLowerCase() === no.trim().toLowerCase() || x.voucherNo?.trim().toLowerCase() === finalNoCN.trim().toLowerCase());
   if (existIdxCN >= 0) {
     vouchers[existIdxCN] = newV;
     let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
-    logs = logs.filter(l => l['Ref No'] !== no);
+    logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== no.trim().toLowerCase() && l['Ref No']?.trim().toLowerCase() !== finalNoCN.trim().toLowerCase());
     saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
     let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
-    stockLogs = stockLogs.filter(s => s['Ref No'] !== no);
+    stockLogs = stockLogs.filter(s => s['Ref No']?.trim().toLowerCase() !== no.trim().toLowerCase() && s['Ref No']?.trim().toLowerCase() !== finalNoCN.trim().toLowerCase());
     saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
   } else {
     vouchers.push(newV);
   }
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
+  syncVoucherToFirestore(newV).catch(() => {});
+
+  if (payload.originalVoucherNo && payload.originalVoucherNo.trim().toLowerCase() !== finalNoCN.trim().toLowerCase()) {
+    deleteVoucherFromFirestore(payload.originalVoucherNo.trim()).catch(() => {});
+  }
+
+  // Audit Trail Logging
+  if (existIdxCN >= 0) {
+    addAuditLog({
+      action: 'ALTERED',
+      module: 'Credit Note',
+      recordId: finalNoCN,
+      partyName: partyAcc,
+      amount: totalAmt,
+      details: `Updated Credit Note for ${partyAcc}`
+    });
+  } else {
+    addAuditLog({
+      action: 'ENTERED',
+      module: 'Credit Note',
+      recordId: finalNoCN,
+      partyName: partyAcc,
+      amount: totalAmt,
+      details: `Created Credit Note for ${partyAcc}`
+    });
+  }
 
   // 2. Adjust financial balances (Dr Sales Return / Taxes, Cr Party/Customer)
-  adjustLedgerBalance(salesReturnAcc, taxableAmt, 'Dr', no, narr, 'CN');
+  adjustLedgerBalance(salesReturnAcc, taxableAmt, 'Dr', finalNoCN, narr, 'CN');
   if (gstAmt > 0) {
-    adjustLedgerBalance('Duties & Taxes', gstAmt, 'Dr', no, 'GST Reversal ' + no, 'CN');
+    adjustLedgerBalance(cfg.EnableGSTInputTax === 'true' ? 'GST Output' : 'GST Payable', gstAmt, 'Dr', finalNoCN, 'GST Reversal ' + finalNoCN, 'CN');
   }
-  adjustLedgerBalance(partyAcc, totalAmt, 'Cr', no, narr, 'CN');
+  adjustLedgerBalance(partyAcc, totalAmt, 'Cr', finalNoCN, narr, 'CN');
 
   // 3. If items returned to inventory, add stock back in
   if (payload.returnStock && payload.items && payload.items.length > 0) {
@@ -3311,18 +3700,19 @@ export function saveCreditNote(payload: {
       const q = Number(it.qty) || 0;
       if (q > 0) {
         const nq = updateItemStock(it.itemCode, q, it.unit);
-        logStock(it.itemCode, it.itemName, 'Credit Note (Return)', q, 0, nq, no, it.unit);
+        logStock(it.itemCode, it.itemName, 'Credit Note (Return)', q, 0, nq, finalNoCN, it.unit);
       }
     });
   }
 
   const updatedItems = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const updatedLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
-  return { ok: true, voucherNo: no, items: updatedItems, ledgers: updatedLedgers };
+  return { ok: true, voucherNo: finalNoCN, items: updatedItems, ledgers: updatedLedgers };
 }
 
 export function saveDebitNote(payload: {
   voucherNo?: string;
+  originalVoucherNo?: string;
   date?: string;
   supplierLedger: string;
   purchaseReturnLedger?: string;
@@ -3345,12 +3735,14 @@ export function saveDebitNote(payload: {
 }) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const px = getVoucherPrefix('DN', cfg);
-  let no = payload.voucherNo?.trim();
+  let no = (payload.originalVoucherNo || payload.voucherNo)?.trim();
   if (!no) {
     no = px + nextCounter('DebitNote');
   }
 
   const dateIso = payload.date || new Date().toISOString();
+  
+  const finalNo = payload.voucherNo?.trim() || no;
   const purchaseReturnAcc = payload.purchaseReturnLedger || 'Purchase Account';
   const supplierAcc = payload.supplierLedger;
   const totalAmt = round2(Number(payload.amount) || 0);
@@ -3361,7 +3753,7 @@ export function saveDebitNote(payload: {
   // 1. Save voucher entry
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
   const newV: Voucher = {
-    voucherNo: no,
+    voucherNo: finalNo,
     date: dateIso,
     type: 'DN',
     debitLedger: supplierAcc,
@@ -3373,29 +3765,55 @@ export function saveDebitNote(payload: {
     lines: [
       { type: 'Dr', ledger: supplierAcc, amount: totalAmt, narration: `Debit charged to ${supplierAcc}` },
       { type: 'Cr', ledger: purchaseReturnAcc, amount: taxableAmt, narration: 'Purchase Return' },
-      ...(gstAmt > 0 ? [{ type: 'Cr' as const, ledger: 'Duties & Taxes', amount: gstAmt, narration: 'GST Input Reversal' }] : [])
+      ...(gstAmt > 0 ? [{ type: 'Cr' as const, ledger: cfg.EnableGSTInputTax === 'true' ? 'GST Input' : 'Duties & Taxes', amount: gstAmt, narration: 'GST Input Reversal' }] : [])
     ],
     items: payload.items
   };
-  const existIdxDN = vouchers.findIndex(x => x.voucherNo === no);
+  const existIdxDN = vouchers.findIndex(x => x.voucherNo?.trim().toLowerCase() === no.trim().toLowerCase() || x.voucherNo?.trim().toLowerCase() === finalNo.trim().toLowerCase());
   if (existIdxDN >= 0) {
     vouchers[existIdxDN] = newV;
     let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
-    logs = logs.filter(l => l['Ref No'] !== no);
+    logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== no.trim().toLowerCase() && l['Ref No']?.trim().toLowerCase() !== finalNo.trim().toLowerCase());
     saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
     let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
-    stockLogs = stockLogs.filter(s => s['Ref No'] !== no);
+    stockLogs = stockLogs.filter(s => s['Ref No']?.trim().toLowerCase() !== no.trim().toLowerCase() && s['Ref No']?.trim().toLowerCase() !== finalNo.trim().toLowerCase());
     saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
   } else {
     vouchers.push(newV);
   }
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
+  syncVoucherToFirestore(newV).catch(() => {});
+
+  if (payload.originalVoucherNo && payload.originalVoucherNo.trim().toLowerCase() !== finalNo.trim().toLowerCase()) {
+    deleteVoucherFromFirestore(payload.originalVoucherNo.trim()).catch(() => {});
+  }
+
+  // Audit Trail Logging
+  if (existIdxDN >= 0) {
+    addAuditLog({
+      action: 'ALTERED',
+      module: 'Debit Note',
+      recordId: finalNo,
+      partyName: supplierAcc,
+      amount: totalAmt,
+      details: `Updated Debit Note for ${supplierAcc}`
+    });
+  } else {
+    addAuditLog({
+      action: 'ENTERED',
+      module: 'Debit Note',
+      recordId: finalNo,
+      partyName: supplierAcc,
+      amount: totalAmt,
+      details: `Created Debit Note for ${supplierAcc}`
+    });
+  }
 
   // 2. Adjust financial balances (Dr Supplier/Vendor, Cr Purchase Return / Taxes)
-  adjustLedgerBalance(supplierAcc, totalAmt, 'Dr', no, narr, 'DN');
-  adjustLedgerBalance(purchaseReturnAcc, taxableAmt, 'Cr', no, narr, 'DN');
+  adjustLedgerBalance(supplierAcc, totalAmt, 'Dr', finalNo, narr, 'DN');
+  adjustLedgerBalance(purchaseReturnAcc, taxableAmt, 'Cr', finalNo, narr, 'DN');
   if (gstAmt > 0) {
-    adjustLedgerBalance('Duties & Taxes', gstAmt, 'Cr', no, 'GST Input Reversal ' + no, 'DN');
+    adjustLedgerBalance(cfg.EnableGSTInputTax === 'true' ? 'GST Input' : 'Duties & Taxes', gstAmt, 'Cr', finalNo, 'GST Input Reversal ' + finalNo, 'DN');
   }
 
   // 3. If items returned to supplier, deduct stock out
@@ -3404,14 +3822,14 @@ export function saveDebitNote(payload: {
       const q = Number(it.qty) || 0;
       if (q > 0) {
         const nq = updateItemStock(it.itemCode, -q, it.unit);
-        logStock(it.itemCode, it.itemName, 'Debit Note (Return)', 0, q, nq, no, it.unit);
+        logStock(it.itemCode, it.itemName, 'Debit Note (Return)', 0, q, nq, finalNo, it.unit);
       }
     });
   }
 
   const updatedItems = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const updatedLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
-  return { ok: true, voucherNo: no, items: updatedItems, ledgers: updatedLedgers };
+  return { ok: true, voucherNo: finalNo, items: updatedItems, ledgers: updatedLedgers };
 }
 
 // -------------------------------------------------------------
@@ -3424,6 +3842,7 @@ export function getDeliveryNotes(): DeliveryNote[] {
 
 export function saveDeliveryNote(note: {
   noteNo?: string;
+  originalNoteNo?: string;
   date?: string;
   customer: CustomerDetails;
   orderRefNo?: string;
@@ -3435,7 +3854,7 @@ export function saveDeliveryNote(note: {
 }) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const px = getVoucherPrefix('DEL_NOTE', cfg);
-  let no = note.noteNo?.trim();
+  let no = (note.originalNoteNo || note.noteNo)?.trim();
   if (!no) {
     no = px + nextCounter('DeliveryNote');
   }
@@ -3455,11 +3874,20 @@ export function saveDeliveryNote(note: {
   };
 
   const notes = loadJson<DeliveryNote[]>(STORAGE_KEYS.DELIVERY_NOTES, []);
-  const existIdxDel = notes.findIndex(n => n.noteNo === no);
+  const matchTarget = (note.originalNoteNo || no).trim().toLowerCase();
+  const existIdxDel = notes.findIndex(n => n.noteNo?.trim().toLowerCase() === matchTarget || n.noteNo?.trim().toLowerCase() === no.toLowerCase());
   if (existIdxDel >= 0) {
+    const oldDel = notes[existIdxDel];
+    // Revert previous stock deduction
+    (oldDel.items || []).forEach(it => {
+      const q = Number(it.qty) || 0;
+      if (q > 0) {
+        updateItemStock(it.itemCode, q);
+      }
+    });
     notes[existIdxDel] = deliveryDoc;
     let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
-    stockLogs = stockLogs.filter(s => s['Ref No'] !== no);
+    stockLogs = stockLogs.filter(s => s['Ref No']?.trim().toLowerCase() !== matchTarget && s['Ref No']?.trim().toLowerCase() !== no.toLowerCase());
     saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
   } else {
     notes.push(deliveryDoc);
@@ -3510,6 +3938,7 @@ export function getPhysicalStockRecords(): PhysicalStockVoucher[] {
 
 export function savePhysicalStockAdjustment(payload: {
   voucherNo?: string;
+  originalVoucherNo?: string;
   date?: string;
   verifiedBy?: string;
   remarks?: string;
@@ -3517,7 +3946,7 @@ export function savePhysicalStockAdjustment(payload: {
 }) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const px = getVoucherPrefix('PHYSICAL_STOCK', cfg);
-  let no = payload.voucherNo?.trim();
+  let no = (payload.originalVoucherNo || payload.voucherNo)?.trim();
   if (!no) {
     no = px + nextCounter('PhysicalStock');
   }
@@ -3555,8 +3984,12 @@ export function savePhysicalStockAdjustment(payload: {
 
   saveJson(STORAGE_KEYS.ITEMS, allItems);
 
+  const list = loadJson<PhysicalStockVoucher[]>(STORAGE_KEYS.PHYSICAL_STOCK, []);
+  
+  const finalNo = payload.voucherNo?.trim() || no;
+
   const doc: PhysicalStockVoucher = {
-    voucherNo: no,
+    voucherNo: finalNo,
     date: dateIso,
     verifiedBy: payload.verifiedBy || '',
     remarks: payload.remarks || '',
@@ -3568,11 +4001,11 @@ export function savePhysicalStockAdjustment(payload: {
   };
 
   const records = loadJson<PhysicalStockVoucher[]>(STORAGE_KEYS.PHYSICAL_STOCK, []);
-  const existIdxPhys = records.findIndex(r => r.voucherNo === no);
+  const existIdxPhys = records.findIndex(r => r.voucherNo?.trim().toLowerCase() === no.trim().toLowerCase() || r.voucherNo?.trim().toLowerCase() === finalNo.trim().toLowerCase());
   if (existIdxPhys >= 0) {
     records[existIdxPhys] = doc;
     let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
-    stockLogs = stockLogs.filter(s => s['Ref No'] !== no);
+    stockLogs = stockLogs.filter(s => s['Ref No']?.trim().toLowerCase() !== no.trim().toLowerCase() && s['Ref No']?.trim().toLowerCase() !== finalNo.trim().toLowerCase());
     saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
   } else {
     records.push(doc);
@@ -3592,6 +4025,7 @@ export function getQuotations(): Quotation[] {
 
 export function saveQuotation(quote: {
   quotationNo?: string;
+  originalQuotationNo?: string;
   date?: string;
   validUntil?: string;
   customer: CustomerDetails;
@@ -3607,14 +4041,17 @@ export function saveQuotation(quote: {
 }) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const px = getVoucherPrefix('QUOTATION', cfg);
-  let no = quote.quotationNo?.trim();
+  let no = (quote.originalQuotationNo || quote.quotationNo)?.trim();
   if (!no) {
     no = px + nextCounter('Quotation');
   }
 
   const dateIso = quote.date || new Date().toISOString();
+  
+  const finalNo = quote.quotationNo?.trim() || no;
+
   const newQuote: Quotation = {
-    quotationNo: no,
+    quotationNo: finalNo,
     date: dateIso,
     validUntil: quote.validUntil || '',
     customer: quote.customer,
@@ -3630,7 +4067,7 @@ export function saveQuotation(quote: {
   };
 
   let list = loadJson<Quotation[]>(STORAGE_KEYS.QUOTATIONS, []);
-  const existingIdx = list.findIndex(q => q.quotationNo === no);
+  const existingIdx = list.findIndex(q => q.quotationNo?.trim().toLowerCase() === no.trim().toLowerCase() || q.quotationNo?.trim().toLowerCase() === finalNo.trim().toLowerCase());
   if (existingIdx >= 0) {
     list[existingIdx] = newQuote;
   } else {
@@ -5624,7 +6061,8 @@ export function syncPayrollToAccounting(): void {
   if (ledgersModified) saveJson(STORAGE_KEYS.LEDGERS, ledgers);
 }
 
-export function postPayrollJournalVoucher(payrollId: string): { success: boolean; voucherNo?: string; error?: string } {
+export function postPayrollJournalVoucher(payrollId: string): { success: boolean; voucherNo?: string;
+  originalVoucherNo?: string; error?: string } {
   const payrolls = getMonthlyPayrolls();
   const payroll = payrolls.find(p => p.id === payrollId);
   if (!payroll) return { success: false, error: 'Payroll record not found.' };
@@ -5829,6 +6267,162 @@ export function setActiveUser(userId: string): void {
   saveJson('deep_pos_active_user_id', userId);
 }
 
+export function canUserViewAuditTrail(user?: AppUser): boolean {
+  const u = user || getActiveUser();
+  if (!u) return true;
+  const role = (u.role || '').toLowerCase();
+  if (!role || role.includes('admin') || role.includes('manag') || role.includes('owner') || role.includes('super')) {
+    return true;
+  }
+  // Default to allowing audit viewing across managers, administrators and authorized operators
+  return true;
+}
+
+export function getAuditLogs(): AuditLogEntry[] {
+  const logs = loadJson<AuditLogEntry[]>(STORAGE_KEYS.AUDIT_LOG, []);
+  if (logs.length === 0) {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const initialLogs: AuditLogEntry[] = [
+      {
+        id: 'aud_seed_1',
+        timestamp: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
+        date: todayStr,
+        time: '09:00:00 AM',
+        action: 'ENTERED',
+        userId: 'usr_admin',
+        userName: 'System Administrator',
+        userRole: 'Administrator',
+        module: 'System Settings',
+        recordId: 'CFG-001',
+        details: 'Initial system and company profile setup'
+      },
+      {
+        id: 'aud_seed_2',
+        timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+        date: todayStr,
+        time: '10:15:30 AM',
+        action: 'ENTERED',
+        userId: 'usr_admin',
+        userName: 'System Administrator',
+        userRole: 'Administrator',
+        module: 'Item Master',
+        recordId: 'ITM-DEMO-01',
+        partyName: 'Red Bull Energy Drink 250ml',
+        amount: 110,
+        details: 'New stock item created (Rate: Nu. 110.00, Opening: 50 pcs)'
+      },
+      {
+        id: 'aud_seed_3',
+        timestamp: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
+        date: todayStr,
+        time: '11:45:12 AM',
+        action: 'ENTERED',
+        userId: 'usr_cashier',
+        userName: 'Karma Store Cashier',
+        userRole: 'Cashier',
+        module: 'POS Billing',
+        recordId: 'POS-0001',
+        partyName: 'Cash Sale',
+        amount: 1250,
+        details: 'Created invoice (4 items, Cash Paid)'
+      },
+      {
+        id: 'aud_seed_4',
+        timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+        date: todayStr,
+        time: '02:20:05 PM',
+        action: 'ALTERED',
+        userId: 'usr_admin',
+        userName: 'System Administrator',
+        userRole: 'Administrator',
+        module: 'Sales Invoice',
+        recordId: 'INV-0002',
+        partyName: 'Tashi Commercial Corp',
+        amount: 8500,
+        prevAmount: 7200,
+        details: 'Updated total: Nu. 7,200.00 → Nu. 8,500.00 (3 items)'
+      },
+      {
+        id: 'aud_seed_5',
+        timestamp: new Date(Date.now() - 1000 * 60 * 20).toISOString(),
+        date: todayStr,
+        time: '03:10:40 PM',
+        action: 'CANCELLED',
+        userId: 'usr_admin',
+        userName: 'System Administrator',
+        userRole: 'Administrator',
+        module: 'Sales Invoice',
+        recordId: 'INV-0003',
+        partyName: 'Norbu Trading',
+        amount: 3400,
+        details: 'Reason: Duplicate billing requested by customer'
+      }
+    ];
+    saveJson(STORAGE_KEYS.AUDIT_LOG, initialLogs);
+    return initialLogs;
+  }
+  return logs;
+}
+
+export function saveAuditLogs(logs: AuditLogEntry[]): void {
+  saveJson(STORAGE_KEYS.AUDIT_LOG, logs);
+}
+
+export function clearAuditLogs(): void {
+  saveJson(STORAGE_KEYS.AUDIT_LOG, []);
+}
+
+export function addAuditLog(params: {
+  action: AuditActionType;
+  module: string;
+  recordId: string;
+  partyName?: string;
+  amount?: number;
+  prevAmount?: number;
+  details?: string;
+  user?: AppUser;
+  timestamp?: string;
+}): void {
+  try {
+    const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
+    if (cfg.EnableAuditTrail === 'false') {
+      return;
+    }
+
+    const user = params.user || getActiveUser();
+    const now = params.timestamp ? new Date(params.timestamp) : new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const entry: AuditLogEntry = {
+      id: 'aud_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      timestamp: now.toISOString(),
+      date: dateStr,
+      time: timeStr,
+      action: params.action,
+      userId: user?.id || 'usr_unknown',
+      userName: user?.fullName || user?.username || 'System User',
+      userRole: user?.role || 'Administrator',
+      module: params.module,
+      recordId: params.recordId || '',
+      partyName: params.partyName,
+      amount: params.amount !== undefined ? Number(params.amount) : undefined,
+      prevAmount: params.prevAmount !== undefined ? Number(params.prevAmount) : undefined,
+      details: params.details
+    };
+
+    const logs = getAuditLogs();
+    logs.unshift(entry);
+    if (logs.length > 5000) {
+      logs.length = 5000;
+    }
+    saveAuditLogs(logs);
+  } catch (err) {
+    console.error('Failed to write audit log:', err);
+  }
+}
+
 export function cancelVoucherByRef(refNo: string, reason?: string) {
   if (!refNo) return { ok: false, error: 'Reference number required' };
   const cleanRef = String(refNo).trim();
@@ -5864,32 +6458,35 @@ export function cancelVoucherByRef(refNo: string, reason?: string) {
 
 export function deleteVoucherPermanentByRef(refNo: string) {
   if (!refNo) return { ok: false, error: 'Reference number required' };
-  const cleanRef = String(refNo).trim();
+  const cleanRef = String(refNo).trim().toLowerCase();
 
   // 1. Sales Invoices
   const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
-  if (sales.some(s => s.invoiceNo === cleanRef)) {
-    return deleteSalesInvoicePermanent(cleanRef);
+  const saleTarget = sales.find(s => s.invoiceNo?.trim().toLowerCase() === cleanRef);
+  if (saleTarget) {
+    return deleteSalesInvoicePermanent(saleTarget.invoiceNo || String(refNo).trim());
   }
 
   // 2. Purchase Invoices
   const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
-  if (purchases.some(p => p.billNo === cleanRef || p.invoiceNo === cleanRef)) {
-    return deletePurchaseInvoicePermanent(cleanRef);
+  const purTarget = purchases.find(p => p.billNo?.trim().toLowerCase() === cleanRef || p.invoiceNo?.trim().toLowerCase() === cleanRef);
+  if (purTarget) {
+    return deletePurchaseInvoicePermanent(purTarget.billNo || purTarget.invoiceNo || String(refNo).trim());
   }
 
   // 3. Standard Vouchers (P, R, J, C, CN, DN)
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
-  if (vouchers.some(v => v.voucherNo === cleanRef)) {
-    return deleteVoucherPermanent(cleanRef);
+  const vTarget = vouchers.find(v => v.voucherNo?.trim().toLowerCase() === cleanRef);
+  if (vTarget) {
+    return deleteVoucherPermanent(vTarget.voucherNo || String(refNo).trim());
   }
 
   // 4. Delivery Notes
-  const dlvRes = deleteDeliveryNote(cleanRef);
+  const dlvRes = deleteDeliveryNote(String(refNo).trim());
   if (dlvRes.ok) return dlvRes;
 
   // 5. Quotations
-  const qtnRes = deleteQuotation(cleanRef);
+  const qtnRes = deleteQuotation(String(refNo).trim());
   if (qtnRes.ok) return qtnRes;
 
   return { ok: false, error: 'Voucher not found or could not be deleted' };
@@ -5911,6 +6508,7 @@ export function saveEmployeeAdvances(advances: import('../types').EmployeeAdvanc
 
 
 export function rebuildAccountingLogs() {
+  const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   saveJson(STORAGE_KEYS.LEDGER_LOG, []);
   saveJson(STORAGE_KEYS.STOCK_LEDGER, []);
 
@@ -5938,7 +6536,7 @@ export function rebuildAccountingLogs() {
 
     const netSalesCredit = Math.max(0, round2((tax + zro) - appliedDiscount));
     adjustLedgerBalance('Sales Account', netSalesCredit, 'Cr', iNo, 'Sale ' + iNo, 'Sale');
-    if (gst > 0) adjustLedgerBalance('GST Payable', gst, 'Cr', iNo, 'GST ' + iNo, 'Sale');
+    if (gst > 0) adjustLedgerBalance(cfg.EnableGSTInputTax === 'true' ? 'GST Output' : 'GST Payable', gst, 'Cr', iNo, 'GST ' + iNo, 'Sale');
 
     (s.additionalExpenses || []).forEach(exp => {
       if (exp.ledger && Number(exp.amount) > 0) adjustLedgerBalance(exp.ledger, Number(exp.amount), 'Cr', iNo, 'Sales Additional Charge ' + iNo, 'Sale');
@@ -5963,7 +6561,7 @@ export function rebuildAccountingLogs() {
     if (cr > 0.009) adjustLedgerBalance(sLg, cr, 'Cr', bNo, 'Credit purchase ' + bNo, 'Purchase');
 
     adjustLedgerBalance('Purchase Account', tax + zro, 'Dr', bNo, 'Purchase ' + bNo, 'Purchase');
-    if (gst > 0) adjustLedgerBalance('Duties & Taxes', gst, 'Dr', bNo, 'GST ' + bNo, 'Purchase');
+    if (gst > 0) adjustLedgerBalance(cfg.EnableGSTInputTax === 'true' ? 'GST Input' : 'GST Payable', gst, 'Dr', bNo, 'GST ' + bNo, 'Purchase');
 
     (p.additionalExpenses || []).forEach(exp => {
       if (exp.ledger && Number(exp.amount) > 0) adjustLedgerBalance(exp.ledger, Number(exp.amount), 'Dr', bNo, 'Purchase Expense ' + bNo, 'Purchase');
@@ -6152,5 +6750,242 @@ export function getItemProfitabilityDetail(itemCode: string, from?: string, to?:
     itemCode,
     itemName: masterItem ? masterItem['Item Name'] : itemCode,
     rows: detailRows
+  };
+}
+
+export function getGSTInputDomReport(from: string, to: string) {
+  const parseDateToMs = (d: any, defaultHours = 12): number => {
+    if (!d) return 0;
+    if (typeof d === 'number') return d;
+    const str = String(d).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      const [y, m, day] = str.slice(0, 10).split('-').map(Number);
+      return new Date(y, m - 1, day, defaultHours, 0, 0).getTime();
+    }
+    const dt = new Date(str);
+    return isNaN(dt.getTime()) ? 0 : dt.getTime();
+  };
+
+  const fr = parseDateToMs(from, 0);
+  const toDt = parseDateToMs(to, 23) + (59 * 60 * 1000) + (59 * 1000) + 999;
+  
+  const purchases = getDeduplicatedPurchases();
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+  const ledgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
+  
+  const results: any[] = [];
+  const seenKeys = new Set<string>();
+  
+  // 1. Domestic Purchases from Purchase Vouchers / Purchase Bills
+  purchases.forEach(p => {
+    const d = parseDateToMs(p.date);
+    if (d >= fr && d <= toDt && p.status !== 'Cancelled') {
+      const sName = typeof p.supplier === 'object' ? (p.supplier.name || p.supplier.ledger || '') : String(p.supplier || '');
+      let sGst = typeof p.supplier === 'object' ? (p.supplier.gstNo || p.supplier.tpnNo || '') : '';
+      if (!sGst && sName) {
+        const matchedLedger = ledgers.find(l => (l['Ledger Name'] || '').trim().toLowerCase() === sName.trim().toLowerCase());
+        if (matchedLedger) {
+          sGst = matchedLedger['GST No'] || matchedLedger['TPN No'] || (matchedLedger as any).GSTIN || (matchedLedger as any).TPN || '';
+        }
+      }
+
+      const taxableVal = Number(p.taxable) || (Number(p.total) - (Number(p.gstAmt) || 0)) || 0;
+      const gstVal = Number(p.gstAmt) || 0;
+      const zeroVal = Number(p.zeroRated) || 0;
+      const vNo = p.billNo || p.invoiceNo || '';
+
+      if (vNo) seenKeys.add(vNo.toLowerCase());
+
+      results.push({
+        transactionType: 'Local Purchase',
+        supplierName: sName || 'Domestic Supplier',
+        supplierGstNo: sGst || '-',
+        invoiceDate: p.date,
+        invoiceNo: p.supplierBillNo || p.invoiceNo || p.billNo || '-',
+        referenceNo: p.supplierBillNo || '',
+        voucherNo: p.billNo || p.invoiceNo || '',
+        taxable: taxableVal,
+        exempted: zeroVal,
+        gstAmount: gstVal
+      });
+    }
+  });
+
+  // 2. Local Expenses & Bank Charges from Payment & Journal Vouchers
+  vouchers.forEach(v => {
+    const d = parseDateToMs(v.date);
+    if ((v.type === 'P' || v.type === 'J' || v.type === 'PUR') && d >= fr && d <= toDt && v.status !== 'Cancelled') {
+      const vKey = (v.voucherNo || '').toLowerCase();
+      if (vKey && seenKeys.has(vKey)) return; // Avoid duplicate if already included from purchases
+
+      // Auto-infer if gstInputType is not set but GST is present in lines
+      let effectiveType: string = v.gstInputType || 'None';
+      let inferredGstAmt = 0;
+      let inferredTaxable = 0;
+      
+      const drLines = (v.lines || []).filter(l => (l.type === 'Dr' || (l.type as string) === 'dr'));
+      const hasGstInLines = drLines.some(l => (l.ledger.toLowerCase().includes('gst') || l.ledger.toLowerCase().includes('tax') || l.ledger.toLowerCase().includes('receivable')));
+      const hasExplicitGst = Number(v.gstAmount) > 0;
+
+      if (!effectiveType || effectiveType === 'None') {
+        if (hasGstInLines || hasExplicitGst) {
+          effectiveType = 'Local Expenses';
+          if (drLines.some(l => l.ledger.toLowerCase().includes('bank charge') || l.ledger.toLowerCase().includes('bank fee'))) {
+            effectiveType = 'Bank Charges';
+          }
+          if (v.lines && v.lines.length > 0) {
+            inferredGstAmt = drLines.filter(l => (l.ledger.toLowerCase().includes('gst') || l.ledger.toLowerCase().includes('tax') || l.ledger.toLowerCase().includes('receivable'))).reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
+            inferredTaxable = drLines.filter(l => !(l.ledger.toLowerCase().includes('gst') || l.ledger.toLowerCase().includes('tax') || l.ledger.toLowerCase().includes('receivable'))).reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
+          } else if (v.amount && v.gstAmount) {
+            inferredGstAmt = Number(v.gstAmount);
+            inferredTaxable = Number(v.taxableAmount) || (Number(v.amount) - inferredGstAmt);
+          }
+        }
+      } else if (v.lines && v.lines.length > 0 && (!v.gstAmount || Number(v.gstAmount) === 0)) {
+        inferredGstAmt = drLines.filter(l => (l.ledger.toLowerCase().includes('gst') || l.ledger.toLowerCase().includes('tax') || l.ledger.toLowerCase().includes('receivable'))).reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
+        inferredTaxable = drLines.filter(l => !(l.ledger.toLowerCase().includes('gst') || l.ledger.toLowerCase().includes('tax') || l.ledger.toLowerCase().includes('receivable'))).reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
+      }
+
+      if (effectiveType === 'Local Expenses' || effectiveType === 'Bank Charges' || effectiveType === 'Local Purchase') {
+        const finalTaxable = Number(v.taxableAmount) > 0 ? Number(v.taxableAmount) : (inferredTaxable > 0 ? inferredTaxable : (Number(v.amount) - (inferredGstAmt || Number(v.gstAmount) || 0)));
+        const finalGst = Number(v.gstAmount) > 0 ? Number(v.gstAmount) : inferredGstAmt;
+
+        if (finalGst > 0 || finalTaxable > 0) {
+          // Resolve supplier / payee name
+          let sName = v.supplierName || v.partyName;
+          if (!sName) {
+            if (effectiveType === 'Bank Charges') {
+              sName = (v.lines?.find(l => l.type === 'Cr')?.ledger) || v.creditLedger || 'Bank';
+            } else {
+              sName = (v.lines?.find(l => l.type === 'Dr' && !l.ledger.toLowerCase().includes('gst'))?.ledger) || (v.lines?.find(l => l.type === 'Cr')?.ledger) || v.debitLedger || v.creditLedger || 'Vendor / Payee';
+            }
+          }
+
+          let sGst = v.supplierGstNo || '';
+          if (!sGst && sName) {
+            const matchedLedger = ledgers.find(l => (l['Ledger Name'] || '').trim().toLowerCase() === sName.trim().toLowerCase());
+            if (matchedLedger) {
+              sGst = matchedLedger['GST No'] || matchedLedger['TPN No'] || (matchedLedger as any).GSTIN || (matchedLedger as any).TPN || '';
+            }
+          }
+
+          const resolvedInvNo = (effectiveType === 'Bank Charges')
+            ? (v.referenceNo || v.invoiceNo || v.bankTxnNo || v.transactionId || v.chequeNo || v.voucherNo || '-')
+            : (v.invoiceNo || v.referenceNo || v.bankTxnNo || v.transactionId || v.voucherNo || '-');
+
+          results.push({
+            transactionType: effectiveType,
+            supplierName: sName || 'Vendor / Payee',
+            supplierGstNo: sGst || '-',
+            invoiceDate: v.invoiceDate || v.date,
+            invoiceNo: resolvedInvNo,
+            referenceNo: v.referenceNo || v.bankTxnNo || v.transactionId || '',
+            voucherNo: v.voucherNo,
+            taxable: finalTaxable || 0,
+            exempted: Number(v.exemptedAmount) || 0,
+            gstAmount: finalGst || 0,
+            customGstData: v.customGstData || {}
+          });
+        }
+      }
+    }
+  });
+
+  // Sort by invoiceDate ascending
+  results.sort((a, b) => parseDateToMs(a.invoiceDate) - parseDateToMs(b.invoiceDate));
+
+  const totals = results.reduce((a, r) => {
+    a.taxable += r.taxable;
+    a.exempted += r.exempted;
+    a.gstAmount += r.gstAmount;
+    return a;
+  }, { taxable: 0, exempted: 0, gstAmount: 0 });
+
+  return { mode: 'gst_input_dom', rows: results, totals };
+}
+
+export function getGSTInputImpReport(from: string, to: string) {
+  const parseDateToMs = (d: any, defaultHours = 12): number => {
+    if (!d) return 0;
+    if (typeof d === 'number') return d;
+    const str = String(d).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      const [y, m, day] = str.slice(0, 10).split('-').map(Number);
+      return new Date(y, m - 1, day, defaultHours, 0, 0).getTime();
+    }
+    const dt = new Date(str);
+    return isNaN(dt.getTime()) ? 0 : dt.getTime();
+  };
+
+  const fr = parseDateToMs(from, 0);
+  const toDt = parseDateToMs(to, 23) + (59 * 60 * 1000) + (59 * 1000) + 999;
+  
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+  const results: any[] = [];
+  
+  // Import Customs GST Payment from Payment / Journal Vouchers
+  vouchers.forEach(v => {
+    const d = parseDateToMs(v.date);
+    if ((v.type === 'P' || v.type === 'J' || v.type === 'PUR') && d >= fr && d <= toDt && v.status !== 'Cancelled') {
+      if (v.gstInputType === 'Import Customs GST Payment' || v.gstInputType === 'Import Purchase') {
+        const importTot = Number(v.totalImportAmount) || 0;
+        const gstVal = Number(v.gstAmount) || 0;
+        const taxVal = Number(v.taxableAmount) || 0;
+        const exeVal = Number(v.exemptedAmount) || 0;
+
+        results.push({
+          supplierName: v.supplierName || 'International / Customs',
+          invoiceNo: v.invoiceNo || '-',
+          invoiceDate: v.invoiceDate || v.date,
+          declarationDate: v.declarationDate || v.date,
+          declarationNo: v.declarationNo || v.referenceNo || v.voucherNo || '-',
+          voucherNo: v.voucherNo,
+          taxableAmount: taxVal,
+          exemptedAmount: exeVal,
+          totalImportAmount: importTot,
+          gstAmount: gstVal,
+          customGstData: v.customGstData || {}
+        });
+      }
+    }
+  });
+
+  results.sort((a, b) => parseDateToMs(a.invoiceDate || a.declarationDate) - parseDateToMs(b.invoiceDate || b.declarationDate));
+
+  const totals = results.reduce((a, r) => {
+    a.taxableAmount += r.taxableAmount;
+    a.exemptedAmount += r.exemptedAmount;
+    a.totalImportAmount += r.totalImportAmount;
+    a.gstAmount += r.gstAmount;
+    return a;
+  }, { taxableAmount: 0, exemptedAmount: 0, totalImportAmount: 0, gstAmount: 0 });
+
+  return { mode: 'gst_input_imp', rows: results, totals };
+}
+
+export function getGSTSummaryReport(from: string, to: string) {
+  const outputGST = getGSTReport(from, to);
+  const inputDomGST = getGSTInputDomReport(from, to);
+  const inputImpGST = getGSTInputImpReport(from, to);
+
+  const totalOutput = outputGST.totals?.gstAmount || 0;
+  const totalInputDom = inputDomGST.totals?.gstAmount || 0;
+  const totalInputImp = inputImpGST.totals?.gstAmount || 0;
+  
+  const totalInput = totalInputDom + totalInputImp;
+  const netPayable = totalOutput - totalInput;
+
+  return {
+    mode: 'gst_summary',
+    totals: {
+      outputSalesTaxable: outputGST.totals?.taxable || 0,
+      outputSalesGST: totalOutput,
+      inputDomTaxable: inputDomGST.totals?.taxable || 0,
+      inputDomGST: totalInputDom,
+      inputImpTotalAmount: inputImpGST.totals?.totalImportAmount || 0,
+      inputImpGST: totalInputImp,
+      netPayable: netPayable > 0 ? netPayable : 0,
+      netRefundable: netPayable < 0 ? Math.abs(netPayable) : 0
+    }
   };
 }

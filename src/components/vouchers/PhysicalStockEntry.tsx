@@ -9,6 +9,7 @@ import {
 import { SearchableItemSelect } from '../SearchableItemSelect';
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './VoucherSuccessActionModal';
 import { AcceptModal } from '../AcceptModal';
+import { QuitConfirmModal } from '../QuitConfirmModal';
 import { generatePhysicalStockPDF, shareOrDownloadPDF } from '../../utils/pdfExport';
 
 interface PhysicalStockEntryProps {
@@ -31,6 +32,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
   const [editingVoucherNo, setEditingVoucherNo] = useState<string | null>(null);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
+  const [showQuitModal, setShowQuitModal] = useState(false);
   const [voucherNo, setVoucherNo] = useState(() => (isAutoMode ? peekNextVoucherNo('PHYSICAL_STOCK', config) : ''));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [verifiedBy, setVerifiedBy] = useState('');
@@ -179,6 +181,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
 
     const payload = {
       voucherNo: voucherNo.trim() || undefined,
+      originalVoucherNo: editingVoucherNo || undefined,
       date: new Date(date).toISOString(),
       verifiedBy: verifiedBy.trim(),
       remarks: remarks.trim() || 'Physical Stock Verification & Count Adjustment',
@@ -253,7 +256,27 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
     }, 20);
   };
 
+  const resetForm = () => {
+    setEditingVoucherNo(null);
+    if (isAutoMode) {
+      setVoucherNo(peekNextVoucherNo('PHYSICAL_STOCK', config));
+    }
+    setDate(new Date().toISOString().split('T')[0]);
+    setVerifiedBy('');
+    setRemarks('');
+    setStockLines([]);
+    setQuickSearchCode('');
+  };
+
   const handlePhysicalBack = (): boolean => {
+    if (showQuitModal) {
+      setShowQuitModal(false);
+      return true;
+    }
+    if (showAcceptModal) {
+      setShowAcceptModal(false);
+      return true;
+    }
     if (successModalDetails) {
       setSuccessModalDetails(null);
       return true;
@@ -262,6 +285,19 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
       setActiveTab('audit');
       return true;
     }
+
+    const hasData =
+      !!verifiedBy ||
+      Boolean(remarks.trim()) ||
+      !!editingVoucherNo ||
+      stockLines.length > 0;
+
+    if (hasData) {
+      setShowQuitModal(true);
+      return true;
+    }
+
+    resetForm();
     if (onNavigateBack) {
       onNavigateBack();
       return true;
@@ -272,7 +308,8 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
   // Global F2, Escape, and app event listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { if (e.defaultPrevented) return;
+      if (e.key === 'Escape') {
+        if (e.defaultPrevented) return;
         const handled = handlePhysicalBack();
         if (handled) {
           e.preventDefault();
@@ -281,7 +318,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
           return;
         }
       }
-      if ((e.key === 'F2' || e.code === 'F2') && activeTab === 'audit') {
+      if ((e.key === 'F2' || e.code === 'F2') && (activeTab === 'audit' || activeTab === 'create')) {
         e.preventDefault();
         const formEl = document.getElementById('physical-stock-form') as HTMLFormElement | null;
         if (formEl) {
@@ -297,7 +334,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
       }
     };
     const handleSaveEvent = (e: CustomEvent) => {
-      if (activeTab === 'audit') {
+      if (activeTab === 'audit' || activeTab === 'create') {
         const formEl = document.getElementById('physical-stock-form') as HTMLFormElement | null;
         if (formEl) {
           formEl.requestSubmit();
@@ -314,7 +351,18 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
       window.removeEventListener('app:back' as any, handleBackEvent);
       window.removeEventListener('app:save' as any, handleSaveEvent);
     };
-  }, [activeTab, stockLines, date, verifiedBy, remarks, successModalDetails, onNavigateBack]);
+  }, [
+    activeTab,
+    stockLines,
+    date,
+    verifiedBy,
+    remarks,
+    editingVoucherNo,
+    showQuitModal,
+    showAcceptModal,
+    successModalDetails,
+    onNavigateBack
+  ]);
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2">
@@ -323,6 +371,18 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
         title={editingVoucherNo ? `Save changes to ${editingVoucherNo}?` : "Save Physical Stock Verification?"}
         onConfirm={proceedSavePhysicalStock}
         onCancel={() => setShowAcceptModal(false)}
+      />
+      <QuitConfirmModal
+        isOpen={showQuitModal}
+        viewName="Physical Stock Verification"
+        onConfirm={() => {
+          setShowQuitModal(false);
+          resetForm();
+          if (onNavigateBack) {
+            onNavigateBack();
+          }
+        }}
+        onCancel={() => setShowQuitModal(false)}
       />
       {/* Toast */}
       {toastMsg && (

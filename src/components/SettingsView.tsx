@@ -1,21 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Config, Ledger, AppUser, ModuleId, UserPermission } from '../types';
-import { saveConfig, getUsers, saveUsers, setActiveUser, getActiveUser, loadJson, saveJson, STORAGE_KEYS } from '../services/storageService';
+import { saveConfig, getUsers, saveUsers, setActiveUser, getActiveUser, loadJson, saveJson, STORAGE_KEYS, canUserViewAuditTrail } from '../services/storageService';
 import { POSSettings, loadPOSSettings, savePOSSettings, DEFAULT_POS_SETTINGS } from '../types/posSettings';
 import { playSaveSound } from '../utils/audio';
 import { VoucherTypeManager } from './vouchers/VoucherTypeManager';
 import { AcceptModal } from './AcceptModal';
 import { GlowButton } from './common/GlowButton';
+import { AuditLogView } from './AuditLogView';
+import { GstConfigModal } from './GstConfigModal';
 import { 
   Save, CheckCircle2, Shield, FileText, Image as ImageIcon, PenTool, Plus, Lock, UserCheck, RefreshCw, 
   ShoppingCart, Zap, SlidersHorizontal, AlertTriangle, Keyboard, Percent, CreditCard, RotateCcw,
-  Building2, Hash, Layers, Store, Check, Sparkles, Sliders, ShieldCheck, Trash2
+  Building2, Hash, Layers, Store, Check, Sparkles, Sliders, ShieldCheck, Trash2, History, Eye, Settings as SettingsIcon
 } from 'lucide-react';
 
 interface SettingsViewProps {
   config: Config;
   ledgers: Ledger[];
   onDataRefresh: () => void;
+  isActive?: boolean;
 }
 
 const MODULE_LABELS: Record<ModuleId, string> = {
@@ -32,10 +35,12 @@ const MODULE_LABELS: Record<ModuleId, string> = {
 export const SettingsView: React.FC<SettingsViewProps> = ({
   config,
   ledgers,
-  onDataRefresh
+  onDataRefresh,
+  isActive = true
 }) => {
 
   const [form, setForm] = useState<Config>({ ...config });
+  const [showGstConfigModal, setShowGstConfigModal] = useState(false);
 
   useEffect(() => {
     setForm({ ...config });
@@ -71,6 +76,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [usersList, setUsersList] = useState<AppUser[]>([]);
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [activeUser, setSystemActiveUser] = useState<AppUser>(getActiveUser());
+  const [showAuditModal, setShowAuditModal] = useState<boolean>(false);
 
   // Signature Pad Canvas Ref
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -89,9 +95,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const tabButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  // Keyboard navigation for Settings tabs (ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Home, End, Alt+Arrows)
+  const handleSaveActiveTab = () => {
+    if (activeTab === 'security') {
+      handleSaveUsers(usersList);
+    } else if (activeTab === 'pos') {
+      handleSavePOSSettings(posSettings);
+    } else {
+      handleSaveConfig(activeTab, 'Settings');
+    }
+  };
+
+  // Keyboard navigation for Settings tabs and F2 save
   useEffect(() => {
+    if (!isActive) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F2' || e.code === 'F2') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleSaveActiveTab();
+        return;
+      }
+
       const activeEl = document.activeElement;
       const isInputFocused =
         activeEl &&
@@ -129,9 +154,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
     };
 
+    const handleSaveEvent = (e: CustomEvent) => {
+      handleSaveActiveTab();
+      e.preventDefault();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTab]);
+    window.addEventListener('app:save' as any, handleSaveEvent);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('app:save' as any, handleSaveEvent);
+    };
+  }, [isActive, activeTab, usersList, posSettings, form]);
 
   useEffect(() => {
     const loaded = getUsers();
@@ -898,6 +932,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Calculates and tracks GST on purchases and sales. Requires GST No.</p>
                 </div>
               </label>
+
+              {/* GST Input Tracking */}
+              {form.EnableGST === 'true' && (
+                <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center justify-between gap-3 hover:bg-indigo-100/70 transition">
+                  <label className="flex items-start gap-3.5 cursor-pointer flex-1">
+                    <div className="pt-0.5">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 text-indigo-600 rounded border-indigo-300 focus:ring-indigo-500 cursor-pointer"
+                        checked={form.EnableGSTInputTax === 'true'}
+                        onChange={e => setForm({ ...form, EnableGSTInputTax: e.target.checked ? 'true' : 'false' })}
+                      />
+                    </div>
+                    <div>
+                      <span className="font-extrabold text-indigo-900 text-xs">Enable GST Input Claim Tracking</span>
+                      <p className="text-[10px] text-indigo-700 mt-0.5 leading-snug">Capture details in Purchases and Payments for Input GST Reports.</p>
+                    </div>
+                  </label>
+                  {form.EnableGSTInputTax === 'true' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowGstConfigModal(true)}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition cursor-pointer shrink-0"
+                    >
+                      <SettingsIcon className="w-3.5 h-3.5" />
+                      <span>Config</span>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Normal Sale Module */}
               <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
@@ -1756,6 +1820,72 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             )}
 
+            {/* Audit Trail & System Compliance Policy */}
+            <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-200/70">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+                    <History className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-slate-900">Audit Trail & Activity Log Policy</h3>
+                    <p className="text-[11px] text-slate-500">
+                      Record user footprints for entered, altered, cancelled, and deleted transactions. (Admin & Manager accessible)
+                    </p>
+                  </div>
+                </div>
+
+                {canUserViewAuditTrail(activeUser) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAuditModal(true)}
+                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    <span>View Audit Log History</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Toggle 1: Enable Audit Trail */}
+                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50/80 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                      checked={form.EnableAuditTrail !== 'false'}
+                      onChange={e => setForm({ ...form, EnableAuditTrail: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Audit Trail Logging</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                      Logs every invoice, voucher, item, and ledger creation, modification, cancellation, and deletion with user footprint and timestamps.
+                    </p>
+                  </div>
+                </label>
+
+                {/* Toggle 2: Print Audit Stamp on Invoices */}
+                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50/80 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                      checked={form.PrintAuditStamp === 'true'}
+                      onChange={e => setForm({ ...form, PrintAuditStamp: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Print Audit Stamp on Invoices</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                      Show "Entered by" / "Altered by" footnote on printed customer invoices and receipts. (Default: Off)
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
             {renderSaveButton('security', 'User Security Permissions', true, 'lg')}
           </div>
         )}
@@ -2131,6 +2261,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Audit Log Modal */}
+      {showAuditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4 sm:p-6 animate-in fade-in duration-150">
+          <div className="bg-slate-100 rounded-3xl border border-slate-200 shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+            <AuditLogView
+              config={form}
+              onConfigChange={(newCfg) => {
+                setForm(newCfg);
+                onDataRefresh();
+              }}
+              onClose={() => setShowAuditModal(false)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* GST Field & Formula Config Modal */}
+      <GstConfigModal
+        isOpen={showGstConfigModal}
+        onClose={() => setShowGstConfigModal(false)}
+        gstInputConfigsStr={form.gstInputConfigs}
+        onSave={(updatedConfigsStr) => {
+          const updatedForm = { ...form, gstInputConfigs: updatedConfigsStr };
+          setForm(updatedForm);
+          saveConfig(updatedForm);
+          playSaveSound();
+          onDataRefresh();
+        }}
+      />
     </div>
   );
 };

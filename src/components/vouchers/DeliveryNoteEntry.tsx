@@ -9,6 +9,7 @@ import { SearchableItemSelect } from '../SearchableItemSelect';
 import { handleGridKeyDown } from '../../utils/gridKeyboardNav';
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './VoucherSuccessActionModal';
 import { AcceptModal } from '../AcceptModal';
+import { QuitConfirmModal } from '../QuitConfirmModal';
 import {
   Truck, Plus, Trash2, CheckCircle2, AlertCircle, Package, Printer, FileText, MapPin, Calendar, Layers, Share2, Download, ArrowLeft, Sparkles, ChevronUp, ChevronDown } from 'lucide-react';
 import { generateDeliveryNotePDF, shareOrDownloadPDF } from '../../utils/pdfExport';
@@ -39,6 +40,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
   const [editingNoteNo, setEditingNoteNo] = useState<string | null>(null);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
+  const [showQuitModal, setShowQuitModal] = useState(false);
   const [noteNo, setNoteNo] = useState(() => (isAutoMode ? peekNextVoucherNo('DEL_NOTE', config) : ''));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [customerName, setCustomerName] = useState('');
@@ -287,6 +289,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
 
     const payload = {
       noteNo: noteNo.trim() || undefined,
+      originalNoteNo: editingNoteNo || undefined,
       date: new Date(date).toISOString(),
       customer: {
         ledger: customerName,
@@ -390,7 +393,30 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
     }, 20);
   };
 
+  const resetForm = () => {
+    setEditingNoteNo(null);
+    if (isAutoMode) {
+      setNoteNo(peekNextVoucherNo('DEL_NOTE', config));
+    }
+    setDate(new Date().toISOString().split('T')[0]);
+    setCustomerName('');
+    setOrderRefNo('');
+    setDispatchThrough('');
+    setDestination('');
+    setVehicleNo('');
+    setRemarks('');
+    setNoteItems([]);
+  };
+
   const handleDeliveryBack = (): boolean => {
+    if (showQuitModal) {
+      setShowQuitModal(false);
+      return true;
+    }
+    if (showAcceptModal) {
+      setShowAcceptModal(false);
+      return true;
+    }
     if (successModalDetails) {
       setSuccessModalDetails(null);
       return true;
@@ -399,6 +425,23 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
       setActiveTab('create');
       return true;
     }
+
+    const hasData =
+      !!customerName ||
+      !!orderRefNo ||
+      !!dispatchThrough ||
+      !!destination ||
+      !!vehicleNo ||
+      Boolean(remarks.trim()) ||
+      !!editingNoteNo ||
+      noteItems.length > 0;
+
+    if (hasData) {
+      setShowQuitModal(true);
+      return true;
+    }
+
+    resetForm();
     if (onNavigateBack) {
       onNavigateBack();
       return true;
@@ -409,7 +452,8 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
   // Global F2 and Escape listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { if (e.defaultPrevented) return;
+      if (e.key === 'Escape') {
+        if (e.defaultPrevented) return;
         const handled = handleDeliveryBack();
         if (handled) {
           e.preventDefault();
@@ -451,7 +495,23 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
       window.removeEventListener('app:back' as any, handleBackEvent);
       window.removeEventListener('app:save' as any, handleSaveEvent);
     };
-  }, [activeTab, customerName, totalQty, noteItems, date, orderRefNo, dispatchThrough, destination, vehicleNo, remarks, successModalDetails, onNavigateBack]);
+  }, [
+    activeTab,
+    customerName,
+    totalQty,
+    noteItems,
+    date,
+    orderRefNo,
+    dispatchThrough,
+    destination,
+    vehicleNo,
+    remarks,
+    editingNoteNo,
+    showQuitModal,
+    showAcceptModal,
+    successModalDetails,
+    onNavigateBack
+  ]);
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2">
@@ -460,6 +520,18 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
         title={editingNoteNo ? `Save changes to ${editingNoteNo}?` : "Save Delivery Note / Challan?"}
         onConfirm={proceedSaveDeliveryNote}
         onCancel={() => setShowAcceptModal(false)}
+      />
+      <QuitConfirmModal
+        isOpen={showQuitModal}
+        viewName="Delivery Note"
+        onConfirm={() => {
+          setShowQuitModal(false);
+          resetForm();
+          if (onNavigateBack) {
+            onNavigateBack();
+          }
+        }}
+        onCancel={() => setShowQuitModal(false)}
       />
       {/* Toast */}
       {toastMsg && (

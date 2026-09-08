@@ -1,3 +1,4 @@
+import { QuitConfirmModal } from './QuitConfirmModal';
 import React, { useState, useRef, useEffect } from 'react';
 import { GlowButton } from './common/GlowButton';
 import { focusNextOutsideGrid } from '../utils/domUtils';
@@ -25,6 +26,8 @@ interface PurchaseEntryProps {
   onOpenNewLedgerModal: (group?: string, onSelect?: (name: string) => void) => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onPrintPurchaseBarcodes?: (queue: BarcodeQueueItem[]) => void;
+  onBack?: (forceDirect?: boolean) => void;
+  isActive?: boolean;
 }
 
 export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
@@ -35,7 +38,9 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
   onOpenNewItemModal,
   onOpenNewLedgerModal,
   onPrintPurchaseBarcodes,
-  initialVoucherTarget
+  initialVoucherTarget,
+  onBack,
+  isActive = true
 }) => {
   const [supplierName, setSupplierName] = useState('');
   const [bankTxnNo, setBankTxnNo] = useState<string>('');
@@ -121,6 +126,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
 
   const [cart, setCart] = useState<CartLine[]>([]);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
+  const [showQuitModal, setShowQuitModal] = useState(false);
   const units = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -212,7 +218,22 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     dateInputId: 'pur-date-input'
   });
 
+  const resetForm = () => {
+    setEditingBillNo(null);
+    setCart([]);
+    setSupplierName('');
+    setBillNo('');
+  };
+
   const handlePurchaseBack = (): boolean => {
+    if (showQuitModal) {
+      setShowQuitModal(false);
+      return true;
+    }
+    if (bankTxnModalOpen) {
+      setBankTxnModalOpen(false);
+      return true;
+    }
     if (serialModalOpen) {
       setSerialModalOpen(false);
       return true;
@@ -221,11 +242,32 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       setDrillModalState({ type: null, targetId: null });
       return true;
     }
-    return false;
+
+    const hasData =
+      cart.length > 0 ||
+      !!supplierName ||
+      !!billNo ||
+      !!editingBillNo ||
+      (Array.isArray(additionalExpenses) && additionalExpenses.length > 0) ||
+      !!bankTxnNo;
+    if (hasData) {
+      setShowQuitModal(true);
+      return true;
+    }
+
+    resetForm();
+    if (onBack) {
+      onBack(true);
+    } else {
+      window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
+    }
+    return true;
   };
 
   // Global Keyboard Shortcuts (F2 Accept/Save, Ctrl+A Accept/Save, F7/Ctrl+I Item/Ledger Info, ESC Back)
   useEffect(() => {
+    if (isActive === false) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl + A or F2: Accept and Save Purchase
       const isCtrlA = (e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A');
@@ -261,12 +303,11 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         return;
       }
 
-      if (e.key === 'Escape') { if (e.defaultPrevented) return;
-        const handled = handlePurchaseBack();
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        handlePurchaseBack();
       }
     };
 
@@ -282,22 +323,29 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('app:save', handleSaveEvent);
     window.addEventListener('app:back', handleBackEvent);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('app:save', handleSaveEvent);
       window.removeEventListener('app:back', handleBackEvent);
     };
   }, [
+    isActive,
     cart,
     supplierName,
     billDate,
     billNo,
+    editingBillNo,
+    bankTxnModalOpen,
     serialModalOpen,
     drillModalState,
-    isGstMode
+    isGstMode,
+    showQuitModal,
+    bankTxnNo,
+    additionalExpenses,
+    onBack
   ]);
 
   const selectItem = (item: Item, autoAdd: boolean = true) => {
@@ -435,7 +483,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       },
       supplierBillNo: billNo,
       notes: billDate ? `Bill Date: ${billDate}` : '',
-      billNo: editingBillNo || undefined,
+      originalBillNo: editingBillNo || undefined,
       date: billDate ? new Date(billDate).toISOString() : undefined,
       isEdit: Boolean(editingBillNo),
     });
@@ -1092,6 +1140,21 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
             document.getElementById('pur-fast-item-picker')?.focus();
           }, 50);
         }}
+      />
+
+      <QuitConfirmModal
+        isOpen={showQuitModal}
+        viewName="Purchase Entry"
+        onConfirm={() => {
+          setShowQuitModal(false);
+          resetForm();
+          if (onBack) {
+            onBack(true);
+          } else {
+            window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
+          }
+        }}
+        onCancel={() => setShowQuitModal(false)}
       />
     </div>
   );

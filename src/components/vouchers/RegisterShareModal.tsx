@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Config } from '../../types';
 import { generateVoucherRegisterPDF, shareOrDownloadPDF } from '../../utils/pdfExport';
+import { formatDateDMY, formatDateTimeDMY } from '../../utils/dateUtils';
 
 interface RegisterShareModalProps {
   isOpen: boolean;
@@ -56,7 +57,7 @@ export const RegisterShareModal: React.FC<RegisterShareModalProps> = ({
 
   const periodStr =
     filters.startDate || filters.endDate
-      ? `${filters.startDate || 'Beginning'} to ${filters.endDate || 'Present'}`
+      ? `${filters.startDate ? formatDateDMY(filters.startDate) : 'Beginning'} to ${filters.endDate ? formatDateDMY(filters.endDate) : 'Present'}`
       : 'All Recorded Transactions';
 
   // Build clean text summary for WhatsApp and copying
@@ -81,7 +82,7 @@ export const RegisterShareModal: React.FC<RegisterShareModalProps> = ({
 
     const previewList = vouchers.slice(0, 10);
     previewList.forEach((v, idx) => {
-      const vDate = v.date ? new Date(v.date).toLocaleDateString('en-GB') : '-';
+      const vDate = v.date ? formatDateDMY(v.date) : '-';
       const vNo = v.voucherNo || `REC-${idx + 1}`;
       const vType = v.type === 'P' ? 'Payment' : v.type === 'R' ? 'Receipt' : v.type === 'J' ? 'Journal' : v.type === 'C' ? 'Contra' : (v.type || '-');
       const party = v.lines ? `${v.lines.length} Line Split` : (v.debitLedger || v.partyLedger || '-');
@@ -94,7 +95,7 @@ export const RegisterShareModal: React.FC<RegisterShareModalProps> = ({
       text += `... and ${vouchers.length - 10} more records in full report.\n`;
     }
 
-    text += `\n_Generated from ${companyName} Accounting System on ${new Date().toLocaleString()}_`;
+    text += `\n_Generated from ${companyName} Accounting System on ${formatDateTimeDMY(new Date())}_`;
     return text;
   };
 
