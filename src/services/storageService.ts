@@ -42,6 +42,15 @@ import {
   AuditActionType
 } from '../types';
 import {
+  AssetCategory,
+  FixedAsset,
+  AssetDisposal
+} from '../types/assetManagement';
+import {
+  DEFAULT_CATEGORIES,
+  DEFAULT_ASSETS
+} from './assetManagementService';
+import {
   syncConfigToFirestore,
   syncItemToFirestore,
   syncItemsBatchToFirestore,
@@ -341,6 +350,9 @@ const DEFAULT_LEDGERS: Ledger[] = [
   { 'Ledger Name': 'Internet Charges', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
   { 'Ledger Name': 'Water & Sewerage Charges', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
   { 'Ledger Name': 'Depreciation', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Loss on Disposal of Asset', Group: 'Indirect Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Gain on Disposal of Asset', Group: 'Indirect Incomes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Profit on Disposal of Asset', Group: 'Indirect Incomes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'Transportation Charges', Group: 'Direct Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
   { 'Ledger Name': 'Labour Charges', Group: 'Direct Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
   { 'Ledger Name': 'Custom Duty', Group: 'Direct Expenses', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
@@ -461,7 +473,34 @@ export function inferLedgerGroup(name: string, fallbackGroup: string = 'Sundry D
     clean.includes('vehicle') ||
     clean.includes('plant &')
   ) {
-    return 'Fixed Assets';
+    if (!clean.includes('loss') && !clean.includes('gain') && !clean.includes('profit') && !clean.includes('depreciation') && !clean.includes('repair') && !clean.includes('maintenance')) {
+      return 'Fixed Assets';
+    }
+  }
+
+  // Loss on Disposal of Assets / Depreciation
+  if (
+    clean.includes('loss on disposal') ||
+    clean.includes('loss on sale') ||
+    clean.includes('loss on write-off') ||
+    clean.includes('loss on scrapping') ||
+    clean.includes('loss on asset') ||
+    clean.includes('asset written off') ||
+    clean.includes('depreciation')
+  ) {
+    return 'Indirect Expenses';
+  }
+
+  // Gain / Profit on Disposal of Assets
+  if (
+    clean.includes('gain on disposal') ||
+    clean.includes('profit on disposal') ||
+    clean.includes('gain on sale') ||
+    clean.includes('profit on sale') ||
+    clean.includes('gain on asset') ||
+    clean.includes('profit on asset')
+  ) {
+    return 'Indirect Incomes';
   }
 
   // Loans & Advances (Asset)
@@ -577,10 +616,31 @@ export function sanitizeLedgers(list: Ledger[]): Ledger[] {
   const updated = list.map(l => {
     if (!l) return l;
     const name = (l['Ledger Name'] || '').trim();
+    const cleanLower = name.toLowerCase();
     const currentGroup = (l.Group || '').trim();
 
     let targetGroup = currentGroup;
-    if (l['Bank Name'] || l['Account No']) {
+    if (
+      cleanLower.includes('loss on disposal') ||
+      cleanLower.includes('loss on sale') ||
+      cleanLower.includes('loss on write-off') ||
+      cleanLower.includes('loss on scrapping') ||
+      cleanLower.includes('loss on asset') ||
+      cleanLower.includes('asset written off')
+    ) {
+      targetGroup = 'Indirect Expenses';
+    } else if (
+      cleanLower.includes('gain on disposal') ||
+      cleanLower.includes('profit on disposal') ||
+      cleanLower.includes('gain on sale') ||
+      cleanLower.includes('profit on sale') ||
+      cleanLower.includes('gain on asset') ||
+      cleanLower.includes('profit on asset')
+    ) {
+      targetGroup = 'Indirect Incomes';
+    } else if (cleanLower === 'depreciation' || cleanLower.includes('depreciation on')) {
+      targetGroup = 'Indirect Expenses';
+    } else if (l['Bank Name'] || l['Account No']) {
       targetGroup = 'Bank Accounts';
     } else if (!targetGroup) {
       targetGroup = inferLedgerGroup(name, 'Sundry Debtors');
@@ -6173,6 +6233,69 @@ export function getCategoryLedgerBreakdown(category: string, from?: string, to?:
     ].filter(r => r.amount > 0.001) as Array<{ name: string; group: string; amount: number; type: 'Dr' | 'Cr' }>;
 
     return { type: 'ledger', rows };
+  }
+
+  // 3. Fixed Assets Category Breakdown (Shows Categories with In / Addition, Out / Disposal, Depreciation, Balance - No individual asset names)
+  if (
+    catLower === 'fixed assets' ||
+    catLower === 'fixed asset' ||
+    catLower.includes('fixed asset')
+  ) {
+    const categories = loadJson<AssetCategory[]>('deep_pos_am_categories', DEFAULT_CATEGORIES);
+    const assets = loadJson<FixedAsset[]>('deep_pos_am_assets', DEFAULT_ASSETS);
+    const disposals = loadJson<AssetDisposal[]>('deep_pos_am_disposals', []);
+
+    let totalIn = 0;
+    let totalOut = 0;
+    let totalDep = 0;
+    let totalNet = 0;
+
+    const rows = categories
+      .filter(c => c.active !== false)
+      .map(cat => {
+        const catAssets = assets.filter(a => a.categoryId === cat.id || (a.subCategory && a.subCategory.toLowerCase() === cat.name.toLowerCase()) || (a.assetGlAccountId && a.assetGlAccountId.toLowerCase() === cat.name.toLowerCase()));
+        const inAmount = catAssets.reduce((sum, a) => sum + (Number(a.totalCapitalizedCost) || Number(a.cost) || 0), 0);
+        
+        const disposedAssets = catAssets.filter(a => a.status === 'Disposed' || a.status === 'Sold' || a.status === 'Written Off');
+        const outFromAssets = disposedAssets.reduce((sum, a) => sum + (Number(a.totalCapitalizedCost) || Number(a.cost) || 0), 0);
+        const outFromDisposals = disposals
+          .filter(d => catAssets.some(a => a.id === d.assetId || a.assetId === d.assetId))
+          .reduce((sum, d) => sum + (Number(d.assetCost) || Number(d.netBookValue) || 0), 0);
+        const outAmount = Math.max(outFromAssets, outFromDisposals);
+
+        const depreciation = catAssets
+          .filter(a => a.status === 'Active' || !a.status)
+          .reduce((sum, a) => sum + (Number(a.accumulatedDepreciation) || 0), 0);
+
+        const activeAssets = catAssets.filter(a => a.status === 'Active' || !a.status);
+        const netBalance = activeAssets.reduce((sum, a) => sum + (Number(a.netBookValue) !== undefined ? Number(a.netBookValue) : (Number(a.totalCapitalizedCost || a.cost || 0) - Number(a.accumulatedDepreciation || 0))), 0);
+
+        totalIn += inAmount;
+        totalOut += outAmount;
+        totalDep += depreciation;
+        totalNet += netBalance;
+
+        return {
+          id: cat.id,
+          category: cat.name,
+          code: cat.code || '',
+          inAmount,
+          outAmount,
+          depreciation,
+          netBalance
+        };
+      })
+      .filter(r => r.inAmount > 0 || r.netBalance > 0 || r.outAmount > 0);
+
+    return {
+      type: 'fixed-asset',
+      title: 'Fixed Assets Category Summary',
+      totalIn,
+      totalOut,
+      totalDep,
+      totalNet,
+      rows
+    };
   }
 
   const rawLedgers = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));

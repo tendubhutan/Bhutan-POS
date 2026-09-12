@@ -6,6 +6,7 @@ import { AlertCircle } from 'lucide-react';
 import { playSaveSound, playWarningTone } from '../utils/audio';
 import React, { useState, useRef, useEffect } from "react";
 import {
+  focusElement,
   focusNextOutsideGrid } from "../utils/domUtils";
 import { Config, Item, Ledger, CartLine, Unit, BarcodeQueueItem } from "../types";
 import { BankTransactionIdModal } from "./BankTransactionIdModal";
@@ -220,7 +221,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     }
   }, [editingBillNo]);
   const [orderNo, setOrderNo] = useState("");
-  const [orderDate, setOrderDate] = useState("");
+  const [orderDate, setOrderDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [deliveryNoteNo, setDeliveryNoteNo] = useState("");
   const [showFetchModal, setShowFetchModal] = useState(false);
 
@@ -415,7 +416,18 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
 
           setBillNo(inv.invoiceNo || inv.billNo || "");
           setOrderNo(inv.orderNo || "");
-          setOrderDate(inv.orderDate || "");
+          if (inv.orderDate) {
+            setOrderDate(inv.orderDate);
+          } else if (inv.date) {
+            const d = new Date(inv.date);
+            if (!isNaN(d.getTime())) {
+              setOrderDate(d.toISOString().split("T")[0]);
+            } else {
+              setOrderDate(new Date().toISOString().split("T")[0]);
+            }
+          } else {
+            setOrderDate(new Date().toISOString().split("T")[0]);
+          }
           setDeliveryNoteNo(inv.deliveryNoteNo || "");
           if (inv.date) {
             const d = new Date(inv.date);
@@ -448,7 +460,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         setCustomerName('');
         setBillNo('');
         setOrderNo('');
-        setOrderDate('');
+        setOrderDate(new Date().toISOString().split('T')[0]);
         setDeliveryNoteNo('');
         setBillDiscount('');
         setNarration('');
@@ -537,6 +549,18 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   const billNoRef = useRef<HTMLInputElement>(null);
   const itemInputRef = useRef<HTMLInputElement>(null);
   const cartScrollRef = useRef<HTMLDivElement>(null);
+  const lastSelectedCustomerRef = useRef<string>("");
+
+  const focusItemPicker = () => {
+    const el = document.getElementById("sale-fast-item-picker") as HTMLInputElement | null;
+    if (el) {
+      el.focus();
+      if (typeof el.select === "function") {
+        el.select();
+      }
+    }
+    focusElement("sale-fast-item-picker");
+  };
 
   useEffect(() => {
     if (cartScrollRef.current) {
@@ -613,7 +637,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     }, 50);
     setCustomerName("");
     setOrderNo("");
-    setOrderDate("");
+    setOrderDate(new Date().toISOString().split("T")[0]);
     setDeliveryNoteNo("");
     setAdditionalExpenses([]);
     setBillDiscount("");
@@ -772,6 +796,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     billDate,
     billNo,
     orderNo,
+    orderDate,
     deliveryNoteNo,
     editingBillNo,
     bankTxnModalOpen,
@@ -1269,9 +1294,11 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                 </div>
                 <div className="flex-1 max-w-2xl min-w-[200px]">
                   <SearchableLedgerSelect
+                    id="sale-customer-ledger-select"
                     ledgers={ledgers}
                     value={customerName}
                     onChange={(val) => {
+                      lastSelectedCustomerRef.current = val;
                       setCustomerName(val);
                       if (isBankLedger(val, ledgers, config)) {
                         setBankTxnModalOpen(true);
@@ -1284,9 +1311,10 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                     ]}
                     prioritizeGroups={["Sundry Debtors"]}
                     onCreateNew={() =>
-                      onOpenNewLedgerModal("Sundry Debtors", (name) =>
-                        setCustomerName(name),
-                      )
+                      onOpenNewLedgerModal("Sundry Debtors", (name) => {
+                        lastSelectedCustomerRef.current = name;
+                        setCustomerName(name);
+                      })
                     }
                     onEditLedger={(name) => {
                       const l = ledgers.find((x) => x["Ledger Name"] === name);
@@ -1302,13 +1330,17 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                     onFocusDate={() => billDateRef.current?.focus()}
                     placeholder="Select Customer Ledger"
                     onEnterNext={() => {
-                      document.getElementById("pur-fast-item-picker")?.focus();
+                      const cust = lastSelectedCustomerRef.current || customerName;
+                      if (isBankLedger(cust, ledgers, config)) {
+                        return;
+                      }
+                      focusItemPicker();
                     }}
                     onArrowRight={() => {
-                      document.getElementById("pur-fast-item-picker")?.focus();
+                      focusItemPicker();
                     }}
                     onArrowDown={() => {
-                      document.getElementById("pur-fast-item-picker")?.focus();
+                      focusItemPicker();
                     }}
                   />
                 </div>
@@ -1354,11 +1386,35 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-bold text-slate-600">Order Ref:</span>
                 <input
+                  id="sale-order-ref-input"
                   type="text"
                   value={orderNo}
                   onChange={(e) => setOrderNo(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      document.getElementById("sale-order-date-input")?.focus();
+                    }
+                  }}
                   placeholder="e.g. SO-101"
                   className="font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded px-2 py-0.5 outline-none focus:border-indigo-500 focus:bg-white w-28"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-slate-600">Order Date:</span>
+                <input
+                  id="sale-order-date-input"
+                  type="date"
+                  value={orderDate}
+                  onChange={(e) => setOrderDate(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      focusItemPicker();
+                    }
+                  }}
+                  className="text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:border-indigo-500 focus:bg-white cursor-pointer shadow-2xs"
+                  title="Sales Order Date"
                 />
               </div>
               {deliveryNoteNo && (

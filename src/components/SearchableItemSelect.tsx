@@ -472,31 +472,32 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
       </div>
 
       {securityDenied && (
-        <div className="bg-rose-600 text-white px-2 py-0.5 text-[10px] font-bold text-center">
+        <div className="bg-rose-600 text-white px-2 py-0.5 text-[10px] font-bold text-center shrink-0">
           🔒 Access Denied: Only Admin/Manager can view purchase cost
+        </div>
+      )}
+
+      {showEndOfList && (
+        <div
+          data-index={endOfListIdx}
+          onClick={() => {
+            setIsOpen(false);
+            if (onEndOfList) { onEndOfList(id); } else if (onSaveVoucher) { onSaveVoucher(); }
+          }}
+          onMouseEnter={() => setHighlightedIndex(endOfListIdx)}
+          className={`shrink-0 z-20 flex items-center px-2 py-1.5 text-[11px] font-bold transition cursor-pointer border-b border-amber-300 shadow-2xs select-none ${
+            highlightedIndex === endOfListIdx
+              ? 'bg-amber-200 text-amber-950 font-black ring-1 ring-inset ring-amber-400'
+              : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+          }`}
+        >
+          <div className="flex-1 text-center uppercase tracking-wide">
+            -- End of List --
+          </div>
         </div>
       )}
       
       <div className="overflow-y-auto flex-1 bg-white">
-        {showEndOfList && (
-          <div
-            data-index={endOfListIdx}
-            onClick={() => {
-              setIsOpen(false);
-              if (onEndOfList) { onEndOfList(id); } else if (onSaveVoucher) { onSaveVoucher(); }
-            }}
-            onMouseEnter={() => setHighlightedIndex(endOfListIdx)}
-            className={`flex items-center px-2 py-1 text-[11px] font-bold transition cursor-pointer border-b border-slate-100 ${
-              highlightedIndex === endOfListIdx
-                ? 'bg-amber-100 text-amber-800'
-                : 'text-amber-700 hover:bg-amber-50'
-            }`}
-          >
-            <div className="flex-1 text-center uppercase tracking-wide">
-              -- End of List --
-            </div>
-          </div>
-        )}
         
         {onCreateNew && (
           <div

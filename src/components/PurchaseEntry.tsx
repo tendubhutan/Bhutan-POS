@@ -5,8 +5,8 @@ import { focusNextOutsideGrid } from '../utils/domUtils';
 import { Config, Item, Ledger, CartLine, Unit, BarcodeQueueItem, ReceiptNote, PurchaseOrder } from '../types';
 import { BankTransactionIdModal } from './BankTransactionIdModal';
 import { isBankLedger } from '../utils/ledgerUtils';
-import { savePurchaseInvoice, deletePurchaseInvoice, getVoucherDetails, saveLedger, loadJson, STORAGE_KEYS, DEFAULT_UNITS } from '../services/storageService';
-import { Plus, Trash2, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckCircle2, UserPlus, ShoppingBag, Tag, Printer, AlertCircle, ArrowDownToLine } from 'lucide-react';
+import { savePurchaseInvoice, deletePurchaseInvoice, getVoucherDetails, saveLedger, loadJson, STORAGE_KEYS, DEFAULT_UNITS, peekNextVoucherNo } from '../services/storageService';
+import { Plus, Trash2, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckCircle2, UserPlus, ShoppingBag, Tag, Printer, AlertCircle, ArrowDownToLine, Receipt, Calendar } from 'lucide-react';
 import { playSaveSound, playWarningTone } from '../utils/audio';
 import { SerialModal } from './SerialModal';
 import { FetchVoucherModal } from './vouchers/FetchVoucherModal';
@@ -48,7 +48,9 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
   const [bankTxnNo, setBankTxnNo] = useState<string>('');
   const [bankTxnModalOpen, setBankTxnModalOpen] = useState(false);
   const [billDate, setBillDate] = useState(new Date().toISOString().split('T')[0]);
+  const [supplierBillDate, setSupplierBillDate] = useState(new Date().toISOString().split('T')[0]);
   const [billNo, setBillNo] = useState('');
+  const [purchaseVoucherNo, setPurchaseVoucherNo] = useState('');
   const [narration, setNarration] = useState('');
   const [isGstMode, setIsGstMode] = useState(true);
   const [receiptNoteNo, setReceiptNoteNo] = useState('');
@@ -57,6 +59,9 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
   const [editingBillNo, setEditingBillNo] = useState<string | null>(null);
   const [activeNoteIdx, setActiveNoteIdx] = useState<number | null>(null);
   const loadedTargetKeyRef = useRef<string | null>(null);
+
+  const [showBarcodePrompt, setShowBarcodePrompt] = useState(false);
+  const [pendingBarcodeQueue, setPendingBarcodeQueue] = useState<BarcodeQueueItem[] | null>(null);
 
   useEffect(() => {
     if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
@@ -107,13 +112,18 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
             }
           }
 
-          setBillNo(inv.supplierBillNo || inv.billNo || inv.invoiceNo || '');
+          setPurchaseVoucherNo(inv.billNo || inv.invoiceNo || '');
+          setBillNo(inv.supplierBillNo || '');
           setReceiptNoteNo(inv.receiptNoteNo || '');
           setPoNo(inv.poNo || '');
           setNarration(inv.narration || inv.notes || '');
           if (inv.date) {
              const d = new Date(inv.date);
-             if (!isNaN(d.getTime())) setBillDate(d.toISOString().split('T')[0]);
+             if (!isNaN(d.getTime())) {
+               const dStr = d.toISOString().split('T')[0];
+               setBillDate(dStr);
+               setSupplierBillDate(dStr);
+             }
           }
           if (Array.isArray(inv.additionalExpenses)) {
             setAdditionalExpenses(inv.additionalExpenses);
@@ -125,6 +135,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       if (loadedTargetKeyRef.current !== null) {
         loadedTargetKeyRef.current = null;
         setEditingBillNo(null);
+        setPurchaseVoucherNo('');
         setCart([]);
         setSupplierName('');
         setBillNo('');
@@ -132,6 +143,8 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         setPoNo('');
         setNarration('');
         setAdditionalExpenses([]);
+        setBillDate(new Date().toISOString().split('T')[0]);
+        setSupplierBillDate(new Date().toISOString().split('T')[0]);
       }
     }
   }, [initialVoucherTarget, items]);
@@ -276,6 +289,8 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
   });
 
   const billDateRef = useRef<HTMLInputElement>(null);
+  const purchaseNoRef = useRef<HTMLInputElement>(null);
+  const supplierBillDateRef = useRef<HTMLInputElement>(null);
   const billNoRef = useRef<HTMLInputElement>(null);
   const itemInputRef = useRef<HTMLInputElement>(null);
 
@@ -334,10 +349,15 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
 
   const resetForm = () => {
     setEditingBillNo(null);
+    setPurchaseVoucherNo('');
     setCart([]);
     setSupplierName('');
     setBillNo('');
+    setReceiptNoteNo('');
+    setPoNo('');
     setNarration('');
+    setBillDate(new Date().toISOString().split('T')[0]);
+    setSupplierBillDate(new Date().toISOString().split('T')[0]);
   };
 
   const handlePurchaseBack = (): boolean => {
@@ -366,7 +386,11 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       cart.length > 0 ||
       !!supplierName ||
       !!billNo ||
+      !!purchaseVoucherNo ||
       !!editingBillNo ||
+      !!receiptNoteNo ||
+      !!poNo ||
+      !!narration ||
       (Array.isArray(additionalExpenses) && additionalExpenses.length > 0) ||
       !!bankTxnNo;
     if (hasData) {
@@ -609,10 +633,11 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         bank1Ledger: config.Bank1Ledger || 'BOB Account',
         bank2Ledger: config.Bank2Ledger || 'BNBL Account'
       },
+      billNo: purchaseVoucherNo.trim() || undefined,
       supplierBillNo: billNo,
       receiptNoteNo: receiptNoteNo || undefined,
       poNo: poNo || undefined,
-      notes: narration ? narration : (billDate ? `Bill Date: ${billDate}` : ''),
+      notes: narration ? narration : (billNo ? `Supplier Bill: ${billNo}` : ''),
       narration: narration,
       originalBillNo: editingBillNo || undefined,
       date: billDate ? new Date(billDate).toISOString() : undefined,
@@ -626,7 +651,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     }
 
     setEditingBillNo(null);
-
+    setPurchaseVoucherNo('');
     setCart([]);
     setSupplierName('');
     setBillNo('');
@@ -636,10 +661,11 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     playSaveSound();
     onDataRefresh();
 
-    if (confirm('Purchase Invoice saved successfully! Do you want to print Barcode Stickers for received items now?')) {
-      if (onPrintPurchaseBarcodes) {
-        onPrintPurchaseBarcodes(queueForBarcode);
-      }
+    if (queueForBarcode.length > 0 && onPrintPurchaseBarcodes) {
+      setPendingBarcodeQueue(queueForBarcode);
+      setShowBarcodePrompt(true);
+    } else {
+      showToast('✓ Purchase Invoice saved successfully!');
     }
   };
 
@@ -722,10 +748,6 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                   </button>
                 </div>
 
-                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px] font-bold">
-                  Credit / Cash
-                </span>
-
                 {/* Fetch from Receipt Note / Purchase Order */}
                 <button
                   type="button"
@@ -737,38 +759,61 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                   <span>Fetch (GRN / PO) [Alt+F]</span>
                 </button>
               </div>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Continuous Loop Entry (Press <kbd className="bg-slate-100 border border-slate-300 rounded px-1 py-0.2 text-[10px] font-mono font-bold">F2</kbd> to Save)
-              </p>
             </div>
           </div>
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Invoice Total</div>
-            <div className="text-sm sm:text-base font-black text-emerald-600 font-mono leading-none">
-              {config.CurrencySymbol || 'Nu.'} {totalAmount.toFixed(2)}
-            </div>
+        {/* Purchase No and Date (Top Right) */}
+        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/90 rounded-xl px-2.5 py-1 text-xs shadow-2xs">
+          <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
+            <Receipt className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Purchase No</span>
+            <input
+              ref={purchaseNoRef}
+              type="text"
+              value={purchaseVoucherNo}
+              onChange={(e) => setPurchaseVoucherNo(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              placeholder={editingBillNo || peekNextVoucherNo('PUR', config) || 'Auto'}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === 'ArrowRight') {
+                  e.preventDefault();
+                  billDateRef.current?.focus();
+                  billDateRef.current?.select();
+                }
+              }}
+              className="font-mono text-xs font-black text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs w-28 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200"
+              title="Purchase Voucher No (Auto or custom)"
+            />
           </div>
-          <div className="relative inline-block">
-            {toastMsg && (
-              <div className={`absolute bottom-full mb-2 right-0 z-[9999] flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-white shadow-2xl whitespace-nowrap ${toastMsg.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'} animate-in fade-in slide-in-from-bottom-2`}>
-                {toastMsg.type === 'success' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
-                <span>{toastMsg.text}</span>
-                <div className={`absolute top-full right-6 -mt-1 border-4 border-transparent ${toastMsg.type === 'success' ? 'border-t-emerald-600' : 'border-t-rose-600'}`} />
-              </div>
-            )}
-            <GlowButton
-              id="pur-save-btn"
-              type="button"
-              onClick={handleSavePurchase}
-              disabled={cart.length === 0}
-              variant="emerald"
-              size="sm"
-              icon={CheckCircle2}
-              title="Save Purchase (F2)"
-            >
-              Save [F2]
-            </GlowButton>
+          <div className="flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Date</span>
+            <input
+              id="pur-date-input"
+              ref={billDateRef}
+              type="date"
+              value={billDate}
+              onChange={(e) => {
+                setBillDate(e.target.value);
+                setSupplierBillDate(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const supplierSelect = document.getElementById('pur-supplier-ledger-select');
+                  if (supplierSelect) {
+                    supplierSelect.focus();
+                  } else {
+                    supplierBillDateRef.current?.focus();
+                  }
+                } else if (e.key === 'ArrowLeft') {
+                  e.preventDefault();
+                  purchaseNoRef.current?.focus();
+                  purchaseNoRef.current?.select();
+                }
+              }}
+              className="text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200 cursor-pointer shadow-2xs"
+              title="Purchase Date"
+            />
           </div>
         </div>
       </div>
@@ -812,6 +857,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
               <div className="flex-1 min-w-[220px]">
                 <label className="block text-[11px] font-bold text-slate-700 mb-0.5">Supplier Ledger *</label>
                 <SearchableLedgerSelect
+                  id="pur-supplier-ledger-select"
                   ledgers={ledgers}
                   value={supplierName}
                   onChange={(val) => {
@@ -835,33 +881,33 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                   onFocusDate={() => billDateRef.current?.focus()}
                   placeholder="Select Supplier Ledger"
                   onEnterNext={() => {
-                    billDateRef.current?.focus();
+                    supplierBillDateRef.current?.focus();
                   }}
                   onArrowRight={() => {
-                    billDateRef.current?.focus();
+                    supplierBillDateRef.current?.focus();
                   }}
                   onArrowDown={() => {
-                    billDateRef.current?.focus();
+                    supplierBillDateRef.current?.focus();
                   }}
                 />
               </div>
               <div className="w-full md:w-44 shrink-0">
                 <label className="block text-[11px] font-bold text-slate-700 mb-0.5">Supplier Bill Date</label>
                 <input
-                  id="pur-date-input"
-                  ref={billDateRef}
+                  id="pur-supplier-date-input"
+                  ref={supplierBillDateRef}
                   type="date"
-                  value={billDate}
-                  onChange={e => setBillDate(e.target.value)}
+                  value={supplierBillDate}
+                  onChange={e => setSupplierBillDate(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === 'Enter') {
+                    if (e.key === 'Enter' || e.key === 'ArrowRight') {
                       e.preventDefault();
                       billNoRef.current?.focus();
                       billNoRef.current?.select();
-                    } else if (e.key === 'ArrowRight') {
+                    } else if (e.key === 'ArrowLeft') {
                       e.preventDefault();
-                      billNoRef.current?.focus();
-                      billNoRef.current?.select();
+                      const s = document.getElementById('pur-supplier-ledger-select');
+                      if (s) s.focus();
                     }
                   }}
                   className="w-full h-8.5 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none cursor-pointer"
@@ -881,7 +927,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                       document.getElementById('pur-fast-item-picker')?.focus();
                     } else if (e.key === 'ArrowLeft') {
                       e.preventDefault();
-                      billDateRef.current?.focus();
+                      supplierBillDateRef.current?.focus();
                     }
                   }}
                   placeholder="e.g. SUP-90812"
@@ -1143,22 +1189,28 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         </div>
       </div>
 
-      {/* Narration Field */}
-      <div className="flex items-center gap-2 bg-slate-50/90 border border-slate-200 rounded-xl px-3 py-1.5 shrink-0 shadow-2xs">
-        <span className="text-xs font-extrabold text-slate-700 whitespace-nowrap">Narration:</span>
-        <input
-          id="pur-narration"
-          type="text"
-          placeholder="Enter purchase narration / remarks..."
-          value={narration}
-          onChange={e => setNarration(e.target.value)}
-          className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-medium outline-none focus:border-emerald-600 transition"
-        />
-      </div>
-
-      {/* Footer Bar: Totals & Actions */}
-      <div className="bg-white rounded-xl border border-slate-200 p-2 shadow-xs flex flex-wrap items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2 flex-wrap">
+      {/* Footer Bar: Narration (Bottom Left) & Totals + Save Action (Bottom Right) */}
+      <div className="bg-white rounded-xl border border-slate-200 p-2 shadow-xs flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+        {/* Narration Field (Moved to Bottom Left) */}
+        <div className="flex items-center gap-2 flex-1 min-w-[240px] max-w-xl bg-slate-50/90 border border-slate-200 rounded-lg px-2.5 py-1 shadow-2xs">
+          <span className="text-xs font-extrabold text-slate-700 whitespace-nowrap">Narration:</span>
+          <input
+            id="pur-narration"
+            type="text"
+            placeholder="Enter purchase narration / remarks..."
+            value={narration}
+            onChange={e => setNarration(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const saveBtn = document.getElementById('pur-save-btn') as HTMLButtonElement | null;
+                if (saveBtn && !saveBtn.disabled) {
+                  saveBtn.focus();
+                }
+              }
+            }}
+            className="w-full bg-white border border-slate-300 rounded px-2 py-0.5 text-xs text-slate-800 font-medium outline-none focus:border-emerald-600 transition"
+          />
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap ml-auto">
@@ -1172,6 +1224,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
           <div className="flex items-center gap-2">
             {editingBillNo && (
               <button
+                type="button"
                 onClick={() => {
                   if (window.confirm('Are you sure you want to delete this purchase invoice completely?')) {
                     deletePurchaseInvoice(editingBillNo);
@@ -1185,15 +1238,6 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                 Delete
               </button>
             )}
-            <button
-              onClick={handlePrintBarcodesDirectly}
-              disabled={cart.length === 0}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-700 font-bold text-xs hover:bg-slate-100 disabled:opacity-50 transition flex items-center gap-1 cursor-pointer"
-              title="Print barcode stickers"
-            >
-              <Printer className="h-3.5 w-3.5 text-indigo-600" />
-              <span className="hidden sm:inline">Barcodes</span>
-            </button>
             <div className="relative inline-block">
               {toastMsg && (
                 <div className={`absolute bottom-full mb-2 right-0 z-[9999] flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-white shadow-2xl whitespace-nowrap ${toastMsg.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'} animate-in fade-in slide-in-from-bottom-2`}>
@@ -1203,9 +1247,16 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                 </div>
               )}
               <button
+                type="button"
                 id="pur-save-btn"
                 onClick={handleSavePurchase}
                 disabled={cart.length === 0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSavePurchase();
+                  }
+                }}
                 className="focus:ring-[4px] focus:ring-emerald-400/80 focus:ring-offset-1 focus:shadow-[0_0_15px_rgba(52,211,153,0.6)] z-10 relative focus:scale-[1.02] outline-none px-4 py-1.5 rounded-lg bg-emerald-600 text-white font-extrabold text-xs hover:bg-emerald-700 disabled:opacity-50 transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
               >
                 <CheckCircle2 className="h-4 w-4" />
@@ -1215,6 +1266,58 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Barcode Print Confirmation Modal after Saving */}
+      {showBarcodePrompt && (
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setShowBarcodePrompt(false);
+              setPendingBarcodeQueue(null);
+            }
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-5 border border-slate-200 text-center animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+              <Printer className="h-6 w-6" />
+            </div>
+            <h3 className="text-base font-extrabold text-slate-900 mb-1">
+              Purchase Invoice Saved!
+            </h3>
+            <p className="text-xs text-slate-600 mb-5 leading-relaxed">
+              Do you want to print barcode stickers for the received items now?
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBarcodePrompt(false);
+                  setPendingBarcodeQueue(null);
+                }}
+                className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 transition cursor-pointer"
+              >
+                No, Skip
+              </button>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => {
+                  if (pendingBarcodeQueue && onPrintPurchaseBarcodes) {
+                    onPrintPurchaseBarcodes(pendingBarcodeQueue);
+                  }
+                  setShowBarcodePrompt(false);
+                  setPendingBarcodeQueue(null);
+                }}
+                className="flex-1 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs transition flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <Printer className="h-4 w-4" />
+                <span>Print Barcodes</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Serial Modal */}
       {activeSerialIndex > -1 && cart[activeSerialIndex] && (

@@ -1909,8 +1909,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
                 {/* Dropdown Results Popup (Floated Below Search Input) */}
                 {showDropdown && (
-                  <div className="absolute left-0 top-full mt-1 z-[999] w-[340px] sm:w-[420px] md:w-[460px] max-w-[92vw] max-h-[280px] shadow-2xl overflow-y-auto rounded-xl border border-slate-300 bg-white divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-150">
-                    <div className="sticky top-0 bg-slate-800 text-white px-2.5 py-1 text-xs font-bold shadow-md z-20 flex justify-between items-center">
+                  <div className="absolute left-0 top-full mt-1 z-[999] w-[340px] sm:w-[420px] md:w-[460px] max-w-[92vw] max-h-[280px] shadow-2xl flex flex-col overflow-hidden rounded-xl border border-slate-300 bg-white animate-in fade-in zoom-in-95 duration-150">
+                    <div className="shrink-0 bg-slate-800 text-white px-2.5 py-1 text-xs font-bold shadow-md z-20 flex justify-between items-center">
                       <div className="flex items-center gap-1.5">
                         <span>List of Stock Items</span>
                         <span className="text-[10px] text-slate-300 font-normal bg-slate-700/80 px-1.5 py-0.2 rounded border border-slate-600">
@@ -1921,38 +1921,55 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                     </div>
 
                     {securityAlert && (
-                      <div className="bg-rose-600 text-white px-3 py-1 text-[11px] font-bold flex items-center justify-between animate-in fade-in">
+                      <div className="shrink-0 bg-rose-600 text-white px-3 py-1 text-[11px] font-bold flex items-center justify-between animate-in fade-in">
                         <span>🔒 Access Denied: Only Admin/Manager can view purchase cost</span>
                       </div>
                     )}
 
-                    {onOpenNewItemModal && (
+                    {!entrySearch.trim() && (
                       <div
                         onClick={() => {
-                          onOpenNewItemModal(item => {
-                            selectItem(item);
-                            setEntrySearch('');
-                            setShowDropdown(false);
-                          });
+                          setShowDropdown(false);
+                          setEntrySearch('');
+                          cashInputRef.current?.focus();
+                          cashInputRef.current?.select();
                         }}
-                        className="flex items-center gap-2 px-2.5 py-1 text-xs font-bold text-indigo-600 bg-indigo-50/70 hover:bg-indigo-100 transition cursor-pointer border-b border-indigo-100"
+                        className="shrink-0 z-20 flex items-center px-2.5 py-1.5 text-[11px] font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 transition cursor-pointer border-b border-amber-300 shadow-2xs select-none"
                       >
-                        <Plus className="h-3.5 w-3.5 shrink-0" />
-                        <span>+ Create New Item Master</span>
-                        <kbd className="ml-auto rounded bg-white px-1.5 py-0.5 text-[9px] font-mono border border-indigo-200 text-indigo-700">Alt+C</kbd>
+                        <div className="flex-1 text-center uppercase tracking-wide">
+                          -- End of List --
+                        </div>
                       </div>
                     )}
-                    {searchResults.map((item, idx) => {
-                      const isZeroStk = item['Maintain Stock'] !== 'N' && Number(item['Current Stock']) <= 0;
-                      const matchedSn = (item as any).matchedSerial;
-                      return (
+
+                    <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+                      {onOpenNewItemModal && (
                         <div
-                          key={item['Item Code']}
-                          onClick={() => selectItem(item, matchedSn)}
-                          className={`px-2.5 py-1 text-xs cursor-pointer flex justify-between items-center transition ${
-                            idx === selectedIndex ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-50 text-slate-800'
-                          }`}
+                          onClick={() => {
+                            onOpenNewItemModal(item => {
+                              selectItem(item);
+                              setEntrySearch('');
+                              setShowDropdown(false);
+                            });
+                          }}
+                          className="flex items-center gap-2 px-2.5 py-1 text-xs font-bold text-indigo-600 bg-indigo-50/70 hover:bg-indigo-100 transition cursor-pointer border-b border-indigo-100"
                         >
+                          <Plus className="h-3.5 w-3.5 shrink-0" />
+                          <span>+ Create New Item Master</span>
+                          <kbd className="ml-auto rounded bg-white px-1.5 py-0.5 text-[9px] font-mono border border-indigo-200 text-indigo-700">Alt+C</kbd>
+                        </div>
+                      )}
+                      {searchResults.map((item, idx) => {
+                        const isZeroStk = item['Maintain Stock'] !== 'N' && Number(item['Current Stock']) <= 0;
+                        const matchedSn = (item as any).matchedSerial;
+                        return (
+                          <div
+                            key={item['Item Code']}
+                            onClick={() => selectItem(item, matchedSn)}
+                            className={`px-2.5 py-1 text-xs cursor-pointer flex justify-between items-center transition ${
+                              idx === selectedIndex ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-50 text-slate-800'
+                            }`}
+                          >
                           <div className="min-w-0 flex-1 flex items-center gap-1.5 pr-2">
                             <span className="font-bold truncate">{item['Item Name']}</span>
                             {matchedSn && (
@@ -1999,6 +2016,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                         </div>
                       );
                     })}
+                    </div>
                   </div>
                 )}
               </div>

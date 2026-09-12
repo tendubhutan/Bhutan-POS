@@ -813,7 +813,105 @@ export const DrillModal: React.FC<DrillModalProps> = ({
         {/* GROUP / CATEGORY BREAKDOWN */}
         {active.type === 'group' && groupData && (
           <div className="overflow-auto max-h-[65vh] text-xs space-y-2">
-            {groupData.type === 'stock' ? (
+            {groupData.type === 'fixed-asset' ? (
+              <div className="space-y-3">
+                {/* Summary KPIs */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Total In (Additions)</span>
+                    <p className="text-sm sm:text-base font-mono font-bold text-emerald-900 mt-0.5">
+                      {getEffectiveConfig().CurrencySymbol || 'Nu.'} {fmt(groupData.totalIn)}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-rose-50/80 border border-rose-200 rounded-xl">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700">Total Out (Disposals)</span>
+                    <p className="text-sm sm:text-base font-mono font-bold text-rose-900 mt-0.5">
+                      {getEffectiveConfig().CurrencySymbol || 'Nu.'} {fmt(groupData.totalOut)}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Acc. Depreciation</span>
+                    <p className="text-sm sm:text-base font-mono font-bold text-amber-900 mt-0.5">
+                      {getEffectiveConfig().CurrencySymbol || 'Nu.'} {fmt(groupData.totalDep)}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-xl">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">Net Book Value</span>
+                    <p className="text-sm sm:text-base font-mono font-bold text-indigo-900 mt-0.5">
+                      {getEffectiveConfig().CurrencySymbol || 'Nu.'} {fmt(groupData.totalNet)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Categories Table */}
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full border-collapse">
+                    <thead className="sticky top-0 z-10 bg-slate-100 shadow-xs">
+                      <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
+                        <th className="py-2.5 px-3 text-left">Asset Category</th>
+                        <th className="py-2.5 px-3 text-left">Code</th>
+                        <th className="py-2.5 px-3 text-right">In (Addition)</th>
+                        <th className="py-2.5 px-3 text-right">Out (Disposal)</th>
+                        <th className="py-2.5 px-3 text-right">Depreciation</th>
+                        <th className="py-2.5 px-3 text-right">Net Category Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {!groupData.rows || groupData.rows.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-6 text-center text-slate-400 italic">
+                            No asset categories recorded
+                          </td>
+                        </tr>
+                      ) : (
+                        groupData.rows.map((r: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-indigo-50/40 transition">
+                            <td className="py-2.5 px-3 font-semibold text-slate-800">{r.category}</td>
+                            <td className="py-2.5 px-3 font-mono text-slate-500">{r.code || '-'}</td>
+                            <td className="py-2.5 px-3 text-right font-mono font-medium text-emerald-700">
+                              {fmt(r.inAmount)}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono font-medium text-rose-700">
+                              {fmt(r.outAmount)}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono font-medium text-amber-700">
+                              {fmt(r.depreciation)}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-indigo-900">
+                              {fmt(r.netBalance)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                    <tfoot className="sticky bottom-0 z-10 bg-slate-50 border-t-2 border-slate-300 font-bold text-slate-900">
+                      <tr>
+                        <td colSpan={2} className="py-2.5 px-3 uppercase text-[11px] tracking-wider font-extrabold text-slate-800">
+                          Total ({groupData.rows?.length || 0} Categories)
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800">
+                          {fmt(groupData.totalIn)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-800">
+                          {fmt(groupData.totalOut)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-800">
+                          {fmt(groupData.totalDep)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-extrabold text-indigo-900">
+                          {fmt(groupData.totalNet)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                  <span>💡</span>
+                  <span>Category-level summary showing aggregate asset additions, disposals, and net book balances.</span>
+                </div>
+              </div>
+            ) : groupData.type === 'stock' ? (
               <div className="space-y-3">
                 {/* Search and Summary Card */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200">

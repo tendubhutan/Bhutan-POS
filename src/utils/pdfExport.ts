@@ -3,6 +3,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Config, SalesInvoice, PurchaseInvoice, DeliveryNote, Quotation, Voucher } from '../types';
 import { getLedgers } from '../services/storageService';
+import { getAssetCategories, getAssets } from '../services/assetManagementService';
 import { formatDateDMY, formatDateTimeDMY } from './dateUtils';
 
 export function resolveBankDetailsForPrint(config: Config): string {
@@ -635,7 +636,34 @@ export function generateReportPDF(
 
     rightBs.push({ label: 'Fixed Assets', amt: fmt(fa) });
     if (depth !== 'summary') {
-      fixedAssetLedgers.forEach(l => rightBs.push({ label: `  ${l.name}`, amt: fmt(l.dr || l.cr) }));
+      try {
+        const categories = getAssetCategories();
+        const assets = getAssets();
+        const catMap = new Map<string, number>();
+        categories.filter(c => c.active !== false).forEach(c => catMap.set(c.name, 0));
+        assets.forEach(a => {
+          if (a.status !== 'Disposed' && a.status !== 'Sold' && a.status !== 'Written Off') {
+            const cat = categories.find(c => c.id === a.categoryId) || { name: a.subCategory || 'Other Fixed Assets' };
+            const cur = catMap.get(cat.name) || 0;
+            const cost = Number(a.totalCapitalizedCost || a.cost || 0);
+            const dep = Number(a.accumulatedDepreciation || 0);
+            const nbv = Number(a.netBookValue) !== undefined ? Number(a.netBookValue) : (cost - dep);
+            catMap.set(cat.name, cur + nbv);
+          }
+        });
+        let hasCat = false;
+        catMap.forEach((amt, name) => {
+          if (amt > 0) {
+            hasCat = true;
+            rightBs.push({ label: `  ${name}`, amt: fmt(amt) });
+          }
+        });
+        if (!hasCat) {
+          fixedAssetLedgers.forEach(l => rightBs.push({ label: `  ${l.name}`, amt: fmt(l.dr || l.cr) }));
+        }
+      } catch {
+        fixedAssetLedgers.forEach(l => rightBs.push({ label: `  ${l.name}`, amt: fmt(l.dr || l.cr) }));
+      }
     }
 
     rightBs.push({ label: 'Current Assets', amt: fmt(ca) });

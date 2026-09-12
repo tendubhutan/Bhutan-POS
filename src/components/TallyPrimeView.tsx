@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, ChevronDown, ChevronRight, ChevronUp, CheckCircle2, AlertTriangle, TrendingUp, TrendingDown, Scale, PieChart, Layers, ArrowUpRight, ArrowDownRight, RefreshCw } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, ChevronUp, CheckCircle2, AlertTriangle, TrendingUp, TrendingDown, Scale, PieChart, Layers, ArrowUpRight, ArrowDownRight, RefreshCw, FolderTree } from 'lucide-react';
+import { DEFAULT_CATEGORIES, DEFAULT_ASSETS, getAssetCategories, getAssets, getDisposals } from '../services/assetManagementService';
+import { AssetCategory, FixedAsset, AssetDisposal } from '../types/assetManagement';
 
 export type ReportDetailDepth = 'summary' | 'detailed' | 'super_detailed';
 
@@ -49,6 +51,8 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
   const [depth, setDepth] = useState<ReportDetailDepth>(initialDepth);
   const [searchTerm, setSearchTerm] = useState('');
   const [userToggledGroups, setUserToggledGroups] = useState<Record<string, boolean>>({});
+  const [isFixedAssetsExpanded, setIsFixedAssetsExpanded] = useState<boolean>(true);
+  const [expandedCategoryIds, setExpandedCategoryIds] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setDepth(initialDepth);
@@ -289,6 +293,95 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
     const fixedAssetLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Fixed Asset'));
     const currentAssetLedgers = rawTb.filter((l: any) => (l.grp || '').includes('Current Asset') || (l.grp || '').includes('Debtor') || (l.grp || '').includes('Bank') || (l.grp || '').includes('Cash'));
 
+    // Group Fixed Assets by Asset Category rather than individual assets
+    const categories: AssetCategory[] = getAssetCategories();
+    const assets: FixedAsset[] = getAssets();
+    const disposals: AssetDisposal[] = getDisposals();
+
+    const categoryMap = new Map<string, {
+      id: string;
+      name: string;
+      code: string;
+      inAmount: number;
+      outAmount: number;
+      depreciation: number;
+      netBalance: number;
+    }>();
+
+    // Initialize with standard categories
+    categories.filter(c => c.active !== false).forEach(cat => {
+      categoryMap.set(cat.name.toLowerCase(), {
+        id: cat.id,
+        name: cat.name,
+        code: cat.code || '',
+        inAmount: 0,
+        outAmount: 0,
+        depreciation: 0,
+        netBalance: 0
+      });
+    });
+
+    // Populate from asset register
+    assets.forEach(ast => {
+      const cat = categories.find(c => c.id === ast.categoryId) || { name: ast.subCategory || 'Other Fixed Assets', id: ast.categoryId || 'other', code: '' };
+      const catKey = (cat.name || 'Other Fixed Assets').toLowerCase();
+      if (!categoryMap.has(catKey)) {
+        categoryMap.set(catKey, {
+          id: cat.id,
+          name: cat.name,
+          code: (cat as any).code || '',
+          inAmount: 0,
+          outAmount: 0,
+          depreciation: 0,
+          netBalance: 0
+        });
+      }
+      const entry = categoryMap.get(catKey)!;
+      const cost = Number(ast.totalCapitalizedCost) || Number(ast.cost) || 0;
+      entry.inAmount += cost;
+
+      if (ast.status === 'Disposed' || ast.status === 'Sold' || ast.status === 'Written Off') {
+        entry.outAmount += cost;
+      } else {
+        const dep = Number(ast.accumulatedDepreciation) || 0;
+        const nbv = Number(ast.netBookValue) !== undefined ? Number(ast.netBookValue) : (cost - dep);
+        entry.depreciation += dep;
+        entry.netBalance += nbv;
+      }
+    });
+
+    // Also include disposals recorded in disposals list if not yet counted
+    disposals.forEach(disp => {
+      const ast = assets.find(a => a.id === disp.assetId || a.assetId === disp.assetId);
+      if (ast) {
+        const cat = categories.find(c => c.id === ast.categoryId) || { name: ast.subCategory || 'Other Fixed Assets' };
+        const entry = categoryMap.get((cat.name || 'Other Fixed Assets').toLowerCase());
+        if (entry && entry.outAmount === 0) {
+          entry.outAmount += Number(disp.assetCost || disp.netBookValue || 0);
+        }
+      }
+    });
+
+    // Also include any Fixed Asset GL accounts from Trial Balance that don't match standard asset categories
+    fixedAssetLedgers.forEach((l: any) => {
+      const lName = (l.name || '').trim();
+      const lKey = lName.toLowerCase();
+      const bal = Number(l.dr || l.cr || l.amount || 0);
+      if (!categoryMap.has(lKey) && bal > 0) {
+        categoryMap.set(lKey, {
+          id: lKey,
+          name: lName,
+          code: '',
+          inAmount: bal,
+          outAmount: 0,
+          depreciation: 0,
+          netBalance: bal
+        });
+      }
+    });
+
+    const fixedAssetCategories = Array.from(categoryMap.values()).filter(c => c.netBalance > 0 || c.inAmount > 0 || c.outAmount > 0);
+
     const totalLiab = netEquity + loans + cl;
     const totalAssets = fa + ca + stockVal;
     const diff = totalAssets - totalLiab;
@@ -297,6 +390,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
     return {
       cap, netEquity, netProfit, loans, cl, fa, ca, stockVal,
       capitalLedgers, loanLedgers, currentLiabLedgers, fixedAssetLedgers, currentAssetLedgers,
+      fixedAssetCategories,
       totalLiab, totalAssets, diff, isBalanced: Math.abs(diff) < 0.01, workingCapital
     };
   }, [reportData]);
@@ -1087,20 +1181,112 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                   <div className="space-y-4">
                     {/* Fixed Assets */}
                     <div className="space-y-1.5">
-                      <div className="flex justify-between items-center font-bold text-slate-900">
-                        <span className="text-sm font-extrabold">Fixed Assets</span>
-                        <span className="font-mono text-slate-900 font-bold">{fmt(bsData.fa)}</span>
-                      </div>
-                      {depth !== 'summary' && bsData.fixedAssetLedgers.map((l: any, i: number) => (
-                        <div
-                          key={i}
-                          onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
-                          className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
-                        >
-                          <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
-                          <span className="font-mono">{fmt(l.dr || l.cr)}</span>
+                      <div
+                        onClick={() => setIsFixedAssetsExpanded(prev => !prev)}
+                        className="flex justify-between items-center font-bold text-slate-900 cursor-pointer p-1.5 -mx-1.5 rounded-lg hover:bg-slate-100 transition group/fa"
+                        title="Click to toggle Asset Categories"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400 group-hover/fa:text-indigo-600 transition">
+                            {isFixedAssetsExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          </span>
+                          <span className="text-sm font-extrabold group-hover/fa:text-indigo-600 transition">Fixed Assets</span>
+                          {bsData.fixedAssetCategories && bsData.fixedAssetCategories.length > 0 && (
+                            <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                              {bsData.fixedAssetCategories.length} Categories
+                            </span>
+                          )}
                         </div>
-                      ))}
+                        <div className="flex items-center gap-2">
+                          {onDrillGroup && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDrillGroup('Fixed Assets', fromDate, toDate);
+                              }}
+                              className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded transition cursor-pointer"
+                              title="View Category Schedule & Breakdown"
+                            >
+                              Schedule ↗
+                            </button>
+                          )}
+                          <span className="font-mono text-slate-900 font-bold">{fmt(bsData.fa)}</span>
+                        </div>
+                      </div>
+
+                      {/* Display Asset Categories (No individual asset names) */}
+                      {isFixedAssetsExpanded && depth !== 'summary' && (
+                        <div className="pl-3 sm:pl-4 space-y-1.5 text-xs text-slate-600 border-l-2 border-slate-200 ml-2">
+                          {bsData.fixedAssetCategories && bsData.fixedAssetCategories.length > 0 ? (
+                            bsData.fixedAssetCategories.map((cat: any) => {
+                              const isCatExpanded = !!expandedCategoryIds[cat.id || cat.name];
+                              return (
+                                <div key={cat.id || cat.name} className="space-y-1">
+                                  <div
+                                    onClick={() => {
+                                      setExpandedCategoryIds(prev => ({
+                                        ...prev,
+                                        [cat.id || cat.name]: !prev[cat.id || cat.name]
+                                      }));
+                                    }}
+                                    className="flex justify-between items-center text-xs text-slate-700 hover:text-indigo-600 cursor-pointer transition p-1.5 rounded-lg hover:bg-indigo-50/60 border border-transparent hover:border-indigo-100 group/cat"
+                                    title="Click to view In (Addition), Out (Disposal) & Balance"
+                                  >
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-slate-400 group-hover/cat:text-indigo-600 transition">
+                                        {isCatExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                      </span>
+                                      <span className="font-semibold underline decoration-dotted decoration-slate-300 group-hover/cat:decoration-indigo-400 underline-offset-2">
+                                        {cat.name}
+                                      </span>
+                                      {cat.code && (
+                                        <span className="text-[10px] font-mono text-slate-400">({cat.code})</span>
+                                      )}
+                                    </div>
+                                    <span className="font-mono font-bold text-slate-900">{fmt(cat.netBalance || (cat.inAmount - cat.outAmount - cat.depreciation))}</span>
+                                  </div>
+
+                                  {/* Category In/Out/Depreciation/Balance Breakdown */}
+                                  {isCatExpanded && (
+                                    <div className="pl-5 pr-3 py-2 my-1 bg-slate-50/90 rounded-lg border border-slate-200 text-[11px] space-y-1.5 shadow-2xs">
+                                      <div className="flex justify-between items-center text-slate-600">
+                                        <span className="flex items-center gap-1.5 text-emerald-700 font-medium">
+                                          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+                                          In (Addition / Capitalized)
+                                        </span>
+                                        <span className="font-mono text-emerald-700 font-semibold">{curSymbol} {fmt(cat.inAmount)}</span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-slate-600">
+                                        <span className="flex items-center gap-1.5 text-rose-700 font-medium">
+                                          <span className="inline-block w-2 h-2 rounded-full bg-rose-500"></span>
+                                          Out (Disposal / Deductions)
+                                        </span>
+                                        <span className="font-mono text-rose-700 font-semibold">{curSymbol} {fmt(cat.outAmount)}</span>
+                                      </div>
+                                      {cat.depreciation > 0 && (
+                                        <div className="flex justify-between items-center text-slate-600">
+                                          <span className="flex items-center gap-1.5 text-amber-700 font-medium">
+                                            <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+                                            Accumulated Depreciation
+                                          </span>
+                                          <span className="font-mono text-amber-700 font-semibold">{curSymbol} {fmt(cat.depreciation)}</span>
+                                        </div>
+                                      )}
+                                      <div className="pt-1.5 mt-1 border-t border-slate-200 flex justify-between items-center font-bold text-slate-900">
+                                        <span className="text-slate-800">Category Net Balance</span>
+                                        <span className="font-mono text-xs text-indigo-700 font-extrabold">{curSymbol} {fmt(cat.netBalance || (cat.inAmount - cat.outAmount - cat.depreciation))}</span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="text-xs text-slate-400 italic py-1">No fixed asset categories recorded</div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Current Assets */}

@@ -65,7 +65,8 @@ export const Disposal: React.FC<DisposalProps> = ({ config, ledgers, onDataRefre
       let ledgersModified = false;
       
       const ensureLedger = (name: string, group: string, defaultType: 'Dr' | 'Cr') => {
-        if (!allLedgers.find(l => l['Ledger Name'].toLowerCase() === name.toLowerCase())) {
+        const existing = allLedgers.find(l => l['Ledger Name'].toLowerCase() === name.toLowerCase());
+        if (!existing) {
           allLedgers.push({
             'Ledger Name': name,
             Group: group,
@@ -73,6 +74,9 @@ export const Disposal: React.FC<DisposalProps> = ({ config, ledgers, onDataRefre
             'Balance Type (Dr/Cr)': defaultType,
             'Current Balance': 0
           });
+          ledgersModified = true;
+        } else if (existing.Group !== group) {
+          existing.Group = group;
           ledgersModified = true;
         }
       };
