@@ -16,6 +16,7 @@ interface SearchableLedgerSelectProps {
   placeholder?: string;
   autoFocus?: boolean;
   onCreateNew?: () => void;
+  onAddNew?: () => void;
   onEditLedger?: (ledgerName: string) => void;
   onShowInfo?: (ledgerName: string) => void;
   onSaveVoucher?: () => void;
@@ -25,6 +26,8 @@ interface SearchableLedgerSelectProps {
   disabled?: boolean;
   filterGroup?: string;
   filterGroups?: string[];
+  prioritizeGroups?: string[];
+  restrictToGroups?: string[];
 }
 
 export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
@@ -39,7 +42,8 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
   ledgers,
   placeholder = 'Type or press ↓ to select ledger...',
   autoFocus = false,
-  onCreateNew,
+  onCreateNew: onCreateNewProp,
+  onAddNew,
   onEditLedger,
   onShowInfo,
   onSaveVoucher,
@@ -48,8 +52,11 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
   className = '',
   disabled = false,
   filterGroup,
-  filterGroups
+  filterGroups,
+  prioritizeGroups,
+  restrictToGroups
 }) => {
+  const onCreateNew = onCreateNewProp || onAddNew;
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(value || '');
   const [userQuery, setUserQuery] = useState('');
@@ -112,26 +119,53 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
     }
   }, [value, isOpen]);
 
-  // Filter ledgers based on filterGroups and active user query
+  // Filter ledgers based on filterGroups/restrictToGroups and active user query
   const filteredLedgers = React.useMemo(() => {
     let list = ledgers || [];
-    if (effectiveFilterGroups && effectiveFilterGroups.length > 0) {
+    if (restrictToGroups && restrictToGroups.length > 0) {
+      list = list.filter(l => restrictToGroups.includes(l.Group));
+    } else if (effectiveFilterGroups && effectiveFilterGroups.length > 0) {
       list = list.filter(l => effectiveFilterGroups.includes(l.Group));
     }
+
     const q = userQuery.trim().toLowerCase();
-    if (!q) {
-      // Return full list when user hasn't typed a query yet
-      return list;
+    if (q) {
+      list = list.filter(l => {
+        const name = (l['Ledger Name'] || '').toLowerCase();
+        const grp = (l.Group || '').toLowerCase();
+        const tpn = (l['TPN No'] || '').toLowerCase();
+        const gst = (l['GST No'] || '').toLowerCase();
+        const phone = (l['Contact No'] || '').toLowerCase();
+        return name.includes(q) || grp.includes(q) || tpn.includes(q) || gst.includes(q) || phone.includes(q);
+      });
     }
-    return list.filter(l => {
-      const name = (l['Ledger Name'] || '').toLowerCase();
-      const grp = (l.Group || '').toLowerCase();
-      const tpn = (l['TPN No'] || '').toLowerCase();
-      const gst = (l['GST No'] || '').toLowerCase();
-      const phone = (l['Contact No'] || '').toLowerCase();
-      return name.includes(q) || grp.includes(q) || tpn.includes(q) || gst.includes(q) || phone.includes(q);
-    });
-  }, [ledgers, effectiveFilterGroups, userQuery]);
+
+    if (prioritizeGroups && prioritizeGroups.length > 0) {
+      const groupBuckets: { [grp: string]: Ledger[] } = {};
+      const otherItems: Ledger[] = [];
+      prioritizeGroups.forEach(g => { groupBuckets[g] = []; });
+
+      for (const l of list) {
+        if (prioritizeGroups.includes(l.Group)) {
+          if (!groupBuckets[l.Group]) groupBuckets[l.Group] = [];
+          groupBuckets[l.Group].push(l);
+        } else {
+          otherItems.push(l);
+        }
+      }
+
+      const prioritizedList: Ledger[] = [];
+      prioritizeGroups.forEach(g => {
+        if (groupBuckets[g]) {
+          prioritizedList.push(...groupBuckets[g]);
+        }
+      });
+
+      return [...prioritizedList, ...otherItems];
+    }
+
+    return list;
+  }, [ledgers, restrictToGroups, effectiveFilterGroups, userQuery, prioritizeGroups]);
 
   // Total items in dropdown = (Create New option if present) + filteredLedgers.length
   const totalItems = (hasCreateOption ? 1 : 0) + filteredLedgers.length;
@@ -154,6 +188,22 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
   }, [highlightedIndex, isOpen]);
 
   // Close dropdown on click outside
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleCaptureEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        setIsOpen(false);
+        setUserQuery('');
+        setSearchTerm(value || '');
+      }
+    };
+    window.addEventListener('keydown', handleCaptureEscape, true);
+    return () => window.removeEventListener('keydown', handleCaptureEscape, true);
+  }, [isOpen, value]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (

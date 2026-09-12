@@ -27,10 +27,10 @@ interface DashboardProps {
   items: Item[];
   ledgers?: Ledger[];
   onNavigate: (view: string) => void;
-  onDrillStock: (code: string) => void;
-  onDrillLedger?: (name: string) => void;
-  onDrillGroup?: (grp: string) => void;
-  onDrillVoucher?: (refNo: string) => void;
+  onDrillStock: (code: string, fromDate?: string, toDate?: string) => void;
+  onDrillLedger?: (name: string, fromDate?: string, toDate?: string) => void;
+  onDrillGroup?: (grp: string, fromDate?: string, toDate?: string) => void;
+  onDrillVoucher?: (refNo: string, fromDate?: string, toDate?: string) => void;
   onDrillReport?: (target: ReportTarget) => void;
   isActive?: boolean;
 }
@@ -259,7 +259,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div 
           onClick={() => {
             if (dashData.topSellingItem.code) {
-              onDrillStock(dashData.topSellingItem.code);
+              onDrillStock(dashData.topSellingItem.code, fromDate, toDate);
             } else {
               onDrillReport?.({ category: 'inv', invSubTab: 'top', fromDate, toDate });
             }
@@ -338,7 +338,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div 
           onClick={() => {
             if (onDrillLedger) {
-              onDrillLedger(cashLedger);
+              onDrillLedger(cashLedger, fromDate, toDate);
             } else {
               onDrillReport?.({ category: 'fin', finSubTab: 'LED', ledgerName: cashLedger, fromDate, toDate });
             }
@@ -364,7 +364,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div 
           onClick={() => {
             if (onDrillLedger) {
-              onDrillLedger(bankLedger);
+              onDrillLedger(bankLedger, fromDate, toDate);
             } else {
               onDrillReport?.({ category: 'fin', finSubTab: 'LED', ledgerName: bankLedger, fromDate, toDate });
             }
@@ -476,7 +476,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 dashData.lowStockItems.map(item => (
                   <tr
                     key={item['Item Code']}
-                    onClick={() => onDrillStock(item['Item Code'])}
+                    onClick={() => onDrillStock(item['Item Code'], fromDate, toDate)}
                     className="bg-white hover:bg-indigo-50/50 cursor-pointer transition-colors group"
                     title="Click to drill down into Item Stock Ledger"
                   >

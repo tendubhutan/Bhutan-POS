@@ -1117,7 +1117,7 @@ function buildGenericVoucherPdf(
   
   finalY = summaryBlock(doc, finalY, currency, margin, pageWidth);
 
-  const remarksFields = [voucher.narration, voucher.remarks, voucher.paymentTerms, voucher.deliveryTerms, voucher.terms].filter(Boolean);
+  const remarksFields = [voucher.narration, voucher.remarks, voucher.paymentTerms, voucher.deliveryTerms, voucher.terms, voucher.termsAndConditions].filter(Boolean);
   if (remarksFields.length > 0) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
@@ -1268,6 +1268,88 @@ export function generateDeliveryNotePDF(note: DeliveryNote | any, config: Config
   const items = Array.isArray(note.items) ? note.items : [];
   return buildGenericVoucherPdf(note, config, 'DELIVERY CHALLAN', meta, 'DELIVER TO:', entName, entDetails, items, cols, (doc, finalY) => {
     return finalY + 5;
+  });
+}
+
+export function generateSalesOrderPDF(order: any, config: Config): jsPDF {
+  const meta = [
+    { label: 'Order No', value: order.orderNo || '' },
+    { label: 'Date', value: formatDateDMY(order.date) },
+    { label: 'Expected Delivery', value: order.deliveryDate ? formatDateDMY(order.deliveryDate) : '' }
+  ];
+  const cust = order.customer || {};
+  const entName = typeof cust === 'object' ? (cust.name || cust.ledger || 'Customer') : (cust || 'Customer');
+  const entDetails = [
+    (typeof cust === 'object' && cust.address) ? `Address: ${cust.address}` : '',
+    (typeof cust === 'object' && (cust.gstNo || cust.tpnNo)) ? `GSTIN: ${cust.gstNo || cust.tpnNo}` : '',
+    (typeof cust === 'object' && cust.phone) ? `Contact: ${cust.phone}` : ''
+  ];
+  
+  const cols = [
+    { header: 'Sl', align: 'center', width: 10, getValue: (_:any, i:number) => i + 1 },
+    { header: 'Item Description', align: 'left', getValue: (it:any) => it.itemName || it['Item Name'] || it.itemDescription || it['Item Description'] || it.description || '' },
+    { header: 'Order Qty', align: 'center', width: 22, getValue: (it:any) => `${it.qty ?? it.Qty ?? ''} ${it.unit || it.Unit || ''}`.trim() },
+    { header: 'Rate', align: 'right', width: 22, getValue: (it:any) => Number(it.rate ?? it.Rate ?? 0).toFixed(2) },
+    { header: 'Amount', align: 'right', width: 28, getValue: (it:any) => Number(it.amount ?? it['Line Total'] ?? it.lineTotal ?? it.taxableValue ?? 0).toFixed(2) }
+  ];
+
+  const items = Array.isArray(order.items) ? order.items : [];
+  return buildGenericVoucherPdf(order, config, 'SALES ORDER', meta, 'ORDER FOR:', entName, entDetails, items, cols, (doc, finalY, curr, margin, pw) => {
+    return drawDetailedBillSummaryBox(doc, order, finalY, curr, margin, pw, 'Total Order Value:');
+  });
+}
+
+export function generatePurchaseOrderPDF(order: any, config: Config): jsPDF {
+  const meta = [
+    { label: 'PO No', value: order.poNo || '' },
+    { label: 'Date', value: formatDateDMY(order.date) },
+    { label: 'Expected Delivery', value: order.expectedDate ? formatDateDMY(order.expectedDate) : '' }
+  ];
+  const supp = order.supplier || {};
+  const entName = typeof supp === 'object' ? (supp.name || supp.ledger || 'Supplier') : (supp || 'Supplier');
+  const entDetails = [
+    (typeof supp === 'object' && supp.address) ? `Address: ${supp.address}` : '',
+    (typeof supp === 'object' && (supp.gstNo || supp.tpnNo)) ? `GSTIN: ${supp.gstNo || supp.tpnNo}` : '',
+    (typeof supp === 'object' && supp.phone) ? `Contact: ${supp.phone}` : ''
+  ];
+  
+  const cols = [
+    { header: 'Sl', align: 'center', width: 10, getValue: (_:any, i:number) => i + 1 },
+    { header: 'Item Description', align: 'left', getValue: (it:any) => it.itemName || it['Item Name'] || it.itemDescription || it['Item Description'] || it.description || '' },
+    { header: 'Order Qty', align: 'center', width: 22, getValue: (it:any) => `${it.qty ?? it.Qty ?? ''} ${it.unit || it.Unit || ''}`.trim() },
+    { header: 'Rate', align: 'right', width: 22, getValue: (it:any) => Number(it.rate ?? it.Rate ?? 0).toFixed(2) },
+    { header: 'Amount', align: 'right', width: 28, getValue: (it:any) => Number(it.amount ?? it['Line Total'] ?? it.lineTotal ?? it.taxableValue ?? 0).toFixed(2) }
+  ];
+
+  const items = Array.isArray(order.items) ? order.items : [];
+  return buildGenericVoucherPdf(order, config, 'PURCHASE ORDER', meta, 'ORDER TO:', entName, entDetails, items, cols, (doc, finalY, curr, margin, pw) => {
+    return drawDetailedBillSummaryBox(doc, order, finalY, curr, margin, pw, 'Total PO Value:');
+  });
+}
+
+export function generateReceiptNotePDF(note: any, config: Config): jsPDF {
+  const meta = [
+    { label: 'GRN No', value: note.noteNo || '' },
+    { label: 'Date', value: formatDateDMY(note.date) },
+    { label: 'Supplier Challan / Ref', value: note.supplierChallanNo || '' }
+  ];
+  const supp = note.supplier || {};
+  const entName = typeof supp === 'object' ? (supp.name || supp.ledger || 'Supplier') : (supp || 'Supplier');
+  const entDetails = [
+    (typeof supp === 'object' && supp.address) ? `Address: ${supp.address}` : '',
+    (typeof supp === 'object' && (supp.gstNo || supp.tpnNo)) ? `GSTIN: ${supp.gstNo || supp.tpnNo}` : '',
+    (typeof supp === 'object' && supp.phone) ? `Contact: ${supp.phone}` : ''
+  ];
+  
+  const cols = [
+    { header: 'Sl', align: 'center', width: 12, getValue: (_:any, i:number) => i + 1 },
+    { header: 'Item Description', align: 'left', getValue: (it:any) => it.itemName || it['Item Name'] || it.itemDescription || it['Item Description'] || it.description || '' },
+    { header: 'Quantity Received', align: 'center', width: 35, getValue: (it:any) => `${it.qty ?? it.Qty ?? ''} ${it.unit || it.Unit || ''}`.trim() }
+  ];
+
+  const items = Array.isArray(note.items) ? note.items : [];
+  return buildGenericVoucherPdf(note, config, 'GOODS RECEIPT NOTE (GRN)', meta, 'RECEIVED FROM:', entName, entDetails, items, cols, (doc, finalY, curr, margin, pw) => {
+    return drawDetailedBillSummaryBox(doc, note, finalY, curr, margin, pw, 'Valuation:');
   });
 }
 

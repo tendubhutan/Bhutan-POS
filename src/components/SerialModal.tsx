@@ -37,11 +37,12 @@ export const SerialModal: React.FC<SerialModalProps> = ({
         if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
+          e.stopImmediatePropagation?.();
           onClose();
         }
       };
-      window.addEventListener('keydown', handleGlobalKey);
-      return () => window.removeEventListener('keydown', handleGlobalKey);
+      window.addEventListener('keydown', handleGlobalKey, true);
+      return () => window.removeEventListener('keydown', handleGlobalKey, true);
     }
   }, [isOpen, requiredQty, initialSerials, onClose]);
 

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { FixedAsset } from '../../types/assetManagement';
 import { Config } from '../../types';
-import { getAssets, saveAssets } from '../../services/assetManagementService';
-import { Search, Plus, FileText, Eye, Upload } from 'lucide-react';
+import { getAssets, saveAssets, deleteAsset } from '../../services/assetManagementService';
+import { Search, Plus, FileText, Eye, Edit2, Trash2, Upload } from 'lucide-react';
 
 interface AssetRegisterProps {
   config: Config;
@@ -166,13 +166,28 @@ export const AssetRegister: React.FC<AssetRegisterProps> = ({ config, onEditAsse
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => onEditAsset(asset.id)}
-                      className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
-                      title="View/Edit Details"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => onEditAsset(asset.id)}
+                        className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 transition cursor-pointer flex items-center gap-1 text-xs font-medium"
+                        title="Edit Asset Details"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Are you sure you want to delete asset "${asset.name}" (${asset.assetId})?`)) {
+                            deleteAsset(asset.id);
+                            setAssets(getAssets());
+                          }
+                        }}
+                        className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                        title="Delete Asset"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

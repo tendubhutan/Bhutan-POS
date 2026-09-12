@@ -3,16 +3,17 @@ import { GlowButton } from '../common/GlowButton';
 import { focusNextOutsideGrid } from '../../utils/domUtils';
 import { Config, Item, Ledger, Quotation, QuotationItem } from '../../types';
 import {
-  saveQuotation, getQuotations, deleteQuotation, updateQuotationStatus, peekNextVoucherNo
+  saveQuotation, getQuotations, deleteQuotation, updateQuotationStatus, peekNextVoucherNo, getUnits
 } from '../../services/storageService';
 import { SearchableLedgerSelect } from '../SearchableLedgerSelect';
 import { SearchableItemSelect } from '../SearchableItemSelect';
+import { ItemNoteButton, ItemNoteInput } from './ItemNoteField';
 import { handleGridKeyDown } from '../../utils/gridKeyboardNav';
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './VoucherSuccessActionModal';
 import { AcceptModal } from '../AcceptModal';
 import { QuitConfirmModal } from '../QuitConfirmModal';
 import {
-  FileCheck2, Plus, Trash2, CheckCircle2, AlertCircle, Package, Printer, Calendar, Send, ArrowRight, Sparkles, Share2, Download, ArrowLeft, ChevronUp, ChevronDown } from 'lucide-react';
+  FileCheck2, Plus, Trash2, CheckCircle2, AlertCircle, Package, Printer, Calendar, Send, ArrowRight, Sparkles, Share2, Download, ArrowLeft, ChevronUp, ChevronDown, X, FileText } from 'lucide-react';
 import { generateQuotationPDF, shareOrDownloadPDF } from '../../utils/pdfExport';
 
 interface QuotationEntryProps {
@@ -27,6 +28,7 @@ interface QuotationEntryProps {
   onNavigateBack?: () => void;
   activeTab?: 'create' | 'register';
   onTabChange?: (tab: 'create' | 'register') => void;
+  voucherTypeSelector?: React.ReactNode;
 }
 
 export const QuotationEntry: React.FC<QuotationEntryProps> = ({
@@ -40,11 +42,13 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
   onPrintQuotation,
   onNavigateBack,
   activeTab: propActiveTab,
-  onTabChange
+  onTabChange,
+  voucherTypeSelector
 }) => {
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
   const [editingQuotationNo, setEditingQuotationNo] = useState<string | null>(null);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
+  const [activeNoteIdx, setActiveNoteIdx] = useState<number | null>(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [quotationNo, setQuotationNo] = useState(() => (isAutoMode ? peekNextVoucherNo('QUOTATION', config) : ''));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -57,12 +61,13 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
   const [contactNo, setContactNo] = useState('');
   const [address, setAddress] = useState('');
   const [gstin, setGstin] = useState('');
+  const [showCustomerDetailsModal, setShowCustomerDetailsModal] = useState(false);
   const [termsAndConditions, setTermsAndConditions] = useState(
     '1. Prices are valid for 15 days.\n2. Goods once sold will not be taken back.\n3. Payment terms: 100% advance or on delivery.'
   );
+  const [showTermsModal, setShowTermsModal] = useState(false);
   const [remarks, setRemarks] = useState('');
 
-  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const [internalTab, setInternalTab] = useState<'create' | 'register'>('create');
   const activeTab = propActiveTab ?? internalTab;
   const setActiveTab = (tab: 'create' | 'register') => {
@@ -77,6 +82,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
 
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const currencySymbol = config?.CurrencySymbol || 'Nu.';
+  const units = getUnits();
 
   const getGridNavOpts = (idx: number, field: 'item' | 'qty' | 'rate' | 'disc' | 'gst') => ({
     prefix: 'qt',
@@ -90,14 +96,53 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
     onOpenNewItemModal: () => onOpenNewItemModal && onOpenNewItemModal(),
   });
 
-  
-  useEffect(() => {
-    if (quoteItems.length > 0 && customerName) {
-      setIsHeaderCollapsed(true);
-    } else if (quoteItems.length === 0) {
-      setIsHeaderCollapsed(false);
+  const focusFirstItemOrPicker = () => {
+    setTimeout(() => {
+      if (quoteItems.length > 0) {
+        const itemEl = document.getElementById('qt-item-0') || document.getElementById('qt-qty-0');
+        if (itemEl) {
+          itemEl.focus();
+          return;
+        }
+      }
+      const picker = document.getElementById('qt-fast-item-picker');
+      if (picker) {
+        picker.focus();
+      }
+    }, 60);
+  };
+
+  const handleCustomerSelect = (name: string) => {
+    setCustomerName(name);
+    if (name) {
+      const matched = ledgers.find(l => l['Ledger Name'] === name);
+      if (matched) {
+        if (matched['Contact No']) setContactNo(matched['Contact No']);
+        if (matched['GST No'] || matched['TPN No']) setGstin(matched['GST No'] || matched['TPN No'] || '');
+        if (matched.Address) setAddress(matched.Address);
+      }
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+      setShowCustomerDetailsModal(true);
     }
-  }, [quoteItems.length]);
+  };
+
+  useEffect(() => {
+    if (showCustomerDetailsModal) {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+      const timer = setTimeout(() => {
+        const el = document.getElementById('qt-modal-valid-until') as HTMLInputElement | null;
+        if (el) {
+          el.focus();
+          el.select?.();
+        }
+      }, 60);
+      return () => clearTimeout(timer);
+    }
+  }, [showCustomerDetailsModal]);
 
   const loadSavedQuotations = () => {
     const list = getQuotations();
@@ -259,7 +304,21 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
 
   const handleRemoveItem = (index: number) => {
     if (quoteItems.length <= 1) {
-      showToast('Quotation must have at least one line item.', 'error');
+      setQuoteItems([{
+        itemCode: '',
+        itemName: '',
+        description: '',
+        unit: 'Pcs',
+        qty: 1,
+        rate: 0,
+        discount: 0,
+        taxableValue: 0,
+        gstPct: 0,
+        gstAmount: 0,
+        zeroRated: 'N',
+        lineTotal: 0
+      }]);
+      showToast('Item line cleared.', 'success');
       return;
     }
     setQuoteItems(prev => prev.filter((_, i) => i !== index));
@@ -490,6 +549,15 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
   };
 
   const handleQuoteBack = () => {
+    if (showCustomerDetailsModal) {
+      setShowCustomerDetailsModal(false);
+      focusFirstItemOrPicker();
+      return true;
+    }
+    if (showTermsModal) {
+      setShowTermsModal(false);
+      return true;
+    }
     if (showQuitModal) {
       setShowQuitModal(false);
       return true;
@@ -529,19 +597,9 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
     return false;
   };
 
-  // Global F2, Escape, and shortcut listener
+  // Global F2 and shortcut listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (e.defaultPrevented) return;
-        const handled = handleQuoteBack();
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation?.();
-          return;
-        }
-      }
       if ((e.key === 'F2' || e.code === 'F2') && activeTab === 'create') {
         e.preventDefault();
         const formEl = document.getElementById('quotation-form') as HTMLFormElement | null;
@@ -645,234 +703,240 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
 
       {activeTab === 'create' ? (
         <form id="quotation-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col space-y-2">
-          {/* Header Grid */}
-          <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden transition-all duration-300 mb-1">
-            {isHeaderCollapsed ? (
-              <div 
-                className="flex items-center justify-between p-3 cursor-pointer hover:bg-violet-100 transition-colors bg-gradient-to-r from-violet-50 to-purple-50 border-b-2 border-violet-200"
-                onClick={() => setIsHeaderCollapsed(false)}
-                title="Click to expand header details"
-              >
-                <div className="flex items-center gap-6 text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">Party</span>
-                    <span className="font-extrabold text-violet-900">{customerName || <span className="text-rose-500">Not Selected</span>}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">Date</span>
-                    <span className="font-bold text-slate-800">{date}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">Quotation No</span>
-                    <span className="font-bold text-slate-800">{quotationNo || '-'}</span>
-                  </div>
-                </div>
-                <button type="button" className="flex items-center gap-1.5 text-xs font-black text-violet-600 hover:text-violet-800 uppercase tracking-wide bg-white px-3 py-1 rounded-lg shadow-sm border border-violet-100">
-                  <span>Edit Header</span>
-                  <ChevronDown className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="p-2.5 space-y-2 relative">
-                <div className="absolute top-2 right-2">
-                  <button 
-                    type="button"
-                    onClick={() => setIsHeaderCollapsed(true)}
-                    className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-violet-600 uppercase tracking-wide cursor-pointer transition-colors"
-                    title="Collapse to save space"
-                  >
-                    <span>Collapse</span>
-                    <ChevronUp className="h-4 w-4" />
-                  </button>
-                </div>
+          {/* Top Header Row with Voucher Selector + Form Fields */}
+          <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-xs mb-1 shrink-0 flex items-center gap-2.5 flex-wrap text-xs">
+            {voucherTypeSelector}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Quotation No.</label>
-                <input
-                  id="qt-quote-no"
-                  type="text"
-                  value={quotationNo || ''}
-                  onChange={e => setQuotationNo(e.target.value)}
-                  disabled={isAutoMode}
-                  onFocus={e => e.target.select()}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('qt-date');
-                    }
-                  }}
-                  className={`w-full rounded-lg border px-2.5 py-1.5 font-mono font-bold text-slate-900 outline-none text-xs ${
-                    isAutoMode ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-300 focus:border-violet-600'
-                  }`}
-                />
-              </div>
+            {/* Quotation No */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <label htmlFor="qt-quote-no" className="font-bold text-slate-700 text-[11px] whitespace-nowrap">Quotation No.</label>
+              <input
+                id="qt-quote-no"
+                type="text"
+                value={quotationNo || ''}
+                onChange={e => setQuotationNo(e.target.value)}
+                disabled={isAutoMode}
+                onFocus={e => e.target.select()}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    focusElement('qt-date');
+                  }
+                }}
+                className={`h-7 w-28 rounded-md border px-2 font-mono font-bold text-slate-900 outline-none text-xs ${
+                  isAutoMode ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-300 focus:border-violet-600'
+                }`}
+              />
+            </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Quotation Date</label>
-                <input
-                  id="qt-date"
-                  type="date"
-                  value={date || ''}
-                  onChange={e => setDate(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('qt-valid-until');
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('qt-quote-no');
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-violet-600 text-xs"
-                />
-              </div>
+            {/* Quotation Date */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <label htmlFor="qt-date" className="font-bold text-slate-700 text-[11px] whitespace-nowrap">Quotation Date</label>
+              <input
+                id="qt-date"
+                type="date"
+                value={date || ''}
+                onChange={e => setDate(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    focusElement('qt-customer');
+                  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    focusElement('qt-quote-no');
+                  }
+                }}
+                className="h-7 rounded-md border border-slate-300 bg-white px-2 font-semibold text-slate-900 outline-none focus:border-violet-600 text-xs"
+              />
+            </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Valid Until</label>
-                <input
-                  id="qt-valid-until"
-                  type="date"
-                  value={validUntil || ''}
-                  onChange={e => setValidUntil(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('qt-customer');
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('qt-date');
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-violet-600 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Client / Customer</label>
+            {/* Client / Customer */}
+            <div className="flex items-center gap-1.5 flex-1 min-w-[260px]">
+              <label htmlFor="qt-customer" className="font-bold text-slate-700 text-[11px] whitespace-nowrap">Client / Customer</label>
+              <div className="flex-1 min-w-0 flex items-center gap-1">
                 <SearchableLedgerSelect
                   id="qt-customer"
                   ledgers={ledgers}
                   value={customerName}
-                  onChange={setCustomerName}
+                  onChange={handleCustomerSelect}
                   filterGroups={['Sundry Debtors', 'Cash-in-Hand', 'Bank Accounts']}
+                  prioritizeGroups={['Sundry Debtors']}
                   onCreateNew={() => onOpenQuickLedger('Sundry Debtors')}
                   placeholder="Select Client / Debtor"
-                  onEnterNext={() => focusElement('qt-phone')}
-                  onArrowRight={() => focusElement('qt-phone')}
-                  onArrowDown={() => focusElement('qt-phone')}
-                  onArrowLeft={() => focusElement('qt-valid-until')}
-                  onArrowUp={() => focusElement('qt-valid-until')}
-                />
-              </div>
-            </div>
-
-            {/* Client Extra Details */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1.5 border-t border-slate-100">
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Contact Phone</label>
-                <input
-                  id="qt-phone"
-                  type="text"
-                  placeholder="e.g. +975 17123456"
-                  value={contactNo || ''}
-                  onChange={e => setContactNo(e.target.value)}
-                  onFocus={e => e.target.select()}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('qt-gstin');
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('qt-customer');
+                  onEnterNext={() => {
+                    if (customerName) {
+                      if (document.activeElement instanceof HTMLElement) {
+                        document.activeElement.blur();
+                      }
+                      setShowCustomerDetailsModal(true);
+                    } else {
+                      focusFirstItemOrPicker();
                     }
                   }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-violet-600 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">GSTIN / TPN Number</label>
-                <input
-                  id="qt-gstin"
-                  type="text"
-                  placeholder="Tax ID / TPN"
-                  value={gstin || ''}
-                  onChange={e => setGstin(e.target.value)}
-                  onFocus={e => e.target.select()}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('qt-address');
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('qt-phone');
+                  onArrowRight={() => {
+                    if (customerName) {
+                      if (document.activeElement instanceof HTMLElement) {
+                        document.activeElement.blur();
+                      }
+                      setShowCustomerDetailsModal(true);
+                    } else {
+                      focusFirstItemOrPicker();
                     }
                   }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-violet-600 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Client Address / Location</label>
-                <input
-                  id="qt-address"
-                  type="text"
-                  placeholder="Address..."
-                  value={address || ''}
-                  onChange={e => setAddress(e.target.value)}
-                  onFocus={e => e.target.select()}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('qt-item-0-item');
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('qt-gstin');
+                  onArrowDown={() => {
+                    if (customerName) {
+                      if (document.activeElement instanceof HTMLElement) {
+                        document.activeElement.blur();
+                      }
+                      setShowCustomerDetailsModal(true);
+                    } else {
+                      focusFirstItemOrPicker();
                     }
                   }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-violet-600 text-xs"
+                  onArrowLeft={() => focusElement('qt-date')}
+                  onArrowUp={() => focusElement('qt-date')}
                 />
-              </div>
-            </div>
-              </div>
-            )}
-          </div>
-
-          {/* Line Items Table with Top Auto-Add Selector */}
-          <div className="flex-1 min-h-[220px] flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs relative text-xs overflow-hidden">
-            {/* Top Quick Item Selection Bar */}
-            <div className="px-3 py-2 border-b border-slate-200 bg-violet-50/40 relative z-30">
-              {/* Fast Item Selector Top Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                <div className="sm:col-span-8">
-                  <SearchableItemSelect
-                    id="qt-fast-item-picker-top"
-                    items={items}
-                    placeholder="Type or scan item name / barcode to auto-add to quotation..."
-                    currencySymbol={currencySymbol}
-                    onEndOfList={(id) => id && focusElement('qt-save-btn')}
-                        onSelect={selectedItem => {
-                      handleQuickAddItem(selectedItem);
-                    }}
-                    autoClearAfterSelect={true}
-                    onCreateNew={onOpenNewItemModal}
-                    dropdownPosition="down"
-                  />
-                </div>
-                <div className="sm:col-span-4 flex items-center justify-end gap-2">
+                {customerName && (
                   <button
                     type="button"
-                    onClick={handleAddItem}
-                    className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 font-bold text-white hover:bg-violet-700 transition shadow-xs cursor-pointer text-xs"
+                    onClick={() => setShowCustomerDetailsModal(true)}
+                    className="text-[10px] font-bold text-violet-600 hover:text-violet-800 flex items-center gap-1 cursor-pointer bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded border border-violet-200 transition shrink-0"
+                    title="Edit client details, address, tax ID & validity date"
                   >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>+ Add Blank Row</span>
+                    <span>📞 Details</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Floating Customer Details & Validity Modal (Blue fields moved here) */}
+          {showCustomerDetailsModal && (
+            <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                      <span>Client Details & Quotation Validity</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Client: <strong className="text-violet-700 font-bold">{customerName || 'Selected Client'}</strong>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCustomerDetailsModal(false);
+                      focusFirstItemOrPicker();
+                    }}
+                    className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Valid Until */}
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-xs">Valid Until Date</label>
+                    <input
+                      id="qt-modal-valid-until"
+                      type="date"
+                      value={validUntil || ''}
+                      onChange={e => setValidUntil(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          focusElement('qt-modal-phone');
+                        }
+                      }}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-900 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-500/20 text-xs"
+                    />
+                  </div>
+
+                  {/* Contact Phone & GSTIN/TPN */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1 text-xs">Contact Phone</label>
+                      <input
+                        id="qt-modal-phone"
+                        type="text"
+                        placeholder="e.g. +975 17123456"
+                        value={contactNo || ''}
+                        onChange={e => setContactNo(e.target.value)}
+                        onFocus={e => e.target.select()}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            focusElement('qt-modal-gstin');
+                          }
+                        }}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-900 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-500/20 text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1 text-xs">GSTIN / TPN Number</label>
+                      <input
+                        id="qt-modal-gstin"
+                        type="text"
+                        placeholder="Tax ID / TPN"
+                        value={gstin || ''}
+                        onChange={e => setGstin(e.target.value)}
+                        onFocus={e => e.target.select()}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            focusElement('qt-modal-address');
+                          }
+                        }}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-900 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-500/20 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Client Address / Location */}
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-xs">Client Address / Location</label>
+                    <textarea
+                      id="qt-modal-address"
+                      rows={2}
+                      placeholder="Client address / project location..."
+                      value={address || ''}
+                      onChange={e => setAddress(e.target.value)}
+                      onFocus={e => e.target.select()}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          setShowCustomerDetailsModal(false);
+                          focusFirstItemOrPicker();
+                        }
+                      }}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-900 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-500/20 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                  <span className="text-[11px] text-slate-400">Press Enter on Address to continue</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCustomerDetailsModal(false);
+                      focusFirstItemOrPicker();
+                    }}
+                    className="px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-xs shadow-md transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>Continue to Line Items</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
             </div>
+          )}
 
+          {/* Line Items Table (Red/Orange search bar removed) */}
+          <div className="flex-1 min-h-[220px] flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs relative text-xs overflow-hidden">
             <div className="flex-1 overflow-y-auto min-h-[160px]">
               <table className="w-full text-left border-collapse">
                 <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 font-extrabold text-[11px]">
@@ -884,80 +948,98 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                     <th className="py-2.5 px-2 w-16 text-center">Disc %</th>
                     <th className="py-2.5 px-2 w-16 text-center">GST %</th>
                     <th className="py-2.5 px-3 w-28 text-right">Line Total ({currencySymbol})</th>
-                    <th className="py-2.5 px-2 w-10 text-center"></th>
+                    <th className="py-2.5 px-2 w-24 text-center">
+                      <button
+                        type="button"
+                        onClick={handleAddItem}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-violet-600 text-white font-bold text-[10px] hover:bg-violet-700 shadow-2xs cursor-pointer"
+                        title="Add blank row"
+                      >
+                        <Plus className="h-3 w-3" />
+                        <span>Add Row</span>
+                      </button>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {quoteItems.map((line, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/60 transition">
-                      <td className="py-2 px-3 min-w-[240px]">
-                        <SearchableItemSelect
-                          variant="grid"
-                          id={`qt-item-${idx}`}
-                          valueCode={line.itemCode}
-                          items={items}
-                          placeholder="Select item..."
-                          currencySymbol={currencySymbol}
-                          priceType="sale"
-                          showPrice={true}
-                          onEndOfList={(id) => id && focusElement('qt-save-btn')}
-                          onSelect={selectedItem => {
-                            const qty = line.qty || 1;
-                            const rate = Number((selectedItem as any)['Sale Rate'] ?? (selectedItem as any)['Sales Rate'] ?? selectedItem.MRP ?? selectedItem['Purchase Rate'] ?? 0);
-                            const unit = selectedItem.Unit || 'Pcs';
-                            const gst = selectedItem['GST %'] || 0;
-                            const disc = Number(line.discount) || 0;
-                            const discAmt = (qty * rate * disc) / 100;
-                            const lineTotal = (qty * rate) - discAmt;
+                      <td className="py-0.5 px-2 min-w-[240px] align-middle">
+                        <div className="flex items-center gap-1">
+                          <div className="flex-1 min-w-0">
+                            <SearchableItemSelect
+                              variant="grid"
+                              id={`qt-item-${idx}`}
+                              disabled={showCustomerDetailsModal}
+                              valueCode={line.itemCode}
+                              items={items}
+                              placeholder="Select item..."
+                              currencySymbol={currencySymbol}
+                              priceType="sale"
+                              showPrice={true}
+                              onEndOfList={(id) => id && focusElement('qt-save-btn')}
+                              onSelect={selectedItem => {
+                                const qty = line.qty || 1;
+                                const rate = Number((selectedItem as any)['Sale Rate'] ?? (selectedItem as any)['Sales Rate'] ?? selectedItem.MRP ?? selectedItem['Purchase Rate'] ?? 0);
+                                const unit = selectedItem.Unit || 'Pcs';
+                                const gst = selectedItem['GST %'] || 0;
+                                const disc = Number(line.discount) || 0;
+                                const discAmt = (qty * rate * disc) / 100;
+                                const lineTotal = (qty * rate) - discAmt;
 
-                            const updated = [...quoteItems];
-                            updated[idx] = {
-                              ...updated[idx],
-                              itemCode: selectedItem['Item Code'],
-                              itemName: selectedItem['Item Name'],
-                              unit,
-                              rate,
-                              gstPct: gst,
-                              zeroRated: selectedItem['Zero Rated (Y/N)'] || 'N',
-                              lineTotal
-                            };
-                            setQuoteItems(updated);
-                            setTimeout(() => {
-                              const qtyEl = document.getElementById(`qt-qty-${idx}`) as HTMLInputElement | null;
-                              if (qtyEl) {
-                                qtyEl.focus();
-                                qtyEl.select();
-                              }
-                            }, 50);
-                          }}
-                          onEnterNext={() => {
-                            setTimeout(() => {
-                              const el = document.getElementById(`qt-qty-${idx}`);
-                              if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
-                            }, 10);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return;
-                            handleGridKeyDown(e, getGridNavOpts(idx, 'item'));
-                          }}
-                          onCreateNew={onOpenNewItemModal}
-                        />
+                                const updated = [...quoteItems];
+                                updated[idx] = {
+                                  ...updated[idx],
+                                  itemCode: selectedItem['Item Code'],
+                                  itemName: selectedItem['Item Name'],
+                                  unit,
+                                  rate,
+                                  gstPct: gst,
+                                  zeroRated: selectedItem['Zero Rated (Y/N)'] || 'N',
+                                  lineTotal
+                                };
+                                setQuoteItems(updated);
+                                setTimeout(() => {
+                                  const qtyEl = document.getElementById(`qt-qty-${idx}`) as HTMLInputElement | null;
+                                  if (qtyEl) {
+                                    qtyEl.focus();
+                                    qtyEl.select();
+                                  }
+                                }, 50);
+                              }}
+                              onEnterNext={() => {
+                                setTimeout(() => {
+                                  const el = document.getElementById(`qt-qty-${idx}`);
+                                  if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
+                                }, 10);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return;
+                                handleGridKeyDown(e, getGridNavOpts(idx, 'item'));
+                              }}
+                              onCreateNew={onOpenNewItemModal}
+                            />
+                          </div>
+                          {line.itemCode && (
+                            <ItemNoteButton
+                              hasNote={Boolean(line.description && line.description.trim())}
+                              onClick={() => setActiveNoteIdx(activeNoteIdx === idx ? null : idx)}
+                              accentColor="violet"
+                            />
+                          )}
+                        </div>
 
-                        {config.EnableItemDescription && line.itemCode && (
-                          <input
-                            type="text"
-                            placeholder="Item specification / note..."
+                        {(Boolean(line.description && line.description.trim()) || activeNoteIdx === idx) && (
+                          <ItemNoteInput
                             value={line.description || ''}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setQuoteItems(prev => prev.map((it, i) => i === idx ? { ...it, description: val } : it));
-                            }}
-                            className="w-full mt-1 px-2 py-0.5 rounded border border-slate-200 text-[11px] outline-none focus:border-violet-600 text-slate-700 bg-white"
+                            onChange={val => setQuoteItems(prev => prev.map((it, i) => i === idx ? { ...it, description: val } : it))}
+                            onClose={() => setActiveNoteIdx(null)}
+                            accentColor="violet"
                           />
                         )}
                       </td>
 
-                      <td className="py-2 px-2">
+                      <td className="py-0.5 px-1 align-middle text-center">
                         <input
                           id={`qt-qty-${idx}`}
                           type="number"
@@ -973,15 +1055,39 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                               e.target.value === '' ? '' : parseFloat(e.target.value)
                             )
                           }
-                          className="w-full text-center rounded-lg border border-slate-300 px-2 py-1 font-bold outline-none focus:border-violet-600 bg-white"
+                          className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-violet-600 outline-none bg-white"
                         />
                       </td>
 
-                      <td className="py-2 px-2 text-center font-bold text-slate-600">
-                        {line.unit || 'Pcs'}
+                      <td className="py-0.5 px-1 align-middle text-center">
+                        <select
+                          value={line.unit || 'Pcs'}
+                          onChange={e => {
+                            const val = e.target.value;
+                            const updated = [...quoteItems];
+                            updated[idx].unit = val;
+                            const item = items.find(i => (i['Item Code'] && i['Item Code'] === updated[idx].itemCode) || i['Item Name'] === updated[idx].itemName);
+                            if (item) {
+                              if (val === item.Unit) {
+                                updated[idx].rate = Number((item as any)['Sale Rate'] ?? (item as any)['Sales Rate'] ?? item.MRP ?? 0);
+                              } else if (item.multiUnits) {
+                                const mu = item.multiUnits.find(m => m.unit === val);
+                                if (mu && mu.saleRate) {
+                                  updated[idx].rate = mu.saleRate;
+                                }
+                              }
+                            }
+                            setQuoteItems(updated);
+                          }}
+                          className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-violet-600 outline-none bg-white"
+                        >
+                          {units.map(u => (
+                            <option key={u['Unit Name']} value={u['Unit Name']}>{u.Symbol || u['Unit Name']}</option>
+                          ))}
+                        </select>
                       </td>
 
-                      <td className="py-2 px-2">
+                      <td className="py-0.5 px-1 align-middle">
                         <input
                           id={`qt-rate-${idx}`}
                           type="number"
@@ -997,11 +1103,11 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                               e.target.value === '' ? '' : parseFloat(e.target.value)
                             )
                           }
-                          className="w-full text-right rounded-lg border border-slate-300 px-2 py-1 font-bold outline-none focus:border-violet-600 bg-white"
+                          className="w-full text-right h-6 rounded border border-slate-300 text-xs font-semibold focus:border-violet-600 outline-none bg-white"
                         />
                       </td>
 
-                      <td className="py-2 px-2">
+                      <td className="py-0.5 px-1 align-middle">
                         <input
                           id={`qt-disc-${idx}`}
                           type="number"
@@ -1018,11 +1124,11 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                               e.target.value === '' ? 0 : parseFloat(e.target.value)
                             )
                           }
-                          className="w-full text-center rounded-lg border border-slate-300 px-2 py-1 font-bold outline-none focus:border-violet-600 bg-white"
+                          className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-violet-600 outline-none bg-white"
                         />
                       </td>
 
-                      <td className="py-2 px-2">
+                      <td className="py-0.5 px-1 align-middle">
                         <input
                           id={`qt-gst-${idx}`}
                           type="number"
@@ -1039,15 +1145,15 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                               e.target.value === '' ? 0 : parseFloat(e.target.value)
                             )
                           }
-                          className="w-full text-center rounded-lg border border-slate-300 px-2 py-1 font-bold outline-none focus:border-violet-600 bg-white"
+                          className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-violet-600 outline-none bg-white"
                         />
                       </td>
 
-                      <td className="py-2 px-3 text-right font-black text-slate-900 font-mono">
+                      <td className="py-0.5 px-2 text-right font-black text-slate-900 font-mono align-middle">
                         {currencySymbol} {(Number(line.lineTotal) || 0).toFixed(2)}
                       </td>
 
-                      <td className="py-2 px-2 text-center">
+                      <td className="py-0.5 px-1 text-center align-middle">
                         <button
                           type="button"
                           onClick={() => handleRemoveItem(idx)}
@@ -1066,6 +1172,7 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
                       <SearchableItemSelect
                         variant="grid"
                         id="qt-fast-item-picker"
+                        disabled={showCustomerDetailsModal}
                         items={items}
                         placeholder="+ Type Item Name or Scan Barcode..."
                         currencySymbol={currencySymbol}
@@ -1091,97 +1198,137 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
             </div>
           </div>
 
-          {/* Terms and Summary Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs shrink-0">
-            <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="block font-bold text-slate-700 text-[11px]">Commercial Terms & Conditions</label>
-                {config.PredefinedTermsList && config.PredefinedTermsList.length > 0 && (
-                  <select
-                    onChange={e => {
-                      if (e.target.value) {
-                        setTermsAndConditions(e.target.value);
-                      }
-                    }}
-                    className="text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5 outline-none"
-                  >
-                    <option value="">Load Predefined Terms...</option>
-                    {config.PredefinedTermsList.map((t: any, idx: number) => {
-                      const textVal = typeof t === 'string' ? t : (t.terms || t.title || '');
-                      const labelVal = typeof t === 'string' ? (t.length > 30 ? t.slice(0, 30) + '...' : t) : (t.title || t.terms || `Preset ${idx + 1}`);
-                      return (
-                        <option key={idx} value={textVal}>
-                          {labelVal}
-                        </option>
-                      );
-                    })}
-                  </select>
-                )}
-              </div>
-              <textarea
-                id="qt-terms"
-                rows={2}
-                value={termsAndConditions || ''}
-                onChange={e => setTermsAndConditions(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                    e.preventDefault();
-                    focusElement('qt-save-btn');
-                  } else if (e.key === 'ArrowDown' && e.currentTarget.selectionEnd === e.currentTarget.value.length) {
-                    e.preventDefault();
-                    focusElement('qt-save-btn');
-                  } else if (e.key === 'ArrowUp' && e.currentTarget.selectionStart === 0) {
-                    e.preventDefault();
-                    if (quoteItems.length > 0) {
-                      focusElement(`qt-item-${quoteItems.length - 1}-gst`);
-                    }
-                  }
-                }}
-                placeholder="Payment terms, delivery timeline, warranty info..."
-                className="w-full rounded-lg border border-slate-300 p-2 text-xs text-slate-800 outline-none focus:border-violet-600"
-              />
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 shadow-xs flex flex-col justify-between">
-              <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 font-semibold">
-                <div>SubtotalAmount: <span className="font-bold text-slate-900">{currencySymbol} {grossSubtotal.toFixed(2)}</span></div>
-                {totalDiscount > 0 && <div className="text-rose-600">Disc: <span className="font-bold">-{currencySymbol} {totalDiscount.toFixed(2)}</span></div>}
-                <div>Taxable: <span className="font-bold text-slate-900">{currencySymbol} {taxableTotal.toFixed(2)}</span></div>
-                <div>GST: <span className="font-bold text-slate-900">+{currencySymbol} {totalGst.toFixed(2)}</span></div>
-              </div>
-              <div className="pt-1.5 mt-1 border-t border-slate-200 flex items-center justify-between font-black text-xs sm:text-sm text-violet-950">
-                <span>Grand Total:</span>
-                <span className="text-base text-violet-700 font-mono">
-                  {currencySymbol} {netQuotationTotal.toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Action Bar */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-1.5 shadow-xs flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
-            <div className="text-slate-500 font-semibold text-[11px]">
-              Estimate does not affect stock balances until converted. Press <kbd className="font-mono font-bold bg-white px-1 py-0.2 rounded border border-slate-200 text-slate-700">F2</kbd> to save.
-            </div>
-
+          {/* Footer Bar: Totals & Actions (B2B Sale style) */}
+          <div className="bg-white rounded-xl border border-slate-200 p-2 shadow-xs flex flex-wrap items-center justify-between gap-2 shrink-0">
+            {/* Left: Terms & Conditions button */}
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowTermsModal(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 transition text-xs font-semibold cursor-pointer"
+                title="Configure terms & conditions for printing or sharing"
+              >
+                <FileText className="h-3.5 w-3.5 text-violet-600" />
+                <span>Terms & Conditions</span>
+                {termsAndConditions && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
+              </button>
+            </div>
+
+            {/* Right: Summary Breakdown Pill & Save Action */}
+            <div className="flex items-center gap-3 flex-wrap ml-auto">
+              <div className="flex items-center gap-2 bg-slate-950 text-white px-3 py-1.5 rounded-lg text-xs font-mono">
+                <div>
+                  <span className="text-slate-400 text-[10px] mr-1">Subtotal:</span>
+                  <span className="font-bold">{currencySymbol} {grossSubtotal.toFixed(2)}</span>
+                </div>
+                {totalDiscount > 0 && (
+                  <>
+                    <span className="text-slate-800">|</span>
+                    <div>
+                      <span className="text-rose-400 text-[10px] mr-1">Disc:</span>
+                      <span className="font-bold text-rose-300">-{currencySymbol} {totalDiscount.toFixed(2)}</span>
+                    </div>
+                  </>
+                )}
+                <span className="text-slate-800">|</span>
+                <div>
+                  <span className="text-slate-400 text-[10px] mr-1">Taxable:</span>
+                  <span className="font-bold">{currencySymbol} {taxableTotal.toFixed(2)}</span>
+                </div>
+                <span className="text-slate-800">|</span>
+                <div>
+                  <span className="text-indigo-300 text-[10px] mr-1">GST:</span>
+                  <span className="font-bold text-indigo-200">+{currencySymbol} {totalGst.toFixed(2)}</span>
+                </div>
+                <span className="text-slate-800">|</span>
+                <div>
+                  <span className="text-slate-400 text-[10px] mr-1">Grand Total:</span>
+                  <span className="font-black text-emerald-400 text-sm">
+                    {currencySymbol} {netQuotationTotal.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
               <GlowButton
                 id="qt-save-btn"
                 type="submit"
                 variant="blue"
                 size="sm"
                 icon={CheckCircle2}
-                onKeyDown={e => {
-                  if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-                    e.preventDefault();
-                    focusElement('qt-terms');
-                  }
-                }}
               >
                 Save Quotation (F2)
               </GlowButton>
             </div>
           </div>
+
+        {/* Terms & Conditions Modal */}
+        {showTermsModal && (
+          <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg p-5 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-violet-600" />
+                  <span>Quotation Terms & Conditions</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {config.PredefinedTermsList && config.PredefinedTermsList.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Load Predefined Template</label>
+                    <select
+                      onChange={e => {
+                        if (e.target.value) {
+                          setTermsAndConditions(e.target.value);
+                        }
+                      }}
+                      className="w-full text-xs font-semibold text-violet-800 bg-violet-50/80 border border-violet-200 rounded-lg p-2 outline-none focus:ring-2 focus:ring-violet-500"
+                    >
+                      <option value="">Choose a terms template...</option>
+                      {config.PredefinedTermsList.map((t: any, idx: number) => {
+                        const textVal = typeof t === 'string' ? t : (t.terms || t.title || '');
+                        const labelVal = typeof t === 'string' ? (t.length > 35 ? t.slice(0, 35) + '...' : t) : (t.title || t.terms || `Preset ${idx + 1}`);
+                        return (
+                          <option key={idx} value={textVal}>
+                            {labelVal}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Terms Content (Included on Print & Share)</label>
+                  <textarea
+                    rows={5}
+                    value={termsAndConditions || ''}
+                    onChange={e => setTermsAndConditions(e.target.value)}
+                    placeholder="Payment terms, delivery timeline, warranty info..."
+                    className="w-full rounded-xl border border-slate-300 p-3 text-xs text-slate-800 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-500/20 font-medium"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(false)}
+                  className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-xs shadow-md transition cursor-pointer"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         </form>
       ) : (
         /* Saved Quotations Register */

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getInitialData, getVoucherTypes, saveLedger, getVoucherDetails, migrateExistingItemsOpeningAmount, saveConfig } from './services/storageService';
 import { initFirestoreSync, subscribeFirebaseStatus, seedInitialLocalDataToFirestore } from './services/firebaseSyncService';
 import { Config, Item, Unit, UnitGroup, ItemGroup, Ledger, LedgerGroup, HeldBill, BarcodeQueueItem, VoucherType } from './types';
@@ -137,7 +137,7 @@ export default function App() {
     });
   };
 
-  const navigateBack = (forceDirect: boolean = false) => {
+  const navigateBack = (forceDirect: boolean = true) => {
     if (forceDirect === true) {
       navigateBackDirect();
       return;
@@ -202,6 +202,30 @@ export default function App() {
   const [barcodeQueueInitial, setBarcodeQueueInitial] = useState<BarcodeQueueItem[]>([]);
   const [quickLedgerModalProps, setQuickLedgerModalProps] = useState<{isOpen: boolean, group: string, onSelect?: (name: string) => void}>({isOpen: false, group: 'Sundry Debtors'});
   const [quickItemModalProps, setQuickItemModalProps] = useState<{isOpen: boolean, onSelect?: (item: Item) => void}>({isOpen: false});
+
+  // State Ref to prevent stale closures in global key listeners
+  const appStateRef = useRef({
+    showTrashModal,
+    showBulkDeleteModal,
+    showGlobalLedgerSearch,
+    quickLedgerModalProps,
+    quickItemModalProps,
+    drillModal,
+    drillReturnContext,
+    currentView,
+    viewHistory
+  });
+  appStateRef.current = {
+    showTrashModal,
+    showBulkDeleteModal,
+    showGlobalLedgerSearch,
+    quickLedgerModalProps,
+    quickItemModalProps,
+    drillModal,
+    drillReturnContext,
+    currentView,
+    viewHistory
+  };
 
   const refreshData = () => {
     const data = getInitialData();
@@ -366,6 +390,37 @@ export default function App() {
         return;
       }
 
+      // Voucher Register Shortcut (Alt+V) - Options: Option B (Reports view) + Auto-filter by active voucher type
+      const isKeyV = e.code === 'KeyV' || rawKey === 'v' || rawKey === '√';
+      if (e.altKey && !e.ctrlKey && !e.metaKey && isKeyV) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        let vTypeFilter = 'ALL';
+        if (currentView === 'pos' || currentView === 'normalsale') {
+          vTypeFilter = 'Sales';
+        } else if (currentView === 'purchase') {
+          vTypeFilter = 'Purchase';
+        }
+
+        (window as any).__lastActiveVoucherType = undefined;
+        window.dispatchEvent(new CustomEvent('app:get-active-voucher-type'));
+        if ((window as any).__lastActiveVoucherType) {
+          vTypeFilter = (window as any).__lastActiveVoucherType;
+          delete (window as any).__lastActiveVoucherType;
+        }
+
+        const t: ReportTarget = {
+          category: 'reg',
+          regSubTab: 'vouchers',
+          voucherTypeFilter: vTypeFilter,
+          timestamp: Date.now()
+        };
+        setReportTarget(t);
+        navigateTo('reports', t);
+        return;
+      }
+
       // Report Shortcuts (Ctrl+D, Ctrl+G, Ctrl+L)
       if ((e.ctrlKey || e.metaKey) && !e.altKey) {
         if (rawKey === 'd' || e.code === 'KeyD') {
@@ -391,35 +446,37 @@ export default function App() {
       if (e.key === 'Escape') {
         if (e.defaultPrevented) return;
 
+        const state = appStateRef.current;
+
         // 1. Check if top-level global dialogs in App.tsx are open
-        if (showTrashModal) {
+        if (state.showTrashModal) {
           e.preventDefault();
           setShowTrashModal(false);
           return;
         }
-        if (showBulkDeleteModal) {
+        if (state.showBulkDeleteModal) {
           e.preventDefault();
           setShowBulkDeleteModal(false);
           return;
         }
-        if (showGlobalLedgerSearch) {
+        if (state.showGlobalLedgerSearch) {
           e.preventDefault();
           setShowGlobalLedgerSearch(false);
           return;
         }
-        if (quickLedgerModalProps.isOpen) {
+        if (state.quickLedgerModalProps.isOpen) {
           e.preventDefault();
           setQuickLedgerModalProps(p => ({ ...p, isOpen: false }));
           return;
         }
-        if (quickItemModalProps.isOpen) {
+        if (state.quickItemModalProps.isOpen) {
           e.preventDefault();
           setQuickItemModalProps(p => ({ ...p, isOpen: false }));
           return;
         }
 
         // 2. If drilldown modal is open, dispatch app:back so DrillModal steps back sequentially
-        if (drillModal?.type) {
+        if (state.drillModal?.type) {
           e.preventDefault();
           const backEvent = new CustomEvent('app:back', { cancelable: true });
           window.dispatchEvent(backEvent);
@@ -428,8 +485,12 @@ export default function App() {
 
         // 3. Dispatch app:back event so active screen/modal/sub-flow handles step-back first
         const backEvent = new CustomEvent('app:back', { cancelable: true });
-        const handled = window.dispatchEvent(backEvent);
-        if (!handled) return;
+        const notHandled = window.dispatchEvent(backEvent);
+        if (!notHandled) {
+          // Handled by child component (e.preventDefault was called)
+          e.preventDefault();
+          return;
+        }
 
         // 4. If typing inside an input/select/textarea and not handled by modal, blur it
         if (isInput) {
@@ -437,7 +498,7 @@ export default function App() {
         }
 
         // 5. Navigate back to previous screen in history stack or restore drilldown context
-        if (drillReturnContext || currentView !== 'dashboard' || viewHistory.length > 1) {
+        if (state.drillReturnContext || state.currentView !== 'dashboard' || state.viewHistory.length > 1) {
           e.preventDefault();
           navigateBackDirect();
           return;
@@ -511,7 +572,7 @@ export default function App() {
           onToggleMobileMenu={() => setIsMobileOpen(!isMobileOpen)}
           onRefresh={refreshData}
           canNavigateBack={currentView !== 'dashboard' || viewHistory.length > 1 || !!drillModal.type}
-          onNavigateBack={navigateBack}
+          onNavigateBack={() => navigateBack(false)}
           isPosMode={true}
           firebaseStatus={firebaseStatus}
           firebaseMessage={firebaseMessage}
@@ -524,10 +585,10 @@ export default function App() {
               items={items}
               ledgers={ledgers}
               onNavigate={view => navigateTo(view)}
-              onDrillStock={code => setDrillModal({ type: 'stock', targetId: code })}
-              onDrillLedger={name => setDrillModal({ type: 'ledger', targetId: name })}
-              onDrillGroup={grp => setDrillModal({ type: 'group', targetId: grp })}
-              onDrillVoucher={refNo => setDrillModal({ type: 'voucher', targetId: refNo })}
+              onDrillStock={(code, from, to) => setDrillModal({ type: 'stock', targetId: code, fromDate: from, toDate: to })}
+              onDrillLedger={(name, from, to) => setDrillModal({ type: 'ledger', targetId: name, fromDate: from, toDate: to })}
+              onDrillGroup={(grp, from, to) => setDrillModal({ type: 'group', targetId: grp, fromDate: from, toDate: to })}
+              onDrillVoucher={(refNo, from, to) => setDrillModal({ type: 'voucher', targetId: refNo, fromDate: from, toDate: to })}
               onDrillReport={target => {
                 const t = { ...target, timestamp: Date.now() };
                 setReportTarget(t);
@@ -645,10 +706,10 @@ export default function App() {
               ledgers={ledgers}
               initialReportTarget={reportTarget}
               onBack={navigateBack}
-              onDrillVoucher={refNo => setDrillModal({ type: 'voucher', targetId: refNo })}
-              onDrillLedger={name => setDrillModal({ type: 'ledger', targetId: name })}
-              onDrillStock={code => setDrillModal({ type: 'stock', targetId: code })}
-              onDrillItemProfit={code => setDrillModal({ type: 'item-profit', targetId: code })}
+              onDrillVoucher={(refNo, from, to) => setDrillModal({ type: 'voucher', targetId: refNo, fromDate: from, toDate: to })}
+              onDrillLedger={(name, from, to) => setDrillModal({ type: 'ledger', targetId: name, fromDate: from, toDate: to })}
+              onDrillStock={(code, from, to) => setDrillModal({ type: 'stock', targetId: code, fromDate: from, toDate: to })}
+              onDrillItemProfit={(code, from, to) => setDrillModal({ type: 'item-profit', targetId: code, fromDate: from, toDate: to })}
               onDrillGroup={(cat, from, to) => setDrillModal({ type: 'group', targetId: cat, fromDate: from, toDate: to })}
               isActive={currentView === 'reports' && !isAnyModalOpen}
             />
@@ -670,7 +731,11 @@ export default function App() {
           config={config}
           onClose={() => setQuickLedgerModalProps(prev => ({...prev, isOpen: false}))}
           onSave={(ledger) => {
-            saveLedger(ledger);
+            const res = saveLedger(ledger);
+            if (res && res.ok === false) {
+              alert(res.error || 'Failed to save ledger');
+              return;
+            }
             refreshData();
             setQuickLedgerModalProps(prev => ({...prev, isOpen: false}));
             if (quickLedgerModalProps.onSelect) {
@@ -713,13 +778,13 @@ export default function App() {
         fromDate={drillModal.fromDate}
         toDate={drillModal.toDate}
         onClose={() => {
-          setDrillModal({ type: null, targetId: null });
+          setDrillModal({ type: null, targetId: null, fromDate: undefined, toDate: undefined });
           setDrillInitialHistory([]);
         }}
         onRefresh={refreshData}
-        onDrillVoucher={refNo => setDrillModal({ type: 'voucher', targetId: refNo })}
-        onDrillLedger={name => setDrillModal({ type: 'ledger', targetId: name })}
-        onDrillStock={code => setDrillModal({ type: 'stock', targetId: code })}
+        onDrillVoucher={(refNo, from, to) => setDrillModal({ type: 'voucher', targetId: refNo, fromDate: from || drillModal.fromDate, toDate: to || drillModal.toDate })}
+        onDrillLedger={(name, from, to) => setDrillModal({ type: 'ledger', targetId: name, fromDate: from || drillModal.fromDate, toDate: to || drillModal.toDate })}
+        onDrillStock={(code, from, to) => setDrillModal({ type: 'stock', targetId: code, fromDate: from || drillModal.fromDate, toDate: to || drillModal.toDate })}
         onOpenVoucherInEntry={(refNo, vType, currentActive, currentHistory) => {
           if (currentActive) {
             setDrillReturnContext({

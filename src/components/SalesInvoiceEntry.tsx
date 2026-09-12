@@ -1,4 +1,5 @@
 import { QuitConfirmModal } from "./QuitConfirmModal";
+import { ItemNoteButton, ItemNoteInput } from "./vouchers/ItemNoteField";
 import { loadJson, STORAGE_KEYS, DEFAULT_UNITS } from '../services/storageService';
 import { GlowButton } from './common/GlowButton';
 import { AlertCircle } from 'lucide-react';
@@ -36,10 +37,13 @@ import {
   FileText,
   Receipt,
   Calendar,
+  ArrowDownToLine,
+  Truck,
 } from "lucide-react";
+import { FetchVoucherModal } from "./vouchers/FetchVoucherModal";
 import { SerialModal } from "./SerialModal";
 import { ThermalReceiptModal } from "./ThermalReceiptModal";
-import { SalesInvoice } from "../types";
+import { SalesInvoice, DeliveryNote, SalesOrder } from "../types";
 import { SearchableLedgerSelect } from "./SearchableLedgerSelect";
 import { AcceptModal } from "./AcceptModal";
 import { SearchableItemSelect } from "./SearchableItemSelect";
@@ -205,6 +209,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   const [editingBillNo, setEditingBillNo] = useState<string | null>(null);
   const [savedInvoice, setSavedInvoice] = useState<any>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [activeNoteIdx, setActiveNoteIdx] = useState<number | null>(null);
 
   // Ensure next auto invoice number is visible when not altering an existing invoice
   useEffect(() => {
@@ -217,6 +222,107 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   const [orderNo, setOrderNo] = useState("");
   const [orderDate, setOrderDate] = useState("");
   const [deliveryNoteNo, setDeliveryNoteNo] = useState("");
+  const [showFetchModal, setShowFetchModal] = useState(false);
+
+  const handleFetchVoucher = (data: {
+    type: 'sales_order' | 'delivery_note' | 'quotation' | 'purchase_order' | 'receipt_note';
+    voucher: any;
+  }) => {
+    if (data.type === 'delivery_note') {
+      const dn = data.voucher as DeliveryNote;
+      if (!dn) return;
+      const cust = typeof dn.customer === 'object' ? (dn.customer.ledger || dn.customer.name) : dn.customer;
+      if (cust) {
+        setCustomerName(cust);
+      }
+      if (dn.noteNo) {
+        setDeliveryNoteNo(dn.noteNo);
+      }
+      if (dn.orderRefNo) {
+        setOrderNo(dn.orderRefNo);
+      }
+      if (dn.items && dn.items.length > 0) {
+        const newCart: CartLine[] = dn.items.map((it: any) => {
+          const itemMatch = items.find(i => i['Item Code'] === it.itemCode || i['Item Name'] === it.itemName);
+          const qty = Number(it.qty) || 1;
+          const rate = Number(it.rate) || Number(itemMatch?.['Sale Rate']) || 0;
+          const gstPct = Number(itemMatch?.['GST %']) || 0;
+          const isZ = isCustomerGstExempted || String(itemMatch?.['Zero Rated (Y/N)']).toUpperCase() === 'Y';
+          const lineTotal = qty * rate;
+          const gstAmt = isZ ? 0 : round2((lineTotal * gstPct) / 100);
+
+          return {
+            itemCode: it.itemCode || itemMatch?.['Item Code'] || '',
+            itemName: it.itemName || itemMatch?.['Item Name'] || '',
+            description: it.description || it.lineDescription || itemMatch?.['Item Description'] || '',
+            lineDescription: it.lineDescription || '',
+            qty,
+            rate,
+            discount: 0,
+            discountType: 'flat' as const,
+            unit: it.unit || itemMatch?.Unit || 'Pcs',
+            gstPct,
+            gstAmt,
+            zeroRated: isZ ? ('Y' as const) : ('N' as const),
+            purchaseRate: Number(itemMatch?.['Purchase Rate'] || 0),
+            isSerialized: (itemMatch?.['Is Serialized'] || 'N') as 'Y' | 'N',
+            serials: []
+          };
+        });
+        setCart(newCart);
+      }
+      showToast(`✓ Fetched ${dn.items?.length || 0} items from Delivery Note ${dn.noteNo}`, 'success');
+    } else if (data.type === 'sales_order') {
+      const so = data.voucher as SalesOrder;
+      if (!so) return;
+      if (so.customer?.ledger || so.customer?.name) {
+        setCustomerName(so.customer.ledger || so.customer.name);
+      }
+      if (so.orderNo) {
+        setOrderNo(so.orderNo);
+      }
+      if (so.date) {
+        setOrderDate(so.date.split('T')[0]);
+      }
+      if (so.remarks && !narration) {
+        setNarration(so.remarks);
+      }
+      if (so.items && so.items.length > 0) {
+        const newCart: CartLine[] = so.items.map((it: any) => {
+          const itemMatch = items.find(i => i['Item Code'] === it.itemCode || i['Item Name'] === it.itemName);
+          const qty = Number(it.qty) || 1;
+          const rate = Number(it.rate) || Number(itemMatch?.['Sale Rate']) || 0;
+          const discount = Number(it.discount) || 0;
+          const discountType = (it.discountType || 'flat') as 'flat' | 'percent';
+          const isZ = isCustomerGstExempted || String(it.zeroRated).toUpperCase() === 'Y' || String(itemMatch?.['Zero Rated (Y/N)']).toUpperCase() === 'Y';
+          const gstPct = Number(it.gstPct) || Number(itemMatch?.['GST %']) || 0;
+          const lineDisc = discountType === 'percent' ? (qty * rate * discount / 100) : discount;
+          const taxable = Math.max(0, (qty * rate) - lineDisc);
+          const gstAmt = isZ ? 0 : round2((taxable * gstPct) / 100);
+
+          return {
+            itemCode: it.itemCode || itemMatch?.['Item Code'] || '',
+            itemName: it.itemName || itemMatch?.['Item Name'] || '',
+            description: it.description || it.lineDescription || itemMatch?.['Item Description'] || '',
+            lineDescription: it.lineDescription || '',
+            qty,
+            rate,
+            discount,
+            discountType,
+            unit: it.unit || itemMatch?.Unit || 'Pcs',
+            gstPct,
+            gstAmt,
+            zeroRated: isZ ? ('Y' as const) : ('N' as const),
+            purchaseRate: Number(itemMatch?.['Purchase Rate'] || 0),
+            isSerialized: (itemMatch?.['Is Serialized'] || 'N') as 'Y' | 'N',
+            serials: []
+          };
+        });
+        setCart(newCart);
+      }
+      showToast(`✓ Fetched ${so.items?.length || 0} items from Sales Order ${so.orderNo}`, 'success');
+    }
+  };
 
   const getDefaultTerms = (cfg: Config) => {
     if (
@@ -308,6 +414,9 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
           }
 
           setBillNo(inv.invoiceNo || inv.billNo || "");
+          setOrderNo(inv.orderNo || "");
+          setOrderDate(inv.orderDate || "");
+          setDeliveryNoteNo(inv.deliveryNoteNo || "");
           if (inv.date) {
             const d = new Date(inv.date);
             if (!isNaN(d.getTime())) setBillDate(d.toISOString().split("T")[0]);
@@ -338,6 +447,9 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         setCart([]);
         setCustomerName('');
         setBillNo('');
+        setOrderNo('');
+        setOrderDate('');
+        setDeliveryNoteNo('');
         setBillDiscount('');
         setNarration('');
         setAdditionalExpenses([]);
@@ -509,6 +621,10 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   };
 
   const handleSalesBack = (): boolean => {
+    if (showFetchModal) {
+      setShowFetchModal(false);
+      return true;
+    }
     if (showQuitModal) {
       setShowQuitModal(false);
       return true;
@@ -572,6 +688,14 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         if (customerName) {
           setCustomerDrawerOpen(true);
         }
+        return;
+      }
+
+      // Alt+F: Open Fetch Source Document Modal (Delivery Note / Sales Order)
+      if (e.altKey && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowFetchModal(true);
         return;
       }
       if (isCtrlA || isF2) {
@@ -945,6 +1069,15 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         onCancel={() => setShowAcceptModal(false)}
       />
 
+      <FetchVoucherModal
+        isOpen={showFetchModal}
+        onClose={() => setShowFetchModal(false)}
+        sourceType="sales_cycle"
+        initialParty={customerName}
+        config={config}
+        onSelectVoucher={handleFetchVoucher}
+      />
+
       {/* Active Altering Invoice Banner */}
       {editingBillNo && (
         <div className="shrink-0 flex items-center justify-between px-3.5 py-2 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs shadow-2xs">
@@ -977,31 +1110,21 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         </div>
       )}
 
-      {/* Header & Quick Summary Bar */}
-      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xs flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <div className="h-8 w-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold shadow-xs">
-            <ShoppingBag className="h-4.5 w-4.5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm sm:text-base font-extrabold text-slate-900 leading-tight">
-                Sales Invoice (B2B)
-              </h1>
-              <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px] font-bold">
-                Credit / Cash
-              </span>
+      {/* Header Bar */}
+      <div className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-7 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold shadow-xs">
+              <ShoppingBag className="h-4 w-4" />
             </div>
-            <p className="text-[11px] text-slate-500 font-medium">
-              Continuous Loop Entry (Press{" "}
-              <kbd className="bg-slate-100 border border-slate-300 rounded px-1 py-0.2 text-[10px] font-mono font-bold">
-                F2
-              </kbd>{" "}
-              to Save)
-            </p>
+            <h1 className="text-sm font-extrabold text-slate-900 leading-tight">
+              Sales Invoice (B2B)
+            </h1>
+            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px] font-bold">
+              Credit / Cash
+            </span>
           </div>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+
           {/* Bill/Invoice No & Date Indicator */}
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/90 rounded-xl px-2.5 py-1 text-xs shadow-2xs">
             <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
@@ -1038,7 +1161,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
               <button
                 type="button"
                 onClick={() => handlePricingModeChange('retail')}
-                className={`px-3 py-1 text-xs font-extrabold rounded-lg transition cursor-pointer ${
+                className={`px-2.5 py-0.5 text-xs font-extrabold rounded-lg transition cursor-pointer ${
                   pricingMode === 'retail'
                     ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
                     : 'text-slate-600 hover:text-slate-900'
@@ -1049,7 +1172,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
               <button
                 type="button"
                 onClick={() => handlePricingModeChange('wholesale')}
-                className={`px-3 py-1 text-xs font-extrabold rounded-lg transition cursor-pointer ${
+                className={`px-2.5 py-0.5 text-xs font-extrabold rounded-lg transition cursor-pointer ${
                   pricingMode === 'wholesale'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -1059,35 +1182,41 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
               </button>
             </div>
           )}
-          <div className="text-right">
-            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-              Invoice Total
+
+          {/* Fetch from Delivery Note / Sales Order Button */}
+          <button
+            type="button"
+            onClick={() => setShowFetchModal(true)}
+            className="h-7 px-2.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-extrabold text-[11px] flex items-center gap-1.5 transition cursor-pointer shadow-2xs shrink-0"
+            title="Fetch items and details from Delivery Note or Sales Order (Alt+F)"
+          >
+            <ArrowDownToLine className="h-3.5 w-3.5 text-indigo-600" />
+            <span>Fetch (DN / Order) [Alt+F]</span>
+          </button>
+
+          {deliveryNoteNo && (
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-cyan-50 border border-cyan-300 text-cyan-800 text-[11px] font-bold shadow-2xs shrink-0" title="Items dispatched via Delivery Challan. Stock will not be double-deducted upon invoice save.">
+              <Truck className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
+              <span>Challan: <strong className="font-mono text-cyan-950">{deliveryNoteNo}</strong></span>
+              <span className="text-[9px] bg-cyan-200/80 text-cyan-900 px-1 py-0.2 rounded font-bold">Challan Stock Out</span>
+              <button
+                type="button"
+                onClick={() => setDeliveryNoteNo("")}
+                className="ml-0.5 text-cyan-600 hover:text-rose-600 font-bold"
+                title="Unlink Delivery Note"
+              >
+                ✕
+              </button>
             </div>
-            <div className="text-sm sm:text-base font-black text-emerald-600 font-mono leading-none">
-              {config.CurrencySymbol || "Nu."} {totals.total.toFixed(2)}
-            </div>
-          </div>
-          <div className="relative inline-block">
-            {toastMsg && (
-              <div className={`absolute bottom-full mb-2 right-0 z-[9999] flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-white shadow-2xl whitespace-nowrap ${toastMsg.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'} animate-in fade-in slide-in-from-bottom-2`}>
-                {toastMsg.type === 'success' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
-                <span>{toastMsg.text}</span>
-                <div className={`absolute top-full right-6 -mt-1 border-4 border-transparent ${toastMsg.type === 'success' ? 'border-t-emerald-600' : 'border-t-rose-600'}`} />
-              </div>
-            )}
-            <GlowButton
-              type="button"
-              id="sale-save-btn"
-              onClick={handleSaveInvoice}
-              disabled={cart.length === 0}
-              variant="emerald"
-              size="sm"
-              icon={CheckCircle2}
-              title="Save Invoice (F2)"
-            >
-              Save [F2]
-            </GlowButton>
-          </div>
+          )}
+        </div>
+
+        <div className="text-[10px] text-slate-400 font-medium hidden lg:block">
+          Continuous Loop Entry (Press{" "}
+          <kbd className="bg-slate-100 border border-slate-300 rounded px-1 py-0.2 text-[9px] font-mono font-bold text-slate-600">
+            F2
+          </kbd>{" "}
+          to Save)
         </div>
       </div>
 
@@ -1153,6 +1282,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                       "Cash-in-Hand",
                       "Bank Accounts",
                     ]}
+                    prioritizeGroups={["Sundry Debtors"]}
                     onCreateNew={() =>
                       onOpenNewLedgerModal("Sundry Debtors", (name) =>
                         setCustomerName(name),
@@ -1206,30 +1336,46 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* Delivery Challan & Order References */}
+            <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center gap-3 text-xs">
+              <div className="flex items-center gap-1.5">
+                <Truck className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <span className="text-[11px] font-bold text-slate-600">Delivery Challan No:</span>
+                <input
+                  type="text"
+                  value={deliveryNoteNo}
+                  onChange={(e) => setDeliveryNoteNo(e.target.value)}
+                  placeholder="e.g. DLV-1"
+                  className="font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded px-2 py-0.5 outline-none focus:border-cyan-500 focus:bg-white w-28"
+                  title="If sale is made against a Delivery Note, stock is already deducted from Challan"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-slate-600">Order Ref:</span>
+                <input
+                  type="text"
+                  value={orderNo}
+                  onChange={(e) => setOrderNo(e.target.value)}
+                  placeholder="e.g. SO-101"
+                  className="font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded px-2 py-0.5 outline-none focus:border-indigo-500 focus:bg-white w-28"
+                />
+              </div>
+              {deliveryNoteNo && (
+                <span className="text-[10px] font-bold text-cyan-800 bg-cyan-50 border border-cyan-300 px-2 py-0.5 rounded flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3 text-cyan-600 shrink-0" />
+                  Stock Outward already handled via Delivery Note ({deliveryNoteNo}). Sale will not double deduct.
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>
 
       {/* In-Table Sales Grid Container */}
       <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs relative">
-        {/* Header Bar */}
-        <div className="px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between gap-2 shrink-0 relative z-30">
-          <div className="flex items-center gap-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              INVOICE PARTICULARS
-            </h3>
-            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
-              {cart.length} line items
-            </span>
-          </div>
-          <span className="text-[11px] text-slate-500 font-medium italic hidden sm:inline">
-            Direct In-Table Search: Type or scan barcode inside the Item Name
-            cell
-          </span>
-        </div>
-
         {/* Populated Table with Active Bottom Cell Entry Row */}
-        <div className="flex-1 min-h-0 overflow-y-auto rounded-b-xl scroll-smooth" ref={cartScrollRef}>
+        <div className="flex-1 min-h-0 overflow-y-auto rounded-xl scroll-smooth" ref={cartScrollRef}>
           <table className="w-full border-collapse text-xs sm:text-sm">
             <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[11px] tracking-wider">
               <tr>
@@ -1258,107 +1404,111 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
 
                 return (
                   <tr key={idx} className="hover:bg-slate-50/80 transition">
-                    <td className="py-1 px-2 align-middle font-medium min-w-[220px]">
-                      <SearchableItemSelect
-                        variant="grid"
-                        id={`sale-item-${idx}`}
-                        onEnterNext={() => {
-                          setTimeout(() => {
-                            const el = document.getElementById(`sale-qty-${idx}`);
-                            if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
-                          }, 10);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return;
-                          handleGridKeyDown(e, getGridNavOpts(idx, "item"));
-                        }}
-                        valueCode={line.itemCode}
-                        items={items}
-                        placeholder="Select Item / Barcode..."
-                        currencySymbol={config.CurrencySymbol || "Nu."}
-                        priceType="sale"
-                        showPrice={true}
-                        onEndOfList={(id) => id && focusNextOutsideGrid(id)}
-                        onSelect={(item, scannedSerial) => {
-                          const qty = line.qty || 1;
-                          const rate = Number(
-                            (item as any)["Sale Rate"] ??
-                              (item as any)["Sales Rate"] ??
-                              item.MRP ??
-                              0,
-                          );
-                          const isZero =
-                            isCustomerGstExempted ||
-                            String(item["Zero Rated (Y/N)"]).toUpperCase() ===
-                              "Y";
-                          const computedGstAmt = isZero
-                            ? 0
-                            : round2(
-                                (qty * rate * (Number(item["GST %"]) || 0)) /
-                                  100,
-                              );
-
-                          const updated = [...cart];
-                          updated[idx] = {
-                            ...updated[idx],
-                            itemCode: item["Item Code"],
-                            itemName: item["Item Name"],
-                            unit: item.Unit || "Pcs",
-                            rate,
-                            gstPct: Number(item["GST %"]) || 0,
-                            zeroRated: item["Zero Rated (Y/N)"] || "N",
-                            purchaseRate: item["Purchase Rate"] || 0,
-                            isSerialized: item["Is Serialized"],
-                            serials: scannedSerial ? [scannedSerial] : (updated[idx].serials || []),
-                            gstAmt: computedGstAmt,
-                          };
-                          setCart(updated);
-                          setTimeout(() => {
-                            const qtyEl = document.getElementById(
-                              `sale-qty-${idx}`,
-                            ) as HTMLInputElement | null;
-                            if (qtyEl) {
-                              qtyEl.focus();
-                              qtyEl.select();
-                            }
-                          }, 50);
-                        }}
-                        onCreateNew={onOpenNewItemModal}
-                        onEditItem={(item) => {
-                          setItemToAlter(item);
-                          setShowItemAlterModal(true);
-                        }}
-                        onShowInfo={(item) =>
-                          setDrillModalState({
-                            type: "stock",
-                            targetId: item["Item Code"] || item["Item Name"],
-                          })
-                        }
-                        onSaveVoucher={handleSaveInvoice}
-                        onFocusDate={() => billDateRef.current?.focus()}
-                      />
-                      {line.isSerialized === "Y" && showSerials && (
-                        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveSerialIndex(idx);
-                              setSerialModalOpen(true);
+                    <td className="py-0.5 px-2 align-middle font-medium min-w-[220px]">
+                      <div className="flex items-center gap-1">
+                        <div className="flex-1 min-w-0">
+                          <SearchableItemSelect
+                            variant="grid"
+                            id={`sale-item-${idx}`}
+                            onEnterNext={() => {
+                              setTimeout(() => {
+                                const el = document.getElementById(`sale-qty-${idx}`);
+                                if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
+                              }, 10);
                             }}
-                            className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900 hover:bg-amber-200 border border-amber-300 shadow-2xs cursor-pointer"
-                          >
-                            <Tag className="h-2.5 w-2.5" />
-                            <span>Serials: {line.serials?.length || 0}/{line.qty}</span>
-                          </button>
-                          {line.serials && line.serials.length > 0 && (
-                            <span className="text-[10px] text-slate-600 font-mono truncate max-w-[160px]" title={line.serials.join(", ")}>
-                              ({line.serials.join(", ")})
-                            </span>
-                          )}
+                            onKeyDown={(e) => {
+                              if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return;
+                              handleGridKeyDown(e, getGridNavOpts(idx, "item"));
+                            }}
+                            valueCode={line.itemCode}
+                            items={items}
+                            placeholder="Select Item / Barcode..."
+                            currencySymbol={config.CurrencySymbol || "Nu."}
+                            priceType="sale"
+                            showPrice={true}
+                            onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                            onSelect={(item, scannedSerial) => {
+                              const qty = line.qty || 1;
+                              const rate = Number(
+                                (item as any)["Sale Rate"] ??
+                                  (item as any)["Sales Rate"] ??
+                                  item.MRP ??
+                                  0,
+                              );
+                              const isZero =
+                                isCustomerGstExempted ||
+                                String(item["Zero Rated (Y/N)"]).toUpperCase() ===
+                                  "Y";
+                              const computedGstAmt = isZero
+                                ? 0
+                                : round2(
+                                    (qty * rate * (Number(item["GST %"]) || 0)) /
+                                      100,
+                                  );
+
+                              const updated = [...cart];
+                              updated[idx] = {
+                                ...updated[idx],
+                                itemCode: item["Item Code"],
+                                itemName: item["Item Name"],
+                                unit: item.Unit || "Pcs",
+                                rate,
+                                gstPct: Number(item["GST %"]) || 0,
+                                zeroRated: item["Zero Rated (Y/N)"] || "N",
+                                purchaseRate: item["Purchase Rate"] || 0,
+                                isSerialized: item["Is Serialized"],
+                                serials: scannedSerial ? [scannedSerial] : (updated[idx].serials || []),
+                                gstAmt: computedGstAmt,
+                              };
+                              setCart(updated);
+                              setTimeout(() => {
+                                const qtyEl = document.getElementById(
+                                  `sale-qty-${idx}`,
+                                ) as HTMLInputElement | null;
+                                if (qtyEl) {
+                                  qtyEl.focus();
+                                  qtyEl.select();
+                                }
+                              }, 50);
+                            }}
+                            onCreateNew={onOpenNewItemModal}
+                            onEditItem={(item) => {
+                              setItemToAlter(item);
+                              setShowItemAlterModal(true);
+                            }}
+                            onShowInfo={(item) =>
+                              setDrillModalState({
+                                type: "stock",
+                                targetId: item["Item Code"] || item["Item Name"],
+                              })
+                            }
+                            onSaveVoucher={handleSaveInvoice}
+                            onFocusDate={() => billDateRef.current?.focus()}
+                          />
                         </div>
+                        {line.itemCode && (
+                          <ItemNoteButton
+                            hasNote={Boolean((line.lineDescription || line.description) && (line.lineDescription || line.description).trim())}
+                            onClick={() => setActiveNoteIdx(activeNoteIdx === idx ? null : idx)}
+                            accentColor="indigo"
+                          />
+                        )}
+                      </div>
+
+                      {(Boolean((line.lineDescription || line.description) && (line.lineDescription || line.description).trim()) || activeNoteIdx === idx) && (
+                        <ItemNoteInput
+                          value={line.lineDescription || line.description || ''}
+                          onChange={(val) => {
+                            const updated = [...cart];
+                            updated[idx] = { ...updated[idx], lineDescription: val, description: val };
+                            setCart(updated);
+                          }}
+                          onClose={() => setActiveNoteIdx(null)}
+                          accentColor="indigo"
+                        />
                       )}
                     </td>
-                    <td className="py-1 px-1 align-middle text-center">
+                    <td className="py-0.5 px-1 align-middle text-center">
                       <input
                         id={`sale-qty-${idx}`}
                         type="number"
@@ -1376,10 +1526,10 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                             e.target.value !== "" ? Number(e.target.value) : "",
                           )
                         }
-                        className="w-full text-center h-7.5 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
+                        className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
                       />
                     </td>
-                    <td className="py-1 px-1 align-middle text-center">
+                    <td className="py-0.5 px-1 align-middle text-center">
                       <select
                         value={line.unit || "Pcs"}
                         onChange={e => {
@@ -1399,14 +1549,14 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                           }
                           setCart(updated);
                         }}
-                        className="w-full text-center h-7 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
+                        className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
                       >
                         {units.map(u => (
                           <option key={u['Unit Name']} value={u['Unit Name']}>{u.Symbol || u['Unit Name']}</option>
                         ))}
                       </select>
                     </td>
-                    <td className="py-1 px-1 align-middle text-right">
+                    <td className="py-0.5 px-1 align-middle text-right">
                       <input
                         id={`sale-rate-${idx}`}
                         type="number"
@@ -1427,11 +1577,11 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                             e.target.value !== "" ? Number(e.target.value) : "",
                           )
                         }
-                        className="w-full text-right h-7.5 rounded border border-slate-300 px-1 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
+                        className="w-full text-right h-6 rounded border border-slate-300 px-1 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
                       />
                     </td>
                     {showItemDiscount && (
-                      <td className="py-1 px-1 align-middle text-right">
+                      <td className="py-0.5 px-1 align-middle text-right">
                         <input
                           id={`sale-disc-${idx}`}
                           type="number"
@@ -1454,11 +1604,11 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                                 : "",
                             )
                           }
-                          className="w-full text-right h-7.5 rounded border border-slate-300 px-1 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
+                          className="w-full text-right h-6 rounded border border-slate-300 px-1 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
                         />
                       </td>
                     )}
-                    <td className="py-1 px-1 align-middle text-right">
+                    <td className="py-0.5 px-1 align-middle text-right">
                       <input
                         id={`sale-gst-${idx}`}
                         type="number"
@@ -1480,10 +1630,10 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                             e.target.value !== "" ? Number(e.target.value) : "",
                           )
                         }
-                        className="w-full text-right h-7.5 rounded border border-slate-300 px-1 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                        className="w-full text-right h-6 rounded border border-slate-300 px-1 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white disabled:bg-slate-100 disabled:text-slate-400"
                       />
                     </td>
-                    <td className="py-1.5 px-2 align-middle text-right font-bold text-slate-800 font-mono text-xs">
+                    <td className="py-0.5 px-2 align-middle text-right font-bold text-slate-800 font-mono text-xs">
                       {config.CurrencySymbol || "Nu."} {amt.toFixed(2)}
                     </td>
                     <td className="py-1.5 px-1 align-middle text-center">
@@ -1610,7 +1760,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         </div>
 
         {/* Right: Summary Pills & Actions */}
-        <div className="flex items-center gap-2.5 flex-wrap ml-auto">
+        <div className="flex items-center gap-3 flex-wrap ml-auto">
           {/* Summary Breakdown Pill */}
           <div className="flex items-center gap-2 bg-slate-950 text-white px-3 py-1.5 rounded-lg text-xs font-mono">
             <div>
@@ -1659,54 +1809,68 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2">
-            {editingBillNo && (
-              <button
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "Are you sure you want to delete this invoice completely?",
-                    )
-                  ) {
-                    deleteSalesInvoice(editingBillNo);
-                    setCart([]);
-                    setEditingBillNo(null);
-                    onDataRefresh();
-                  }
-                }}
-                className="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-700 font-bold text-xs hover:bg-rose-200 transition cursor-pointer"
-              >
-                Delete
-              </button>
-            )}
-            <button
-              onClick={handlePrintBarcodesDirectly}
-              disabled={cart.length === 0}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-700 font-bold text-xs hover:bg-slate-100 disabled:opacity-50 transition flex items-center gap-1 cursor-pointer"
-              title="Print barcode stickers"
-            >
-              <Printer className="h-3.5 w-3.5 text-indigo-600" />
-              <span className="hidden sm:inline">Barcodes</span>
-            </button>
-            <div className="relative inline-block">
-              {toastMsg && (
-                <div className={`absolute bottom-full mb-2 right-0 z-[9999] flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-white shadow-2xl whitespace-nowrap ${toastMsg.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'} animate-in fade-in slide-in-from-bottom-2`}>
-                  {toastMsg.type === 'success' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
-                  <span>{toastMsg.text}</span>
-                  <div className={`absolute top-full right-6 -mt-1 border-4 border-transparent ${toastMsg.type === 'success' ? 'border-t-emerald-600' : 'border-t-rose-600'}`} />
-                </div>
+          {/* Lower Right: Invoice Total + Save Button Group */}
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <div className="flex items-center gap-1.5 text-right px-1">
+              <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
+                INVOICE TOTAL:
+              </span>
+              <span className="text-base font-black text-emerald-600 font-mono leading-none">
+                {config.CurrencySymbol || "Nu."} {totals.total.toFixed(2)}
+              </span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              {editingBillNo && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "Are you sure you want to delete this invoice completely?",
+                      )
+                    ) {
+                      deleteSalesInvoice(editingBillNo);
+                      setCart([]);
+                      setEditingBillNo(null);
+                      onDataRefresh();
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-700 font-bold text-xs hover:bg-rose-200 transition cursor-pointer"
+                >
+                  Delete
+                </button>
               )}
               <button
                 type="button"
-                id="sale-save-btn"
-                onClick={handleSaveInvoice}
+                onClick={handlePrintBarcodesDirectly}
                 disabled={cart.length === 0}
-                className="focus:ring-[4px] focus:ring-emerald-400/80 focus:ring-offset-1 focus:shadow-[0_0_15px_rgba(52,211,153,0.6)] z-10 relative focus:scale-[1.02] outline-none px-4 py-1.5 rounded-lg bg-emerald-600 text-white font-extrabold text-xs hover:bg-emerald-700 disabled:opacity-50 transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-700 font-bold text-xs hover:bg-slate-100 disabled:opacity-50 transition flex items-center gap-1 cursor-pointer"
+                title="Print barcode stickers"
               >
-                <CheckCircle2 className="h-4 w-4" />
-                <span>Save [F2]</span>
+                <Printer className="h-3.5 w-3.5 text-indigo-600" />
+                <span className="hidden sm:inline">Barcodes</span>
               </button>
+              <div className="relative inline-block">
+                {toastMsg && (
+                  <div className={`absolute bottom-full mb-2 right-0 z-[9999] flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold text-white shadow-2xl whitespace-nowrap ${toastMsg.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'} animate-in fade-in slide-in-from-bottom-2`}>
+                    {toastMsg.type === 'success' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
+                    <span>{toastMsg.text}</span>
+                    <div className={`absolute top-full right-6 -mt-1 border-4 border-transparent ${toastMsg.type === 'success' ? 'border-t-emerald-600' : 'border-t-rose-600'}`} />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  id="sale-save-btn"
+                  onClick={handleSaveInvoice}
+                  disabled={cart.length === 0}
+                  className="focus:ring-[4px] focus:ring-emerald-400/80 focus:ring-offset-1 focus:shadow-[0_0_15px_rgba(52,211,153,0.6)] z-10 relative focus:scale-[1.02] outline-none px-4 py-1.5 rounded-lg bg-emerald-600 text-white font-extrabold text-xs hover:bg-emerald-700 disabled:opacity-50 transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Save [F2]</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1773,7 +1937,11 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
             setLedgerToAlter(null);
           }}
           onSave={(saved) => {
-            saveLedger(saved);
+            const res = saveLedger(saved);
+            if (!res.ok) {
+              alert(res.error || 'Failed to save ledger.');
+              return;
+            }
             onDataRefresh();
             setShowLedgerAlterModal(false);
             setLedgerToAlter(null);

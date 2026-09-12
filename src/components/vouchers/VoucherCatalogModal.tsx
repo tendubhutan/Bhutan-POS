@@ -14,7 +14,10 @@ import {
   Undo2,
   FileCheck2,
   Percent,
-  Plus
+  Plus,
+  ShoppingBag,
+  ShoppingCart,
+  PackageCheck
 } from 'lucide-react';
 
 export type VoucherCategoryKey = 'financial' | 'invoicing' | 'inventory' | 'orders';
@@ -29,6 +32,9 @@ export type VoucherActionType =
   | 'DEL_NOTE'
   | 'PHYSICAL_STOCK'
   | 'QUOTATION'
+  | 'SALES_ORDER'
+  | 'PURCHASE_ORDER'
+  | 'RECEIPT_NOTE'
   | 'S'
   | 'PUR';
 
@@ -153,6 +159,17 @@ export const VOUCHER_CATALOG: VoucherCatalogItem[] = [
     borderLight: 'border-cyan-200'
   },
   {
+    id: 'RECEIPT_NOTE',
+    name: 'Receipt Note (GRN)',
+    category: 'inventory',
+    shortcut: 'Alt+F9',
+    description: 'Inward goods receipt note from suppliers to receive stock before purchase invoice',
+    icon: PackageCheck,
+    color: 'text-teal-600',
+    bgLight: 'bg-teal-50 hover:bg-teal-100/70',
+    borderLight: 'border-teal-200'
+  },
+  {
     id: 'PHYSICAL_STOCK',
     name: 'Physical Stock Verification',
     category: 'inventory',
@@ -175,6 +192,28 @@ export const VOUCHER_CATALOG: VoucherCatalogItem[] = [
     color: 'text-violet-600',
     bgLight: 'bg-violet-50 hover:bg-violet-100/70',
     borderLight: 'border-violet-200'
+  },
+  {
+    id: 'SALES_ORDER',
+    name: 'Sales Order',
+    category: 'orders',
+    shortcut: 'Alt+F5',
+    description: 'Record customer sales orders, track status, and convert to Delivery Note or Sales Invoice',
+    icon: ShoppingBag,
+    color: 'text-indigo-600',
+    bgLight: 'bg-indigo-50 hover:bg-indigo-100/70',
+    borderLight: 'border-indigo-200'
+  },
+  {
+    id: 'PURCHASE_ORDER',
+    name: 'Purchase Order',
+    category: 'orders',
+    shortcut: 'Alt+F6',
+    description: 'Issue purchase orders to suppliers, track commitments, and convert to GRN or Purchase Invoice',
+    icon: ShoppingCart,
+    color: 'text-amber-600',
+    bgLight: 'bg-amber-50 hover:bg-amber-100/70',
+    borderLight: 'border-amber-200'
   }
 ];
 

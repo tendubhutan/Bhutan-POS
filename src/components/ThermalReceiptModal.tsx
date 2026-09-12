@@ -33,12 +33,15 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   }, [invoice]);
 
   React.useEffect(() => {
+    if (!isOpen) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation?.();
         onClose();
-      } else if (isOpen && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+      } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
         const buttons = Array.from(document.querySelectorAll('#thermal-receipt-modal button:not([disabled])')) as HTMLButtonElement[];
         const currentIndex = buttons.findIndex(b => b === document.activeElement);
         if (currentIndex !== -1) {
@@ -53,10 +56,10 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
         }
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
       const oldFrame = document.getElementById('print-receipt-iframe');
       if (oldFrame) {
         try { oldFrame.remove(); } catch {}

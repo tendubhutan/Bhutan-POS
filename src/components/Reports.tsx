@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Config, Item, Ledger } from '../types';
 import {
   getDailyColumnarReport, getGSTReport, getGSTInputDomReport, getGSTInputImpReport, getGSTSummaryReport, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig,
@@ -20,6 +20,9 @@ export interface ReportTarget {
   category: 'daily' | 'gst' | 'inv' | 'fin' | 'reg' | 'audit';
   finSubTab?: 'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED';
   invSubTab?: 'summary' | 'mov' | 'prof' | 'top' | 'serials';
+  regSubTab?: 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes';
+  voucherTypeFilter?: string;
+  voucherStatusFilter?: string;
   ledgerName?: string;
   itemWise?: boolean;
   fromDate?: string;
@@ -34,10 +37,10 @@ interface ReportsProps {
   items: Item[];
   ledgers: Ledger[];
   onBack?: () => void;
-  onDrillVoucher: (refNo: string) => void;
-  onDrillLedger: (name: string) => void;
-  onDrillStock: (code: string) => void;
-  onDrillItemProfit?: (code: string) => void;
+  onDrillVoucher: (refNo: string, fromDate?: string, toDate?: string) => void;
+  onDrillLedger: (name: string, fromDate?: string, toDate?: string) => void;
+  onDrillStock: (code: string, fromDate?: string, toDate?: string) => void;
+  onDrillItemProfit?: (code: string, fromDate?: string, toDate?: string) => void;
   onDrillGroup?: (category: string, fromDate?: string, toDate?: string) => void;
   initialReportTarget?: ReportTarget | null;
   isActive?: boolean;
@@ -121,6 +124,15 @@ export function formatDisplayDate(isoStr: string): string {
   return `${String(d).padStart(2, '0')}-${monthName}-${y}`;
 }
 
+interface ReportViewState {
+  mainCategory: 'daily' | 'gst' | 'gst_summary' | 'gst_input_dom' | 'gst_input_imp' | 'inv' | 'fin' | 'reg' | 'audit';
+  finSubTab: 'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED';
+  invSubTab: 'summary' | 'mov' | 'prof' | 'top' | 'serials';
+  regSubTab: 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes';
+  itemWise: boolean;
+  selectedLedger: string;
+}
+
 export const Reports: React.FC<ReportsProps> = ({
   config,
   items,
@@ -140,7 +152,10 @@ export const Reports: React.FC<ReportsProps> = ({
   const [invSubTab, setInvSubTab] = useState<'summary' | 'mov' | 'prof' | 'top' | 'serials'>('summary');
   const [finSubTab, setFinSubTab] = useState<'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED'>('TB');
   const [reportDepth, setReportDepth] = useState<ReportDetailDepth>(config?.ReportDetailDepth || 'detailed');
-  const [regSubTab, setRegSubTab] = useState<'sales' | 'purchases'>('sales');
+  const [regSubTab, setRegSubTab] = useState<'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes'>('vouchers');
+  const [voucherTypeFilter, setVoucherTypeFilter] = useState('ALL');
+  const [voucherStatusFilter, setVoucherStatusFilter] = useState('ALL');
+  const [voucherSearchQuery, setVoucherSearchQuery] = useState('');
   const [ledgerTypeFilter, setLedgerTypeFilter] = useState('ALL');
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -151,6 +166,26 @@ export const Reports: React.FC<ReportsProps> = ({
   const [isControlsCollapsed, setIsControlsCollapsed] = useState(false);
   const [gstOnly, setGstOnly] = useState(false);
   const [selectedLedger, setSelectedLedger] = useState('');
+
+  // Report View Navigation History (for strict sequential Escape key back navigation)
+  const [reportHistory, setReportHistory] = useState<ReportViewState[]>([]);
+  const isNavigatingBackRef = useRef(false);
+  const initialReportStateRef = useRef<ReportViewState>({
+    mainCategory: 'daily',
+    finSubTab: 'TB',
+    invSubTab: 'summary',
+    regSubTab: 'vouchers',
+    itemWise: false,
+    selectedLedger: ''
+  });
+  const prevReportStateRef = useRef<ReportViewState>({
+    mainCategory: 'daily',
+    finSubTab: 'TB',
+    invSubTab: 'summary',
+    regSubTab: 'vouchers',
+    itemWise: false,
+    selectedLedger: ''
+  });
 
   // Change Period Modal state (Alt+F2 / Alt+D)
   const [showChangePeriodModal, setShowChangePeriodModal] = useState(false);
@@ -339,10 +374,44 @@ export const Reports: React.FC<ReportsProps> = ({
     { cat: 'fin', finSub: 'BS', label: 'Balance Sheet' },
     { cat: 'fin', finSub: 'REC', label: 'Receivables (Debtors)' },
     { cat: 'fin', finSub: 'PAY', label: 'Payables (Creditors)' },
-    { cat: 'fin', finSub: 'LED', label: 'Ledger Statement' }
+    { cat: 'fin', finSub: 'LED', label: 'Ledger Statement' },
+    { cat: 'reg', regSub: 'vouchers', label: 'Accounting Voucher Register' },
+    { cat: 'reg', regSub: 'sales', label: 'Sales Register' },
+    { cat: 'reg', regSub: 'purchases', label: 'Purchase Register' },
+    { cat: 'reg', regSub: 'quotations', label: 'Quotation Register' },
+    { cat: 'reg', regSub: 'delivery_notes', label: 'Delivery Note Register' }
   ], [showGst]);
 
+  // Track report navigation transitions for strict sequential step-back
+  useEffect(() => {
+    const prevState = prevReportStateRef.current;
+    const currentState: ReportViewState = {
+      mainCategory,
+      finSubTab,
+      invSubTab,
+      regSubTab,
+      itemWise,
+      selectedLedger
+    };
+
+    const hasChanged =
+      prevState.mainCategory !== currentState.mainCategory ||
+      prevState.finSubTab !== currentState.finSubTab ||
+      prevState.invSubTab !== currentState.invSubTab ||
+      prevState.regSubTab !== currentState.regSubTab ||
+      prevState.itemWise !== currentState.itemWise ||
+      prevState.selectedLedger !== currentState.selectedLedger;
+
+    if (hasChanged) {
+      if (!isNavigatingBackRef.current) {
+        setReportHistory(prev => [...prev, prevState]);
+      }
+      prevReportStateRef.current = currentState;
+    }
+  }, [mainCategory, finSubTab, invSubTab, regSubTab, itemWise, selectedLedger]);
+
   const handleReportsBack = () => {
+    // 1. Close active modals in sequence
     if (showChangePeriodModal) {
       setShowChangePeriodModal(false);
       return true;
@@ -363,6 +432,69 @@ export const Reports: React.FC<ReportsProps> = ({
       setShowReportCatalog(false);
       return true;
     }
+
+    // 2. In Ledger Statement, if a specific ledger is open, step back to ledger selection
+    if (mainCategory === 'fin' && finSubTab === 'LED' && selectedLedger) {
+      setSelectedLedger('');
+      return true;
+    }
+
+    // 3. Contextual filter/search clearings
+    if (voucherSearchQuery.trim()) {
+      setVoucherSearchQuery('');
+      return true;
+    }
+    if (ledgerSearch.trim()) {
+      setLedgerSearch('');
+      return true;
+    }
+    if (voucherTypeFilter !== 'ALL') {
+      setVoucherTypeFilter('ALL');
+      return true;
+    }
+
+    // 4. Pop through report history stack step by step
+    if (reportHistory.length > 0) {
+      const historyCopy = [...reportHistory];
+      const prevState = historyCopy.pop()!;
+      setReportHistory(historyCopy);
+      isNavigatingBackRef.current = true;
+      setMainCategory(prevState.mainCategory);
+      setFinSubTab(prevState.finSubTab);
+      setInvSubTab(prevState.invSubTab);
+      setRegSubTab(prevState.regSubTab);
+      setItemWise(prevState.itemWise);
+      setSelectedLedger(prevState.selectedLedger);
+      setTimeout(() => {
+        isNavigatingBackRef.current = false;
+      }, 50);
+      return true;
+    }
+
+    // 5. If deviated from initial report state, return to starting report state
+    const init = initialReportStateRef.current;
+    if (
+      mainCategory !== init.mainCategory ||
+      finSubTab !== init.finSubTab ||
+      invSubTab !== init.invSubTab ||
+      regSubTab !== init.regSubTab ||
+      itemWise !== init.itemWise
+    ) {
+      isNavigatingBackRef.current = true;
+      setMainCategory(init.mainCategory);
+      setFinSubTab(init.finSubTab);
+      setInvSubTab(init.invSubTab);
+      setRegSubTab(init.regSubTab);
+      setItemWise(init.itemWise);
+      setSelectedLedger(init.selectedLedger || '');
+      setTimeout(() => {
+        isNavigatingBackRef.current = false;
+      }, 50);
+      return true;
+    }
+
+    // 6. We have reached the starting report screen from where Reports was opened!
+    // Return false so App.tsx can pop viewHistory back to the calling screen.
     return false;
   };
 
@@ -379,23 +511,6 @@ export const Reports: React.FC<ReportsProps> = ({
         e.stopPropagation();
         openLedgerSearch();
         return;
-      }
-
-      if (e.key === 'Escape') {
-        if (e.defaultPrevented) return;
-        const handled = handleReportsBack();
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation?.();
-          return;
-        }
-        if (onBack) {
-          e.preventDefault();
-          e.stopPropagation();
-          onBack();
-          return;
-        }
       }
 
       const activeEl = document.activeElement;
@@ -435,7 +550,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isActive, allReportsList, mainCategory, itemWise, invSubTab, finSubTab, isPrintModalOpen, showReportCatalog, showChangePeriodModal, showQuickLedgerModal, onBack]);
+  }, [isActive, allReportsList, mainCategory, itemWise, invSubTab, finSubTab, isPrintModalOpen, showReportCatalog, showChangePeriodModal, showQuickLedgerModal, selectedLedger, voucherSearchQuery, ledgerSearch, voucherTypeFilter, reportHistory, onBack]);
 
   // Intercept app:back event from Header/App navigation
   useEffect(() => {
@@ -449,23 +564,54 @@ export const Reports: React.FC<ReportsProps> = ({
     };
     window.addEventListener('app:back' as any, handleBackEvent);
     return () => window.removeEventListener('app:back' as any, handleBackEvent);
-  }, [isActive, isPrintModalOpen, showReportCatalog, mainCategory, showChangePeriodModal, showQuickLedgerModal]);
+  }, [isActive, isPrintModalOpen, showReportCatalog, mainCategory, showChangePeriodModal, showQuickLedgerModal, selectedLedger, voucherSearchQuery, ledgerSearch, voucherTypeFilter, reportHistory]);
 
   // React to initial or keyboard shortcut triggered targets
   useEffect(() => {
     if (initialReportTarget) {
-      setMainCategory(initialReportTarget.category || 'daily');
+      const initCat = initialReportTarget.category || 'daily';
+      const initFin = initialReportTarget.finSubTab || 'TB';
+      const initInv = initialReportTarget.invSubTab || 'summary';
+      const initReg = initialReportTarget.regSubTab || 'vouchers';
+      const initItemWise = typeof initialReportTarget.itemWise === 'boolean' ? initialReportTarget.itemWise : false;
+      const initLedger = initialReportTarget.ledgerName || '';
+
+      const initState: ReportViewState = {
+        mainCategory: initCat,
+        finSubTab: initFin,
+        invSubTab: initInv,
+        regSubTab: initReg,
+        itemWise: initItemWise,
+        selectedLedger: initLedger
+      };
+
+      initialReportStateRef.current = initState;
+      prevReportStateRef.current = initState;
+      setReportHistory([]);
+
+      setMainCategory(initCat);
       if (initialReportTarget.finSubTab) {
-        setFinSubTab(initialReportTarget.finSubTab);
+        setFinSubTab(initFin);
       }
       if (initialReportTarget.invSubTab) {
-        setInvSubTab(initialReportTarget.invSubTab);
+        setInvSubTab(initInv);
+      }
+      if (initialReportTarget.regSubTab) {
+        setRegSubTab(initReg);
+      }
+      if (initialReportTarget.voucherTypeFilter) {
+        setVoucherTypeFilter(initialReportTarget.voucherTypeFilter);
+      } else if (initialReportTarget.regSubTab === 'vouchers' && !initialReportTarget.voucherTypeFilter) {
+        setVoucherTypeFilter('ALL');
+      }
+      if (initialReportTarget.voucherStatusFilter) {
+        setVoucherStatusFilter(initialReportTarget.voucherStatusFilter);
       }
       if (initialReportTarget.ledgerName) {
-        setSelectedLedger(initialReportTarget.ledgerName);
+        setSelectedLedger(initLedger);
       }
       if (typeof initialReportTarget.itemWise === 'boolean') {
-        setItemWise(initialReportTarget.itemWise);
+        setItemWise(initItemWise);
       }
       if (initialReportTarget.fromDate) {
         setFromDate(initialReportTarget.fromDate);
@@ -1115,7 +1261,52 @@ export const Reports: React.FC<ReportsProps> = ({
         ];
       }
     } else if (mainCategory === 'reg') {
-      if (regSubTab === 'sales' && Array.isArray(reportData)) {
+      if (regSubTab === 'vouchers' && Array.isArray(reportData)) {
+        reportTitle = 'Accounting Voucher Register';
+        headers = ['Date', 'Voucher No', 'Type', 'Particulars / Account', 'Debit (Nu.)', 'Credit (Nu.)', 'Narration', 'Status'];
+        let totDr = 0;
+        let totCr = 0;
+        const filteredVouchers = reportData.filter((v: any) => {
+          if (voucherTypeFilter !== 'ALL' && v.Type !== voucherTypeFilter) return false;
+          if (voucherStatusFilter !== 'ALL') {
+            const isCanc = (v.Status as string) === 'Cancelled' || v.isCancelled;
+            if (voucherStatusFilter === 'Active' && isCanc) return false;
+            if (voucherStatusFilter === 'Cancelled' && !isCanc) return false;
+          }
+          if (voucherSearchQuery.trim()) {
+            const q = voucherSearchQuery.trim().toLowerCase();
+            const vNo = (v.VoucherNo || v.RefNo || '').toLowerCase();
+            const part = (v.Particulars || v.Party || '').toLowerCase();
+            const narr = (v.Narration || '').toLowerCase();
+            const vType = (v.Type || '').toLowerCase();
+            if (!vNo.includes(q) && !part.includes(q) && !narr.includes(q) && !vType.includes(q)) return false;
+          }
+          return true;
+        });
+        filteredVouchers.forEach((v: any) => {
+          const isCancelled = (v.Status as string) === 'Cancelled' || v.isCancelled;
+          const dr = isCancelled ? 0 : (Number(v.Debit) || 0);
+          const cr = isCancelled ? 0 : (Number(v.Credit) || 0);
+          totDr += dr;
+          totCr += cr;
+          rows.push([
+            formatDateStr(v.DateIso || v.Date),
+            v.VoucherNo || v.RefNo || '-',
+            v.Type || '-',
+            v.Particulars || v.Party || '-',
+            dr > 0 ? fmt(dr) : '-',
+            cr > 0 ? fmt(cr) : '-',
+            v.Narration || '-',
+            isCancelled ? 'Cancelled' : (v.Status || 'Active')
+          ]);
+        });
+        totalsRow = ['TOTAL', '', '', '', fmt(totDr), fmt(totCr), '', ''];
+        summaryCards = [
+          { label: 'Total Vouchers', value: filteredVouchers.length },
+          { label: 'Total Debits', value: `Nu. ${fmt(totDr)}` },
+          { label: 'Total Credits', value: `Nu. ${fmt(totCr)}` }
+        ];
+      } else if (regSubTab === 'sales' && Array.isArray(reportData)) {
         reportTitle = 'Sales Register';
         headers = ['Date', 'Invoice No', 'Customer', 'Payment Mode', 'Total Amount (Nu.)'];
         let totAmount = 0;
@@ -1162,6 +1353,47 @@ export const Reports: React.FC<ReportsProps> = ({
         summaryCards = [
           { label: 'Total Bills', value: reportData.length },
           { label: 'Total Purchase Amount', value: `Nu. ${fmt(totAmount)}` }
+        ];
+      } else if (regSubTab === 'quotations' && Array.isArray(reportData)) {
+        reportTitle = 'Quotation Register';
+        headers = ['Date', 'Quotation No', 'Customer', 'Valid Until', 'Items Count', 'Total Amount (Nu.)', 'Status'];
+        let totAmount = 0;
+        reportData.forEach((q: any) => {
+          const isCancelled = (q.status as string) === 'Cancelled' || q.isCancelled;
+          const amt = isCancelled ? 0 : (Number(q.totalAmount) || 0);
+          totAmount += amt;
+          rows.push([
+            formatDateStr(q.date),
+            q.quotationNo || '-',
+            q.customer?.name || q.customer?.ledger || '-',
+            q.validUntil ? formatDateStr(q.validUntil) : '-',
+            q.items?.length || 0,
+            fmt(amt),
+            q.status || 'Active'
+          ]);
+        });
+        totalsRow = ['TOTAL', '', '', '', '', fmt(totAmount), ''];
+        summaryCards = [
+          { label: 'Total Quotations', value: reportData.length },
+          { label: 'Total Quoted Valuation', value: `Nu. ${fmt(totAmount)}` }
+        ];
+      } else if (regSubTab === 'delivery_notes' && Array.isArray(reportData)) {
+        reportTitle = 'Delivery Note Register';
+        headers = ['Date', 'Note No', 'Customer / Consignee', 'Vehicle / Transport', 'Order Ref', 'Items Count', 'Status'];
+        reportData.forEach((n: any) => {
+          rows.push([
+            formatDateStr(n.date),
+            n.noteNo || '-',
+            n.customer?.name || n.customer?.ledger || '-',
+            n.vehicleNo ? `${n.vehicleNo} (${n.dispatchThrough || 'Carrier'})` : n.dispatchThrough || '-',
+            n.orderRefNo || '-',
+            n.items?.length || 0,
+            n.status || 'Dispatched'
+          ]);
+        });
+        totalsRow = ['TOTAL', '', '', '', '', `${reportData.length} Notes`, ''];
+        summaryCards = [
+          { label: 'Total Delivery Notes', value: reportData.length }
         ];
       }
     }
@@ -1532,6 +1764,7 @@ export const Reports: React.FC<ReportsProps> = ({
                 mainCategory === 'daily' ? (itemWise ? 'daily-item' : 'daily-bill') :
                 mainCategory === 'gst' ? 'gst' : mainCategory === 'gst_summary' ? 'gst_summary' : mainCategory === 'gst_input_dom' ? 'gst_input_dom' : mainCategory === 'gst_input_imp' ? 'gst_input_imp' :
                 mainCategory === 'inv' ? `inv-${invSubTab}` :
+                mainCategory === 'reg' ? `reg-${regSubTab}` :
                 mainCategory === 'audit' ? 'audit' :
                 `fin-${finSubTab}`
               }
@@ -1550,6 +1783,9 @@ export const Reports: React.FC<ReportsProps> = ({
                 } else if (val.startsWith('inv-')) {
                   setMainCategory('inv');
                   setInvSubTab(val.replace('inv-', '') as any);
+                } else if (val.startsWith('reg-')) {
+                  setMainCategory('reg');
+                  setRegSubTab(val.replace('reg-', '') as any);
                 } else if (val.startsWith('fin-')) {
                   setMainCategory('fin');
                   setFinSubTab(val.replace('fin-', '') as any);
@@ -1561,6 +1797,13 @@ export const Reports: React.FC<ReportsProps> = ({
               <optgroup label="Sales & Billing">
                 <option value="daily-bill">Daily Sales (Bill-wise)</option>
                 <option value="daily-item">Daily Sales (Item-wise)</option>
+              </optgroup>
+              <optgroup label="Registers & Day Book">
+                <option value="reg-vouchers">Accounting Voucher Register</option>
+                <option value="reg-sales">Sales Register</option>
+                <option value="reg-purchases">Purchase Register</option>
+                <option value="reg-quotations">Quotation Register</option>
+                <option value="reg-delivery_notes">Delivery Note Register</option>
               </optgroup>
               {showGst && (
                 <optgroup label="GST & Taxation">
@@ -1598,23 +1841,49 @@ export const Reports: React.FC<ReportsProps> = ({
             <ChevronDown className="absolute right-2.5 top-2.5 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
           </div>
 
-          {/* Quick Audit Trail Tab Button */}
-          <button
-            type="button"
-            onClick={() => {
-              setMainCategory('audit');
-              setShowReportCatalog(false);
-            }}
-            className={`h-8 px-2.5 rounded-xl border text-xs font-extrabold flex items-center gap-1.5 transition shadow-2xs cursor-pointer ${
-              mainCategory === 'audit'
-                ? 'bg-indigo-600 text-white border-indigo-700'
-                : 'bg-indigo-50/80 text-indigo-800 border-indigo-200 hover:bg-indigo-100/90'
-            }`}
-            title="Open System Audit Trail & Footprint History"
-          >
-            <History className="h-3.5 w-3.5 text-indigo-600" />
-            <span>Audit Trail Log</span>
-          </button>
+          {/* Accounting Voucher Register contextual search & filters */}
+          {mainCategory === 'reg' && regSubTab === 'vouchers' && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search Vouchers / Ledger / Narration..."
+                  value={voucherSearchQuery}
+                  onChange={e => setVoucherSearchQuery(e.target.value)}
+                  className="h-8 w-52 sm:w-64 rounded-xl border border-slate-300 bg-white pl-8 pr-2 text-xs outline-none focus:border-indigo-600 shadow-2xs"
+                />
+              </div>
+
+              <select
+                value={voucherTypeFilter}
+                onChange={e => setVoucherTypeFilter(e.target.value)}
+                className="h-8 rounded-xl border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-700 outline-none cursor-pointer shadow-2xs"
+              >
+                <option value="ALL">All Voucher Types</option>
+                <option value="Payment">Payment</option>
+                <option value="Receipt">Receipt</option>
+                <option value="Contra">Contra</option>
+                <option value="Journal">Journal</option>
+                <option value="Sales">Sales</option>
+                <option value="Purchase">Purchase</option>
+                <option value="Credit Note">Credit Note</option>
+                <option value="Debit Note">Debit Note</option>
+                <option value="Stock Journal">Stock Journal</option>
+                <option value="Physical Stock">Physical Stock</option>
+              </select>
+
+              <select
+                value={voucherStatusFilter}
+                onChange={e => setVoucherStatusFilter(e.target.value)}
+                className="h-8 rounded-xl border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-700 outline-none cursor-pointer shadow-2xs"
+              >
+                <option value="ALL">All Status</option>
+                <option value="Active">Active</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+          )}
 
           {/* Contextual Filter for Ledger Statement */}
           {mainCategory === 'fin' && finSubTab === 'LED' && (() => {
@@ -1978,6 +2247,36 @@ export const Reports: React.FC<ReportsProps> = ({
               </div>
             </div>
 
+            {/* Registers & Books Card */}
+            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+              <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
+                <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
+                <span>Registers & Day Books</span>
+              </div>
+              <p className="text-[11px] text-slate-500">Accounting vouchers, sales, purchases, quotations, and delivery note registers.</p>
+              <div className="flex flex-col gap-1 pt-1">
+                {[
+                  { id: 'vouchers', label: 'Accounting Voucher Register' },
+                  { id: 'sales', label: 'Sales Register' },
+                  { id: 'purchases', label: 'Purchase Register' },
+                  { id: 'quotations', label: 'Quotation Register' },
+                  { id: 'delivery_notes', label: 'Delivery Note Register' }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setMainCategory('reg');
+                      setRegSubTab(tab.id as any);
+                      setShowReportCatalog(false);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold text-left transition ${mainCategory === 'reg' && regSubTab === tab.id ? 'bg-indigo-600 text-white' : 'bg-slate-50 hover:bg-indigo-50 text-slate-700'}`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Financials Card */}
             <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-2">
               <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
@@ -2161,7 +2460,7 @@ export const Reports: React.FC<ReportsProps> = ({
                     : (reportData.rows || []).map((r: any, idx: number) => (
                         <tr
                           key={idx}
-                          onClick={() => onDrillVoucher(r.invoiceNo)}
+                          onClick={() => onDrillVoucher(r.invoiceNo, fromDate, toDate)}
                           className="hover:bg-slate-50 cursor-pointer transition"
                         >
                           <td className="py-2 px-3 text-center font-mono text-slate-500">{formatDateStr(r.date)}</td>
@@ -2230,7 +2529,7 @@ export const Reports: React.FC<ReportsProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {(reportData.rows || []).map((r: any, idx: number) => (
-                    <tr key={idx} onClick={() => onDrillVoucher(r.billNumber)} className="hover:bg-slate-50 cursor-pointer transition">
+                    <tr key={idx} onClick={() => onDrillVoucher(r.billNumber, fromDate, toDate)} className="hover:bg-slate-50 cursor-pointer transition">
                       <td className="py-2 px-3 text-center font-mono">{formatDateStr(r.billDate)}</td>
                       <td className="py-2 px-3 font-semibold text-slate-800">
                         {r.isCancelled && typeof r.customerName === 'string' && r.customerName.includes(' (Cancelled)') ? (
@@ -2348,7 +2647,7 @@ export const Reports: React.FC<ReportsProps> = ({
                         return (
                           <tr
                             key={idx}
-                            onClick={() => onDrillVoucher(r.voucherNo || r.invoiceNo || r.referenceNo)}
+                            onClick={() => onDrillVoucher(r.voucherNo || r.invoiceNo || r.referenceNo, fromDate, toDate)}
                             className="hover:bg-slate-50 cursor-pointer transition"
                           >
                             <td className="py-2.5 px-3 font-medium text-slate-800 text-left">{r.supplierName || '-'}</td>
@@ -2427,7 +2726,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       return (
                         <tr
                           key={idx}
-                          onClick={() => onDrillVoucher(r.voucherNo || r.declarationNo)}
+                          onClick={() => onDrillVoucher(r.voucherNo || r.declarationNo, fromDate, toDate)}
                           className="hover:bg-slate-50 cursor-pointer transition"
                         >
                           <td className="py-2.5 px-3 font-semibold text-slate-800 text-left">{r.supplierName || '-'}</td>
@@ -2547,7 +2846,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       }).map((i: any) => (
                         <tr
                           key={i.itemCode}
-                          onClick={() => onDrillStock(i.itemCode)}
+                          onClick={() => onDrillStock(i.itemCode, fromDate, toDate)}
                           className="hover:bg-slate-50 cursor-pointer transition"
                         >
                           <td className="py-2 px-3 font-semibold text-slate-800">{i.itemName}</td>
@@ -2612,7 +2911,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             </tr>
                           ) : (
                             filteredMovement.map((m: any, idx: number) => (
-                              <tr key={idx} onClick={() => onDrillStock(m.code)} className="hover:bg-indigo-50/50 cursor-pointer transition">
+                              <tr key={idx} onClick={() => onDrillStock(m.code, fromDate, toDate)} className="hover:bg-indigo-50/50 cursor-pointer transition">
                                 <td className="py-2 px-3 font-semibold text-slate-800">
                                   {m.name}
                                   {m.unit && <span className="ml-1 text-[11px] text-slate-400 font-normal">({m.unit})</span>}
@@ -2707,7 +3006,7 @@ export const Reports: React.FC<ReportsProps> = ({
                         const profitAmt = Number(p.profit) || 0;
                         const pct = saleAmt !== 0 ? (profitAmt / Math.abs(saleAmt)) * 100 : 0;
                         return (
-                        <tr key={idx} onClick={() => onDrillItemProfit ? onDrillItemProfit(p.code) : onDrillStock(p.code)} className="hover:bg-slate-50 cursor-pointer">
+                        <tr key={idx} onClick={() => onDrillItemProfit ? onDrillItemProfit(p.code, fromDate, toDate) : onDrillStock(p.code, fromDate, toDate)} className="hover:bg-slate-50 cursor-pointer">
                           <td className="py-2 px-3 font-semibold text-slate-800">{p.name}</td>
                           <td className="py-2 px-3 text-center font-mono">{p.qty}</td>
                           <td className="py-2 px-3 text-right font-mono">{fmt(p.saleAmt)}</td>
@@ -2862,7 +3161,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             </tr>
                           ) : (
                             filteredSerials.map((s: any, idx: number) => (
-                              <tr key={idx} className="hover:bg-slate-50 transition cursor-pointer" onClick={() => onDrillStock && onDrillStock(s.itemCode)}>
+                              <tr key={idx} className="hover:bg-slate-50 transition cursor-pointer" onClick={() => onDrillStock && onDrillStock(s.itemCode, fromDate, toDate)}>
                                 <td className="py-2 px-3 font-mono font-bold text-indigo-700">{s.serialNo}</td>
                                 <td className="py-2 px-3 font-mono text-slate-600">{s.itemCode}</td>
                                 <td className="py-2 px-3 font-semibold text-slate-900">{s.itemName}</td>
@@ -2882,7 +3181,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                     className="text-indigo-500 font-mono font-bold hover:underline"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      if (s.refNo && s.refNo !== 'Opening' && onDrillVoucher) onDrillVoucher(s.refNo);
+                                      if (s.refNo && s.refNo !== 'Opening' && onDrillVoucher) onDrillVoucher(s.refNo, fromDate, toDate);
                                     }}
                                   >
                                     ({s.refNo})
@@ -2897,7 +3196,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                         className="text-rose-500 font-mono font-bold hover:underline"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          if (s.soldRefNo && onDrillVoucher) onDrillVoucher(s.soldRefNo);
+                                          if (s.soldRefNo && onDrillVoucher) onDrillVoucher(s.soldRefNo, fromDate, toDate);
                                         }}
                                       >
                                         ({s.soldRefNo})
@@ -2919,95 +3218,342 @@ export const Reports: React.FC<ReportsProps> = ({
 
             {/* Register Views */}
             {mainCategory === 'reg' && (
-              <div className="p-2 space-y-4">
+              <div className="p-2 space-y-3">
+
+
+                {/* Voucher Register Table */}
+                {regSubTab === 'vouchers' && Array.isArray(reportData) && (() => {
+                  const filteredVouchers = reportData.filter((v: any) => {
+                    if (voucherTypeFilter !== 'ALL' && v.Type !== voucherTypeFilter) return false;
+                    if (voucherStatusFilter !== 'ALL') {
+                      const isCanc = (v.Status as string) === 'Cancelled' || v.isCancelled;
+                      if (voucherStatusFilter === 'Active' && isCanc) return false;
+                      if (voucherStatusFilter === 'Cancelled' && !isCanc) return false;
+                    }
+                    if (voucherSearchQuery.trim()) {
+                      const q = voucherSearchQuery.trim().toLowerCase();
+                      const vNo = (v.VoucherNo || v.RefNo || '').toLowerCase();
+                      const part = (v.Particulars || v.Party || '').toLowerCase();
+                      const narr = (v.Narration || '').toLowerCase();
+                      const vType = (v.Type || '').toLowerCase();
+                      if (!vNo.includes(q) && !part.includes(q) && !narr.includes(q) && !vType.includes(q)) return false;
+                    }
+                    return true;
+                  });
+
+                  let totDr = 0;
+                  let totCr = 0;
+                  filteredVouchers.forEach((v: any) => {
+                    const isCancelled = (v.Status as string) === 'Cancelled' || v.isCancelled;
+                    if (!isCancelled) {
+                      totDr += Number(v.Debit) || 0;
+                      totCr += Number(v.Credit) || 0;
+                    }
+                  });
+
+                  return (
+                    <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                      <table className="w-full border-separate border-spacing-0 text-xs">
+                        <thead className="sticky top-0 z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                          <tr className="bg-slate-50 border-b border-slate-200">
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Date</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Voucher No</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Type</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Particulars / Account</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right font-bold text-slate-700">Debit (Nu.)</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right font-bold text-slate-700">Credit (Nu.)</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Narration</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center font-bold text-slate-700">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredVouchers.map((v: any, i: number) => {
+                            const isCancelled = (v.Status as string) === 'Cancelled' || v.isCancelled;
+                            const dr = Number(v.Debit) || 0;
+                            const cr = Number(v.Credit) || 0;
+                            const typeColor = 
+                              v.Type === 'Payment' ? 'bg-amber-100 text-amber-800' :
+                              v.Type === 'Receipt' ? 'bg-emerald-100 text-emerald-800' :
+                              v.Type === 'Contra' ? 'bg-sky-100 text-sky-800' :
+                              v.Type === 'Journal' ? 'bg-purple-100 text-purple-800' :
+                              v.Type === 'Sales' ? 'bg-indigo-100 text-indigo-800' :
+                              v.Type === 'Purchase' ? 'bg-teal-100 text-teal-800' :
+                              'bg-slate-100 text-slate-800';
+
+                            return (
+                              <tr
+                                key={i}
+                                className={`cursor-pointer transition hover:bg-indigo-50/60 ${isCancelled ? 'opacity-60 bg-red-50/20' : ''}`}
+                                onClick={() => {
+                                  if (v.VoucherNo || v.RefNo) {
+                                    onDrillVoucher(v.VoucherNo || v.RefNo, fromDate, toDate);
+                                  }
+                                }}
+                              >
+                                <td className="py-2.5 px-3 text-slate-700 whitespace-nowrap">{formatDateStr(v.DateIso || v.Date)}</td>
+                                <td className="py-2.5 px-3 font-mono font-bold text-indigo-700 whitespace-nowrap">
+                                  {v.VoucherNo || v.RefNo || '-'}
+                                </td>
+                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                  <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${typeColor}`}>
+                                    {v.Type || 'Voucher'}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 font-semibold text-slate-800">
+                                  {v.Particulars || v.Party || '-'}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                                  {isCancelled ? <span className="text-red-500 font-bold">0.00</span> : (dr > 0 ? fmt(dr) : '-')}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                                  {isCancelled ? <span className="text-red-500 font-bold">0.00</span> : (cr > 0 ? fmt(cr) : '-')}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-500 text-xs italic max-w-xs truncate" title={v.Narration}>
+                                  {v.Narration || '-'}
+                                </td>
+                                <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                  {isCancelled ? (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">CANCELLED</span>
+                                  ) : (
+                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">ACTIVE</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {filteredVouchers.length === 0 && (
+                            <tr>
+                              <td colSpan={8} className="py-8 text-center text-slate-500 italic">
+                                No vouchers found matching the filter criteria.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                        {filteredVouchers.length > 0 && (
+                          <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                            <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
+                              <td colSpan={4} className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">
+                                TOTAL ({filteredVouchers.length} Vouchers)
+                              </td>
+                              <td className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right font-mono text-sm">
+                                {fmt(totDr)}
+                              </td>
+                              <td className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right font-mono text-sm">
+                                {fmt(totCr)}
+                              </td>
+                              <td colSpan={2} className="bg-slate-100 bg-clip-padding py-2.5 px-3"></td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  );
+                })()}
+
+                {/* Sales Register Table */}
                 {regSubTab === 'sales' && Array.isArray(reportData) && (
-                  <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                    <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                      <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Date</th>
-                        <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Invoice No</th>
-                        <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Customer</th>
-                        <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Payment</th>
-                        <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-right font-bold text-slate-700">Total Amt</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {reportData.map((inv: any, i) => (
-                        <tr key={i} className={`cursor-pointer transition hover:bg-indigo-50/60 ${inv.isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
-                           if (inv.invoiceNo) {
-                             onDrillVoucher(inv.invoiceNo);
-                           }
-                        }}>
-                          <td className="py-3 px-4 text-slate-700">{formatDateStr(inv.date)}</td>
-                          <td className="py-3 px-4 text-slate-700 font-medium flex items-center gap-2">
-                            {inv.invoiceNo}
-                            {inv.isCancelled && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">CANCELLED</span>}
-                          </td>
-                          <td className="py-3 px-4 text-slate-600">{inv.customer?.name || 'Walk-in'}</td>
-                          <td className="py-3 px-4 text-slate-600">
-                            {inv.payment?.cash > 0 ? 'Cash ' : ''}
-                            {inv.payment?.bank1 > 0 ? 'Bank1 ' : ''}
-                            {inv.payment?.bank2 > 0 ? 'Bank2 ' : ''}
-                          </td>
-                          <td className="py-3 px-4 text-right font-bold font-mono">
-                            {inv.isCancelled ? (
-                              <span className="text-red-600 font-bold">0.00</span>
-                            ) : (
-                              <span className="text-slate-900">{fmt(inv.totalAmount)}</span>
-                            )}
-                          </td>
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                    <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                      <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Date</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Invoice No</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Customer</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Payment</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-right font-bold text-slate-700">Total Amt</th>
                         </tr>
-                      ))}
-                      {reportData.length === 0 && (
-                        <tr><td colSpan={5} className="py-8 text-center text-slate-500 italic">No sales found in this period.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {reportData.map((inv: any, i) => (
+                          <tr key={i} className={`cursor-pointer transition hover:bg-indigo-50/60 ${inv.isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
+                             if (inv.invoiceNo) {
+                               onDrillVoucher(inv.invoiceNo, fromDate, toDate);
+                             }
+                          }}>
+                            <td className="py-3 px-4 text-slate-700">{formatDateStr(inv.date)}</td>
+                            <td className="py-3 px-4 text-slate-700 font-medium flex items-center gap-2">
+                              {inv.invoiceNo}
+                              {inv.isCancelled && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">CANCELLED</span>}
+                            </td>
+                            <td className="py-3 px-4 text-slate-600">{inv.customer?.name || 'Walk-in'}</td>
+                            <td className="py-3 px-4 text-slate-600">
+                              {inv.payment?.cash > 0 ? 'Cash ' : ''}
+                              {inv.payment?.bank1 > 0 ? 'Bank1 ' : ''}
+                              {inv.payment?.bank2 > 0 ? 'Bank2 ' : ''}
+                            </td>
+                            <td className="py-3 px-4 text-right font-bold font-mono">
+                              {inv.isCancelled ? (
+                                <span className="text-red-600 font-bold">0.00</span>
+                              ) : (
+                                <span className="text-slate-900">{fmt(inv.totalAmount)}</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {reportData.length === 0 && (
+                          <tr><td colSpan={5} className="py-8 text-center text-slate-500 italic">No sales found in this period.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
 
+                {/* Purchase Register Table */}
                 {regSubTab === 'purchases' && Array.isArray(reportData) && (
-                  <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                    <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                      <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Date</th>
-                        <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Bill No</th>
-                        <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Supplier</th>
-                        <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Payment</th>
-                        <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-right font-bold text-slate-700">Total Amt</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {reportData.map((inv: any, i) => (
-                        <tr key={i} className={`cursor-pointer transition hover:bg-indigo-50/60 ${inv.isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
-                           if (inv.billNo) {
-                             onDrillVoucher(inv.billNo);
-                           }
-                        }}>
-                          <td className="py-3 px-4 text-slate-700">{formatDateStr(inv.date)}</td>
-                          <td className="py-3 px-4 text-slate-700 font-medium flex items-center gap-2">
-                            {inv.supplierBillNo || inv.billNo}
-                            {inv.isCancelled && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">CANCELLED</span>}
-                          </td>
-                          <td className="py-3 px-4 text-slate-600">{inv.supplier?.name || 'Supplier'}</td>
-                          <td className="py-3 px-4 text-slate-600">
-                            {inv.payment?.cash > 0 ? 'Cash ' : ''}
-                            {inv.payment?.bank1 > 0 ? 'Bank1 ' : ''}
-                            {inv.payment?.bank2 > 0 ? 'Bank2 ' : ''}
-                          </td>
-                          <td className="py-3 px-4 text-right font-bold font-mono">
-                            {inv.isCancelled ? (
-                              <span className="text-red-600 font-bold">0.00</span>
-                            ) : (
-                              <span className="text-slate-900">{fmt(inv.totalAmount)}</span>
-                            )}
-                          </td>
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                    <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                      <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Date</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Bill No</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Supplier</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Payment</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-right font-bold text-slate-700">Total Amt</th>
                         </tr>
-                      ))}
-                      {reportData.length === 0 && (
-                        <tr><td colSpan={5} className="py-8 text-center text-slate-500 italic">No purchases found in this period.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {reportData.map((inv: any, i) => (
+                          <tr key={i} className={`cursor-pointer transition hover:bg-indigo-50/60 ${inv.isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
+                             if (inv.billNo) {
+                               onDrillVoucher(inv.billNo, fromDate, toDate);
+                             }
+                          }}>
+                            <td className="py-3 px-4 text-slate-700">{formatDateStr(inv.date)}</td>
+                            <td className="py-3 px-4 text-slate-700 font-medium flex items-center gap-2">
+                              {inv.supplierBillNo || inv.billNo}
+                              {inv.isCancelled && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">CANCELLED</span>}
+                            </td>
+                            <td className="py-3 px-4 text-slate-600">{inv.supplier?.name || 'Supplier'}</td>
+                            <td className="py-3 px-4 text-slate-600">
+                              {inv.payment?.cash > 0 ? 'Cash ' : ''}
+                              {inv.payment?.bank1 > 0 ? 'Bank1 ' : ''}
+                              {inv.payment?.bank2 > 0 ? 'Bank2 ' : ''}
+                            </td>
+                            <td className="py-3 px-4 text-right font-bold font-mono">
+                              {inv.isCancelled ? (
+                                <span className="text-red-600 font-bold">0.00</span>
+                              ) : (
+                                <span className="text-slate-900">{fmt(inv.totalAmount)}</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {reportData.length === 0 && (
+                          <tr><td colSpan={5} className="py-8 text-center text-slate-500 italic">No purchases found in this period.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Quotation Register Table */}
+                {regSubTab === 'quotations' && Array.isArray(reportData) && (
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                    <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                      <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Date</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Quotation No</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Customer</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Valid Until</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-center font-bold text-slate-700">Items</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-center font-bold text-slate-700">Status</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-right font-bold text-slate-700">Total Amt (Nu.)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {reportData.map((q: any, i) => {
+                          const isCancelled = (q.status as string) === 'Cancelled' || q.isCancelled;
+                          return (
+                            <tr key={i} className={`cursor-pointer transition hover:bg-indigo-50/60 ${isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
+                              if (q.quotationNo) {
+                                onDrillVoucher(q.quotationNo, fromDate, toDate);
+                              }
+                            }}>
+                              <td className="py-3 px-4 text-slate-700">{formatDateStr(q.date)}</td>
+                              <td className="py-3 px-4 text-indigo-700 font-bold hover:underline">
+                                {q.quotationNo}
+                              </td>
+                              <td className="py-3 px-4 text-slate-800 font-medium">{q.customer?.name || q.customer?.ledger || 'Customer'}</td>
+                              <td className="py-3 px-4 text-slate-600">{q.validUntil ? formatDateStr(q.validUntil) : '-'}</td>
+                              <td className="py-3 px-4 text-center font-mono text-slate-700">{q.items?.length || 0}</td>
+                              <td className="py-3 px-4 text-center">
+                                <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                                  isCancelled ? 'bg-red-100 text-red-700' :
+                                  q.status === 'Converted' ? 'bg-emerald-100 text-emerald-700' :
+                                  q.status === 'Sent' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {q.status || 'Active'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right font-bold font-mono">
+                                {isCancelled ? (
+                                  <span className="text-red-600 font-bold">0.00</span>
+                                ) : (
+                                  <span className="text-slate-900">{fmt(q.totalAmount)}</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {reportData.length === 0 && (
+                          <tr><td colSpan={7} className="py-8 text-center text-slate-500 italic">No quotations found in this period.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Delivery Note Register Table */}
+                {regSubTab === 'delivery_notes' && Array.isArray(reportData) && (
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                    <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                      <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Date</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Note No</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Customer / Consignee</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Dispatch / Vehicle</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Order Ref</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-center font-bold text-slate-700">Items Count</th>
+                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-center font-bold text-slate-700">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {reportData.map((n: any, i) => (
+                          <tr key={i} className="cursor-pointer transition hover:bg-indigo-50/60" onClick={() => {
+                            if (n.noteNo) {
+                              onDrillVoucher(n.noteNo, fromDate, toDate);
+                            }
+                          }}>
+                            <td className="py-3 px-4 text-slate-700">{formatDateStr(n.date)}</td>
+                            <td className="py-3 px-4 text-indigo-700 font-bold hover:underline">
+                              {n.noteNo}
+                            </td>
+                            <td className="py-3 px-4 text-slate-800 font-medium">{n.customer?.name || n.customer?.ledger || 'Consignee'}</td>
+                            <td className="py-3 px-4 text-slate-600">
+                              {n.vehicleNo ? `${n.vehicleNo} (${n.dispatchThrough || 'Carrier'})` : n.dispatchThrough || '-'}
+                            </td>
+                            <td className="py-3 px-4 text-slate-600 font-mono">{n.orderRefNo || '-'}</td>
+                            <td className="py-3 px-4 text-center font-mono text-slate-700">{n.items?.length || 0}</td>
+                            <td className="py-3 px-4 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                                n.status === 'In Transit' ? 'bg-amber-100 text-amber-700' :
+                                n.status === 'Delivered' ? 'bg-emerald-100 text-emerald-700' :
+                                'bg-blue-100 text-blue-700'
+                              }`}>
+                                {n.status || 'Dispatched'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                        {reportData.length === 0 && (
+                          <tr><td colSpan={7} className="py-8 text-center text-slate-500 italic">No delivery notes found in this period.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             )}
@@ -3133,7 +3679,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                 <React.Fragment key={idx}>
                                   <tr
                                     className="hover:bg-emerald-50/40 transition cursor-pointer"
-                                    onClick={() => onDrillLedger(r.name)}
+                                    onClick={() => onDrillLedger(r.name, fromDate, toDate)}
                                   >
                                     <td className="py-2.5 px-3 font-semibold text-slate-800 hover:text-indigo-600 transition">
                                       {r.name}
@@ -3300,7 +3846,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                 <React.Fragment key={idx}>
                                   <tr
                                     className="hover:bg-rose-50/40 transition cursor-pointer"
-                                    onClick={() => onDrillLedger(p.name)}
+                                    onClick={() => onDrillLedger(p.name, fromDate, toDate)}
                                   >
                                     <td className="py-2.5 px-3 font-semibold text-slate-800 hover:text-indigo-600 transition">
                                       {p.name}
@@ -3523,7 +4069,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             {filteredRows.map((r: any, idx: number) => (
                               <tr
                                 key={idx}
-                                onClick={() => r['Ref No'] && onDrillVoucher(r['Ref No'])}
+                                onClick={() => r['Ref No'] && onDrillVoucher(r['Ref No'], fromDate, toDate)}
                                 className={`cursor-pointer transition hover:bg-indigo-50/60 ${r.isCancelled ? 'bg-red-50/30' : ''}`}
                               >
                                 <td className="py-2.5 px-3 text-center font-mono text-slate-600">{formatDateStr(r.DateIso)}</td>

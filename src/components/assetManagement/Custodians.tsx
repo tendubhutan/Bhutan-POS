@@ -75,8 +75,23 @@ export const Custodians: React.FC<CustodiansProps> = ({ config }) => {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.custodianCode) {
+    if (!formData.name?.trim() || !formData.custodianCode?.trim()) {
       alert("Name and Custodian Code are required.");
+      return;
+    }
+
+    const trimmedName = formData.name.trim();
+    const trimmedCode = formData.custodianCode.trim();
+
+    const dupName = custodians.find(c => c.name.trim().toLowerCase() === trimmedName.toLowerCase() && c.id !== editingCustodian?.id);
+    if (dupName) {
+      alert(`Duplicate Custodian Name: A custodian named "${trimmedName}" already exists.`);
+      return;
+    }
+
+    const dupCode = custodians.find(c => c.custodianCode.trim().toLowerCase() === trimmedCode.toLowerCase() && c.id !== editingCustodian?.id);
+    if (dupCode) {
+      alert(`Duplicate Custodian Code: Code "${trimmedCode}" already exists.`);
       return;
     }
 

@@ -2,17 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { focusNextOutsideGrid } from '../../utils/domUtils';
 import { Config, Item, Ledger, DeliveryNoteItem, DeliveryNote } from '../../types';
 import {
-  saveDeliveryNote, getDeliveryNotes, deleteDeliveryNote, peekNextVoucherNo
+  saveDeliveryNote, getDeliveryNotes, deleteDeliveryNote, peekNextVoucherNo, getUnits
 } from '../../services/storageService';
 import { SearchableLedgerSelect } from '../SearchableLedgerSelect';
 import { SearchableItemSelect } from '../SearchableItemSelect';
+import { ItemNoteButton, ItemNoteInput } from './ItemNoteField';
 import { handleGridKeyDown } from '../../utils/gridKeyboardNav';
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './VoucherSuccessActionModal';
 import { AcceptModal } from '../AcceptModal';
 import { QuitConfirmModal } from '../QuitConfirmModal';
 import {
-  Truck, Plus, Trash2, CheckCircle2, AlertCircle, Package, Printer, FileText, MapPin, Calendar, Layers, Share2, Download, ArrowLeft, Sparkles, ChevronUp, ChevronDown } from 'lucide-react';
+  Truck, Plus, Trash2, CheckCircle2, AlertCircle, Package, Printer, FileText, MapPin, Calendar, Layers, Share2, Download, ArrowLeft, Sparkles, ChevronUp, ChevronDown, X, ArrowDownToLine
+} from 'lucide-react';
 import { generateDeliveryNotePDF, shareOrDownloadPDF } from '../../utils/pdfExport';
+import { FetchVoucherModal } from './FetchVoucherModal';
+import { SalesOrder } from '../../types';
 
 interface DeliveryNoteEntryProps {
   config: Config;
@@ -24,6 +28,7 @@ interface DeliveryNoteEntryProps {
   onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
   onPrintDeliveryNote?: (note: DeliveryNote) => void;
   onNavigateBack?: () => void;
+  voucherTypeSelector?: React.ReactNode;
 }
 
 export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
@@ -35,11 +40,13 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
   onOpenQuickLedger,
   onOpenNewItemModal,
   onPrintDeliveryNote,
-  onNavigateBack
+  onNavigateBack,
+  voucherTypeSelector
 }) => {
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
   const [editingNoteNo, setEditingNoteNo] = useState<string | null>(null);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
+  const [activeNoteIdx, setActiveNoteIdx] = useState<number | null>(null);
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [noteNo, setNoteNo] = useState(() => (isAutoMode ? peekNextVoucherNo('DEL_NOTE', config) : ''));
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -49,6 +56,68 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
   const [destination, setDestination] = useState('');
   const [vehicleNo, setVehicleNo] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [showTransportModal, setShowTransportModal] = useState(false);
+  const [showFetchModal, setShowFetchModal] = useState(false);
+
+  const handleFetchSalesOrder = (data: { type: any; voucher: any }) => {
+    const so = data.voucher as SalesOrder;
+    if (!so) return;
+
+    if (so.customer?.ledger || so.customer?.name) {
+      setCustomerName(so.customer.ledger || so.customer.name);
+    }
+    if (so.orderNo) {
+      setOrderRefNo(so.orderNo);
+    }
+    if (so.customer?.address && !destination) {
+      setDestination(so.customer.address);
+    }
+    if (so.remarks && !remarks) {
+      setRemarks(so.remarks);
+    }
+    if (so.items && so.items.length > 0) {
+      setNoteItems(so.items.map(it => ({
+        itemCode: it.itemCode,
+        itemName: it.itemName,
+        description: it.description || '',
+        lineDescription: it.lineDescription || '',
+        qty: it.qty,
+        unit: it.unit || 'Pcs',
+        rate: it.rate || 0,
+        amount: it.lineTotal || (it.qty * (it.rate || 0))
+      })));
+    }
+    showToast(`✓ Fetched ${so.items?.length || 0} items from Sales Order ${so.orderNo}`);
+  };
+
+  const handleCustomerSelect = (name: string) => {
+    setCustomerName(name);
+    if (name) {
+      const matchedLedger = ledgers.find(l => l['Ledger Name'] === name);
+      if (matchedLedger && matchedLedger.Address && !destination) {
+        setDestination(matchedLedger.Address);
+      }
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+      setShowTransportModal(true);
+    }
+  };
+
+  useEffect(() => {
+    if (showTransportModal) {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+      const timer = setTimeout(() => {
+        const el = document.getElementById('dn-modal-order-ref') || document.getElementById('dn-modal-vehicle-no');
+        if (el) {
+          el.focus();
+        }
+      }, 60);
+      return () => clearTimeout(timer);
+    }
+  }, [showTransportModal]);
 
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<'create' | 'register'>('create');
@@ -60,6 +129,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
 
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const currencySymbol = config?.CurrencySymbol || 'Nu.';
+  const units = getUnits();
 
   const getGridNavOpts = (idx: number, field: 'item' | 'qty' | 'rate') => ({
     prefix: 'dn',
@@ -409,6 +479,14 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
   };
 
   const handleDeliveryBack = (): boolean => {
+    if (showFetchModal) {
+      setShowFetchModal(false);
+      return true;
+    }
+    if (showTransportModal) {
+      setShowTransportModal(false);
+      return true;
+    }
     if (showQuitModal) {
       setShowQuitModal(false);
       return true;
@@ -449,25 +527,19 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
     return false;
   };
 
-  // Global F2 and Escape listener
+  // Global F2 and shortcut listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (e.defaultPrevented) return;
-        const handled = handleDeliveryBack();
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation?.();
-          return;
-        }
-      }
       if ((e.key === 'F2' || e.code === 'F2') && activeTab === 'create') {
         e.preventDefault();
         const formEl = document.getElementById('delivery-note-form') as HTMLFormElement | null;
         if (formEl) {
           formEl.requestSubmit();
         }
+      }
+      if (e.altKey && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        setShowFetchModal(true);
       }
     };
 
@@ -509,6 +581,8 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
     editingNoteNo,
     showQuitModal,
     showAcceptModal,
+    showFetchModal,
+    showTransportModal,
     successModalDetails,
     onNavigateBack
   ]);
@@ -533,6 +607,14 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
         }}
         onCancel={() => setShowQuitModal(false)}
       />
+      <FetchVoucherModal
+        isOpen={showFetchModal}
+        onClose={() => setShowFetchModal(false)}
+        sourceType="sales_order"
+        initialParty={customerName}
+        config={config}
+        onSelectVoucher={handleFetchSalesOrder}
+      />
       {/* Toast */}
       {toastMsg && (
         <div
@@ -549,293 +631,224 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
         </div>
       )}
 
-      {/* Top Banner & View Switcher */}
-      <div className="rounded-xl border border-cyan-200 bg-linear-to-r from-cyan-50/90 to-blue-50/70 px-3 py-1.5 shadow-xs flex flex-wrap items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-600 text-white shadow-xs">
-            <Truck className="h-4.5 w-4.5" />
-          </div>
-          <div>
-            <h2 className="text-sm sm:text-base font-extrabold text-cyan-950 leading-tight">
-              Delivery Note / Outward Goods Challan
-            </h2>
-            <p className="text-[11px] text-cyan-700 font-medium">
-              Dispatch inventory to customers with vehicle & transport tracking prior to billing
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 bg-white/90 p-0.5 rounded-lg border border-cyan-200 text-xs">
-          <button
-            type="button"
-            onClick={() => setActiveTab('create')}
-            className={`rounded-md px-2.5 py-1 font-bold transition cursor-pointer ${
-              activeTab === 'create'
-                ? 'bg-cyan-600 text-white shadow-2xs'
-                : 'text-cyan-800 hover:bg-cyan-100/50'
-            }`}
-          >
-            + New Challan
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('register');
-              loadSavedDeliveryNotes();
-            }}
-            className={`rounded-md px-2.5 py-1 font-bold transition cursor-pointer ${
-              activeTab === 'register'
-                ? 'bg-cyan-600 text-white shadow-2xs'
-                : 'text-cyan-800 hover:bg-cyan-100/50'
-            }`}
-          >
-            📋 Delivery Register ({savedNotes.length})
-          </button>
-        </div>
-      </div>
-
       {activeTab === 'create' ? (
         <form id="delivery-note-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col space-y-2">
-          {/* Header Grid */}
-          <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden transition-all duration-300 mb-2">
-            {isHeaderCollapsed ? (
-              <div 
-                className="flex items-center justify-between p-3 cursor-pointer hover:bg-violet-100 transition-colors bg-gradient-to-r from-violet-50 to-purple-50 border-b-2 border-violet-200"
-                onClick={() => setIsHeaderCollapsed(false)}
-                title="Click to expand header details"
-              >
-                <div className="flex items-center gap-6 text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">Party</span>
-                    <span className="font-extrabold text-violet-900">{customerName || <span className="text-rose-500">Not Selected</span>}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">Date</span>
-                    <span className="font-bold text-slate-800">{date}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">Note No</span>
-                    <span className="font-bold text-slate-800">{noteNo || '-'}</span>
-                  </div>
-                </div>
-                <button type="button" className="flex items-center gap-1.5 text-xs font-black text-violet-600 hover:text-violet-800 uppercase tracking-wide bg-white px-3 py-1 rounded-lg shadow-sm border border-violet-100">
-                  <span>Edit Header</span>
-                  <ChevronDown className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="p-2.5 space-y-2 relative">
-                <div className="absolute top-2 right-2">
-                  <button 
-                    type="button"
-                    onClick={() => setIsHeaderCollapsed(true)}
-                    className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-violet-600 uppercase tracking-wide cursor-pointer transition-colors"
-                    title="Collapse to save space"
-                  >
-                    <span>Collapse</span>
-                    <ChevronUp className="h-4 w-4" />
-                  </button>
-                </div>
+          {/* Top Header Row with Voucher Selector + Form Fields */}
+          <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-xs mb-1 shrink-0 flex items-center gap-2.5 flex-wrap text-xs">
+            {voucherTypeSelector}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Challan / Note No.</label>
-                <input
-                  id="dn-challan-no"
-                  type="text"
-                  value={noteNo || ''}
-                  onChange={e => setNoteNo(e.target.value)}
-                  disabled={isAutoMode}
-                  onFocus={e => e.target.select()}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('dn-dispatch-date');
-                    }
-                  }}
-                  className={`w-full rounded-lg border px-2.5 py-1.5 font-mono font-bold text-slate-900 outline-none text-xs ${
-                    isAutoMode ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-300 focus:border-cyan-600'
-                  }`}
-                />
-              </div>
+            {/* Challan / Note No. */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <label htmlFor="dn-challan-no" className="font-bold text-slate-700 text-[11px] whitespace-nowrap">Challan / Note No.</label>
+              <input
+                id="dn-challan-no"
+                type="text"
+                value={noteNo || ''}
+                onChange={e => setNoteNo(e.target.value)}
+                disabled={isAutoMode}
+                onFocus={e => e.target.select()}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    focusElement('dn-dispatch-date');
+                  }
+                }}
+                className={`h-7 w-28 rounded-md border px-2 font-mono font-bold text-slate-900 outline-none text-xs ${
+                  isAutoMode ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-300 focus:border-cyan-600'
+                }`}
+              />
+            </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Dispatch Date</label>
-                <input
-                  id="dn-dispatch-date"
-                  type="date"
-                  value={date || ''}
-                  onChange={e => setDate(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('dn-customer');
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('dn-challan-no');
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-cyan-600 text-xs"
-                />
-              </div>
+            {/* Dispatch Date */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <label htmlFor="dn-dispatch-date" className="font-bold text-slate-700 text-[11px] whitespace-nowrap">Dispatch Date</label>
+              <input
+                id="dn-dispatch-date"
+                type="date"
+                value={date || ''}
+                onChange={e => setDate(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    focusElement('dn-customer');
+                  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    focusElement('dn-challan-no');
+                  }
+                }}
+                className="h-7 rounded-md border border-slate-300 bg-white px-2 font-semibold text-slate-900 outline-none focus:border-cyan-600 text-xs"
+              />
+            </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Consignee / Customer</label>
+            {/* Consignee / Customer */}
+            <div className="flex items-center gap-1.5 flex-1 min-w-[240px]">
+              <label htmlFor="dn-customer" className="font-bold text-slate-700 text-[11px] whitespace-nowrap">Consignee / Customer</label>
+              <div className="flex-1 min-w-0 flex items-center gap-1">
                 <SearchableLedgerSelect
                   id="dn-customer"
                   ledgers={ledgers}
                   value={customerName}
-                  onChange={setCustomerName}
+                  onChange={handleCustomerSelect}
                   filterGroups={['Sundry Debtors', 'Cash-in-Hand', 'Bank Accounts']}
+                  prioritizeGroups={['Sundry Debtors']}
                   onCreateNew={() => onOpenQuickLedger('Sundry Debtors')}
                   placeholder="Select Customer / Consignee"
-                  onEnterNext={() => focusElement('dn-order-ref')}
-                  onArrowRight={() => focusElement('dn-order-ref')}
-                  onArrowDown={() => focusElement('dn-order-ref')}
+                  onEnterNext={() => {
+                    setShowTransportModal(true);
+                  }}
+                  onArrowRight={() => setShowTransportModal(true)}
+                  onArrowDown={() => setShowTransportModal(true)}
                   onArrowLeft={() => focusElement('dn-dispatch-date')}
                   onArrowUp={() => focusElement('dn-dispatch-date')}
                 />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Customer Order / PO Ref.</label>
-                <input
-                  id="dn-order-ref"
-                  type="text"
-                  placeholder="e.g. PO-8923 or Verbal"
-                  value={orderRefNo || ''}
-                  onChange={e => setOrderRefNo(e.target.value)}
-                  onFocus={e => e.target.select()}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('dn-vehicle-no');
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('dn-customer');
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-cyan-600 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Transport details */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1.5 border-t border-slate-100">
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Vehicle / Truck No.</label>
-                <input
-                  id="dn-vehicle-no"
-                  type="text"
-                  placeholder="e.g. BP-1-A1234"
-                  value={vehicleNo || ''}
-                  onChange={e => setVehicleNo(e.target.value)}
-                  onFocus={e => e.target.select()}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('dn-dispatch-through');
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('dn-order-ref');
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-cyan-600 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Dispatched Through / Carrier</label>
-                <input
-                  id="dn-dispatch-through"
-                  type="text"
-                  placeholder="e.g. Store Van, Courier, Self"
-                  value={dispatchThrough || ''}
-                  onChange={e => setDispatchThrough(e.target.value)}
-                  onFocus={e => e.target.select()}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('dn-destination');
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('dn-vehicle-no');
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-cyan-600 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Destination / Site Address</label>
-                <input
-                  id="dn-destination"
-                  type="text"
-                  placeholder="e.g. Warehouse Site 2, Thimphu"
-                  value={destination || ''}
-                  onChange={e => setDestination(e.target.value)}
-                  onFocus={e => e.target.select()}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('dn-item-0-item');
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('dn-dispatch-through');
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-cyan-600 text-xs"
-                />
-              </div>
-            </div>
-              </div>
-            )}
-          </div>
-
-          {/* Line Items Table with Top Selection */}
-          <div className="flex-1 min-h-[220px] flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs relative text-xs">
-            {/* Top Quick Item Selection Bar */}
-            <div className="px-3 py-2 border-b border-slate-200 bg-cyan-50/40 space-y-2 relative z-30">
-              <div className="flex justify-between items-center">
-                <h3 className="font-extrabold text-slate-900 flex items-center gap-1.5 text-xs">
-                  <Package className="h-4 w-4 text-cyan-600" />
-                  <span>Select & Dispatch Items ({validItems.length} items added)</span>
-                </h3>
-                <span className="text-[11px] text-slate-500 italic hidden sm:inline">
-                  Search item to auto-add immediately
-                </span>
-              </div>
-
-              {/* Fast Item Selector Top Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
-                <div className="sm:col-span-8">
-                  <SearchableItemSelect
-                    id="dn-fast-item-picker-top"
-                    items={items}
-                    placeholder="Type or scan item name / barcode to auto-add..."
-                    currencySymbol={currencySymbol}
-                    onEndOfList={(id) => id && focusElement('dn-save-btn')}
-                        onSelect={selectedItem => {
-                      handleQuickAddItem(selectedItem);
-                    }}
-                    autoClearAfterSelect={true}
-                    onCreateNew={onOpenNewItemModal}
-                    dropdownPosition="down"
-                  />
-                </div>
-                <div className="sm:col-span-4 flex items-center justify-end gap-2">
+                {customerName && (
                   <button
                     type="button"
-                    onClick={handleAddItem}
-                    className="inline-flex items-center gap-1 rounded-lg bg-cyan-600 px-3 py-1.5 font-bold text-white hover:bg-cyan-700 transition shadow-xs cursor-pointer text-xs"
+                    onClick={() => setShowTransportModal(true)}
+                    className="text-[10px] font-bold text-cyan-700 hover:text-cyan-900 flex items-center gap-1 cursor-pointer bg-cyan-50 hover:bg-cyan-100 px-2 py-1 rounded border border-cyan-200 transition shrink-0"
+                    title="Edit order ref, vehicle, carrier & transport destination"
                   >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>+ Add Blank Row</span>
+                    <Truck className="h-3 w-3" />
+                    <span>🚚 Details</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Fetch from Sales Order Button */}
+            <button
+              type="button"
+              onClick={() => setShowFetchModal(true)}
+              className="h-7 px-2.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-extrabold text-[11px] flex items-center gap-1.5 transition cursor-pointer shrink-0 shadow-2xs"
+              title="Fetch details from Sales Order (Alt+F)"
+            >
+              <ArrowDownToLine className="h-3.5 w-3.5 text-indigo-600" />
+              <span>Fetch Order [Alt+F]</span>
+            </button>
+          </div>
+
+          {/* Floating Transport & Order Ref Details Modal */}
+          {showTransportModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+              <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-cyan-100 text-cyan-700 rounded-xl">
+                      <Truck className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-slate-900 text-sm">Transport & Order Reference Details</h3>
+                      <p className="text-xs text-slate-500 font-medium">Consignee: <strong className="text-cyan-800 font-bold">{customerName || 'Selected Customer'}</strong></p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTransportModal(false);
+                      setTimeout(() => focusElement('dn-fast-item-picker'), 50);
+                    }}
+                    className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Customer Order / PO Ref. */}
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-xs">Customer Order / PO Ref.</label>
+                    <input
+                      id="dn-modal-order-ref"
+                      type="text"
+                      placeholder="e.g. PO-8923 or Verbal"
+                      value={orderRefNo || ''}
+                      onChange={e => setOrderRefNo(e.target.value)}
+                      onFocus={e => e.target.select()}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          focusElement('dn-modal-vehicle-no');
+                        }
+                      }}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-900 outline-none focus:border-cyan-600 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-xs">Vehicle / Truck No.</label>
+                    <input
+                      id="dn-modal-vehicle-no"
+                      type="text"
+                      placeholder="e.g. BP-1-A1234"
+                      value={vehicleNo || ''}
+                      onChange={e => setVehicleNo(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          focusElement('dn-modal-dispatch-through');
+                        }
+                      }}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-900 outline-none focus:border-cyan-600 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-xs">Dispatched Through / Carrier</label>
+                    <input
+                      id="dn-modal-dispatch-through"
+                      type="text"
+                      placeholder="e.g. Store Van, Courier, Self"
+                      value={dispatchThrough || ''}
+                      onChange={e => setDispatchThrough(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          focusElement('dn-modal-destination');
+                        }
+                      }}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-900 outline-none focus:border-cyan-600 text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1 text-xs">Destination / Site Address</label>
+                    <textarea
+                      id="dn-modal-destination"
+                      rows={2}
+                      placeholder="e.g. Warehouse Site 2, Thimphu"
+                      value={destination || ''}
+                      onChange={e => setDestination(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          setShowTransportModal(false);
+                          setTimeout(() => focusElement('dn-fast-item-picker'), 50);
+                        }
+                      }}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-900 outline-none focus:border-cyan-600 text-xs resize-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTransportModal(false);
+                      focusElement('dn-fast-item-picker');
+                    }}
+                    className="w-full sm:w-auto px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <span>Save & Continue to Items</span>
+                    <CheckCircle2 className="h-4 w-4" />
                   </button>
                 </div>
               </div>
             </div>
+          )}
 
+          {/* Line Items Table */}
+          <div className="flex-1 min-h-[220px] flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs relative text-xs overflow-hidden">
             <div className="flex-1 overflow-y-auto min-h-[160px]">
               <table className="w-full text-left border-collapse">
                 <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 font-extrabold text-[11px]">
@@ -851,68 +864,76 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {noteItems.map((line, idx) => (
                     <tr key={idx} className="hover:bg-slate-50/60 transition">
-                      <td className="py-1.5 px-3 min-w-[240px]">
-                        <SearchableItemSelect
-                          variant="grid"
-                          id={`dn-item-${idx}`}
-                          valueCode={line.itemCode}
-                          items={items}
-                          placeholder="Select item..."
-                          currencySymbol={currencySymbol}
-                          priceType="sale"
-                          showPrice={true}
-                          onEndOfList={(id) => id && focusElement('dn-save-btn')}
-                          onSelect={selectedItem => {
-                            const qty = line.qty || 1;
-                            const rate = Number((selectedItem as any)['Sale Rate'] ?? (selectedItem as any)['Sales Rate'] ?? selectedItem.MRP ?? selectedItem['Purchase Rate'] ?? 0);
-                            const unit = selectedItem.Unit || 'Pcs';
+                      <td className="py-0.5 px-2 min-w-[240px] align-middle">
+                        <div className="flex items-center gap-1">
+                          <div className="flex-1 min-w-0">
+                            <SearchableItemSelect
+                              variant="grid"
+                              id={`dn-item-${idx}`}
+                              disabled={showTransportModal}
+                              valueCode={line.itemCode}
+                              items={items}
+                              placeholder="Select item..."
+                              currencySymbol={currencySymbol}
+                              priceType="sale"
+                              showPrice={true}
+                              onEndOfList={(id) => id && focusElement('dn-save-btn')}
+                              onSelect={selectedItem => {
+                                const qty = line.qty || 1;
+                                const rate = Number((selectedItem as any)['Sale Rate'] ?? (selectedItem as any)['Sales Rate'] ?? selectedItem.MRP ?? selectedItem['Purchase Rate'] ?? 0);
+                                const unit = selectedItem.Unit || 'Pcs';
 
-                            const updated = [...noteItems];
-                            updated[idx] = {
-                              ...updated[idx],
-                              itemCode: selectedItem['Item Code'],
-                              itemName: selectedItem['Item Name'],
-                              unit,
-                              rate,
-                              amount: qty * rate
-                            };
-                            setNoteItems(updated);
-                            setTimeout(() => {
-                              const qtyEl = document.getElementById(`dn-qty-${idx}`) as HTMLInputElement | null;
-                              if (qtyEl) {
-                                qtyEl.focus();
-                                qtyEl.select();
-                              }
-                            }, 50);
-                          }}
-                          onEnterNext={() => {
-                            setTimeout(() => {
-                              const el = document.getElementById(`dn-qty-${idx}`);
-                              if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
-                            }, 10);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return;
-                            handleGridKeyDown(e, getGridNavOpts(idx, 'item'));
-                          }}
-                          onCreateNew={onOpenNewItemModal}
-                        />
+                                const updated = [...noteItems];
+                                updated[idx] = {
+                                  ...updated[idx],
+                                  itemCode: selectedItem['Item Code'],
+                                  itemName: selectedItem['Item Name'],
+                                  unit,
+                                  rate,
+                                  amount: qty * rate
+                                };
+                                setNoteItems(updated);
+                                setTimeout(() => {
+                                  const qtyEl = document.getElementById(`dn-qty-${idx}`) as HTMLInputElement | null;
+                                  if (qtyEl) {
+                                    qtyEl.focus();
+                                    qtyEl.select();
+                                  }
+                                }, 50);
+                              }}
+                              onEnterNext={() => {
+                                setTimeout(() => {
+                                  const el = document.getElementById(`dn-qty-${idx}`);
+                                  if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
+                                }, 10);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return;
+                                handleGridKeyDown(e, getGridNavOpts(idx, 'item'));
+                              }}
+                              onCreateNew={onOpenNewItemModal}
+                            />
+                          </div>
+                          {line.itemCode && (
+                            <ItemNoteButton
+                              hasNote={Boolean(line.description && line.description.trim())}
+                              onClick={() => setActiveNoteIdx(activeNoteIdx === idx ? null : idx)}
+                              accentColor="cyan"
+                            />
+                          )}
+                        </div>
 
-                        {config.EnableItemDescription && line.itemCode && (
-                          <input
-                            type="text"
-                            placeholder="Item note / description..."
+                        {(Boolean(line.description && line.description.trim()) || activeNoteIdx === idx) && (
+                          <ItemNoteInput
                             value={line.description || ''}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setNoteItems(prev => prev.map((it, i) => i === idx ? { ...it, description: val } : it));
-                            }}
-                            className="w-full mt-1 px-2 py-0.5 rounded border border-slate-200 text-[11px] outline-none focus:border-cyan-600 text-slate-700 bg-white"
+                            onChange={val => setNoteItems(prev => prev.map((it, i) => i === idx ? { ...it, description: val } : it))}
+                            onClose={() => setActiveNoteIdx(null)}
+                            accentColor="cyan"
                           />
                         )}
                       </td>
 
-                      <td className="py-1.5 px-2.5">
+                      <td className="py-0.5 px-1 align-middle text-center">
                         <input
                           id={`dn-qty-${idx}`}
                           type="number"
@@ -927,15 +948,40 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                               e.target.value === '' ? '' : parseFloat(e.target.value)
                             )
                           }
-                          className="w-full text-center rounded-lg border border-slate-300 px-2 py-1 font-bold outline-none focus:border-cyan-600 text-xs bg-white"
+                          className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-cyan-600 outline-none bg-white"
                         />
                       </td>
 
-                      <td className="py-1.5 px-2 text-center font-bold text-slate-600 text-xs">
-                        {line.unit || 'Pcs'}
+                      <td className="py-0.5 px-1 align-middle text-center">
+                        <select
+                          value={line.unit || 'Pcs'}
+                          onChange={e => {
+                            const val = e.target.value;
+                            const updated = [...noteItems];
+                            updated[idx].unit = val;
+                            const item = items.find(i => (i['Item Code'] && i['Item Code'] === updated[idx].itemCode) || i['Item Name'] === updated[idx].itemName);
+                            if (item) {
+                              if (val === item.Unit) {
+                                updated[idx].rate = Number((item as any)['Sale Rate'] ?? (item as any)['Sales Rate'] ?? item.MRP ?? 0);
+                              } else if (item.multiUnits) {
+                                const mu = item.multiUnits.find(m => m.unit === val);
+                                if (mu && mu.saleRate) {
+                                  updated[idx].rate = mu.saleRate;
+                                }
+                              }
+                              updated[idx].amount = (updated[idx].qty || 0) * (updated[idx].rate || 0);
+                            }
+                            setNoteItems(updated);
+                          }}
+                          className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-cyan-600 outline-none bg-white"
+                        >
+                          {units.map(u => (
+                            <option key={u['Unit Name']} value={u['Unit Name']}>{u.Symbol || u['Unit Name']}</option>
+                          ))}
+                        </select>
                       </td>
 
-                      <td className="py-1.5 px-2.5 text-right font-semibold text-slate-700">
+                      <td className="py-0.5 px-1 align-middle">
                         <input
                           id={`dn-rate-${idx}`}
                           type="number"
@@ -948,15 +994,15 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                             const q = Number(line.qty) || 0;
                             setNoteItems(prev => prev.map((it, i) => i === idx ? { ...it, rate: r, amount: q * r } : it));
                           }}
-                          className="w-24 text-right rounded-lg border border-slate-300 px-2 py-1 font-bold outline-none focus:border-cyan-600 text-xs bg-white inline-block"
+                          className="w-full text-right h-6 rounded border border-slate-300 text-xs font-semibold focus:border-cyan-600 outline-none bg-white"
                         />
                       </td>
 
-                      <td className="py-1.5 px-2.5 text-right font-black text-slate-900 font-mono">
+                      <td className="py-0.5 px-2 text-right font-black text-slate-900 font-mono align-middle">
                         {currencySymbol} {(Number(line.amount) || 0).toFixed(2)}
                       </td>
 
-                      <td className="py-1.5 px-2 text-center">
+                      <td className="py-0.5 px-1 text-center align-middle">
                         <button
                           type="button"
                           onClick={() => handleRemoveItem(idx)}
@@ -975,6 +1021,7 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                       <SearchableItemSelect
                         variant="grid"
                         id="dn-fast-item-picker"
+                        disabled={showTransportModal}
                         items={items}
                         placeholder="+ Type Item Name or Scan Barcode..."
                         currencySymbol={currencySymbol}
@@ -996,6 +1043,19 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Narration Field */}
+          <div className="flex items-center gap-2 bg-slate-50/90 border border-slate-200 rounded-xl px-3 py-1.5 shrink-0 shadow-2xs">
+            <span className="text-xs font-extrabold text-slate-700 whitespace-nowrap">Narration:</span>
+            <input
+              id="del-narration"
+              type="text"
+              placeholder="Enter delivery note narration / remarks..."
+              value={remarks}
+              onChange={e => setRemarks(e.target.value)}
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-medium outline-none focus:border-cyan-600 transition"
+            />
           </div>
 
           {/* Bottom Bar */}

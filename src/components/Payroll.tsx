@@ -205,60 +205,51 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     }
   }, [selectedYear, selectedMonth, payrolls]);
 
-  // Central Keyboard Shortcut Handler (Desktop Software UX)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        // Priority 1: Close top-most active modal
-        if (showDrcFormModal) {
-          e.preventDefault();
-          e.stopPropagation();
-          setShowDrcFormModal(false);
-          return;
-        }
-        if (showBankSheetModal) {
-          e.preventDefault();
-          e.stopPropagation();
-          setShowBankSheetModal(false);
-          return;
-        }
-        if (payslipModalEntry) {
-          e.preventDefault();
-          e.stopPropagation();
-          setPayslipModalEntry(null);
-          return;
-        }
-        if (editingEntry) {
-          e.preventDefault();
-          e.stopPropagation();
-          setEditingEntry(null);
-          return;
-        }
-        if (showPayHeadModal) {
-          e.preventDefault();
-          e.stopPropagation();
-          setShowPayHeadModal(false);
-          return;
-        }
-        if (showEmployeeModal) {
-          e.preventDefault();
-          e.stopPropagation();
-          setShowEmployeeModal(false);
-          return;
-        }
+  const handlePayrollBack = (): boolean => {
+    // Priority 1: Close top-most active modal
+    if (showDrcFormModal) {
+      setShowDrcFormModal(false);
+      return true;
+    }
+    if (showBankSheetModal) {
+      setShowBankSheetModal(false);
+      return true;
+    }
+    if (payslipModalEntry) {
+      setPayslipModalEntry(null);
+      return true;
+    }
+    if (editingEntry) {
+      setEditingEntry(null);
+      return true;
+    }
+    if (showPayHeadModal) {
+      setShowPayHeadModal(false);
+      return true;
+    }
+    if (showEmployeeModal) {
+      setShowEmployeeModal(false);
+      return true;
+    }
 
-        // Priority 2: If no modal is open, navigate sub-tab back to main Processing tab
-        if (activeTab !== 'processing') {
-          e.preventDefault();
-          e.stopPropagation();
-          setActiveTab('processing');
-          return;
-        }
+    // Priority 2: If no modal is open, navigate sub-tab back to main Processing tab
+    if (activeTab !== 'processing') {
+      setActiveTab('processing');
+      return true;
+    }
+
+    return false;
+  };
+
+  useEffect(() => {
+    const handleBackEvent = (e: CustomEvent) => {
+      const handled = handlePayrollBack();
+      if (handled) {
+        e.preventDefault();
       }
     };
-
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('app:back' as any, handleBackEvent);
+    return () => window.removeEventListener('app:back' as any, handleBackEvent);
   }, [
     showDrcFormModal,
     showBankSheetModal,

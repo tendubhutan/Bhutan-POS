@@ -10,7 +10,7 @@ interface FinancialStatementViewProps {
   toDate: string;
   initialDepth?: ReportDetailDepth;
   onDepthChange?: (depth: ReportDetailDepth) => void;
-  onDrillLedger?: (ledgerName: string) => void;
+  onDrillLedger?: (ledgerName: string, fromDate?: string, toDate?: string) => void;
   onDrillGroup?: (groupName: string, from?: string, to?: string) => void;
   config?: any;
   isControlsCollapsed?: boolean;
@@ -476,11 +476,11 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                                 const cLower = child.name.toLowerCase();
                                 const gLower = groupNode.name.toLowerCase();
                                 if (cLower.includes('opening stock') || cLower === 'stock-in-hand' || cLower === 'stock in hand' || gLower === 'stock-in-hand' || gLower === 'stock in hand') {
-                                  onDrillGroup ? onDrillGroup('Opening Stock', fromDate, toDate) : (onDrillLedger && onDrillLedger(child.name));
+                                  onDrillGroup ? onDrillGroup('Opening Stock', fromDate, toDate) : (onDrillLedger && onDrillLedger(child.name, fromDate, toDate));
                                 } else if (cLower.includes('closing stock')) {
-                                  onDrillGroup ? onDrillGroup('Closing Stock', fromDate, toDate) : (onDrillLedger && onDrillLedger(child.name));
+                                  onDrillGroup ? onDrillGroup('Closing Stock', fromDate, toDate) : (onDrillLedger && onDrillLedger(child.name, fromDate, toDate));
                                 } else {
-                                  onDrillLedger && onDrillLedger(child.name);
+                                  onDrillLedger && onDrillLedger(child.name, fromDate, toDate);
                                 }
                               }}
                               className="hover:bg-indigo-50/50 cursor-pointer text-slate-700 transition"
@@ -659,7 +659,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                         {depth !== 'summary' && pnlData.purchLedgers.map((l: any, i: number) => (
                           <div
                             key={i}
-                            onClick={() => onDrillLedger && onDrillLedger(l.name)}
+                            onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                             className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                           >
                             <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
@@ -677,7 +677,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                         {depth !== 'summary' && pnlData.directExpLedgers.map((l: any, i: number) => (
                           <div
                             key={i}
-                            onClick={() => onDrillLedger && onDrillLedger(l.name)}
+                            onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                             className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                           >
                             <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
@@ -725,7 +725,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                         {depth !== 'summary' && pnlData.salesLedgers.map((l: any, i: number) => (
                           <div
                             key={i}
-                            onClick={() => onDrillLedger && onDrillLedger(l.name)}
+                            onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                             className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                           >
                             <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
@@ -818,7 +818,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                       {depth !== 'summary' && pnlData.indirectExpLedgers.map((l: any, i: number) => (
                         <div
                           key={i}
-                          onClick={() => onDrillLedger && onDrillLedger(l.name)}
+                          onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                           className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                         >
                           <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
@@ -868,7 +868,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                         {depth !== 'summary' && pnlData.indirectIncLedgers.map((l: any, i: number) => (
                           <div
                             key={i}
-                            onClick={() => onDrillLedger && onDrillLedger(l.name)}
+                            onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                             className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                           >
                             <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
@@ -1014,7 +1014,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                           {bsData.capitalLedgers.map((l: any, i: number) => (
                             <div
                               key={i}
-                              onClick={() => onDrillLedger && onDrillLedger(l.name)}
+                              onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                               className="flex justify-between items-center hover:text-indigo-600 cursor-pointer transition"
                             >
                               <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
@@ -1034,7 +1034,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                       {depth !== 'summary' && bsData.loanLedgers.map((l: any, i: number) => (
                         <div
                           key={i}
-                          onClick={() => onDrillLedger && onDrillLedger(l.name)}
+                          onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                           className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                         >
                           <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
@@ -1052,7 +1052,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                       {depth !== 'summary' && bsData.currentLiabLedgers.map((l: any, i: number) => (
                         <div
                           key={i}
-                          onClick={() => onDrillLedger && onDrillLedger(l.name)}
+                          onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                           className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                         >
                           <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
@@ -1094,7 +1094,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                       {depth !== 'summary' && bsData.fixedAssetLedgers.map((l: any, i: number) => (
                         <div
                           key={i}
-                          onClick={() => onDrillLedger && onDrillLedger(l.name)}
+                          onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                           className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                         >
                           <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
@@ -1122,7 +1122,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                           {bsData.currentAssetLedgers.map((l: any, i: number) => (
                             <div
                               key={i}
-                              onClick={() => onDrillLedger && onDrillLedger(l.name)}
+                              onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                               className="flex justify-between items-center hover:text-indigo-600 cursor-pointer transition"
                             >
                               <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>

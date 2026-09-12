@@ -1,3 +1,15 @@
+export function focusElement(id: string) {
+  setTimeout(() => {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (el) {
+      el.focus();
+      if (typeof el.select === 'function') {
+        el.select();
+      }
+    }
+  }, 20);
+}
+
 export function focusNextOutsideGrid(currentElementId: string) {
   const current = document.getElementById(currentElementId);
   if (!current) return;

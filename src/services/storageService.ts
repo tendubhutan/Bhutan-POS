@@ -18,6 +18,12 @@ import {
   VoucherType,
   Quotation,
   QuotationItem,
+  SalesOrder,
+  SalesOrderItem,
+  PurchaseOrder,
+  PurchaseOrderItem,
+  ReceiptNote,
+  ReceiptNoteItem,
   DeliveryNote,
   DeliveryNoteItem,
   PhysicalStockItem,
@@ -70,6 +76,9 @@ export const STORAGE_KEYS = {
   VOUCHERS: 'deep_pos_vouchers',
   QUOTATIONS: 'deep_pos_quotations',
   DELIVERY_NOTES: 'deep_pos_delivery_notes',
+  SALES_ORDERS: 'deep_pos_sales_orders',
+  PURCHASE_ORDERS: 'deep_pos_purchase_orders',
+  RECEIPT_NOTES: 'deep_pos_receipt_notes',
   PHYSICAL_STOCK: 'deep_pos_physical_stock',
   PAY_HEADS: 'deep_pos_pay_heads',
   EMPLOYEES: 'deep_pos_employees',
@@ -169,6 +178,9 @@ export const DEFAULT_VOUCHER_TYPES: VoucherType[] = [
   { id: 'vt_dn_std', name: 'Debit Note', parentType: 'Debit Note', type: 'Debit Note', typeCode: 'DN', prefix: 'DN-', numberingMode: 'auto', startingNumber: 1, zeroPadding: 4, isDefault: true, isActive: true, status: 'Active', description: 'Purchase returns and debit charges to suppliers' },
   { id: 'vt_dlv_std', name: 'Delivery Note', parentType: 'Delivery Note', type: 'Delivery Note', typeCode: 'DEL_NOTE', prefix: 'DLV-', numberingMode: 'auto', startingNumber: 1, zeroPadding: 4, isDefault: true, isActive: true, status: 'Active', description: 'Goods dispatch delivery challans without immediate invoice' },
   { id: 'vt_qtn_std', name: 'Quotation / Proforma', parentType: 'Quotation', type: 'Quotation', typeCode: 'QUOTATION', prefix: 'QTN-', numberingMode: 'auto', startingNumber: 1, zeroPadding: 4, isDefault: true, isActive: true, status: 'Active', description: 'Customer price estimates and proforma quotations' },
+  { id: 'vt_so_std', name: 'Sales Order', parentType: 'Sales Order', type: 'Sales Order', typeCode: 'SALES_ORDER', prefix: 'SO-', numberingMode: 'auto', startingNumber: 1, zeroPadding: 4, isDefault: true, isActive: true, status: 'Active', description: 'Customer sales orders and order confirmations' },
+  { id: 'vt_po_std', name: 'Purchase Order', parentType: 'Purchase Order', type: 'Purchase Order', typeCode: 'PURCHASE_ORDER', prefix: 'PO-', numberingMode: 'auto', startingNumber: 1, zeroPadding: 4, isDefault: true, isActive: true, status: 'Active', description: 'Supplier purchase orders and order commitments' },
+  { id: 'vt_grn_std', name: 'Receipt Note (GRN)', parentType: 'Receipt Note', type: 'Receipt Note', typeCode: 'RECEIPT_NOTE', prefix: 'GRN-', numberingMode: 'auto', startingNumber: 1, zeroPadding: 4, isDefault: true, isActive: true, status: 'Active', description: 'Inward goods receipt notes from suppliers' },
   { id: 'vt_phy_std', name: 'Physical Stock', parentType: 'Physical Stock', type: 'Physical Stock', typeCode: 'PHYSICAL_STOCK', prefix: 'PHY-', numberingMode: 'auto', startingNumber: 1, zeroPadding: 4, isDefault: true, isActive: true, status: 'Active', description: 'Physical inventory counting and audit verification' }
 ];
 
@@ -736,7 +748,7 @@ const DEFAULT_EMPLOYEES: Employee[] = [
   }
 ];
 
-const DEFAULT_ITEMS: Item[] = [
+export const DEFAULT_ITEMS: Item[] = [
   {
     'Item Code': 'ITM260812000001',
     Barcode: '20000001',
@@ -952,7 +964,7 @@ export function formatVoucherNumber(prefix: string = '', num: number = 1, zeroPa
 export function normalizeVoucherTypes(list: any[]): VoucherType[] {
   if (!Array.isArray(list) || list.length === 0) return DEFAULT_VOUCHER_TYPES;
 
-  const typeCodeMap: Record<string, 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'QUOTATION' | 'PHYSICAL_STOCK'> = {
+  const typeCodeMap: Record<string, 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'QUOTATION' | 'PHYSICAL_STOCK' | 'SALES_ORDER' | 'PURCHASE_ORDER' | 'RECEIPT_NOTE'> = {
     Payment: 'P',
     Receipt: 'R',
     Sale: 'S',
@@ -967,6 +979,12 @@ export function normalizeVoucherTypes(list: any[]): VoucherType[] {
     'Delivery Note': 'DEL_NOTE',
     DeliveryNote: 'DEL_NOTE',
     Quotation: 'QUOTATION',
+    'Sales Order': 'SALES_ORDER',
+    SalesOrder: 'SALES_ORDER',
+    'Purchase Order': 'PURCHASE_ORDER',
+    PurchaseOrder: 'PURCHASE_ORDER',
+    'Receipt Note': 'RECEIPT_NOTE',
+    ReceiptNote: 'RECEIPT_NOTE',
     'Physical Stock': 'PHYSICAL_STOCK',
     PhysicalStock: 'PHYSICAL_STOCK'
   };
@@ -1044,6 +1062,9 @@ export function saveVoucherType(vt: Partial<VoucherType>) {
   if (parent === 'DebitNote') parent = 'Debit Note';
   if (parent === 'DeliveryNote') parent = 'Delivery Note';
   if (parent === 'PhysicalStock') parent = 'Physical Stock';
+  if (parent === 'SalesOrder') parent = 'Sales Order';
+  if (parent === 'PurchaseOrder') parent = 'Purchase Order';
+  if (parent === 'ReceiptNote') parent = 'Receipt Note';
   if (parent === 'Sales') parent = 'Sale';
 
   const typeCodeMap: Record<string, any> = {
@@ -1057,6 +1078,9 @@ export function saveVoucherType(vt: Partial<VoucherType>) {
     'Debit Note': 'DN',
     'Delivery Note': 'DEL_NOTE',
     Quotation: 'QUOTATION',
+    'Sales Order': 'SALES_ORDER',
+    'Purchase Order': 'PURCHASE_ORDER',
+    'Receipt Note': 'RECEIPT_NOTE',
     'Physical Stock': 'PHYSICAL_STOCK'
   };
 
@@ -1174,6 +1198,10 @@ export function saveConfig(cfgObj: Partial<Config>) {
   return { ok: true, config: updated };
 }
 
+export function getUnits(): Unit[] {
+  return loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
+}
+
 export function saveUnit(unit: Unit) {
   const list = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
   const cleanName = (unit['Unit Name'] || '').trim();
@@ -1214,6 +1242,20 @@ export function saveItemGroup(group: ItemGroup) {
   if (idx > -1) list[idx] = group; else list.push(group);
   saveJson(STORAGE_KEYS.ITEM_GROUPS, list);
   return { ok: true, itemGroups: list };
+}
+
+export function deleteItemGroup(groupName: string) {
+  const list = loadJson<ItemGroup[]>(STORAGE_KEYS.ITEM_GROUPS, DEFAULT_ITEM_GROUPS);
+  const filtered = list.filter(g => g['Group Name'] !== groupName);
+  saveJson(STORAGE_KEYS.ITEM_GROUPS, filtered);
+  return { ok: true, itemGroups: filtered };
+}
+
+export function deleteUnitGroup(groupName: string) {
+  const list = loadJson<UnitGroup[]>(STORAGE_KEYS.UNIT_GROUPS, DEFAULT_UNIT_GROUPS);
+  const filtered = list.filter(g => g['Group Name'] !== groupName);
+  saveJson(STORAGE_KEYS.UNIT_GROUPS, filtered);
+  return { ok: true, unitGroups: filtered };
 }
 
 export function getItemCategories(): string[] {
@@ -1573,6 +1615,13 @@ export function saveLedgerGroup(g: LedgerGroup) {
   return { ok: true, ledgerGroups: list };
 }
 
+export function deleteLedgerGroup(groupName: string) {
+  const list = loadJson<LedgerGroup[]>(STORAGE_KEYS.LEDGER_GROUPS, DEFAULT_LEDGER_GROUPS);
+  const filtered = list.filter(g => g['Group Name'] !== groupName);
+  saveJson(STORAGE_KEYS.LEDGER_GROUPS, filtered);
+  return { ok: true, ledgerGroups: filtered };
+}
+
 export function saveLedger(l: Ledger) {
   let list = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
   const cleanName = (l['Ledger Name'] || '').trim();
@@ -1884,13 +1933,16 @@ export function saveSalesInvoice(payload: {
     const oldInv = existingSales.find(s => s.invoiceNo?.trim().toLowerCase() === refToMatch || (invoiceNo && s.invoiceNo?.trim().toLowerCase() === invoiceNo.trim().toLowerCase()));
     if (oldInv) {
       originalDate = oldInv.date;
-      // 1. Revert previous stock deduction from the original sale
-      (oldInv.items || []).forEach((item: any) => {
-        const qty = Number(item.Qty) || 0;
-        if (qty > 0) {
-          updateItemStock(item['Item Code'], qty, item.Unit || item.unit);
-        }
-      });
+      // 1. Revert previous stock deduction ONLY if the original sale had actually deducted stock (i.e. was NOT against a Delivery Note)
+      const oldWasAgainstDN = Boolean(oldInv.deliveryNoteNo && oldInv.deliveryNoteNo.trim());
+      if (!oldWasAgainstDN) {
+        (oldInv.items || []).forEach((item: any) => {
+          const qty = Number(item.Qty) || 0;
+          if (qty > 0) {
+            updateItemStock(item['Item Code'], qty, item.Unit || item.unit);
+          }
+        });
+      }
     }
 
     // 2. Remove old stock ledger entries for this invoice to prevent duplicate audit rows
@@ -2053,6 +2105,9 @@ export function saveSalesInvoice(payload: {
     bankTxnNo: payment.bankTxnNo || '',
     bank2TxnNo: payment.bank2TxnNo || '',
     isPOS: isPOS,
+    orderNo: payload.orderNo || '',
+    orderDate: payload.orderDate || '',
+    deliveryNoteNo: payload.deliveryNoteNo || '',
     items: itemsRows
   };
 
@@ -2099,10 +2154,23 @@ export function saveSalesInvoice(payload: {
   }
 
   // Stock logging & ledger balance
-  cart.forEach(l => {
-    const nq = updateItemStock(l.itemCode, -Number(l.qty), l.unit);
-    logStock(l.itemCode, l.itemName, 'Sale', 0, Number(l.qty), nq, iNo, l.unit);
-  });
+  // If invoice is generated against an existing Delivery Note (Challan), stock was already deducted during Delivery Note entry.
+  const deliveryNotes = loadJson<DeliveryNote[]>(STORAGE_KEYS.DELIVERY_NOTES, []);
+  const dnNo = (payload.deliveryNoteNo || '').trim();
+  const isAgainstDeliveryNote = Boolean(
+    dnNo ||
+    deliveryNotes.some(dn => (dn.invoiceNo && dn.invoiceNo.trim().toLowerCase() === iNo.trim().toLowerCase()) || (dnNo && dn.noteNo?.trim().toLowerCase() === dnNo.toLowerCase()))
+  );
+  if (!isAgainstDeliveryNote) {
+    cart.forEach(l => {
+      const nq = updateItemStock(l.itemCode, -Number(l.qty), l.unit);
+      logStock(l.itemCode, l.itemName, 'Sale', 0, Number(l.qty), nq, iNo, l.unit);
+    });
+  }
+
+  if (dnNo) {
+    updateDeliveryNoteStatus(dnNo, 'Invoiced', iNo);
+  }
 
   additionalExpenses.forEach(exp => {
     if (exp.ledger && Number(exp.amount) > 0) {
@@ -2205,7 +2273,10 @@ export function savePurchaseInvoice(payload: {
   supplier: { name: string; gstNo?: string; tpnNo?: string; address?: string; phone?: string };
   payment: PaymentDetails;
   supplierBillNo?: string;
+  receiptNoteNo?: string;
+  poNo?: string;
   notes?: string;
+  narration?: string;
   additionalExpenses?: { ledger: string; amount: number }[];
   billNo?: string;
   originalBillNo?: string;
@@ -2352,6 +2423,8 @@ export function savePurchaseInvoice(payload: {
   const purchase: PurchaseInvoice = {
     billNo: bNo,
     supplierBillNo: payload.supplierBillNo || '',
+    receiptNoteNo: payload.receiptNoteNo || '',
+    poNo: payload.poNo || '',
     date: purchaseDate,
     supplier,
     taxable: tax,
@@ -2410,10 +2483,15 @@ export function savePurchaseInvoice(payload: {
     });
   }
 
-  cart.forEach(l => {
-    const nq = updateItemStock(l.itemCode, Number(l.qty), l.unit);
-    logStock(l.itemCode, l.itemName, 'Purchase', Number(l.qty), 0, nq, bNo, l.unit);
-  });
+  // Stock logging & ledger balance
+  // If purchase invoice is generated against an existing Receipt Note (GRN), stock was already added into inventory during Receipt Note entry.
+  const isAgainstReceiptNote = Boolean(payload.receiptNoteNo && payload.receiptNoteNo.trim());
+  if (!isAgainstReceiptNote) {
+    cart.forEach(l => {
+      const nq = updateItemStock(l.itemCode, Number(l.qty), l.unit);
+      logStock(l.itemCode, l.itemName, 'Purchase', Number(l.qty), 0, nq, bNo, l.unit);
+    });
+  }
 
   if (cash > 0) adjustLedgerBalance('Cash', cash, 'Cr', bNo, 'Cash purchase ' + bNo, 'Purchase');
   if (b1 > 0) {
@@ -2460,7 +2538,7 @@ export function getVouchers(): Voucher[] {
   return deduped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
-export function getVoucherPrefix(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'PHYSICAL_STOCK' | 'QUOTATION', cfg?: Config): string {
+export function getVoucherPrefix(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'PHYSICAL_STOCK' | 'QUOTATION' | 'SALES_ORDER' | 'PURCHASE_ORDER' | 'RECEIPT_NOTE', cfg?: Config): string {
   const config = cfg || loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   if (type === 'P') return config.PaymentVoucherPrefix !== undefined && config.PaymentVoucherPrefix !== '' ? config.PaymentVoucherPrefix : 'PMT-';
   if (type === 'R') return config.ReceiptVoucherPrefix !== undefined && config.ReceiptVoucherPrefix !== '' ? config.ReceiptVoucherPrefix : 'RCT-';
@@ -2471,12 +2549,15 @@ export function getVoucherPrefix(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN
   if (type === 'DEL_NOTE') return config.DeliveryNotePrefix !== undefined && config.DeliveryNotePrefix !== '' ? config.DeliveryNotePrefix : 'DLV-';
   if (type === 'PHYSICAL_STOCK') return config.PhysicalStockPrefix !== undefined && config.PhysicalStockPrefix !== '' ? config.PhysicalStockPrefix : 'PHY-';
   if (type === 'QUOTATION') return config.QuotationPrefix !== undefined && config.QuotationPrefix !== '' ? config.QuotationPrefix : 'QTN-';
+  if (type === 'SALES_ORDER') return config.SalesOrderPrefix !== undefined && config.SalesOrderPrefix !== '' ? config.SalesOrderPrefix : 'SO-';
+  if (type === 'PURCHASE_ORDER') return config.PurchaseOrderPrefix !== undefined && config.PurchaseOrderPrefix !== '' ? config.PurchaseOrderPrefix : 'PO-';
+  if (type === 'RECEIPT_NOTE') return config.ReceiptNotePrefix !== undefined && config.ReceiptNotePrefix !== '' ? config.ReceiptNotePrefix : 'GRN-';
   if (type === 'S') return config.SalesInvoicePrefix !== undefined && config.SalesInvoicePrefix !== '' ? config.SalesInvoicePrefix : 'SAL-';
   if (type === 'PUR') return config.PurchaseInvoicePrefix !== undefined && config.PurchaseInvoicePrefix !== '' ? config.PurchaseInvoicePrefix : 'PUR-';
   return 'VOU-';
 }
 
-export function peekNextVoucherNo(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'PHYSICAL_STOCK' | 'QUOTATION', cfg?: Config): string {
+export function peekNextVoucherNo(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'PHYSICAL_STOCK' | 'QUOTATION' | 'SALES_ORDER' | 'PURCHASE_ORDER' | 'RECEIPT_NOTE', cfg?: Config): string {
   if (type === 'S') {
     return peekNextInvoiceNumber(false);
   }
@@ -2494,13 +2575,19 @@ export function peekNextVoucherNo(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'C
     DeliveryNote: 1,
     PhysicalStock: 1,
     Quotation: 1,
+    SalesOrder: 1,
+    PurchaseOrder: 1,
+    ReceiptNote: 1,
     Voucher: 0
   });
   const counterKey = type === 'CN' ? 'CreditNote' :
     type === 'DN' ? 'DebitNote' :
     type === 'DEL_NOTE' ? 'DeliveryNote' :
     type === 'PHYSICAL_STOCK' ? 'PhysicalStock' :
-    type === 'QUOTATION' ? 'Quotation' : 'Voucher';
+    type === 'QUOTATION' ? 'Quotation' :
+    type === 'SALES_ORDER' ? 'SalesOrder' :
+    type === 'PURCHASE_ORDER' ? 'PurchaseOrder' :
+    type === 'RECEIPT_NOTE' ? 'ReceiptNote' : 'Voucher';
   const val = (counters[counterKey] || counters['Voucher'] || 0) + 1;
   return `${px}${val}`;
 }
@@ -2941,14 +3028,17 @@ export function cancelSalesInvoice(invoiceNo: string, reason?: string) {
   if (!target) return { ok: false, error: 'Invoice not found' };
   if (target.status === 'Cancelled') return { ok: false, error: 'Invoice is already cancelled' };
 
-  // Reverse stock
-  (target.items || []).forEach((item: any) => {
-    const qty = Number(item.Qty) || 0;
-    if (qty > 0) {
-      const newQty = updateItemStock(item['Item Code'], qty, item.Unit || item.unit);
-      logStock(item['Item Code'], item['Item Name'], 'Sale Cancelled', qty, 0, newQty, invoiceNo, item.Unit || item.unit);
-    }
-  });
+  // Reverse stock ONLY if stock was actually deducted by this sale (i.e. not raised against a Delivery Note)
+  const wasAgainstDN = Boolean(target.deliveryNoteNo && target.deliveryNoteNo.trim());
+  if (!wasAgainstDN) {
+    (target.items || []).forEach((item: any) => {
+      const qty = Number(item.Qty) || 0;
+      if (qty > 0) {
+        const newQty = updateItemStock(item['Item Code'], qty, item.Unit || item.unit);
+        logStock(item['Item Code'], item['Item Name'], 'Sale Cancelled', qty, 0, newQty, invoiceNo, item.Unit || item.unit);
+      }
+    });
+  }
 
   target.status = 'Cancelled';
   (target as any).cancelledAt = new Date().toISOString();
@@ -4041,6 +4131,21 @@ export function deleteDeliveryNote(noteNo: string) {
   return { ok: true, items: updatedItems, notes };
 }
 
+export function updateDeliveryNoteStatus(noteNo: string, status: 'Dispatched' | 'Delivered' | 'Invoiced' | 'Cancelled', invoiceNo?: string) {
+  const list = loadJson<DeliveryNote[]>(STORAGE_KEYS.DELIVERY_NOTES, []);
+  const cleanNo = (noteNo || '').trim().toLowerCase();
+  const target = list.find(n => n.noteNo?.trim().toLowerCase() === cleanNo);
+  if (target) {
+    target.status = status;
+    if (invoiceNo) {
+      target.invoiceNo = invoiceNo;
+    }
+    saveJson(STORAGE_KEYS.DELIVERY_NOTES, list);
+    return { ok: true, deliveryNote: target };
+  }
+  return { ok: false, error: 'Delivery Note not found' };
+}
+
 // -------------------------------------------------------------
 // PHYSICAL STOCK VERIFICATION & RECONCILIATION HANDLERS
 // -------------------------------------------------------------
@@ -4209,6 +4314,291 @@ export function deleteQuotation(quotationNo: string) {
   return { ok: true, quotations: list };
 }
 
+// -------------------------------------------------------------
+// SALES ORDER HANDLERS
+// -------------------------------------------------------------
+export function getSalesOrders(): SalesOrder[] {
+  const list = loadJson<SalesOrder[]>(STORAGE_KEYS.SALES_ORDERS, []);
+  return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+export function saveSalesOrder(order: {
+  orderNo?: string;
+  originalOrderNo?: string;
+  date?: string;
+  deliveryDate?: string;
+  customer: CustomerDetails;
+  taxable: number;
+  zeroRated: number;
+  gstAmt: number;
+  total: number;
+  status?: 'Pending' | 'Confirmed' | 'Delivered' | 'Invoiced' | 'Cancelled';
+  remarks?: string;
+  termsAndConditions?: string;
+  items: SalesOrderItem[];
+}) {
+  const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
+  const px = getVoucherPrefix('SALES_ORDER', cfg);
+  let no = (order.originalOrderNo || order.orderNo)?.trim();
+  if (!no) {
+    no = px + nextCounter('SalesOrder');
+  }
+
+  const dateIso = order.date || new Date().toISOString();
+  const finalNo = order.orderNo?.trim() || no;
+
+  const newOrder: SalesOrder = {
+    orderNo: finalNo,
+    date: dateIso,
+    deliveryDate: order.deliveryDate || '',
+    customer: order.customer,
+    taxable: round2(Number(order.taxable) || 0),
+    zeroRated: round2(Number(order.zeroRated) || 0),
+    gstAmt: round2(Number(order.gstAmt) || 0),
+    total: round2(Number(order.total) || 0),
+    status: order.status || 'Pending',
+    remarks: order.remarks || '',
+    termsAndConditions: order.termsAndConditions || '1. Goods subject to availability.\n2. Payment as per agreed terms.',
+    items: order.items
+  };
+
+  let list = loadJson<SalesOrder[]>(STORAGE_KEYS.SALES_ORDERS, []);
+  const existingIdx = list.findIndex(o => o.orderNo?.trim().toLowerCase() === no.trim().toLowerCase() || o.orderNo?.trim().toLowerCase() === finalNo.trim().toLowerCase());
+  if (existingIdx >= 0) {
+    list[existingIdx] = newOrder;
+  } else {
+    list.push(newOrder);
+  }
+  saveJson(STORAGE_KEYS.SALES_ORDERS, list);
+
+  return { ok: true, orderNo: no, salesOrder: newOrder };
+}
+
+export function updateSalesOrderStatus(orderNo: string, status: 'Pending' | 'Confirmed' | 'Delivered' | 'Invoiced' | 'Cancelled') {
+  const list = loadJson<SalesOrder[]>(STORAGE_KEYS.SALES_ORDERS, []);
+  const target = list.find(o => o.orderNo === orderNo);
+  if (target) {
+    target.status = status;
+    saveJson(STORAGE_KEYS.SALES_ORDERS, list);
+    return { ok: true, salesOrder: target };
+  }
+  return { ok: false, error: 'Sales Order not found' };
+}
+
+export function deleteSalesOrder(orderNo: string) {
+  let list = loadJson<SalesOrder[]>(STORAGE_KEYS.SALES_ORDERS, []);
+  list = list.filter(o => o.orderNo !== orderNo);
+  saveJson(STORAGE_KEYS.SALES_ORDERS, list);
+  return { ok: true, salesOrders: list };
+}
+
+// -------------------------------------------------------------
+// PURCHASE ORDER HANDLERS
+// -------------------------------------------------------------
+export function getPurchaseOrders(): PurchaseOrder[] {
+  const list = loadJson<PurchaseOrder[]>(STORAGE_KEYS.PURCHASE_ORDERS, []);
+  return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+export function savePurchaseOrder(po: {
+  poNo?: string;
+  originalPoNo?: string;
+  date?: string;
+  expectedDate?: string;
+  supplier: {
+    name: string;
+    ledger?: string;
+    gstNo?: string;
+    tpnNo?: string;
+    address?: string;
+    phone?: string;
+  };
+  taxable: number;
+  zeroRated: number;
+  gstAmt: number;
+  total: number;
+  status?: 'Pending' | 'Approved' | 'Received' | 'Invoiced' | 'Cancelled';
+  remarks?: string;
+  termsAndConditions?: string;
+  items: PurchaseOrderItem[];
+}) {
+  const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
+  const px = getVoucherPrefix('PURCHASE_ORDER', cfg);
+  let no = (po.originalPoNo || po.poNo)?.trim();
+  if (!no) {
+    no = px + nextCounter('PurchaseOrder');
+  }
+
+  const dateIso = po.date || new Date().toISOString();
+  const finalNo = po.poNo?.trim() || no;
+
+  const newPO: PurchaseOrder = {
+    poNo: finalNo,
+    date: dateIso,
+    expectedDate: po.expectedDate || '',
+    supplier: po.supplier,
+    taxable: round2(Number(po.taxable) || 0),
+    zeroRated: round2(Number(po.zeroRated) || 0),
+    gstAmt: round2(Number(po.gstAmt) || 0),
+    total: round2(Number(po.total) || 0),
+    status: po.status || 'Pending',
+    remarks: po.remarks || '',
+    termsAndConditions: po.termsAndConditions || '1. Delivery expected on or before specified date.\n2. Payment terms as agreed.',
+    items: po.items
+  };
+
+  let list = loadJson<PurchaseOrder[]>(STORAGE_KEYS.PURCHASE_ORDERS, []);
+  const existingIdx = list.findIndex(p => p.poNo?.trim().toLowerCase() === no.trim().toLowerCase() || p.poNo?.trim().toLowerCase() === finalNo.trim().toLowerCase());
+  if (existingIdx >= 0) {
+    list[existingIdx] = newPO;
+  } else {
+    list.push(newPO);
+  }
+  saveJson(STORAGE_KEYS.PURCHASE_ORDERS, list);
+
+  return { ok: true, poNo: no, purchaseOrder: newPO };
+}
+
+export function updatePurchaseOrderStatus(poNo: string, status: 'Pending' | 'Approved' | 'Received' | 'Invoiced' | 'Cancelled') {
+  const list = loadJson<PurchaseOrder[]>(STORAGE_KEYS.PURCHASE_ORDERS, []);
+  const target = list.find(p => p.poNo === poNo);
+  if (target) {
+    target.status = status;
+    saveJson(STORAGE_KEYS.PURCHASE_ORDERS, list);
+    return { ok: true, purchaseOrder: target };
+  }
+  return { ok: false, error: 'Purchase Order not found' };
+}
+
+export function deletePurchaseOrder(poNo: string) {
+  let list = loadJson<PurchaseOrder[]>(STORAGE_KEYS.PURCHASE_ORDERS, []);
+  list = list.filter(p => p.poNo !== poNo);
+  saveJson(STORAGE_KEYS.PURCHASE_ORDERS, list);
+  return { ok: true, purchaseOrders: list };
+}
+
+// -------------------------------------------------------------
+// RECEIPT NOTE / GOODS RECEIPT NOTE (GRN) HANDLERS
+// -------------------------------------------------------------
+export function getReceiptNotes(): ReceiptNote[] {
+  const list = loadJson<ReceiptNote[]>(STORAGE_KEYS.RECEIPT_NOTES, []);
+  return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+export function saveReceiptNote(note: {
+  noteNo?: string;
+  originalNoteNo?: string;
+  poNo?: string;
+  date?: string;
+  supplierChallanNo?: string;
+  supplier: {
+    name: string;
+    ledger?: string;
+    gstNo?: string;
+    tpnNo?: string;
+    address?: string;
+    phone?: string;
+  };
+  taxable: number;
+  zeroRated: number;
+  gstAmt: number;
+  total: number;
+  status?: 'Received' | 'Invoiced' | 'Cancelled';
+  remarks?: string;
+  items: ReceiptNoteItem[];
+}) {
+  const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
+  const px = getVoucherPrefix('RECEIPT_NOTE', cfg);
+  let no = (note.originalNoteNo || note.noteNo)?.trim();
+  if (!no) {
+    no = px + nextCounter('ReceiptNote');
+  }
+
+  const dateIso = note.date || new Date().toISOString();
+  const finalNo = note.noteNo?.trim() || no;
+
+  const doc: ReceiptNote = {
+    noteNo: finalNo,
+    poNo: note.poNo || '',
+    date: dateIso,
+    supplierChallanNo: note.supplierChallanNo || '',
+    supplier: note.supplier,
+    taxable: round2(Number(note.taxable) || 0),
+    zeroRated: round2(Number(note.zeroRated) || 0),
+    gstAmt: round2(Number(note.gstAmt) || 0),
+    total: round2(Number(note.total) || 0),
+    status: note.status || 'Received',
+    remarks: note.remarks || '',
+    items: note.items
+  };
+
+  const notes = loadJson<ReceiptNote[]>(STORAGE_KEYS.RECEIPT_NOTES, []);
+  const matchTarget = (note.originalNoteNo || no).trim().toLowerCase();
+  const existIdx = notes.findIndex(n => n.noteNo?.trim().toLowerCase() === matchTarget || n.noteNo?.trim().toLowerCase() === finalNo.trim().toLowerCase());
+
+  if (existIdx >= 0) {
+    const oldNote = notes[existIdx];
+    // Revert previous stock addition
+    (oldNote.items || []).forEach(it => {
+      const q = Number(it.qty) || 0;
+      if (q > 0) {
+        updateItemStock(it.itemCode, -q);
+      }
+    });
+    notes[existIdx] = doc;
+    let stockLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+    stockLogs = stockLogs.filter(s => s['Ref No']?.trim().toLowerCase() !== matchTarget && s['Ref No']?.trim().toLowerCase() !== finalNo.trim().toLowerCase());
+    saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLogs);
+  } else {
+    notes.push(doc);
+  }
+  saveJson(STORAGE_KEYS.RECEIPT_NOTES, notes);
+
+  // Add stock and log in stock ledger
+  note.items.forEach(it => {
+    const q = Number(it.qty) || 0;
+    if (q > 0) {
+      const nq = updateItemStock(it.itemCode, q);
+      logStock(it.itemCode, it.itemName, 'Receipt Note Inward', q, 0, nq, finalNo);
+    }
+  });
+
+  const updatedItems = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+  return { ok: true, noteNo: finalNo, receiptNote: doc, items: updatedItems };
+}
+
+export function updateReceiptNoteStatus(noteNo: string, status: 'Received' | 'Invoiced' | 'Cancelled') {
+  const list = loadJson<ReceiptNote[]>(STORAGE_KEYS.RECEIPT_NOTES, []);
+  const target = list.find(n => n.noteNo === noteNo);
+  if (target) {
+    target.status = status;
+    saveJson(STORAGE_KEYS.RECEIPT_NOTES, list);
+    return { ok: true, receiptNote: target };
+  }
+  return { ok: false, error: 'Receipt Note not found' };
+}
+
+export function deleteReceiptNote(noteNo: string) {
+  let notes = loadJson<ReceiptNote[]>(STORAGE_KEYS.RECEIPT_NOTES, []);
+  const target = notes.find(n => n.noteNo === noteNo);
+  if (!target) return { ok: false, error: 'Receipt note not found' };
+
+  // Reverse stock addition
+  target.items.forEach(it => {
+    const q = Number(it.qty) || 0;
+    if (q > 0) {
+      const nq = updateItemStock(it.itemCode, -q);
+      logStock(it.itemCode, it.itemName, 'Receipt Note Reversal', 0, q, nq, 'REV-' + noteNo);
+    }
+  });
+
+  notes = notes.filter(n => n.noteNo !== noteNo);
+  saveJson(STORAGE_KEYS.RECEIPT_NOTES, notes);
+
+  const updatedItems = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+  return { ok: true, items: updatedItems, notes };
+}
+
 export function getVoucherDetails(refNo: string) {
   if (!refNo) return null;
   const cleanRef = String(refNo).trim();
@@ -4238,6 +4628,21 @@ export function getVoucherDetails(refNo: string) {
   const quotes = loadJson<Quotation[]>(STORAGE_KEYS.QUOTATIONS, []);
   const quote = quotes.find(x => x.quotationNo === cleanRef || x.quotationNo?.trim().toLowerCase() === cleanRefLower);
   if (quote) return { type: 'QTN', header: quote, items: quote.items || [] };
+
+  // 5b. Sales Orders
+  const salesOrders = loadJson<SalesOrder[]>(STORAGE_KEYS.SALES_ORDERS, []);
+  const so = salesOrders.find(x => x.orderNo === cleanRef || x.orderNo?.trim().toLowerCase() === cleanRefLower);
+  if (so) return { type: 'SO', header: so, items: so.items || [] };
+
+  // 5c. Purchase Orders
+  const purchaseOrders = loadJson<PurchaseOrder[]>(STORAGE_KEYS.PURCHASE_ORDERS, []);
+  const po = purchaseOrders.find(x => x.poNo === cleanRef || x.poNo?.trim().toLowerCase() === cleanRefLower);
+  if (po) return { type: 'PO', header: po, items: po.items || [] };
+
+  // 5d. Receipt Notes
+  const receiptNotes = loadJson<ReceiptNote[]>(STORAGE_KEYS.RECEIPT_NOTES, []);
+  const grn = receiptNotes.find(x => x.noteNo === cleanRef || x.noteNo?.trim().toLowerCase() === cleanRefLower);
+  if (grn) return { type: 'GRN', header: grn, items: grn.items || [] };
 
   // 6. Check Monthly Payrolls directly
   const payrolls = loadJson<MonthlyPayroll[]>(STORAGE_KEYS.MONTHLY_PAYROLLS, []);
@@ -4370,8 +4775,35 @@ export function getItemStockLedger(code: string, fromDate?: string, toDate?: str
   const baseOpening = it ? (Number(it['Opening Stock']) || 0) : 0;
   const rawLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
   
+  // Find all sales invoices that were issued against delivery notes
+  const sales = getDeduplicatedSales();
+  const deliveryNotes = loadJson<DeliveryNote[]>(STORAGE_KEYS.DELIVERY_NOTES, []);
+  const dnInvoices = new Set<string>();
+  sales.forEach(s => {
+    if (s.deliveryNoteNo && s.deliveryNoteNo.trim()) {
+      dnInvoices.add((s.invoiceNo || '').trim().toLowerCase());
+    }
+  });
+  deliveryNotes.forEach(dn => {
+    if (dn.invoiceNo && dn.invoiceNo.trim()) {
+      dnInvoices.add(dn.invoiceNo.trim().toLowerCase());
+    }
+  });
+
+  // Filter out any duplicate 'Sale' logs where the sale was made against a delivery note (since the delivery challan already deducted stock)
+  const sanitizedLogs = rawLogs.filter(r => {
+    const isSale = r.Type === 'Sale' || r.Type === 'Sales' || r.Type === 'Sale Invoice';
+    if (isSale && r['Ref No']) {
+      const ref = r['Ref No'].trim().toLowerCase();
+      if (dnInvoices.has(ref)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
   // Sort everything chronologically
-  const itemLogs = rawLogs
+  const itemLogs = sanitizedLogs
     .filter(r => String(r['Item Code'] || '').trim().toLowerCase() === cleanCode || String(r['Item Name'] || '').trim().toLowerCase() === cleanCode)
     .sort((a, b) => new Date(a.DateIso).getTime() - new Date(b.DateIso).getTime());
 
@@ -4815,6 +5247,50 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
     return getSerialNumbersStockReport();
   }
 
+  if (type === 'vouchers') {
+    const allV = getVouchers();
+    const fr = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
+    const toDt = to ? new Date(to).setHours(23, 59, 59, 999) : Date.now();
+    return allV.filter(v => {
+      const rawDate = (v as any).DateIso || v.date || (v as any).Date;
+      const d = new Date(rawDate).getTime();
+      return d >= fr && d <= toDt;
+    }).map(v => {
+      const isCancelled = (v.status as string) === 'Cancelled';
+      const drLedger = v.debitLedger || (v.lines && v.lines.find(l => l.type === 'Dr')?.ledger) || '';
+      const crLedger = v.creditLedger || (v.lines && v.lines.find(l => l.type === 'Cr')?.ledger) || '';
+      const particular = drLedger && crLedger ? `${drLedger} / ${crLedger}` : (drLedger || crLedger || v.partyName || '-');
+      const typeName = v.voucherTypeName || (
+        v.type === 'P' ? 'Payment' :
+        v.type === 'R' ? 'Receipt' :
+        v.type === 'C' ? 'Contra' :
+        v.type === 'J' ? 'Journal' :
+        v.type === 'S' ? 'Sales' :
+        v.type === 'PUR' ? 'Purchase' :
+        v.type === 'CN' ? 'Credit Note' :
+        v.type === 'DN' ? 'Debit Note' :
+        v.type === 'DEL_NOTE' ? 'Delivery Note' :
+        v.type === 'PHYSICAL_STOCK' ? 'Physical Stock' :
+        v.type === 'QUOTATION' ? 'Quotation' :
+        v.type
+      );
+      const amt = Number(v.amount || v.totalAmount) || 0;
+      return {
+        ...v,
+        VoucherNo: v.voucherNo,
+        Date: v.date,
+        DateIso: v.date,
+        Type: typeName,
+        Particulars: particular,
+        Debit: isCancelled ? 0 : amt,
+        Credit: isCancelled ? 0 : amt,
+        Narration: v.narration || '',
+        Status: isCancelled ? 'Cancelled' : (v.status || 'Active'),
+        isCancelled
+      };
+    });
+  }
+
   if (type === 'sales') {
     const sales = getDeduplicatedSales();
     const fr = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
@@ -4858,6 +5334,38 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
     });
   }
 
+  if (type === 'quotations' || type === 'quotation') {
+    const quotations = getQuotations();
+    const fr = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
+    const toDt = to ? new Date(to).setHours(23, 59, 59, 999) : Date.now();
+    return quotations.filter(q => {
+      const d = new Date(q.date).getTime();
+      return d >= fr && d <= toDt;
+    }).map(q => {
+      const isCancelled = (q.status as string) === 'Cancelled';
+      return {
+        ...q,
+        isCancelled
+      };
+    });
+  }
+
+  if (type === 'delivery_notes' || type === 'delivery_note') {
+    const notes = getDeliveryNotes();
+    const fr = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
+    const toDt = to ? new Date(to).setHours(23, 59, 59, 999) : Date.now();
+    return notes.filter(n => {
+      const d = new Date(n.date).getTime();
+      return d >= fr && d <= toDt;
+    }).map(n => {
+      const isCancelled = (n.status as string) === 'Cancelled';
+      return {
+        ...n,
+        isCancelled
+      };
+    });
+  }
+
   const fr = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
   const toDt = to ? new Date(to).setHours(23, 59, 59, 999) : Date.now();
   const sales = getDeduplicatedSales();
@@ -4895,6 +5403,16 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
   }));
 
   if (type === 'mov') {
+    const sLogFiltered = sLog.filter(l => {
+      const isSale = l.Type === 'Sale' || l.Type === 'Sales' || l.Type === 'Sale Invoice';
+      if (isSale && l['Ref No']) {
+        const ref = l['Ref No'].trim().toLowerCase();
+        const salesAgainstDN = sales.some(s => (s.invoiceNo?.trim().toLowerCase() === ref) && Boolean(s.deliveryNoteNo && s.deliveryNoteNo.trim()));
+        if (salesAgainstDN) return false;
+      }
+      return true;
+    });
+
     const movement = items
       .filter(i => i['Maintain Stock'] !== 'N')
       .map(i => {
@@ -4903,7 +5421,7 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
         let op = opStock;
         let inQ = 0;
         let outQ = 0;
-        sLog.filter(l => l['Item Code'] === c).forEach(log => {
+        sLogFiltered.filter(l => l['Item Code'] === c).forEach(log => {
           // If the log is an explicit opening entry, skip it so it doesn't double add to opStock
           if (log.Type === 'Opening' || (log['Ref No'] && log['Ref No'].startsWith('OPENING'))) {
             return;
@@ -6628,13 +7146,65 @@ export function rebuildAccountingLogs() {
   const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []).sort((a,b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
+  const deliveryNotes = loadJson<DeliveryNote[]>(STORAGE_KEYS.DELIVERY_NOTES, []).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const receiptNotes = loadJson<ReceiptNote[]>(STORAGE_KEYS.RECEIPT_NOTES, []).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  // 1. Delivery Notes log stock outward (Challans)
+  deliveryNotes.forEach(dn => {
+    if (dn.status === 'Cancelled') return;
+    const no = dn.noteNo || '';
+    (dn.items || []).forEach(it => {
+      const q = Number(it.qty) || 0;
+      if (q > 0) {
+        logStock(it.itemCode, it.itemName, 'Delivery Challan', 0, q, 0, no);
+      }
+    });
+  });
+
+  // 2. Receipt Notes log stock inward (GRNs)
+  receiptNotes.forEach(rn => {
+    if (rn.status === 'Cancelled') return;
+    const no = rn.noteNo || '';
+    (rn.items || []).forEach(it => {
+      const q = Number(it.qty) || 0;
+      if (q > 0) {
+        logStock(it.itemCode, it.itemName, 'Receipt Note Inward', q, 0, 0, no);
+      }
+    });
+  });
+
+  // 3. Credit Note / Debit Note Vouchers with stock return items
+  vouchers.forEach(v => {
+    if (v.status === 'Cancelled') return;
+    const no = v.voucherNo || '';
+    if (v.type === 'CN' && (v as any).returnStock && (v as any).items) {
+      ((v as any).items || []).forEach((it: any) => {
+        const q = Number(it.qty) || 0;
+        if (q > 0) {
+          logStock(it.itemCode, it.itemName, 'Credit Note (Return)', q, 0, 0, no);
+        }
+      });
+    } else if (v.type === 'DN' && (v as any).returnStock && (v as any).items) {
+      ((v as any).items || []).forEach((it: any) => {
+        const q = Number(it.qty) || 0;
+        if (q > 0) {
+          logStock(it.itemCode, it.itemName, 'Debit Note (Return)', 0, q, 0, no);
+        }
+      });
+    }
+  });
 
   sales.forEach(s => {
     if (s.status === 'Cancelled') return;
     const iNo = s.invoiceNo || '';
-    s.items.forEach(l => {
-      logStock(l['Item Code'], l['Item Name'], 'Sale', 0, Number(l.Qty), 0, iNo);
-    });
+    
+    // Only log stock if sale is NOT against a delivery note (since delivery note already deducted stock)
+    const isAgainstDN = Boolean(s.deliveryNoteNo && s.deliveryNoteNo.trim()) || deliveryNotes.some(dn => (dn.invoiceNo && dn.invoiceNo.trim().toLowerCase() === iNo.trim().toLowerCase()));
+    if (!isAgainstDN) {
+      s.items.forEach(l => {
+        logStock(l['Item Code'], l['Item Name'], 'Sale', 0, Number(l.Qty), 0, iNo);
+      });
+    }
 
     const cash = Number(s.cash) || 0, b1 = Number(s.bank1) || 0, b2 = Number(s.bank2) || 0;
     const cr = Number(s.credit) || 0;
@@ -6659,9 +7229,14 @@ export function rebuildAccountingLogs() {
   purchases.forEach(p => {
     if (p.status === 'Cancelled') return;
     const bNo = p.billNo || p.invoiceNo || '';
-    p.items.forEach(l => {
-      logStock(l['Item Code'], l['Item Name'], 'Purchase', Number(l.Qty), 0, 0, bNo);
-    });
+    
+    // Only log stock if purchase is NOT against a receipt note (since receipt note already added stock)
+    const isAgainstRN = Boolean(p.receiptNoteNo && p.receiptNoteNo.trim()) || receiptNotes.some(rn => (rn.invoiceNo && rn.invoiceNo.trim().toLowerCase() === bNo.trim().toLowerCase()));
+    if (!isAgainstRN) {
+      p.items.forEach(l => {
+        logStock(l['Item Code'], l['Item Name'], 'Purchase', Number(l.Qty), 0, 0, bNo);
+      });
+    }
 
     const cash = Number(p.cash) || 0, b1 = Number(p.bank1) || 0, b2 = Number(p.bank2) || 0;
     const cr = Number(p.credit) || 0;

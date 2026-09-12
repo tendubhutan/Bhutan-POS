@@ -29,6 +29,7 @@ export function QuitConfirmModal({
     const handleKeyDown = (e: KeyboardEvent) => {
       // Prevent other background key handlers while quit dialog is active
       e.stopPropagation();
+      e.stopImmediatePropagation?.();
 
       const key = e.key.toLowerCase();
 

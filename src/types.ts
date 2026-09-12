@@ -65,6 +65,9 @@ export interface Config {
   DeliveryNotePrefix?: string;
   PhysicalStockPrefix?: string;
   QuotationPrefix?: string;
+  SalesOrderPrefix?: string;
+  PurchaseOrderPrefix?: string;
+  ReceiptNotePrefix?: string;
   SalesInvoicePrefix?: string;
   SalesInvoiceStartingNo?: number;
   POSInvoicePrefix?: string;
@@ -184,6 +187,7 @@ export interface Unit {
 
 export interface UnitGroup {
   'Group Name': string;
+  'Primary Unit'?: string;
   'Base Unit'?: string;
   oldName?: string;
 }
@@ -310,6 +314,8 @@ export interface PurchaseInvoice {
   billNo: string;
   invoiceNo?: string;
   supplierBillNo?: string;
+  receiptNoteNo?: string;
+  poNo?: string;
   date: string;
   supplier: {
     name: string;
@@ -401,17 +407,23 @@ export type VoucherGroupType =
   | 'Delivery Note'
   | 'Quotation'
   | 'Physical Stock'
+  | 'Sales Order'
+  | 'Purchase Order'
+  | 'Receipt Note'
   | 'CreditNote'
   | 'DebitNote'
   | 'DeliveryNote'
-  | 'PhysicalStock';
+  | 'PhysicalStock'
+  | 'SalesOrder'
+  | 'PurchaseOrder'
+  | 'ReceiptNote';
 
 export interface VoucherType {
   id: string;
   name: string;
   parentType?: VoucherGroupType;
   type?: VoucherGroupType;
-  typeCode?: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'QUOTATION' | 'PHYSICAL_STOCK';
+  typeCode?: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'QUOTATION' | 'PHYSICAL_STOCK' | 'SALES_ORDER' | 'PURCHASE_ORDER' | 'RECEIPT_NOTE';
   prefix: string;
   numberingMode: 'auto' | 'manual';
   startingNumber?: number;
@@ -438,7 +450,7 @@ export interface VoucherLine {
 export interface Voucher {
   voucherNo: string;
   date: string;
-  type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'PHYSICAL_STOCK' | 'QUOTATION';
+  type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'PHYSICAL_STOCK' | 'QUOTATION' | 'SALES_ORDER' | 'PURCHASE_ORDER' | 'RECEIPT_NOTE';
   voucherTypeId?: string;
   voucherTypeName?: string;
   debitLedger?: string;
@@ -540,6 +552,7 @@ export interface DeliveryNote {
   date: string;
   customer: CustomerDetails;
   orderRefNo?: string;
+  invoiceNo?: string;
   dispatchThrough?: string;
   destination?: string;
   vehicleNo?: string;
@@ -704,5 +717,122 @@ export interface BankReconEntry {
 }
 
 export type BankReconState = Record<string, BankReconEntry>;
+
+export interface SalesOrderItem {
+  itemCode: string;
+  itemName: string;
+  description?: string;
+  lineDescription?: string;
+  qty: number;
+  unit?: string;
+  rate: number;
+  discount: number;
+  discountType?: 'flat' | 'percent';
+  taxableValue: number;
+  gstPct: number;
+  gstAmount: number;
+  zeroRated: 'Y' | 'N';
+  lineTotal: number;
+}
+
+export interface SalesOrder {
+  orderNo: string;
+  date: string;
+  deliveryDate?: string;
+  customer: CustomerDetails;
+  taxable: number;
+  zeroRated: number;
+  gstAmt: number;
+  total: number;
+  status: 'Pending' | 'Confirmed' | 'Delivered' | 'Invoiced' | 'Cancelled';
+  remarks?: string;
+  termsAndConditions?: string;
+  voucherTypeId?: string;
+  voucherTypeName?: string;
+  items: SalesOrderItem[];
+}
+
+export interface PurchaseOrderItem {
+  itemCode: string;
+  itemName: string;
+  description?: string;
+  lineDescription?: string;
+  qty: number;
+  unit?: string;
+  rate: number;
+  discount: number;
+  discountType?: 'flat' | 'percent';
+  taxableValue: number;
+  gstPct: number;
+  gstAmount: number;
+  zeroRated: 'Y' | 'N';
+  lineTotal: number;
+}
+
+export interface PurchaseOrder {
+  poNo: string;
+  date: string;
+  expectedDate?: string;
+  supplier: {
+    name: string;
+    ledger?: string;
+    gstNo?: string;
+    tpnNo?: string;
+    address?: string;
+    phone?: string;
+  };
+  taxable: number;
+  zeroRated: number;
+  gstAmt: number;
+  total: number;
+  status: 'Pending' | 'Approved' | 'Received' | 'Invoiced' | 'Cancelled';
+  remarks?: string;
+  termsAndConditions?: string;
+  voucherTypeId?: string;
+  voucherTypeName?: string;
+  items: PurchaseOrderItem[];
+}
+
+export interface ReceiptNoteItem {
+  itemCode: string;
+  itemName: string;
+  description?: string;
+  lineDescription?: string;
+  qty: number;
+  unit?: string;
+  rate: number;
+  discount: number;
+  discountType?: 'flat' | 'percent';
+  taxableValue: number;
+  gstPct: number;
+  gstAmount: number;
+  zeroRated: 'Y' | 'N';
+  lineTotal: number;
+}
+
+export interface ReceiptNote {
+  noteNo: string;
+  date: string;
+  supplierChallanNo?: string;
+  poNo?: string;
+  invoiceNo?: string;
+  supplier: {
+    name: string;
+    ledger?: string;
+    gstNo?: string;
+    tpnNo?: string;
+    address?: string;
+    phone?: string;
+  };
+  taxable: number;
+  zeroRated: number;
+  gstAmt: number;
+  total: number;
+  status: 'Received' | 'Invoiced' | 'Cancelled';
+  remarks?: string;
+  voucherTypeId?: string;
+  voucherTypeName?: string;
+  items: ReceiptNoteItem[];
+}
 
 export * from './types/assetManagement';

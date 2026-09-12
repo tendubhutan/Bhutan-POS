@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { FixedAsset, AssetCategory, Custodian } from '../../types/assetManagement';
-import { Config, Ledger } from '../../types';
-import { getAssetCategories, getCustodians, getAssets, saveAsset } from '../../services/assetManagementService';
-import { saveVoucher, nextCounter, getVoucherPrefix } from '../../services/storageService';
-import { Save, ArrowLeft, Info, Calendar, Calculator } from 'lucide-react';
+import { Config, Ledger, Employee } from '../../types';
+import { getAssetCategories, getCustodians, saveCustodians, getAssets, saveAsset } from '../../services/assetManagementService';
+import { saveVoucher, nextCounter, getVoucherPrefix, saveLedger, loadJson, STORAGE_KEYS } from '../../services/storageService';
+import { Save, ArrowLeft, Info, Calendar, Calculator, Plus, X, User } from 'lucide-react';
+import { QuickLedgerModal } from '../QuickLedgerModal';
 
 interface AssetFormProps {
   mode: 'create' | 'edit';
@@ -12,12 +13,95 @@ interface AssetFormProps {
   ledgers: Ledger[];
   onSave: () => void;
   onCancel: () => void;
+  onDataRefresh?: () => void;
 }
 
-export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, ledgers, onSave, onCancel }) => {
+export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, ledgers, onSave, onCancel, onDataRefresh }) => {
   const [categories, setCategories] = useState<AssetCategory[]>([]);
   const [custodians, setCustodians] = useState<Custodian[]>([]);
+  const [ledgersList, setLedgersList] = useState<Ledger[]>(ledgers);
   const [isExistingAsset, setIsExistingAsset] = useState<boolean>(false);
+
+  // Supplier Modal state
+  const [showSupplierModal, setShowSupplierModal] = useState<boolean>(false);
+
+  // Quick GL Modal state
+  const [showGlModal, setShowGlModal] = useState<boolean>(false);
+  const [glModalTarget, setGlModalTarget] = useState<'assetGlAccountId' | 'accumulatedDepreciationGlAccountId' | 'depreciationExpenseGlAccountId' | null>(null);
+  const [glModalGroup, setGlModalGroup] = useState<string>('Fixed Assets');
+
+  const handleOpenGlModal = (
+    target: 'assetGlAccountId' | 'accumulatedDepreciationGlAccountId' | 'depreciationExpenseGlAccountId',
+    initialGroup: string
+  ) => {
+    setGlModalTarget(target);
+    setGlModalGroup(initialGroup);
+    setShowGlModal(true);
+  };
+
+  // Custodian Modal state
+  const [showCustodianModal, setShowCustodianModal] = useState<boolean>(false);
+  const [custodianForm, setCustodianForm] = useState<Partial<Custodian>>({
+    custodianCode: '',
+    name: '',
+    department: '',
+    designation: '',
+    contact: '',
+    employeeId: '',
+    status: 'Active'
+  });
+  const [employeesList, setEmployeesList] = useState<Employee[]>([]);
+
+  useEffect(() => {
+    setLedgersList(ledgers);
+  }, [ledgers]);
+
+  const handleOpenCustodianModal = () => {
+    const loadedEmps = loadJson<Employee[]>(STORAGE_KEYS.EMPLOYEES, []);
+    setEmployeesList(loadedEmps);
+    setCustodianForm({
+      custodianCode: `CST-${Math.floor(1000 + Math.random() * 9000)}`,
+      name: '',
+      department: formData.department || '',
+      designation: '',
+      contact: '',
+      employeeId: '',
+      status: 'Active'
+    });
+    setShowCustodianModal(true);
+  };
+
+  const handleSaveNewCustodian = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!custodianForm.name?.trim() || !custodianForm.custodianCode?.trim()) {
+      alert("Custodian Name and Custodian Code are required.");
+      return;
+    }
+
+    const newCustodian: Custodian = {
+      id: `cust_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      custodianCode: custodianForm.custodianCode.trim(),
+      name: custodianForm.name.trim(),
+      department: custodianForm.department?.trim() || '',
+      designation: custodianForm.designation?.trim() || '',
+      contact: custodianForm.contact?.trim() || '',
+      employeeId: custodianForm.employeeId || '',
+      status: 'Active'
+    };
+
+    const currentCusts = getCustodians();
+    const updatedCusts = [...currentCusts, newCustodian];
+    saveCustodians(updatedCusts);
+    setCustodians(updatedCusts);
+
+    setFormData(prev => ({
+      ...prev,
+      currentCustodianId: newCustodian.id,
+      department: prev.department ? prev.department : newCustodian.department
+    }));
+
+    setShowCustodianModal(false);
+  };
   
   const [formData, setFormData] = useState<Partial<FixedAsset>>({
     name: '',
@@ -148,7 +232,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
     onSave();
   };
 
-  const isReadOnly = formData.status !== 'Draft' && mode === 'edit';
+  const isReadOnly = false;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-full max-w-5xl mx-auto">
@@ -162,7 +246,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
           </button>
           <div>
             <h2 className="text-lg font-bold text-slate-800">
-              {mode === 'create' ? 'Add New Asset' : `Asset Details: ${formData.assetId}`}
+              {mode === 'create' ? 'Add New Asset' : `Edit Asset: ${formData.assetId}`}
             </h2>
             {mode === 'edit' && (
               <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider mt-1 ${
@@ -179,7 +263,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
           className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition shadow-sm cursor-pointer"
         >
           <Save className="h-4 w-4" />
-          Save Asset
+          Save Changes
         </button>
       </div>
 
@@ -212,12 +296,12 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
             <h3 className="text-sm font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">Basic Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Asset ID (Auto-generated)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Asset ID</label>
                 <input
                   type="text"
-                  readOnly
                   value={formData.assetId || ''}
-                  className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-lg text-sm font-mono text-slate-600 outline-none"
+                  onChange={(e) => setFormData({ ...formData, assetId: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono text-slate-800 outline-none focus:border-indigo-500 font-semibold"
                 />
               </div>
               <div className="md:col-span-2">
@@ -288,17 +372,27 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Supplier Name</label>
-                <select
-                  value={formData.supplierName || ''}
-                  onChange={(e) => setFormData({ ...formData, supplierName: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
-                  disabled={isReadOnly}
-                >
-                  <option value="">-- Select Supplier --</option>
-                  {ledgers.map(l => (
-                    <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
-                  ))}
-                </select>
+                <div className="flex gap-1.5">
+                  <select
+                    value={formData.supplierName || ''}
+                    onChange={(e) => setFormData({ ...formData, supplierName: e.target.value })}
+                    className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
+                  >
+                    <option value="">-- Select Supplier --</option>
+                    {ledgersList.map(l => (
+                      <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowSupplierModal(true)}
+                    className="px-2.5 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 transition shrink-0"
+                    title="Create New Supplier"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Purchase Date</label>
@@ -307,7 +401,6 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
                   value={formData.purchaseDate || ''}
                   onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
-                  disabled={isReadOnly}
                 />
               </div>
               <div>
@@ -317,7 +410,6 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
                   value={formData.purchaseInvoiceNumber || ''}
                   onChange={(e) => setFormData({ ...formData, purchaseInvoiceNumber: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
-                  disabled={isReadOnly}
                 />
               </div>
               <div>
@@ -364,8 +456,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
                     step="0.01"
                     value={formData.cost || ''}
                     onChange={(e) => handleCostChange(Number(e.target.value))}
-                    disabled={isReadOnly}
-                    className={`w-full pl-10 pr-3 py-2 border rounded-lg text-sm font-mono font-bold outline-none ${isReadOnly ? 'bg-slate-100 border-slate-200 text-slate-500' : 'border-slate-300 focus:border-indigo-500'}`}
+                    className="w-full pl-10 pr-3 py-2 border border-slate-300 focus:border-indigo-500 rounded-lg text-sm font-mono font-bold outline-none"
                   />
                 </div>
               </div>
@@ -392,8 +483,7 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
                     step="0.01"
                     value={formData.accumulatedDepreciation || 0}
                     onChange={(e) => handleAccDepChange(Number(e.target.value))}
-                    disabled={isReadOnly}
-                    className={`w-full pl-10 pr-3 py-2 border rounded-lg text-sm font-mono outline-none ${isReadOnly ? 'bg-slate-100 border-slate-200 text-slate-500' : 'border-slate-300 focus:border-indigo-500'}`}
+                    className="w-full pl-10 pr-3 py-2 border border-slate-300 focus:border-indigo-500 rounded-lg text-sm font-mono outline-none"
                   />
                 </div>
               </div>
@@ -489,16 +579,35 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Assigned Custodian</label>
-                <select
-                  value={formData.currentCustodianId || ''}
-                  onChange={(e) => setFormData({ ...formData, currentCustodianId: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
-                >
-                  <option value="">-- Unassigned --</option>
-                  {custodians.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.custodianCode})</option>
-                  ))}
-                </select>
+                <div className="flex gap-1.5">
+                  <select
+                    value={formData.currentCustodianId || ''}
+                    onChange={(e) => {
+                      const custId = e.target.value;
+                      const cust = custodians.find(c => c.id === custId);
+                      setFormData({ 
+                        ...formData, 
+                        currentCustodianId: custId,
+                        ...(cust?.department && !formData.department ? { department: cust.department } : {}) 
+                      });
+                    }}
+                    className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
+                  >
+                    <option value="">-- Unassigned --</option>
+                    {custodians.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} ({c.custodianCode})</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleOpenCustodianModal}
+                    className="px-2.5 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 transition shrink-0"
+                    title="Create New Custodian"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">Department</label>
@@ -533,48 +642,269 @@ export const AssetForm: React.FC<AssetFormProps> = ({ mode, assetId, config, led
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">Asset GL Account</label>
-                <select
-                  value={formData.assetGlAccountId || ''}
-                  onChange={(e) => setFormData({ ...formData, assetGlAccountId: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:border-indigo-500 outline-none"
-                >
-                  <option value="">-- Use Category Default --</option>
-                  {ledgers.map(l => (
-                    <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
-                  ))}
-                </select>
+                <div className="flex gap-1.5">
+                  <select
+                    value={formData.assetGlAccountId || ''}
+                    onChange={(e) => setFormData({ ...formData, assetGlAccountId: e.target.value })}
+                    className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-xs focus:border-indigo-500 outline-none"
+                  >
+                    <option value="">-- Use Category Default --</option>
+                    {ledgersList.map(l => (
+                      <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenGlModal('assetGlAccountId', 'Fixed Assets')}
+                    className="px-2.5 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 transition shrink-0"
+                    title="Create Asset GL Account"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    New
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">Accumulated Depreciation GL</label>
-                <select
-                  value={formData.accumulatedDepreciationGlAccountId || ''}
-                  onChange={(e) => setFormData({ ...formData, accumulatedDepreciationGlAccountId: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:border-indigo-500 outline-none"
-                >
-                  <option value="">-- Use Category Default --</option>
-                  {ledgers.map(l => (
-                    <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
-                  ))}
-                </select>
+                <div className="flex gap-1.5">
+                  <select
+                    value={formData.accumulatedDepreciationGlAccountId || ''}
+                    onChange={(e) => setFormData({ ...formData, accumulatedDepreciationGlAccountId: e.target.value })}
+                    className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-xs focus:border-indigo-500 outline-none"
+                  >
+                    <option value="">-- Use Category Default --</option>
+                    {ledgersList.map(l => (
+                      <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenGlModal('accumulatedDepreciationGlAccountId', 'Fixed Assets')}
+                    className="px-2.5 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 transition shrink-0"
+                    title="Create Accumulated Depreciation GL Account"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    New
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">Depreciation Expense GL</label>
-                <select
-                  value={formData.depreciationExpenseGlAccountId || ''}
-                  onChange={(e) => setFormData({ ...formData, depreciationExpenseGlAccountId: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:border-indigo-500 outline-none"
-                >
-                  <option value="">-- Use Category Default --</option>
-                  {ledgers.map(l => (
-                    <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
-                  ))}
-                </select>
+                <div className="flex gap-1.5">
+                  <select
+                    value={formData.depreciationExpenseGlAccountId || ''}
+                    onChange={(e) => setFormData({ ...formData, depreciationExpenseGlAccountId: e.target.value })}
+                    className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-xs focus:border-indigo-500 outline-none"
+                  >
+                    <option value="">-- Use Category Default --</option>
+                    {ledgersList.map(l => (
+                      <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenGlModal('depreciationExpenseGlAccountId', 'Indirect Expenses')}
+                    className="px-2.5 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 transition shrink-0"
+                    title="Create Depreciation Expense GL Account"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    New
+                  </button>
+                </div>
               </div>
             </div>
           </section>
 
         </form>
       </div>
+
+      {showSupplierModal && (
+        <QuickLedgerModal
+          isOpen={showSupplierModal}
+          onClose={() => setShowSupplierModal(false)}
+          initialGroup="Sundry Creditors"
+          config={config}
+          onSave={(newLedger) => {
+            const res = saveLedger(newLedger);
+            if (!res.ok) {
+              alert(res.error || 'Failed to save ledger');
+              return;
+            }
+            setLedgersList(prev => {
+              const idx = prev.findIndex(x => x['Ledger Name'] === newLedger['Ledger Name']);
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = newLedger;
+                return updated;
+              }
+              return [...prev, newLedger];
+            });
+            setFormData(prev => ({ ...prev, supplierName: newLedger['Ledger Name'] }));
+            setShowSupplierModal(false);
+            onDataRefresh?.();
+          }}
+        />
+      )}
+
+      {showGlModal && (
+        <QuickLedgerModal
+          isOpen={showGlModal}
+          onClose={() => {
+            setShowGlModal(false);
+            setGlModalTarget(null);
+          }}
+          initialGroup={glModalGroup}
+          config={config}
+          onSave={(newLedger) => {
+            const res = saveLedger(newLedger);
+            if (!res.ok) {
+              alert(res.error || 'Failed to save GL Account');
+              return;
+            }
+            setLedgersList(prev => {
+              const idx = prev.findIndex(x => x['Ledger Name'] === newLedger['Ledger Name']);
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = newLedger;
+                return updated;
+              }
+              return [...prev, newLedger];
+            });
+            if (glModalTarget) {
+              setFormData(prev => ({ ...prev, [glModalTarget]: newLedger['Ledger Name'] }));
+            }
+            setShowGlModal(false);
+            setGlModalTarget(null);
+            onDataRefresh?.();
+          }}
+        />
+      )}
+
+      {showCustodianModal && (
+        <div className="fixed inset-0 z-[1000000] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 overflow-hidden flex flex-col space-y-4 p-6">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <User className="h-5 w-5 text-indigo-600" />
+                Create New Custodian
+              </h3>
+              <button type="button" onClick={() => setShowCustodianModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveNewCustodian} className="space-y-4 text-sm">
+              {employeesList.length > 0 && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Link to Employee (Optional)</label>
+                  <select
+                    value={custodianForm.employeeId || ''}
+                    onChange={(e) => {
+                      const empId = e.target.value;
+                      if (!empId) {
+                        setCustodianForm(prev => ({ ...prev, employeeId: '' }));
+                        return;
+                      }
+                      const emp = employeesList.find(x => x.id === empId);
+                      if (emp) {
+                        setCustodianForm(prev => ({
+                          ...prev,
+                          employeeId: emp.id,
+                          name: emp.fullName,
+                          department: emp.department || prev.department,
+                          designation: emp.designation || prev.designation,
+                          contact: emp.contactNo || prev.contact
+                        }));
+                      }
+                    }}
+                    className="w-full h-10 px-3 border border-slate-300 rounded-xl text-sm focus:border-indigo-500 outline-none"
+                  >
+                    <option value="">-- Do not link / Manual entry --</option>
+                    {employeesList.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.fullName} ({emp.empCode})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Custodian Code *</label>
+                  <input
+                    type="text"
+                    required
+                    value={custodianForm.custodianCode || ''}
+                    onChange={(e) => setCustodianForm({ ...custodianForm, custodianCode: e.target.value })}
+                    className="w-full h-10 px-3 border border-slate-300 rounded-xl text-sm font-mono focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={custodianForm.name || ''}
+                    onChange={(e) => setCustodianForm({ ...custodianForm, name: e.target.value })}
+                    placeholder="e.g. Karma Wangchuk"
+                    className="w-full h-10 px-3 border border-slate-300 rounded-xl text-sm focus:border-indigo-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Department</label>
+                  <input
+                    type="text"
+                    value={custodianForm.department || ''}
+                    onChange={(e) => setCustodianForm({ ...custodianForm, department: e.target.value })}
+                    placeholder="e.g. IT Department"
+                    className="w-full h-10 px-3 border border-slate-300 rounded-xl text-sm focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Designation</label>
+                  <input
+                    type="text"
+                    value={custodianForm.designation || ''}
+                    onChange={(e) => setCustodianForm({ ...custodianForm, designation: e.target.value })}
+                    placeholder="e.g. Senior IT Officer"
+                    className="w-full h-10 px-3 border border-slate-300 rounded-xl text-sm focus:border-indigo-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Contact No / Phone</label>
+                <input
+                  type="text"
+                  value={custodianForm.contact || ''}
+                  onChange={(e) => setCustodianForm({ ...custodianForm, contact: e.target.value })}
+                  placeholder="e.g. +975 17123456"
+                  className="w-full h-10 px-3 border border-slate-300 rounded-xl text-sm focus:border-indigo-500 outline-none"
+                />
+              </div>
+
+              <div className="pt-3 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowCustodianModal(false)}
+                  className="px-4 py-2 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md transition flex items-center gap-1.5"
+                >
+                  <Plus className="h-4 w-4" />
+                  Save Custodian
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Unit } from '../../types';
 import { saveUnit, deleteUnit } from '../../services/storageService';
 import { Edit2, Trash2, Check, X, Plus } from 'lucide-react';
+import { handleFormKeyDown, focusFirstFormInput } from '../../utils/formKeyNavigation';
 
 interface UnitMasterProps {
   units: Unit[];
@@ -11,6 +12,13 @@ interface UnitMasterProps {
 export const UnitMaster: React.FC<UnitMasterProps> = ({ units, onUpdated }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Partial<Unit>>({});
+  const rowRef = useRef<HTMLTableRowElement>(null);
+
+  useEffect(() => {
+    if (editingId) {
+      focusFirstFormInput(rowRef.current);
+    }
+  }, [editingId]);
 
   const handleEdit = (u: Unit) => {
     setEditingId(u['Unit Name']);
@@ -31,7 +39,11 @@ export const UnitMaster: React.FC<UnitMasterProps> = ({ units, onUpdated }) => {
       oldName: form.oldName
     } as Unit;
 
-    saveUnit(unitToSave);
+    const res = saveUnit(unitToSave);
+    if (!res.ok) {
+      alert(res.error || 'Failed to save measurement unit.');
+      return;
+    }
     setEditingId(null);
     setForm({});
     onUpdated();
@@ -84,7 +96,11 @@ export const UnitMaster: React.FC<UnitMasterProps> = ({ units, onUpdated }) => {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {editingId === 'NEW' && (
-              <tr className="bg-indigo-50/30">
+              <tr 
+                ref={rowRef}
+                onKeyDown={e => handleFormKeyDown(e, rowRef.current, handleSave, () => setEditingId(null))}
+                className="bg-indigo-50/30"
+              >
                 <td className="py-2 px-3">
                   <input
                     type="text"
@@ -135,7 +151,12 @@ export const UnitMaster: React.FC<UnitMasterProps> = ({ units, onUpdated }) => {
             {units.map((u) => {
               const isEditing = editingId === u['Unit Name'];
               return isEditing ? (
-                <tr key={u['Unit Name']} className="bg-indigo-50/30">
+                <tr 
+                  key={u['Unit Name']} 
+                  ref={rowRef}
+                  onKeyDown={e => handleFormKeyDown(e, rowRef.current, handleSave, () => setEditingId(null))}
+                  className="bg-indigo-50/30"
+                >
                   <td className="py-2 px-3">
                     <input
                       type="text"

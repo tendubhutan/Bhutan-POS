@@ -22,7 +22,10 @@ const TYPE_CATEGORIES: { id: VoucherGroupType | 'All'; label: string; color: str
   { id: 'CreditNote', label: 'Credit Note', color: 'bg-purple-100 text-purple-800' },
   { id: 'DebitNote', label: 'Debit Note', color: 'bg-orange-100 text-orange-800' },
   { id: 'DeliveryNote', label: 'Delivery Note', color: 'bg-cyan-100 text-cyan-800' },
-  { id: 'Quotation', label: 'Quotation', color: 'bg-sky-100 text-sky-800' }
+  { id: 'Quotation', label: 'Quotation', color: 'bg-sky-100 text-sky-800' },
+  { id: 'SalesOrder', label: 'Sales Order', color: 'bg-indigo-100 text-indigo-800' },
+  { id: 'PurchaseOrder', label: 'Purchase Order', color: 'bg-amber-100 text-amber-800' },
+  { id: 'ReceiptNote', label: 'Receipt Note', color: 'bg-teal-100 text-teal-800' }
 ];
 
 export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdated }) => {

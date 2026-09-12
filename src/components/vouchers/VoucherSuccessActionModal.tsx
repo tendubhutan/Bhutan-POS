@@ -16,12 +16,16 @@ import {
 
 export interface VoucherSuccessDetails {
   voucherNo: string;
-  voucherType: string;
+  voucherType?: string;
+  voucherTypeLabel?: string;
   date?: string;
   partyName?: string;
   totalAmount?: number;
+  amount?: number;
   totalItems?: number;
+  itemCount?: number;
   currencySymbol?: string;
+  rawVoucher?: any;
   onPrint?: () => void;
   onShare?: () => void;
   onDownload?: () => void;
@@ -32,6 +36,9 @@ interface VoucherSuccessActionModalProps {
   isOpen: boolean;
   onClose: () => void;
   details: VoucherSuccessDetails | null;
+  onPrint?: () => void;
+  onShare?: () => void;
+  onDownload?: () => void;
 }
 
 export const VoucherSuccessActionModal: React.FC<VoucherSuccessActionModalProps> = ({

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { AssetCategory } from '../../types/assetManagement';
 import { Ledger, Config } from '../../types';
 import { getAssetCategories, saveAssetCategories } from '../../services/assetManagementService';
+import { saveLedger } from '../../services/storageService';
+import { QuickLedgerModal } from '../QuickLedgerModal';
 import { Plus, Edit2, Check, X, Search } from 'lucide-react';
 
 interface AssetCategoriesProps {
@@ -29,6 +31,23 @@ export const AssetCategories: React.FC<AssetCategoriesProps> = ({ ledgers, confi
     lossOnDisposalAccountId: '',
     active: true
   });
+
+  const [ledgersList, setLedgersList] = useState<Ledger[]>(ledgers);
+
+  useEffect(() => {
+    setLedgersList(ledgers);
+  }, [ledgers]);
+
+  // Quick GL Modal state
+  const [showGlModal, setShowGlModal] = useState<boolean>(false);
+  const [glModalTarget, setGlModalTarget] = useState<keyof AssetCategory | null>(null);
+  const [glModalGroup, setGlModalGroup] = useState<string>('Fixed Assets');
+
+  const handleOpenGlModal = (target: keyof AssetCategory, initialGroup: string) => {
+    setGlModalTarget(target);
+    setGlModalGroup(initialGroup);
+    setShowGlModal(true);
+  };
 
   useEffect(() => {
     setCategories(getAssetCategories());
@@ -60,8 +79,23 @@ export const AssetCategories: React.FC<AssetCategoriesProps> = ({ ledgers, confi
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.code) {
+    if (!formData.name?.trim() || !formData.code?.trim()) {
       alert("Name and Code are required.");
+      return;
+    }
+
+    const trimmedName = formData.name.trim();
+    const trimmedCode = formData.code.trim();
+
+    const dupName = categories.find(c => c.name.trim().toLowerCase() === trimmedName.toLowerCase() && c.id !== editingCategory?.id);
+    if (dupName) {
+      alert(`Duplicate Asset Category Name: A category named "${trimmedName}" already exists.`);
+      return;
+    }
+
+    const dupCode = categories.find(c => c.code.trim().toLowerCase() === trimmedCode.toLowerCase() && c.id !== editingCategory?.id);
+    if (dupCode) {
+      alert(`Duplicate Asset Category Code: Code "${trimmedCode}" already exists.`);
       return;
     }
 
@@ -252,42 +286,75 @@ export const AssetCategories: React.FC<AssetCategoriesProps> = ({ ledgers, confi
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Asset GL Account</label>
-                      <select
-                        value={formData.assetGlAccountId || ''}
-                        onChange={(e) => setFormData({ ...formData, assetGlAccountId: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
-                      >
-                        <option value="">-- Select GL Account --</option>
-                        {ledgers.map(l => (
-                          <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
-                        ))}
-                      </select>
+                      <div className="flex gap-1.5">
+                        <select
+                          value={formData.assetGlAccountId || ''}
+                          onChange={(e) => setFormData({ ...formData, assetGlAccountId: e.target.value })}
+                          className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
+                        >
+                          <option value="">-- Select GL Account --</option>
+                          {ledgersList.map(l => (
+                            <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenGlModal('assetGlAccountId', 'Fixed Assets')}
+                          className="px-2.5 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 transition shrink-0"
+                          title="Create Asset GL Account"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          New
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Accumulated Depreciation GL</label>
-                      <select
-                        value={formData.accumulatedDepreciationGlAccountId || ''}
-                        onChange={(e) => setFormData({ ...formData, accumulatedDepreciationGlAccountId: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
-                      >
-                        <option value="">-- Select GL Account --</option>
-                        {ledgers.map(l => (
-                          <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
-                        ))}
-                      </select>
+                      <div className="flex gap-1.5">
+                        <select
+                          value={formData.accumulatedDepreciationGlAccountId || ''}
+                          onChange={(e) => setFormData({ ...formData, accumulatedDepreciationGlAccountId: e.target.value })}
+                          className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
+                        >
+                          <option value="">-- Select GL Account --</option>
+                          {ledgersList.map(l => (
+                            <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenGlModal('accumulatedDepreciationGlAccountId', 'Fixed Assets')}
+                          className="px-2.5 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 transition shrink-0"
+                          title="Create Accumulated Depreciation GL Account"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          New
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Depreciation Expense GL</label>
-                      <select
-                        value={formData.depreciationExpenseGlAccountId || ''}
-                        onChange={(e) => setFormData({ ...formData, depreciationExpenseGlAccountId: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
-                      >
-                        <option value="">-- Select GL Account --</option>
-                        {ledgers.map(l => (
-                          <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
-                        ))}
-                      </select>
+                      <div className="flex gap-1.5">
+                        <select
+                          value={formData.depreciationExpenseGlAccountId || ''}
+                          onChange={(e) => setFormData({ ...formData, depreciationExpenseGlAccountId: e.target.value })}
+                          className="flex-1 min-w-0 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:border-indigo-500 outline-none"
+                        >
+                          <option value="">-- Select GL Account --</option>
+                          {ledgersList.map(l => (
+                            <option key={l['Ledger Name']} value={l['Ledger Name']}>{l['Ledger Name']}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenGlModal('depreciationExpenseGlAccountId', 'Indirect Expenses')}
+                          className="px-2.5 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 transition shrink-0"
+                          title="Create Depreciation Expense GL Account"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          New
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Gain on Disposal GL</label>
@@ -351,6 +418,39 @@ export const AssetCategories: React.FC<AssetCategoriesProps> = ({ ledgers, confi
             </div>
           </div>
         </div>
+      )}
+
+      {showGlModal && (
+        <QuickLedgerModal
+          isOpen={showGlModal}
+          onClose={() => {
+            setShowGlModal(false);
+            setGlModalTarget(null);
+          }}
+          initialGroup={glModalGroup}
+          config={config}
+          onSave={(newLedger) => {
+            const res = saveLedger(newLedger);
+            if (!res.ok) {
+              alert(res.error || 'Failed to save GL Account');
+              return;
+            }
+            setLedgersList(prev => {
+              const idx = prev.findIndex(x => x['Ledger Name'] === newLedger['Ledger Name']);
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = newLedger;
+                return updated;
+              }
+              return [...prev, newLedger];
+            });
+            if (glModalTarget) {
+              setFormData(prev => ({ ...prev, [glModalTarget]: newLedger['Ledger Name'] }));
+            }
+            setShowGlModal(false);
+            setGlModalTarget(null);
+          }}
+        />
       )}
     </div>
   );

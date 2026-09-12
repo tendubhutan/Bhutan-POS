@@ -2,15 +2,17 @@ import { QuitConfirmModal } from './QuitConfirmModal';
 import React, { useState, useRef, useEffect } from 'react';
 import { GlowButton } from './common/GlowButton';
 import { focusNextOutsideGrid } from '../utils/domUtils';
-import { Config, Item, Ledger, CartLine, Unit, BarcodeQueueItem } from '../types';
+import { Config, Item, Ledger, CartLine, Unit, BarcodeQueueItem, ReceiptNote, PurchaseOrder } from '../types';
 import { BankTransactionIdModal } from './BankTransactionIdModal';
 import { isBankLedger } from '../utils/ledgerUtils';
 import { savePurchaseInvoice, deletePurchaseInvoice, getVoucherDetails, saveLedger, loadJson, STORAGE_KEYS, DEFAULT_UNITS } from '../services/storageService';
-import { Plus, Trash2, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckCircle2, UserPlus, ShoppingBag, Tag, Printer, AlertCircle } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckCircle2, UserPlus, ShoppingBag, Tag, Printer, AlertCircle, ArrowDownToLine } from 'lucide-react';
 import { playSaveSound, playWarningTone } from '../utils/audio';
 import { SerialModal } from './SerialModal';
+import { FetchVoucherModal } from './vouchers/FetchVoucherModal';
 import { SearchableLedgerSelect } from './SearchableLedgerSelect';
 import { SearchableItemSelect } from './SearchableItemSelect';
+import { ItemNoteButton, ItemNoteInput } from './vouchers/ItemNoteField';
 import { handleGridKeyDown } from '../utils/gridKeyboardNav';
 import { QuickItemModal } from './QuickItemModal';
 import { QuickLedgerModal } from './QuickLedgerModal';
@@ -47,9 +49,13 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
   const [bankTxnModalOpen, setBankTxnModalOpen] = useState(false);
   const [billDate, setBillDate] = useState(new Date().toISOString().split('T')[0]);
   const [billNo, setBillNo] = useState('');
+  const [narration, setNarration] = useState('');
   const [isGstMode, setIsGstMode] = useState(true);
+  const [receiptNoteNo, setReceiptNoteNo] = useState('');
+  const [poNo, setPoNo] = useState('');
   
   const [editingBillNo, setEditingBillNo] = useState<string | null>(null);
+  const [activeNoteIdx, setActiveNoteIdx] = useState<number | null>(null);
   const loadedTargetKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -102,6 +108,9 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
           }
 
           setBillNo(inv.supplierBillNo || inv.billNo || inv.invoiceNo || '');
+          setReceiptNoteNo(inv.receiptNoteNo || '');
+          setPoNo(inv.poNo || '');
+          setNarration(inv.narration || inv.notes || '');
           if (inv.date) {
              const d = new Date(inv.date);
              if (!isNaN(d.getTime())) setBillDate(d.toISOString().split('T')[0]);
@@ -119,6 +128,9 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         setCart([]);
         setSupplierName('');
         setBillNo('');
+        setReceiptNoteNo('');
+        setPoNo('');
+        setNarration('');
         setAdditionalExpenses([]);
       }
     }
@@ -127,7 +139,109 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
   const [cart, setCart] = useState<CartLine[]>([]);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
   const [showQuitModal, setShowQuitModal] = useState(false);
+  const [showFetchModal, setShowFetchModal] = useState(false);
   const units = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
+
+  const handleFetchVoucher = (data: {
+    type: 'sales_order' | 'delivery_note' | 'quotation' | 'purchase_order' | 'receipt_note';
+    voucher: any;
+  }) => {
+    if (data.type === 'receipt_note') {
+      const rn = data.voucher as ReceiptNote;
+      if (!rn) return;
+      setReceiptNoteNo(rn.noteNo || '');
+      setPoNo(rn.poNo || '');
+      const supp = typeof rn.supplier === 'object' ? (rn.supplier.ledger || rn.supplier.name) : rn.supplier;
+      if (supp) {
+        setSupplierName(supp);
+      }
+      if (rn.supplierChallanNo || rn.noteNo) {
+        setBillNo(rn.supplierChallanNo || rn.noteNo);
+      }
+      if (rn.remarks && !narration) {
+        setNarration(rn.remarks);
+      }
+      if (rn.items && rn.items.length > 0) {
+        const newCart: CartLine[] = rn.items.map((it: any) => {
+          const itemMatch = items.find(i => i['Item Code'] === it.itemCode || i['Item Name'] === it.itemName);
+          const qty = Number(it.qty) || 1;
+          const rate = Number(it.rate) || Number(itemMatch?.['Purchase Rate']) || 0;
+          const gstPct = Number(it.gstPct) || Number(itemMatch?.['GST %']) || 0;
+          const isZ = !isGstMode || isSupplierGstExempted || String(it.zeroRated).toUpperCase() === 'Y' || String(itemMatch?.['Zero Rated (Y/N)']).toUpperCase() === 'Y';
+          const lineTotal = qty * rate;
+          const gstAmt = isZ ? 0 : round2((lineTotal * gstPct) / 100);
+
+          return {
+            itemCode: it.itemCode || itemMatch?.['Item Code'] || '',
+            itemName: it.itemName || itemMatch?.['Item Name'] || '',
+            description: it.description || it.lineDescription || itemMatch?.['Item Description'] || '',
+            lineDescription: it.lineDescription || '',
+            qty,
+            rate,
+            discount: Number(it.discount) || 0,
+            discountType: (it.discountType || 'flat') as 'flat' | 'percent',
+            unit: it.unit || itemMatch?.Unit || 'Pcs',
+            gstPct,
+            gstAmt,
+            zeroRated: isZ ? ('Y' as const) : ('N' as const),
+            purchaseRate: rate,
+            isSerialized: (itemMatch?.['Is Serialized'] || 'N') as 'Y' | 'N',
+            serials: []
+          };
+        });
+        setCart(newCart);
+      }
+      showToast(`✓ Fetched ${rn.items?.length || 0} items from Receipt Note ${rn.noteNo}`);
+    } else if (data.type === 'purchase_order') {
+      const po = data.voucher as PurchaseOrder;
+      if (!po) return;
+      setPoNo(po.poNo || '');
+      setReceiptNoteNo('');
+      if (po.supplier?.ledger || po.supplier?.name) {
+        setSupplierName(po.supplier.ledger || po.supplier.name);
+      }
+      if (po.poNo) {
+        setBillNo(po.poNo);
+      }
+      if (po.remarks && !narration) {
+        setNarration(po.remarks);
+      }
+      if (po.items && po.items.length > 0) {
+        const newCart: CartLine[] = po.items.map((it: any) => {
+          const itemMatch = items.find(i => i['Item Code'] === it.itemCode || i['Item Name'] === it.itemName);
+          const qty = Number(it.qty) || 1;
+          const rate = Number(it.rate) || Number(itemMatch?.['Purchase Rate']) || 0;
+          const discount = Number(it.discount) || 0;
+          const discountType = (it.discountType || 'flat') as 'flat' | 'percent';
+          const isZ = !isGstMode || isSupplierGstExempted || String(it.zeroRated).toUpperCase() === 'Y' || String(itemMatch?.['Zero Rated (Y/N)']).toUpperCase() === 'Y';
+          const gstPct = Number(it.gstPct) || Number(itemMatch?.['GST %']) || 0;
+          const lineDisc = discountType === 'percent' ? (qty * rate * discount / 100) : discount;
+          const taxable = Math.max(0, (qty * rate) - lineDisc);
+          const gstAmt = isZ ? 0 : round2((taxable * gstPct) / 100);
+
+          return {
+            itemCode: it.itemCode || itemMatch?.['Item Code'] || '',
+            itemName: it.itemName || itemMatch?.['Item Name'] || '',
+            description: it.description || it.lineDescription || itemMatch?.['Item Description'] || '',
+            lineDescription: it.lineDescription || '',
+            qty,
+            rate,
+            discount,
+            discountType,
+            unit: it.unit || itemMatch?.Unit || 'Pcs',
+            gstPct,
+            gstAmt,
+            zeroRated: isZ ? ('Y' as const) : ('N' as const),
+            purchaseRate: rate,
+            isSerialized: (itemMatch?.['Is Serialized'] || 'N') as 'Y' | 'N',
+            serials: []
+          };
+        });
+        setCart(newCart);
+      }
+      showToast(`✓ Fetched ${po.items?.length || 0} items from Purchase Order ${po.poNo}`);
+    }
+  };
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
@@ -223,9 +337,14 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     setCart([]);
     setSupplierName('');
     setBillNo('');
+    setNarration('');
   };
 
   const handlePurchaseBack = (): boolean => {
+    if (showFetchModal) {
+      setShowFetchModal(false);
+      return true;
+    }
     if (showQuitModal) {
       setShowQuitModal(false);
       return true;
@@ -272,6 +391,14 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       // Ctrl + A or F2: Accept and Save Purchase
       const isCtrlA = (e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A');
       const isF2 = e.key === 'F2' || e.code === 'F2';
+
+      // Alt+F: Open Fetch Modal (Receipt Note / Purchase Order)
+      if (e.altKey && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowFetchModal(true);
+        return;
+      }
       if (isCtrlA || isF2) {
         e.preventDefault();
         e.stopPropagation();
@@ -343,6 +470,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     drillModalState,
     isGstMode,
     showQuitModal,
+    showFetchModal,
     bankTxnNo,
     additionalExpenses,
     onBack
@@ -482,7 +610,10 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         bank2Ledger: config.Bank2Ledger || 'BNBL Account'
       },
       supplierBillNo: billNo,
-      notes: billDate ? `Bill Date: ${billDate}` : '',
+      receiptNoteNo: receiptNoteNo || undefined,
+      poNo: poNo || undefined,
+      notes: narration ? narration : (billDate ? `Bill Date: ${billDate}` : ''),
+      narration: narration,
       originalBillNo: editingBillNo || undefined,
       date: billDate ? new Date(billDate).toISOString() : undefined,
       isEdit: Boolean(editingBillNo),
@@ -499,6 +630,9 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     setCart([]);
     setSupplierName('');
     setBillNo('');
+    setReceiptNoteNo('');
+    setPoNo('');
+    setNarration('');
     playSaveSound();
     onDataRefresh();
 
@@ -518,6 +652,15 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         onCancel={() => setShowAcceptModal(false)}
       />
 
+      <FetchVoucherModal
+        isOpen={showFetchModal}
+        onClose={() => setShowFetchModal(false)}
+        sourceType="purchase_cycle"
+        initialParty={supplierName}
+        config={config}
+        onSelectVoucher={handleFetchVoucher}
+      />
+
       {/* Active Altering Invoice Banner */}
       {editingBillNo && (
         <div className="shrink-0 flex items-center justify-between px-3.5 py-2 bg-amber-50 border border-amber-300 rounded-xl text-amber-900 text-xs shadow-2xs">
@@ -532,6 +675,8 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
               setCart([]);
               setSupplierName('');
               setBillNo('');
+              setReceiptNoteNo('');
+              setPoNo('');
               setBillDate(new Date().toISOString().split('T')[0]);
             }}
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-amber-900 font-bold text-[11px] hover:bg-amber-100 transition cursor-pointer shadow-2xs"
@@ -580,6 +725,17 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                 <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px] font-bold">
                   Credit / Cash
                 </span>
+
+                {/* Fetch from Receipt Note / Purchase Order */}
+                <button
+                  type="button"
+                  onClick={() => setShowFetchModal(true)}
+                  className="h-7 px-2.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-extrabold text-[11px] flex items-center gap-1.5 transition cursor-pointer shadow-2xs shrink-0"
+                  title="Fetch details from Receipt Note (GRN) or Purchase Order (Alt+F)"
+                >
+                  <ArrowDownToLine className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Fetch (GRN / PO) [Alt+F]</span>
+                </button>
               </div>
               <p className="text-[11px] text-slate-500 font-medium">
                 Continuous Loop Entry (Press <kbd className="bg-slate-100 border border-slate-300 rounded px-1 py-0.2 text-[10px] font-mono font-bold">F2</kbd> to Save)
@@ -665,6 +821,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                     }
                   }}
                   filterGroups={['Sundry Creditors', 'Cash-in-Hand', 'Bank Accounts']}
+                  prioritizeGroups={['Sundry Creditors']}
                   onCreateNew={() => onOpenNewLedgerModal('Sundry Creditors', (name) => setSupplierName(name))}
                   onEditLedger={name => {
                     const l = ledgers.find(x => x['Ledger Name'] === name);
@@ -773,62 +930,86 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                 return (
                   <tr key={idx} className="hover:bg-slate-50/80 transition">
                     <td className="py-1 px-2 align-middle font-medium min-w-[220px]">
-                      <SearchableItemSelect
-                        variant="grid"
-                        id={`pur-item-${idx}`}
-                        onEnterNext={() => {
-                          setTimeout(() => {
-                            const el = document.getElementById(`pur-qty-${idx}`);
-                            if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
-                          }, 10);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return;
-                          handleGridKeyDown(e, getGridNavOpts(idx, 'item'));
-                        }}
-                        valueCode={line.itemCode}
-                        items={items}
-                        placeholder="Select Item / Barcode..."
-                        currencySymbol={config.CurrencySymbol || 'Nu.'}
-                        priceType="purchase"
-                        showPrice={true}
-                        onEndOfList={(id) => id && focusNextOutsideGrid(id)}
-                        onSelect={item => {
-                          const qty = line.qty || 1;
-                          const rate = Number(item['Purchase Rate'] ?? (item as any)['Purchase Price'] ?? item.MRP ?? (item as any)['Sale Rate'] ?? 0);
-                          const isZero = !isGstMode || isSupplierGstExempted || String(item['Zero Rated (Y/N)']).toUpperCase() === 'Y';
-                          const computedGstAmt = isZero ? 0 : round2((qty * rate) * (Number(item['GST %']) || 0) / 100);
+                      <div className="flex items-center gap-1">
+                        <div className="flex-1 min-w-0">
+                          <SearchableItemSelect
+                            variant="grid"
+                            id={`pur-item-${idx}`}
+                            onEnterNext={() => {
+                              setTimeout(() => {
+                                const el = document.getElementById(`pur-qty-${idx}`);
+                                if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
+                              }, 10);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return;
+                              handleGridKeyDown(e, getGridNavOpts(idx, 'item'));
+                            }}
+                            valueCode={line.itemCode}
+                            items={items}
+                            placeholder="Select Item / Barcode..."
+                            currencySymbol={config.CurrencySymbol || 'Nu.'}
+                            priceType="purchase"
+                            showPrice={true}
+                            onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                            onSelect={item => {
+                              const qty = line.qty || 1;
+                              const rate = Number(item['Purchase Rate'] ?? (item as any)['Purchase Price'] ?? item.MRP ?? (item as any)['Sale Rate'] ?? 0);
+                              const isZero = !isGstMode || isSupplierGstExempted || String(item['Zero Rated (Y/N)']).toUpperCase() === 'Y';
+                              const computedGstAmt = isZero ? 0 : round2((qty * rate) * (Number(item['GST %']) || 0) / 100);
 
-                          const updated = [...cart];
-                          updated[idx] = {
-                            ...updated[idx],
-                            itemCode: item['Item Code'],
-                            itemName: item['Item Name'],
-                            unit: item.Unit || 'Pcs',
-                            rate,
-                            gstPct: Number(item['GST %']) || 0,
-                            zeroRated: item['Zero Rated (Y/N)'] || 'N',
-                            isSerialized: item['Is Serialized'],
-                            gstAmt: computedGstAmt
-                          };
-                          setCart(updated);
-                          setTimeout(() => {
-                            const qtyEl = document.getElementById(`pur-qty-${idx}`) as HTMLInputElement | null;
-                            if (qtyEl) {
-                              qtyEl.focus();
-                              qtyEl.select();
-                            }
-                          }, 50);
-                        }}
-                        onCreateNew={onOpenNewItemModal}
-                        onEditItem={item => {
-                          setItemToAlter(item);
-                          setShowItemAlterModal(true);
-                        }}
-                        onShowInfo={item => setDrillModalState({ type: 'stock', targetId: item['Item Code'] || item['Item Name'] })}
-                        onSaveVoucher={handleSavePurchase}
-                        onFocusDate={() => billDateRef.current?.focus()}
-                      />
+                              const updated = [...cart];
+                              updated[idx] = {
+                                ...updated[idx],
+                                itemCode: item['Item Code'],
+                                itemName: item['Item Name'],
+                                unit: item.Unit || 'Pcs',
+                                rate,
+                                gstPct: Number(item['GST %']) || 0,
+                                zeroRated: item['Zero Rated (Y/N)'] || 'N',
+                                isSerialized: item['Is Serialized'],
+                                gstAmt: computedGstAmt
+                              };
+                              setCart(updated);
+                              setTimeout(() => {
+                                const qtyEl = document.getElementById(`pur-qty-${idx}`) as HTMLInputElement | null;
+                                if (qtyEl) {
+                                  qtyEl.focus();
+                                  qtyEl.select();
+                                }
+                              }, 50);
+                            }}
+                            onCreateNew={onOpenNewItemModal}
+                            onEditItem={item => {
+                              setItemToAlter(item);
+                              setShowItemAlterModal(true);
+                            }}
+                            onShowInfo={item => setDrillModalState({ type: 'stock', targetId: item['Item Code'] || item['Item Name'] })}
+                            onSaveVoucher={handleSavePurchase}
+                            onFocusDate={() => billDateRef.current?.focus()}
+                          />
+                        </div>
+                        {line.itemCode && (
+                          <ItemNoteButton
+                            hasNote={Boolean((line.lineDescription || line.description) && (line.lineDescription || line.description).trim())}
+                            onClick={() => setActiveNoteIdx(activeNoteIdx === idx ? null : idx)}
+                            accentColor="amber"
+                          />
+                        )}
+                      </div>
+
+                      {(Boolean((line.lineDescription || line.description) && (line.lineDescription || line.description).trim()) || activeNoteIdx === idx) && (
+                        <ItemNoteInput
+                          value={line.lineDescription || line.description || ''}
+                          onChange={(val) => {
+                            const updated = [...cart];
+                            updated[idx] = { ...updated[idx], lineDescription: val, description: val };
+                            setCart(updated);
+                          }}
+                          onClose={() => setActiveNoteIdx(null)}
+                          accentColor="amber"
+                        />
+                      )}
                     </td>
                     <td className="py-1 px-1 align-middle text-center">
                       <input
@@ -962,6 +1143,19 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         </div>
       </div>
 
+      {/* Narration Field */}
+      <div className="flex items-center gap-2 bg-slate-50/90 border border-slate-200 rounded-xl px-3 py-1.5 shrink-0 shadow-2xs">
+        <span className="text-xs font-extrabold text-slate-700 whitespace-nowrap">Narration:</span>
+        <input
+          id="pur-narration"
+          type="text"
+          placeholder="Enter purchase narration / remarks..."
+          value={narration}
+          onChange={e => setNarration(e.target.value)}
+          className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-medium outline-none focus:border-emerald-600 transition"
+        />
+      </div>
+
       {/* Footer Bar: Totals & Actions */}
       <div className="bg-white rounded-xl border border-slate-200 p-2 shadow-xs flex flex-wrap items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -1084,7 +1278,11 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
             setLedgerToAlter(null);
           }}
           onSave={saved => {
-            saveLedger(saved);
+            const res = saveLedger(saved);
+            if (!res.ok) {
+              alert(res.error || 'Failed to save ledger.');
+              return;
+            }
             onDataRefresh();
             setShowLedgerAlterModal(false);
             setLedgerToAlter(null);

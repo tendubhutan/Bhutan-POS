@@ -1,4 +1,5 @@
 import { QuitConfirmModal } from './QuitConfirmModal';
+import { ItemNoteButton, ItemNoteInput } from './vouchers/ItemNoteField';
 import { GlowButton } from './common/GlowButton';
 import { Unit } from '../types';
 import { loadJson, saveJson, STORAGE_KEYS, DEFAULT_UNITS } from '../services/storageService';
@@ -178,6 +179,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     }
   });
   const [posBillDate, setPosBillDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [activeNoteIdx, setActiveNoteIdx] = useState<number | null>(null);
 
   // Keep posBillNo and posBillDate synchronized with editing state and active voucher series
   useEffect(() => {
@@ -469,7 +471,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       alert('Customer / Ledger Name is required.');
       return;
     }
-    saveLedger(customerForm as Ledger);
+    const res = saveLedger(customerForm as Ledger);
+    if (!res.ok) {
+      alert(res.error || 'Failed to save customer ledger.');
+      return;
+    }
     setCustomerName(customerForm['Ledger Name']!.trim());
     setShowCustomerModal(false);
     onDataRefresh();
@@ -563,15 +569,6 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     if (isActive === false) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // ESC closes open modals or triggers quit confirmation
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation?.();
-        handlePosBack();
-        return;
-      }
-
       // F1: Open Shortcuts Guide
       if (e.key === 'F1') {
         e.preventDefault();
@@ -649,10 +646,18 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         return;
       }
 
-      // Alt+C: Jump directly into Cart Table
+      // Alt+C: Quick Create New Item Master
       if (e.altKey && e.key.toLowerCase() === 'c') {
         e.preventDefault();
-        if (cart.length > 0) {
+        e.stopPropagation();
+        if (onOpenNewItemModal) {
+          setShowDropdown(false);
+          onOpenNewItemModal(newItem => {
+            selectItem(newItem);
+            setEntrySearch('');
+            setShowDropdown(false);
+          });
+        } else if (cart.length > 0) {
           cartQtyRefs.current[0]?.focus();
           cartQtyRefs.current[0]?.select();
         }
@@ -1065,6 +1070,21 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   // Keyboard Navigation: Item Search Field
   const handleItemKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Alt+C: Quick Create New Item Master
+    if (e.altKey && e.key.toLowerCase() === 'c') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (onOpenNewItemModal) {
+        setShowDropdown(false);
+        onOpenNewItemModal(newItem => {
+          selectItem(newItem);
+          setEntrySearch('');
+          setShowDropdown(false);
+        });
+      }
+      return;
+    }
+
     // Ctrl+P or Alt+P: Secret toggle Purchase Cost
     if ((e.ctrlKey || e.altKey) && e.key.toLowerCase() === 'p') {
       e.preventDefault();
@@ -1111,49 +1131,68 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       const q = entrySearch.trim();
       const searchLower = q.toLowerCase();
 
-      // Check Serial Number Scan FIRST!
-      if (q) {
-        try {
-          const serialReport = getSerialNumbersStockReport();
-          const matchedSerial = serialReport.find(s => s.serialNo.toLowerCase() === searchLower && s.status === 'In Stock');
-          if (matchedSerial) {
-            const item = items.find(i => i['Item Code'] === matchedSerial.itemCode);
-            if (item) {
-              selectItem(item, matchedSerial.serialNo);
-              return;
-            }
-          }
-        } catch (err) {
-          console.error('Error scanning serial number in POS:', err);
-        }
+      if (!q) {
+        cashInputRef.current?.focus();
+        cashInputRef.current?.select();
+        return;
       }
 
-      if (showDropdown && selectedIndex > -1 && searchResults[selectedIndex]) {
-        const itemResult = searchResults[selectedIndex] as any;
-        selectItem(itemResult, itemResult.matchedSerial);
-      } else if (entryCode && posSettings.itemAddMode === 'prompt') {
-        qtyInputRef.current?.focus();
-        qtyInputRef.current?.select();
-      } else {
-        if (!q) {
-          cashInputRef.current?.focus();
-          cashInputRef.current?.select();
-          return;
+      // Check Serial Number Scan FIRST!
+      try {
+        const serialReport = getSerialNumbersStockReport();
+        const matchedSerial = serialReport.find(s => s.serialNo.toLowerCase() === searchLower && s.status === 'In Stock');
+        if (matchedSerial) {
+          const item = items.find(i => i['Item Code'] === matchedSerial.itemCode);
+          if (item) {
+            selectItem(item, matchedSerial.serialNo);
+            setEntrySearch('');
+            setShowDropdown(false);
+            return;
+          }
         }
-        const matchedExact = items.filter(i => 
-          String(i.Barcode).toLowerCase() === searchLower || 
-          String(i['Item Code']).toLowerCase() === searchLower ||
-          (i['Alias'] && String(i['Alias']).toLowerCase() === searchLower)
+      } catch (err) {
+        console.error('Error scanning serial number in POS:', err);
+      }
+
+      // Check Exact Barcode, Item Code, or Alias match
+      const matchedExact = items.filter(i => 
+        String(i.Barcode).toLowerCase() === searchLower || 
+        String(i['Item Code']).toLowerCase() === searchLower ||
+        (i['Alias'] && String(i['Alias']).toLowerCase() === searchLower)
+      );
+      if (matchedExact.length >= 1) {
+        selectItem(matchedExact[0]);
+        setEntrySearch('');
+        setShowDropdown(false);
+        return;
+      }
+
+      // Synchronous live search for q to avoid stale async searchResults during rapid scanner typing
+      const freshMatches = items.filter(item => {
+        const name = (item['Item Name'] || '').toLowerCase();
+        const code = (item['Item Code'] || '').toLowerCase();
+        const barcode = (item['Barcode'] || '').toString().toLowerCase();
+        const alias = (item['Alias'] || '').toLowerCase();
+        return (
+          name.includes(searchLower) ||
+          code.includes(searchLower) ||
+          barcode.includes(searchLower) ||
+          alias.includes(searchLower)
         );
-        if (matchedExact.length >= 1) {
-          selectItem(matchedExact[0]);
-        } else if (searchResults.length > 0) {
-          const firstResult = searchResults[0] as any;
-          selectItem(firstResult, firstResult.matchedSerial);
-        } else {
-          // If no match found, warn
-          if (posSettings.enableSoundFeedback) playWarningTone();
-        }
+      });
+
+      if (freshMatches.length > 0) {
+        const idxToUse = (selectedIndex >= 0 && selectedIndex < freshMatches.length) ? selectedIndex : 0;
+        const itemToSelect = freshMatches[idxToUse];
+        selectItem(itemToSelect);
+        setEntrySearch('');
+        setShowDropdown(false);
+      } else {
+        // No item found for query q
+        if (posSettings.enableSoundFeedback) playWarningTone();
+        alert(`Item not found: "${q}"`);
+        itemInputRef.current?.focus();
+        itemInputRef.current?.select();
       }
     }
   };
@@ -2133,48 +2172,36 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                       return (
                         <tr key={idx} className="hover:bg-slate-50 transition group">
                           {/* Item Name */}
-                          <td className="py-1 px-2.5 align-middle font-medium text-slate-800 break-words">
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <span className="font-bold text-slate-900 text-xs">{line.itemName}</span>
-                              {posSettings.showPurchasePrice && (
-                                <span className="inline-flex items-center gap-0.5 px-1 py-0 text-[8px] font-bold rounded bg-emerald-50 text-emerald-800 border border-emerald-200" title="Latest Purchase Price">
-                                  Cost: {config.CurrencySymbol || 'Nu.'} {Number(line.purchaseRate || 0).toFixed(2)}
-                                </span>
-                              )}
-                              {isLowStock && (
-                                <span className="inline-flex items-center gap-0.5 px-1 py-0 text-[8px] font-bold rounded bg-rose-100 text-rose-800 border border-rose-200">
-                                  <AlertTriangle className="h-2 w-2" /> 0 Stock
-                                </span>
-                              )}
-                              {line.isSerialized === 'Y' && showSerials && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveSerialIndex(idx);
-                                    setSerialModalOpen(true);
-                                  }}
-                                  className="inline-flex items-center rounded-md bg-amber-100 px-1 py-0 text-[9px] font-bold text-amber-800 hover:bg-amber-200"
-                                >
-                                  Serials: {line.serials?.length || 0}/{line.qty}
-                                </button>
+                          <td className="py-0.5 px-2 align-middle font-medium text-slate-800 break-words">
+                            <div className="flex items-center justify-between gap-1 flex-wrap">
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <span className="font-bold text-slate-900 text-xs">{line.itemName}</span>
+                                {posSettings.showPurchasePrice && (
+                                  <span className="inline-flex items-center gap-0.5 px-1 py-0 text-[8px] font-bold rounded bg-emerald-50 text-emerald-800 border border-emerald-200" title="Latest Purchase Price">
+                                    Cost: {config.CurrencySymbol || 'Nu.'} {Number(line.purchaseRate || 0).toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+                              {(posSettings.enableItemDescription && String(config.EnableItemDescription) !== 'false') && (
+                                <ItemNoteButton
+                                  hasNote={Boolean(line.description && line.description.trim())}
+                                  onClick={() => setActiveNoteIdx(activeNoteIdx === idx ? null : idx)}
+                                  accentColor="indigo"
+                                />
                               )}
                             </div>
-                            {(posSettings.enableItemDescription || config.EnableItemDescription) && (
-                              <input
-                                type="text"
-                                placeholder="Item description / specification..."
+                            {(posSettings.enableItemDescription && String(config.EnableItemDescription) !== 'false') && (Boolean(line.description && line.description.trim()) || activeNoteIdx === idx) && (
+                              <ItemNoteInput
                                 value={line.description || ''}
-                                onChange={e => {
-                                  const val = e.target.value;
-                                  setCart(prev => prev.map((l, i) => i === idx ? { ...l, description: val } : l));
-                                }}
-                                className="w-full mt-0.5 px-1.5 py-0.5 rounded border border-slate-200 text-[10px] outline-none focus:border-indigo-500 text-slate-700 bg-white"
+                                onChange={val => setCart(prev => prev.map((l, i) => i === idx ? { ...l, description: val } : l))}
+                                onClose={() => setActiveNoteIdx(null)}
+                                accentColor="indigo"
                               />
                             )}
                           </td>
 
-                                                    {/* QTY */}
-                          <td className="py-1 px-1 align-middle text-center">
+                                                     {/* QTY */}
+                          <td className="py-0.5 px-1 align-middle text-center">
                             <input
                               ref={el => { cartQtyRefs.current[idx] = el; }}
                               type="number"
@@ -2186,11 +2213,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                               onBlur={handleFieldBlurReturnToSearch}
                               onKeyDown={e => handleCartQtyKeyDown(e, idx)}
                               title="Edit quantity (+/- keys increment/decrement, Del to delete, Enter to save)"
-                              className="w-full text-center h-7 rounded-md border border-slate-300 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
+                              className="w-full text-center h-6 rounded-md border border-slate-300 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
                             />
                           </td>
                           {/* UNIT */}
-                          <td className="py-1 px-1 align-middle text-center">
+                          <td className="py-0.5 px-1 align-middle text-center">
                             <select
                               value={line.unit || 'Pcs'}
                               onChange={e => {
@@ -2210,7 +2237,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                                 }
                                 setCart(updated);
                               }}
-                              className="w-full text-center h-7 rounded-md border border-slate-300 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
+                              className="w-full text-center h-6 rounded-md border border-slate-300 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
                             >
                               {units.map(u => (
                                 <option key={u['Unit Name']} value={u['Unit Name']}>{u.Symbol || u['Unit Name']}</option>
@@ -2219,7 +2246,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                           </td>
 
                           {/* Rate */}
-                          <td className="py-1 px-1 align-middle text-right">
+                          <td className="py-0.5 px-1 align-middle text-right">
                             <input
                               ref={el => { cartRateRefs.current[idx] = el; }}
                               type="number"
@@ -2229,13 +2256,13 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                               onFocus={e => e.target.select()}
                               onBlur={handleFieldBlurReturnToSearch}
                               onKeyDown={e => handleCartRateKeyDown(e, idx)}
-                              className="w-full text-right h-7 rounded-md border border-slate-300 px-1.5 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
+                              className="w-full text-right h-6 rounded-md border border-slate-300 px-1.5 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
                             />
                           </td>
 
                           {/* Disc (if enabled) */}
                           {showItemDiscount && (
-                            <td className="py-1 px-1 align-middle text-right">
+                            <td className="py-0.5 px-1 align-middle text-right">
                               <input
                                 ref={el => { cartDiscRefs.current[idx] = el; }}
                                 type="number"
@@ -2245,23 +2272,23 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                                 onFocus={e => e.target.select()}
                                 onBlur={handleFieldBlurReturnToSearch}
                                 onKeyDown={e => handleCartDiscKeyDown(e, idx)}
-                                className="w-full text-right h-7 rounded-md border border-slate-300 px-1.5 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
+                                className="w-full text-right h-6 rounded-md border border-slate-300 px-1.5 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
                               />
                             </td>
                           )}
 
                           {/* GST */}
-                          <td className="py-1 px-2 align-middle text-right font-mono font-bold text-slate-800 text-xs">
+                          <td className="py-0.5 px-2 align-middle text-right font-mono font-bold text-slate-800 text-xs">
                             {lineTax.toFixed(2)}
                           </td>
 
                           {/* Amount */}
-                          <td className="py-1 px-2.5 align-middle text-right font-black text-slate-900 font-mono text-xs">
+                          <td className="py-0.5 px-2.5 align-middle text-right font-black text-slate-900 font-mono text-xs">
                             {lineTotal.toFixed(2)}
                           </td>
 
                           {/* Delete */}
-                          <td className="py-1 px-1 align-middle text-center">
+                          <td className="py-0.5 px-1 align-middle text-center">
                             <button
                               type="button"
                               onClick={() => removeCartLine(idx)}
@@ -2355,6 +2382,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           <SearchableLedgerSelect
             id="customer-ledger-select"
             ledgers={ledgers}
+            prioritizeGroups={['Sundry Debtors']}
             value={customerName}
             onChange={(val) => {
               setCustomerName(val);
@@ -2723,6 +2751,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
             size="lg"
             fullWidth
             icon={Printer}
+            title="Save bill to database and print receipt (F2)"
           >
             Checkout & Print [F2]
           </GlowButton>
@@ -2736,9 +2765,9 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               variant="purple"
               size="sm"
               icon={Share2}
-              title="Save bill and share PDF directly via WhatsApp / Email"
+              title="Save bill to database and share PDF directly via WhatsApp / Email"
             >
-              Share PDF
+              Save & Share
             </GlowButton>
 
             <GlowButton
@@ -2748,7 +2777,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               variant="cyan"
               size="sm"
               icon={FileDown}
-              title="Save bill and download A4 Tax Invoice PDF"
+              title="Save bill to database and download A4 Tax Invoice PDF"
             >
               Save PDF
             </GlowButton>

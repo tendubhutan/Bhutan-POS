@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { focusNextOutsideGrid } from '../../utils/domUtils';
+import { focusElement } from '../../utils/domUtils';
+import { handleGridKeyDown } from '../../utils/gridKeyboardNav';
 import { Config, Item, PhysicalStockItem, PhysicalStockVoucher } from '../../types';
 import {
   savePhysicalStockAdjustment, getPhysicalStockRecords, peekNextVoucherNo
 } from '../../services/storageService';
 import {
-  Boxes, Plus, Trash2, CheckCircle2, AlertCircle, Package, RotateCcw, Sparkles, TrendingDown, TrendingUp, Scale, Printer, Share2, Download, ChevronUp, ChevronDown } from 'lucide-react';
+  Boxes, Trash2, CheckCircle2, AlertCircle, Sparkles
+} from 'lucide-react';
 import { SearchableItemSelect } from '../SearchableItemSelect';
 import { VoucherSuccessActionModal, VoucherSuccessDetails } from './VoucherSuccessActionModal';
 import { AcceptModal } from '../AcceptModal';
@@ -19,6 +21,7 @@ interface PhysicalStockEntryProps {
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
   onNavigateBack?: () => void;
+  voucherTypeSelector?: React.ReactNode;
 }
 
 export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
@@ -27,7 +30,8 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
   onDataRefresh,
   initialVoucherTarget,
   onOpenNewItemModal,
-  onNavigateBack
+  onNavigateBack,
+  voucherTypeSelector
 }) => {
   const isAutoMode = (config?.VoucherNumberingMode || 'auto') === 'auto';
   const [editingVoucherNo, setEditingVoucherNo] = useState<string | null>(null);
@@ -38,13 +42,12 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
   const [verifiedBy, setVerifiedBy] = useState('');
   const [remarks, setRemarks] = useState('');
 
-  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'create' | 'audit' | 'history' | 'register'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'audit' | 'history' | 'register'>('audit');
   const [savedRecords, setSavedRecords] = useState<PhysicalStockVoucher[]>([]);
   const [successModalDetails, setSuccessModalDetails] = useState<VoucherSuccessDetails | null>(null);
   const [quickSearchCode, setQuickSearchCode] = useState('');
 
-  // Count lines state
+  // Count lines state initialized clean
   const [stockLines, setStockLines] = useState<PhysicalStockItem[]>([]);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const currencySymbol = config?.CurrencySymbol || 'Nu.';
@@ -68,7 +71,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
         if (ps.date) setDate(new Date(ps.date).toISOString().split('T')[0]);
         if (ps.verifiedBy) setVerifiedBy(ps.verifiedBy);
         if (ps.remarks) setRemarks(ps.remarks);
-        if (Array.isArray(ps.items)) {
+        if (Array.isArray(ps.items) && ps.items.length > 0) {
           setStockLines(ps.items.map((it: any) => ({
             itemCode: it.itemCode || it['Item Code'] || '',
             itemName: it.itemName || it['Item Name'] || '',
@@ -81,7 +84,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
             remarks: it.remarks || ''
           })));
         }
-        setActiveTab('create');
+        setActiveTab('audit');
       }
     }
   }, [initialVoucherTarget]);
@@ -92,23 +95,38 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
     }
   }, [config, isAutoMode, editingVoucherNo]);
 
-  // Prepopulate initial stock lines
-  useEffect(() => {
-    // Disabled auto-fill to keep grid empty by default
-  }, [items]);
-
-  
-  useEffect(() => {
-    if (stockLines.length > 0 && true) {
-      setIsHeaderCollapsed(true);
-    } else if (stockLines.length === 0) {
-      setIsHeaderCollapsed(false);
-    }
-  }, [stockLines.length]);
-
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMsg({ text, type });
     setTimeout(() => setToastMsg(null), 3500);
+  };
+
+  const getGridNavOpts = (idx: number, field: 'item' | 'qty' | 'rate' | 'disc' | 'gst') => ({
+    prefix: 'ps',
+    idx,
+    field,
+    totalRows: stockLines.length,
+    searchPickerId: 'ps-fast-item-picker',
+    hasRate: false,
+    hasDiscount: false,
+    hasGst: false,
+    onDeleteRow: (i: number) => handleRemoveLine(i),
+    onOpenNewItemModal: () => onOpenNewItemModal && onOpenNewItemModal(),
+  });
+
+  const focusFirstItemOrPicker = () => {
+    setTimeout(() => {
+      if (stockLines.length > 0) {
+        const itemEl = document.getElementById('ps-item-0') || document.getElementById('ps-qty-0');
+        if (itemEl) {
+          itemEl.focus();
+          return;
+        }
+      }
+      const picker = document.getElementById('ps-fast-item-picker');
+      if (picker) {
+        picker.focus();
+      }
+    }, 60);
   };
 
   const handleLoadAllItems = () => {
@@ -129,10 +147,96 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
     showToast(`Loaded all ${all.length} inventory items for physical count.`, 'success');
   };
 
-  const handlePhysicalQtyChange = (code: string, val: number | '') => {
+  const handleItemSelect = (idx: number, code: string) => {
+    const selectedItem = items.find(i => i['Item Code'] === code);
+    if (!selectedItem) return;
+    const book = Number(selectedItem['Current Stock']) || 0;
+    const rate = Number(selectedItem['Purchase Rate']) || 0;
     setStockLines(prev =>
-      prev.map(line => {
-        if (line.itemCode === code) {
+      prev.map((line, i) => {
+        if (i === idx) {
+          const phys = typeof line.physicalQty === 'number' && line.physicalQty !== 0 ? line.physicalQty : book;
+          const diff = phys - book;
+          return {
+            ...line,
+            itemCode: selectedItem['Item Code'],
+            itemName: selectedItem['Item Name'],
+            unit: selectedItem.Unit || 'Pcs',
+            bookQty: book,
+            physicalQty: phys,
+            differenceQty: diff,
+            rate,
+            varianceValue: diff * rate
+          };
+        }
+        return line;
+      })
+    );
+    setTimeout(() => {
+      const qtyEl = document.getElementById(`ps-qty-${idx}`) as HTMLInputElement | null;
+      if (qtyEl) {
+        qtyEl.focus();
+        qtyEl.select();
+      }
+    }, 50);
+  };
+
+  const handleQuickAddItem = (selectedItem: Item) => {
+    const code = selectedItem['Item Code'];
+    const existingIdx = stockLines.findIndex(l => l.itemCode === code);
+    if (existingIdx > -1) {
+      showToast(`Item ${selectedItem['Item Name']} is already in the list. Focused.`, 'success');
+      setTimeout(() => {
+        const qtyEl = document.getElementById(`ps-qty-${existingIdx}`) as HTMLInputElement | null;
+        if (qtyEl) {
+          qtyEl.focus();
+          qtyEl.select();
+        }
+      }, 50);
+      return;
+    }
+
+    const book = Number(selectedItem['Current Stock']) || 0;
+    const rate = Number(selectedItem['Purchase Rate']) || 0;
+    const newLine: PhysicalStockItem = {
+      itemCode: selectedItem['Item Code'],
+      itemName: selectedItem['Item Name'],
+      unit: selectedItem.Unit || 'Pcs',
+      bookQty: book,
+      physicalQty: book,
+      differenceQty: 0,
+      rate,
+      varianceValue: 0
+    };
+
+    let updated: PhysicalStockItem[];
+    let targetIndex: number;
+
+    const emptyIdx = stockLines.findIndex(l => !l.itemCode);
+    if (emptyIdx > -1) {
+      updated = stockLines.map((l, i) => (i === emptyIdx ? newLine : l));
+      targetIndex = emptyIdx;
+    } else {
+      updated = [...stockLines, newLine];
+      targetIndex = updated.length - 1;
+    }
+
+    setStockLines(updated);
+    showToast(`Added: ${selectedItem['Item Name']}`, 'success');
+
+    setTimeout(() => {
+      const qtyEl = document.getElementById(`ps-qty-${targetIndex}`) as HTMLInputElement | null;
+      if (qtyEl) {
+        qtyEl.focus();
+        qtyEl.select();
+      }
+    }, 50);
+  };
+
+  const handlePhysicalQtyChange = (idx: number, val: number | '') => {
+    setStockLines(prev =>
+      prev.map((line, i) => {
+        if (i === idx) {
           const phys = typeof val === 'number' ? val : 0;
           const diff = phys - line.bookQty;
           const variance = diff * line.rate;
@@ -148,28 +252,30 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
     );
   };
 
-  const handleRemoveLine = (code: string) => {
-    setStockLines(prev => prev.filter(l => l.itemCode !== code));
+  const handleRemoveLine = (idx: number) => {
+    setStockLines(prev => prev.filter((_, i) => i !== idx));
+    showToast('Item line removed.', 'success');
   };
 
-  // Summary Metrics
-  const totalItemsCounted = stockLines.length;
-  const changedLines = stockLines.filter(l => l.differenceQty !== 0);
-  const totalShortageQty = stockLines.reduce(
+  // Summary Metrics (filtering for rows with itemCode)
+  const validLines = stockLines.filter(l => !!l.itemCode);
+  const totalItemsCounted = validLines.length;
+  const changedLines = validLines.filter(l => l.differenceQty !== 0);
+  const totalShortageQty = validLines.reduce(
     (sum, l) => (l.differenceQty < 0 ? sum + Math.abs(l.differenceQty) : sum),
     0
   );
-  const totalExcessQty = stockLines.reduce(
+  const totalExcessQty = validLines.reduce(
     (sum, l) => (l.differenceQty > 0 ? sum + l.differenceQty : sum),
     0
   );
-  const netVarianceVal = stockLines.reduce((sum, l) => sum + l.varianceValue, 0);
+  const netVarianceVal = validLines.reduce((sum, l) => sum + l.varianceValue, 0);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (stockLines.length === 0) {
-      showToast('Please add items to count.', 'error');
+    if (validLines.length === 0) {
+      showToast('Please select at least one item to count.', 'error');
       return;
     }
 
@@ -185,7 +291,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
       date: new Date(date).toISOString(),
       verifiedBy: verifiedBy.trim(),
       remarks: remarks.trim() || 'Physical Stock Verification & Count Adjustment',
-      items: stockLines.map(l => ({
+      items: validLines.map(l => ({
         ...l,
         physicalQty: Number(l.physicalQty) || 0
       }))
@@ -198,62 +304,19 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
         'success'
       );
       onDataRefresh();
-      loadHistory();
-      setEditingVoucherNo(null);
-
-      const savedObj = {
-        ...payload,
-        voucherNo: res.voucherNo,
-        totalItemsCounted,
-        totalExcessQty,
-        totalShortageQty,
-        netVarianceValue: netVarianceVal
-      };
-
       setSuccessModalDetails({
         voucherNo: res.voucherNo,
-        voucherType: 'Physical Stock Audit',
-        date: payload.date,
-        partyName: verifiedBy || 'Physical Warehouse Count',
-        totalAmount: Math.abs(netVarianceVal),
-        totalItems: stockLines.length,
-        currencySymbol,
-        onPrint: () => {
-          const doc = generatePhysicalStockPDF(savedObj, config);
-          doc.autoPrint();
-          window.open(doc.output('bloburl'), '_blank');
-        },
-        onShare: () => {
-          const doc = generatePhysicalStockPDF(savedObj, config);
-          shareOrDownloadPDF(doc, `PhysicalStockAudit_${res.voucherNo}.pdf`, `Physical Stock Audit ${res.voucherNo}`);
-        },
-        onDownload: () => {
-          const doc = generatePhysicalStockPDF(savedObj, config);
-          doc.save(`PhysicalStockAudit_${res.voucherNo}.pdf`);
-        },
-        onNewVoucher: () => {
-          if (isAutoMode) {
-            setVoucherNo(peekNextVoucherNo('PHYSICAL_STOCK', config));
-          }
-        }
+        voucherTypeLabel: 'Physical Stock',
+        date,
+        partyName: verifiedBy || 'Stock Auditor',
+        amount: netVarianceVal,
+        itemCount: totalItemsCounted,
+        rawVoucher: res
       });
-
-      if (isAutoMode) {
-        setVoucherNo(peekNextVoucherNo('PHYSICAL_STOCK', config));
-      }
+      resetForm();
+    } else {
+      showToast('Failed to save physical stock adjustment.', 'error');
     }
-  };
-
-  const focusElement = (id: string) => {
-    setTimeout(() => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.focus();
-        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-          el.select();
-        }
-      }
-    }, 20);
   };
 
   const resetForm = () => {
@@ -290,7 +353,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
       !!verifiedBy ||
       Boolean(remarks.trim()) ||
       !!editingVoucherNo ||
-      (stockLines.length > 0 && stockLines.some(l => !!l.itemCode || Number(l.physicalQty) > 0));
+      validLines.length > 0;
 
     if (hasData) {
       setShowQuitModal(true);
@@ -305,19 +368,9 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
     return false;
   };
 
-  // Global F2, Escape, and app event listeners
+  // Global F2 and app event listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (e.defaultPrevented) return;
-        const handled = handlePhysicalBack();
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation?.();
-          return;
-        }
-      }
       if ((e.key === 'F2' || e.code === 'F2') && (activeTab === 'audit' || activeTab === 'create')) {
         e.preventDefault();
         const formEl = document.getElementById('physical-stock-form') as HTMLFormElement | null;
@@ -400,262 +453,93 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
         </div>
       )}
 
-      {/* Top Banner */}
-      <div className="rounded-xl border border-emerald-200 bg-linear-to-r from-emerald-50/90 to-teal-50/70 px-3 py-1.5 shadow-xs flex flex-wrap items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-xs">
-            <Boxes className="h-4.5 w-4.5" />
-          </div>
-          <div>
-            <h2 className="text-sm sm:text-base font-extrabold text-emerald-950 leading-tight">
-              Physical Stock Verification & Inventory Reconciliation
-            </h2>
-            <p className="text-[11px] text-emerald-700 font-medium">
-              Record physical warehouse counts, audit discrepancies & automatically reconcile book stock
-            </p>
-          </div>
+      {/* Top Header Card: Blue Fields (Doc No, Date, Auditor) */}
+      <div className="rounded-xl border border-slate-200 bg-white p-2.5 px-3.5 shadow-xs mb-1 shrink-0 flex items-center gap-3.5 flex-wrap text-xs">
+        {voucherTypeSelector}
+
+        {/* Physical Stock Doc No. */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <label htmlFor="ps-doc-no" className="font-bold text-slate-700 text-[11px] whitespace-nowrap">
+            Doc No.
+          </label>
+          <input
+            id="ps-doc-no"
+            type="text"
+            value={voucherNo || ''}
+            onChange={e => setVoucherNo(e.target.value)}
+            disabled={isAutoMode}
+            onFocus={e => e.target.select()}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                focusElement('ps-date');
+              }
+            }}
+            className={`h-8 w-28 rounded-lg border px-2.5 font-mono font-bold text-slate-900 outline-none text-xs ${
+              isAutoMode ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-300 focus:border-emerald-600'
+            }`}
+          />
         </div>
 
-        <div className="flex items-center gap-1.5 bg-white/90 p-0.5 rounded-lg border border-emerald-200 text-xs">
-          <button
-            type="button"
-            onClick={() => setActiveTab('audit')}
-            className={`rounded-md px-2.5 py-1 font-bold transition cursor-pointer ${
-              activeTab === 'audit'
-                ? 'bg-emerald-600 text-white shadow-2xs'
-                : 'text-emerald-800 hover:bg-emerald-100/50'
-            }`}
-          >
-            📋 Stock Count & Audit
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('history');
-              loadHistory();
+        {/* Audit Date */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <label htmlFor="ps-date" className="font-bold text-slate-700 text-[11px] whitespace-nowrap">
+            Audit Date
+          </label>
+          <input
+            id="ps-date"
+            type="date"
+            value={date || ''}
+            onChange={e => setDate(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                focusElement('ps-auditor');
+              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                focusElement('ps-doc-no');
+              }
             }}
-            className={`rounded-md px-2.5 py-1 font-bold transition cursor-pointer ${
-              activeTab === 'history'
-                ? 'bg-emerald-600 text-white shadow-2xs'
-                : 'text-emerald-800 hover:bg-emerald-100/50'
-            }`}
-          >
-            📜 Audit Records ({savedRecords.length})
-          </button>
+            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 font-semibold text-slate-900 outline-none focus:border-emerald-600 text-xs"
+          />
+        </div>
+
+        {/* Stock Auditor / Verified By */}
+        <div className="flex items-center gap-1.5 min-w-[200px] max-w-md flex-1">
+          <label htmlFor="ps-auditor" className="font-bold text-slate-700 text-[11px] whitespace-nowrap">
+            Auditor
+          </label>
+          <input
+            id="ps-auditor"
+            type="text"
+            placeholder="e.g. Storekeeper"
+            value={verifiedBy || ''}
+            onChange={e => setVerifiedBy(e.target.value)}
+            onFocus={e => e.target.select()}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                focusFirstItemOrPicker();
+              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                focusElement('ps-date');
+              }
+            }}
+            className="h-8 w-full rounded-lg border border-slate-300 bg-white px-2.5 font-semibold text-slate-900 outline-none focus:border-emerald-600 text-xs"
+          />
         </div>
       </div>
 
-      {activeTab === 'audit' ? (
+      {activeTab === 'audit' || activeTab === 'create' ? (
         <form id="physical-stock-form" onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col space-y-2">
-          {/* Header Grid */}
-          <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden transition-all duration-300 mb-2">
-            {isHeaderCollapsed ? (
-              <div 
-                className="flex items-center justify-between p-3 cursor-pointer hover:bg-violet-100 transition-colors bg-gradient-to-r from-violet-50 to-purple-50 border-b-2 border-violet-200"
-                onClick={() => setIsHeaderCollapsed(false)}
-                title="Click to expand header details"
-              >
-                <div className="flex items-center gap-6 text-sm">
-                  
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">Date</span>
-                    <span className="font-bold text-slate-800">{date}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-500 uppercase tracking-widest text-[10px] bg-white px-2 py-0.5 rounded-full shadow-sm">Voucher No</span>
-                    <span className="font-bold text-slate-800">{voucherNo || '-'}</span>
-                  </div>
-                </div>
-                <button type="button" className="flex items-center gap-1.5 text-xs font-black text-violet-600 hover:text-violet-800 uppercase tracking-wide bg-white px-3 py-1 rounded-lg shadow-sm border border-violet-100">
-                  <span>Edit Header</span>
-                  <ChevronDown className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="p-2.5 space-y-2 relative">
-                <div className="absolute top-2 right-2">
-                  <button 
-                    type="button"
-                    onClick={() => setIsHeaderCollapsed(true)}
-                    className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-violet-600 uppercase tracking-wide cursor-pointer transition-colors"
-                    title="Collapse to save space"
-                  >
-                    <span>Collapse</span>
-                    <ChevronUp className="h-4 w-4" />
-                  </button>
-                </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Physical Stock Doc No.</label>
-                <input
-                  id="ps-doc-no"
-                  type="text"
-                  value={voucherNo || ''}
-                  onChange={e => setVoucherNo(e.target.value)}
-                  disabled={isAutoMode}
-                  onFocus={e => e.target.select()}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      document.getElementById('ps-save-btn')?.focus();
-                    }
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('ps-date');
-                    }
-                  }}
-                  className={`w-full rounded-lg border px-2.5 py-1.5 font-mono font-bold text-slate-900 outline-none text-xs ${
-                    isAutoMode ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-300 focus:border-emerald-600'
-                  }`}
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Audit Date</label>
-                <input
-                  id="ps-date"
-                  type="date"
-                  value={date || ''}
-                  onChange={e => setDate(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('ps-auditor');
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('ps-doc-no');
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-emerald-600 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Stock Auditor / Verified By</label>
-                <input
-                  id="ps-auditor"
-                  type="text"
-                  placeholder="e.g. Storekeeper"
-                  value={verifiedBy || ''}
-                  onChange={e => setVerifiedBy(e.target.value)}
-                  onFocus={e => e.target.select()}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      document.getElementById('ps-save-btn')?.focus();
-                    }
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      focusElement('ps-remarks');
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('ps-date');
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-emerald-600 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Remarks / Location</label>
-                <input
-                  id="ps-remarks"
-                  type="text"
-                  placeholder="e.g. Month-end warehouse audit"
-                  value={remarks || ''}
-                  onChange={e => setRemarks(e.target.value)}
-                  onFocus={e => e.target.select()}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      document.getElementById('ps-save-btn')?.focus();
-                    }
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      if (stockLines.length > 0) {
-                        focusElement(`ps-qty-${stockLines[0].itemCode}`);
-                      } else {
-                        focusElement('ps-save-btn');
-                      }
-                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                      e.preventDefault();
-                      focusElement('ps-auditor');
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-emerald-600 text-xs"
-                />
-              </div>
-            </div>
-              </div>
-            )}
-          </div>
-
           {/* Verification Table */}
           <div className="flex-1 min-h-[200px] flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden text-xs">
-            <div className="px-3 py-1.5 border-b border-slate-100 flex items-center justify-between bg-slate-50 flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-slate-900 flex items-center gap-1.5 text-xs">
-                  <Scale className="h-4 w-4 text-emerald-600" />
-                  Physical Count vs Book Balance ({stockLines.length} items)
-                </h3>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* Fast find bar */}
-                <div className="w-64">
-                  <SearchableItemSelect
-                    id="ps-fast-item-picker"
-                    valueCode={quickSearchCode}
-                    items={items}
-                    placeholder="Quick add item to count..."
-                    currencySymbol={currencySymbol}
-                    priceType="purchase"
-                    onCreateNew={onOpenNewItemModal}
-                    autoClearAfterSelect={true}
-                    dropdownPosition="down"
-                    onEndOfList={() => document.getElementById('ps-save-btn')?.focus()}
-                        onSelect={selectedItem => {
-                      const code = selectedItem['Item Code'];
-                      const exists = stockLines.some(l => l.itemCode === code);
-                      if (!exists) {
-                        const book = Number(selectedItem['Current Stock']) || 0;
-                        const newLine: PhysicalStockItem = {
-                          itemCode: selectedItem['Item Code'],
-                          itemName: selectedItem['Item Name'],
-                          unit: selectedItem.Unit || 'Pcs',
-                          bookQty: book,
-                          physicalQty: book,
-                          differenceQty: 0,
-                          rate: Number(selectedItem['Purchase Rate']) || 0,
-                          varianceValue: 0
-                        };
-                        setStockLines(prev => [newLine, ...prev]);
-                      }
-                      setQuickSearchCode('');
-                      focusElement(`ps-qty-${code}`);
-                    }}
-                    onClear={() => setQuickSearchCode('')}
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleLoadAllItems}
-                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-1 font-bold text-emerald-800 hover:bg-emerald-100 transition shadow-2xs cursor-pointer text-xs"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span>Load All ({items.length})</span>
-                </button>
-              </div>
-            </div>
-
             <div className="flex-1 overflow-y-auto min-h-[140px]">
               <table className="w-full text-left border-collapse">
                 <thead className="sticky top-0 bg-slate-100/90 backdrop-blur-xs z-10 border-b border-slate-200 text-slate-700 font-extrabold text-[11px]">
                   <tr>
                     <th className="py-2 px-3">Item Name & Code</th>
-                    <th className="py-2 px-2 w-16 text-center">Unit</th>
+                    <th className="py-2 px-2 w-20 text-center">Unit</th>
                     <th className="py-2 px-2.5 w-24 text-center">Book Stock</th>
                     <th className="py-2 px-2.5 w-28 text-center bg-emerald-50/80 text-emerald-900 border-x border-emerald-200">
                       Physical Count
@@ -663,124 +547,180 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
                     <th className="py-2 px-2.5 w-28 text-center">Variance (Qty)</th>
                     <th className="py-2 px-2.5 w-24 text-right">Cost Rate</th>
                     <th className="py-2 px-2.5 w-28 text-right">Valuation Diff</th>
-                    <th className="py-2 px-2 w-10 text-center"></th>
+                    <th className="py-2 px-2 w-20 text-center">
+                      <button
+                        type="button"
+                        onClick={handleLoadAllItems}
+                        className="inline-flex items-center gap-1 rounded-md bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-800 hover:bg-slate-300 transition cursor-pointer"
+                        title="Load all inventory items"
+                      >
+                        <Sparkles className="h-3 w-3 text-amber-600" />
+                        <span>All</span>
+                      </button>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {stockLines.map((line, idx) => {
-                    const isExcess = line.differenceQty > 0;
-                    const isShortage = line.differenceQty < 0;
-                    const hasDiff = line.differenceQty !== 0;
+                  {stockLines.length > 0 &&
+                    stockLines.map((line, idx) => {
+                      const isExcess = line.differenceQty > 0;
+                      const isShortage = line.differenceQty < 0;
+                      const hasDiff = line.differenceQty !== 0 && !!line.itemCode;
 
-                    return (
-                      <tr
-                        key={line.itemCode}
-                        className={`hover:bg-slate-50/60 transition ${
-                          hasDiff ? (isExcess ? 'bg-emerald-50/20' : 'bg-rose-50/20') : ''
-                        }`}
-                      >
-                        <td className="py-1.5 px-3">
-                          <div className="font-bold text-slate-900">{line.itemName}</div>
-                          <div className="font-mono text-[10px] text-slate-400">{line.itemCode}</div>
-                        </td>
+                      return (
+                        <tr
+                          key={line.itemCode || `row-${idx}`}
+                          className={`hover:bg-slate-50/60 transition ${
+                            hasDiff ? (isExcess ? 'bg-emerald-50/20' : 'bg-rose-50/20') : ''
+                          }`}
+                        >
+                          {/* Item Selection Box */}
+                          <td className="py-1.5 px-3 min-w-[220px]">
+                            <SearchableItemSelect
+                              id={`ps-item-${idx}`}
+                              valueCode={line.itemCode}
+                              items={items}
+                              variant="grid"
+                              placeholder="Select or search item..."
+                              currencySymbol={currencySymbol}
+                              priceType="purchase"
+                              onCreateNew={onOpenNewItemModal}
+                              dropdownPosition={idx > 3 ? 'up' : 'down'}
+                              onSelect={selectedItem => handleItemSelect(idx, selectedItem['Item Code'])}
+                              onKeyDown={e => handleGridKeyDown(e, getGridNavOpts(idx, 'item'))}
+                            />
+                          </td>
 
-                        <td className="py-1.5 px-2 text-center font-semibold text-slate-600 text-xs">
-                          {line.unit}
-                        </td>
+                          {/* Unit */}
+                          <td className="py-1.5 px-2 text-center font-semibold text-slate-600 text-xs">
+                            {line.unit || 'Pcs'}
+                          </td>
 
-                        <td className="py-1.5 px-2.5 text-center font-extrabold text-slate-700">
-                          {line.bookQty}
-                        </td>
+                          {/* Book Stock */}
+                          <td className="py-1.5 px-2.5 text-center font-extrabold text-slate-700">
+                            {line.itemCode ? line.bookQty : '-'}
+                          </td>
 
-                        <td className="py-1 px-2.5 text-center bg-emerald-50/30 border-x border-emerald-100">
-                          <input
-                            id={`ps-qty-${line.itemCode}`}
-                            type="number"
-                            step="any"
-                            value={line.physicalQty !== undefined && line.physicalQty !== null ? line.physicalQty : ''}
-                            onFocus={e => e.target.select()}
-                            onChange={e =>
-                              handlePhysicalQtyChange(
-                                line.itemCode,
-                                e.target.value === '' ? '' : parseFloat(e.target.value)
-                              )
-                            }
-                            onKeyDown={e => {
-                              if (e.key === 'Enter' || e.key === 'ArrowDown') {
-                                e.preventDefault();
-                                if (idx < stockLines.length - 1) {
-                                  focusElement(`ps-qty-${stockLines[idx + 1].itemCode}`);
-                                } else {
-                                  focusElement('ps-save-btn');
-                                }
-                              } else if (e.key === 'ArrowUp') {
-                                e.preventDefault();
-                                if (idx > 0) {
-                                  focusElement(`ps-qty-${stockLines[idx - 1].itemCode}`);
-                                } else {
-                                  focusElement('ps-remarks');
-                                }
+                          {/* Physical Count */}
+                          <td className="py-1 px-2.5 text-center bg-emerald-50/30 border-x border-emerald-100">
+                            <input
+                              id={`ps-qty-${idx}`}
+                              type="number"
+                              step="any"
+                              disabled={!line.itemCode}
+                              value={line.physicalQty !== undefined && line.physicalQty !== null ? line.physicalQty : ''}
+                              onFocus={e => e.target.select()}
+                              onChange={e =>
+                                handlePhysicalQtyChange(
+                                  idx,
+                                  e.target.value === '' ? '' : parseFloat(e.target.value)
+                                )
                               }
-                            }}
-                            className="w-full text-center rounded-md border border-emerald-300 bg-white px-2 py-0.5 font-black text-slate-900 outline-none focus:ring-1 focus:ring-emerald-400 text-xs"
-                          />
-                        </td>
+                              onKeyDown={e => handleGridKeyDown(e, getGridNavOpts(idx, 'qty'))}
+                              className="w-full text-center rounded-md border border-emerald-300 bg-white px-2 py-1 font-black text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500 text-xs disabled:bg-slate-100 disabled:border-slate-200"
+                            />
+                          </td>
 
-                        <td className="py-1.5 px-2.5 text-center">
-                          {hasDiff ? (
-                            <span
-                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.2 font-black text-[10px] ${
-                                isExcess
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-rose-100 text-rose-800'
-                              }`}
+                          {/* Variance (Qty) */}
+                          <td className="py-1.5 px-2.5 text-center">
+                            {!line.itemCode ? (
+                              <span className="text-slate-300">-</span>
+                            ) : hasDiff ? (
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-black text-[10px] ${
+                                  isExcess
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-rose-100 text-rose-800'
+                                }`}
+                              >
+                                {isExcess ? '+' : ''}
+                                {line.differenceQty} {isExcess ? '(Excess)' : '(Shortage)'}
+                              </span>
+                            ) : (
+                              <span className="font-semibold text-slate-400 text-[11px]">0 (Match)</span>
+                            )}
+                          </td>
+
+                          {/* Cost Rate */}
+                          <td className="py-1.5 px-2.5 text-right font-semibold text-slate-600">
+                            {line.itemCode ? `${currencySymbol} ${line.rate.toFixed(2)}` : '-'}
+                          </td>
+
+                          {/* Valuation Diff */}
+                          <td className="py-1.5 px-2.5 text-right font-bold">
+                            {!line.itemCode ? (
+                              <span className="text-slate-300">-</span>
+                            ) : (
+                              <span
+                                className={
+                                  isExcess
+                                    ? 'text-emerald-700'
+                                    : isShortage
+                                    ? 'text-rose-700'
+                                    : 'text-slate-500'
+                                }
+                              >
+                                {isExcess ? '+' : ''}
+                                {currencySymbol} {line.varianceValue.toFixed(2)}
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Remove Action */}
+                          <td className="py-1.5 px-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLine(idx)}
+                              className="p-1 text-slate-400 hover:text-rose-600 transition cursor-pointer rounded-md hover:bg-rose-50"
+                              title="Remove line"
                             >
-                              {isExcess ? '+' : ''}
-                              {line.differenceQty} {isExcess ? '(Excess)' : '(Shortage)'}
-                            </span>
-                          ) : (
-                            <span className="font-semibold text-slate-400 text-[11px]">0 (Match)</span>
-                          )}
-                        </td>
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
 
-                        <td className="py-1.5 px-2.5 text-right font-semibold text-slate-600">
-                          {currencySymbol} {line.rate.toFixed(2)}
-                        </td>
-
-                        <td className="py-1.5 px-2.5 text-right font-bold">
-                          <span
-                            className={
-                              isExcess
-                                ? 'text-emerald-700'
-                                : isShortage
-                                ? 'text-rose-700'
-                                : 'text-slate-500'
-                            }
-                          >
-                            {isExcess ? '+' : ''}
-                            {currencySymbol} {line.varianceValue.toFixed(2)}
-                          </span>
-                        </td>
-
-                        <td className="py-1.5 px-2 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveLine(line.itemCode)}
-                            className="p-1 text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {/* Fast Item Picker Row at bottom of table */}
+                  <tr className="bg-slate-50/80 border-t-2 border-slate-200">
+                    <td colSpan={2} className="py-1.5 px-3">
+                      <SearchableItemSelect
+                        id="ps-fast-item-picker"
+                        valueCode={quickSearchCode}
+                        items={items}
+                        variant="grid"
+                        placeholder="+ Type Item Name or Scan Barcode to Add..."
+                        currencySymbol={currencySymbol}
+                        priceType="purchase"
+                        onCreateNew={onOpenNewItemModal}
+                        autoClearAfterSelect={true}
+                        dropdownPosition="down"
+                        onEndOfList={() => {
+                          const r = document.getElementById('ps-remarks');
+                          if (r) {
+                            r.focus();
+                          } else {
+                            document.getElementById('ps-save-btn')?.focus();
+                          }
+                        }}
+                        onSelect={selectedItem => {
+                          handleQuickAddItem(selectedItem);
+                          setQuickSearchCode('');
+                        }}
+                        onClear={() => setQuickSearchCode('')}
+                      />
+                    </td>
+                    <td colSpan={6} className="py-1.5 px-3 text-slate-400 italic text-[11px]">
+                      Scan barcode or select item above to add to physical count
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>
           </div>
 
           {/* Live Summary Bar & Action Button */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-1.5 shadow-xs flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-1.5 shadow-xs flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
             <div className="flex items-center gap-4 font-bold text-slate-600 flex-wrap">
               <div>
                 <span>Counted: </span>
@@ -814,20 +754,35 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
               </div>
             </div>
 
+            {/* Moved Remarks Field */}
+            <div className="flex items-center gap-1.5 min-w-[200px] max-w-xs flex-1">
+              <label htmlFor="ps-remarks" className="font-bold text-slate-700 text-[11px] whitespace-nowrap">
+                Remarks
+              </label>
+              <input
+                id="ps-remarks"
+                type="text"
+                placeholder="e.g. Month-end warehouse audit"
+                value={remarks || ''}
+                onChange={e => setRemarks(e.target.value)}
+                onFocus={e => e.target.select()}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    document.getElementById('ps-save-btn')?.focus();
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    focusFirstItemOrPicker();
+                  }
+                }}
+                className="h-8 w-full rounded-lg border border-slate-300 bg-white px-2.5 font-semibold text-slate-900 outline-none focus:border-emerald-600 text-xs shadow-2xs"
+              />
+            </div>
+
             <div className="flex items-center gap-2">
               <button
                 id="ps-save-btn"
                 type="submit"
-                onKeyDown={e => {
-                  if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-                    e.preventDefault();
-                    if (stockLines.length > 0) {
-                      focusElement(`ps-qty-${stockLines[stockLines.length - 1].itemCode}`);
-                    } else {
-                      focusElement('ps-remarks');
-                    }
-                  }
-                }}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-black text-white text-xs shadow-xs transition active:scale-95 focus:ring-[4px] focus:ring-emerald-400/80 focus:ring-offset-1 focus:shadow-[0_0_15px_rgba(52,211,153,0.6)] z-10 relative focus:scale-[1.02] outline-none cursor-pointer"
               >
                 <CheckCircle2 className="h-4 w-4" />
@@ -838,7 +793,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
         </form>
       ) : (
         /* Historical Audit Records */
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-3 text-xs">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-3 text-xs flex-1 overflow-y-auto">
           <h3 className="font-extrabold text-slate-900 text-sm">
             Past Physical Stock Audit Records
           </h3>
@@ -847,7 +802,7 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
             <div className="py-12 text-center text-slate-400">
               <Boxes className="h-10 w-10 mx-auto text-slate-300 mb-2" />
               <p className="font-bold text-slate-600">No physical stock audits performed yet</p>
-              <p className="text-[11px]">Click "Stock Count & Audit" to record warehouse stock</p>
+              <p className="text-[11px]">Click "Audit Records" to switch views</p>
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-200">

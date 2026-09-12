@@ -3,7 +3,6 @@ import { Config, Ledger, AppUser, ModuleId, UserPermission } from '../types';
 import { saveConfig, getUsers, saveUsers, setActiveUser, getActiveUser, loadJson, saveJson, STORAGE_KEYS, canUserViewAuditTrail } from '../services/storageService';
 import { POSSettings, loadPOSSettings, savePOSSettings, DEFAULT_POS_SETTINGS } from '../types/posSettings';
 import { playSaveSound } from '../utils/audio';
-import { VoucherTypeManager } from './vouchers/VoucherTypeManager';
 import { AcceptModal } from './AcceptModal';
 import { GlowButton } from './common/GlowButton';
 import { AuditLogView } from './AuditLogView';
@@ -86,7 +85,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const tabs = [
     { id: 'company', label: 'Company Profile', icon: Building2, desc: 'Identity & Tax' },
     { id: 'features', label: 'General Settings', icon: Sliders, desc: 'Banking, Modules & Resets' },
-    { id: 'vouchers', label: 'Voucher Series', icon: Hash, desc: 'Prefixes & Numbers' },
+    { id: 'vouchers', label: 'Voucher Numbering', icon: Hash, desc: 'Prefixes & Numbers' },
     { id: 'pos', label: 'POS Settings', icon: ShoppingCart, desc: 'Billing & Shortcuts' },
     { id: 'inventory', label: 'Inventory Rules', icon: Layers, desc: 'Units, Serials & Stock' },
     { id: 'invoice', label: 'Invoice & Print', icon: PenTool, desc: 'Logo, Signature & Terms' },
@@ -159,13 +158,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       e.preventDefault();
     };
 
+    const handleBackEvent = (e: CustomEvent) => {
+      if (showAuditModal) {
+        setShowAuditModal(false);
+        e.preventDefault();
+        return;
+      }
+      if (showGstConfigModal) {
+        setShowGstConfigModal(false);
+        e.preventDefault();
+        return;
+      }
+      if (showAcceptModal) {
+        setShowAcceptModal(false);
+        e.preventDefault();
+        return;
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('app:save' as any, handleSaveEvent);
+    window.addEventListener('app:back' as any, handleBackEvent);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('app:save' as any, handleSaveEvent);
+      window.removeEventListener('app:back' as any, handleBackEvent);
     };
-  }, [isActive, activeTab, usersList, posSettings, form]);
+  }, [isActive, activeTab, usersList, posSettings, form, showAuditModal, showGstConfigModal, showAcceptModal]);
 
   useEffect(() => {
     const loaded = getUsers();
@@ -1374,11 +1393,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             {renderSaveButton('vouchers', 'Voucher Numbering', true, 'lg')}
-
-            {/* Custom Voucher Types Manager (ERP Master) */}
-            <div className="pt-4 border-t border-slate-200">
-              <VoucherTypeManager onUpdated={onDataRefresh} />
-            </div>
           </div>
         )}
 

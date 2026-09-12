@@ -1,6 +1,6 @@
 export type AssetStatus = 'Draft' | 'Active' | 'Fully Depreciated' | 'Transferred' | 'Pending Disposal' | 'Disposed' | 'Sold' | 'Written Off' | 'Cancelled';
 
-export type DepreciationMethod = 'Straight Line';
+export type DepreciationMethod = 'Straight Line' | 'Written Down Value' | 'Reducing Balance';
 
 export interface AssetCategory {
   id: string;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { GlowButton } from './common/GlowButton';
 import {
   getItemStockLedger,
@@ -8,9 +8,12 @@ import {
   getItemProfitabilityDetail,
   cancelVoucherByRef,
   deleteVoucherPermanentByRef,
+  loadJson,
+  STORAGE_KEYS,
+  DEFAULT_ITEMS,
   DEFAULT_CONFIG
 } from '../services/storageService';
-import { Config, StockLedgerEntry, LedgerLogEntry } from '../types';
+import { Config, StockLedgerEntry, LedgerLogEntry, Item } from '../types';
 import { formatDateDMY, formatDateTimeDMY } from '../utils/dateUtils';
 import {
   X,
@@ -54,9 +57,9 @@ interface DrillModalProps {
   toDate?: string;
   onClose: () => void;
   onRefresh?: () => void;
-  onDrillVoucher?: (refNo: string) => void;
-  onDrillLedger?: (name: string) => void;
-  onDrillStock?: (code: string) => void;
+  onDrillVoucher?: (refNo: string, fromDate?: string, toDate?: string) => void;
+  onDrillLedger?: (name: string, fromDate?: string, toDate?: string) => void;
+  onDrillStock?: (code: string, fromDate?: string, toDate?: string) => void;
   onOpenVoucherInEntry?: (refNo: string, vType?: string, currentActive?: TargetState, currentHistory?: TargetState[]) => void;
 }
 
@@ -80,8 +83,9 @@ export const DrillModal: React.FC<DrillModalProps> = ({
   onOpenVoucherInEntry
 }) => {
   const [active, setActive] = useState<TargetState | null>(() => (type && targetId ? { type, targetId } : null));
-  const [localFrom, setLocalFrom] = useState(fromDate || '');
-  const [localTo, setLocalTo] = useState(toDate || '');
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const [localFrom, setLocalFrom] = useState(fromDate || todayStr);
+  const [localTo, setLocalTo] = useState(toDate || todayStr);
 
   useEffect(() => {
     if (fromDate) setLocalFrom(fromDate);
@@ -112,6 +116,34 @@ export const DrillModal: React.FC<DrillModalProps> = ({
 
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [stockSearchTerm, setStockSearchTerm] = useState('');
+
+  const items = useMemo(() => loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS), [active]);
+
+  const stockItemName = useMemo(() => {
+    if (!active || (active.type !== 'stock' && active.type !== 'item-profit')) return '';
+    const cleanId = (active.targetId || '').trim().toLowerCase();
+    const it = items.find(
+      i =>
+        String(i['Item Code'] || '').trim().toLowerCase() === cleanId ||
+        String(i['Item Name'] || '').trim().toLowerCase() === cleanId
+    );
+    if (it && it['Item Name'] && it['Item Name'].trim()) {
+      return it['Item Name'];
+    }
+    if (stockLogs && stockLogs.length > 0) {
+      const entryWithName = stockLogs.find(
+        l => l['Item Name'] && l['Item Name'].trim() && l['Item Name'].trim().toLowerCase() !== cleanId
+      );
+      if (entryWithName?.['Item Name']) {
+        return entryWithName['Item Name'];
+      }
+      const firstEntry = stockLogs.find(l => l['Item Name'] && l['Item Name'].trim());
+      if (firstEntry?.['Item Name']) {
+        return firstEntry['Item Name'];
+      }
+    }
+    return active.targetId;
+  }, [active, items, stockLogs]);
 
   // Sync with prop changes when modal opens or target changes from outside
   useEffect(() => {
@@ -399,7 +431,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
       const closingBal = totalDr - totalCr;
       rows.push(['', 'Closing Balance', '', '', '', closingBal >= 0 ? `${fmtMoney(closingBal)} Dr` : `${fmtMoney(Math.abs(closingBal))} Cr`]);
     } else if (active.type === 'stock') {
-      title = `Stock Ledger: ${active.targetId}`;
+      title = `Stock Ledger: ${stockItemName || active.targetId}`;
       headers = ['Date', 'Type', 'Ref No', 'Qty In', 'Qty Out', 'Balance'];
       let running = 0;
       stockLogs.forEach(r => {
@@ -407,7 +439,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
         rows.push([formatDateStr(r.DateIso), r.Type || '', r['Ref No'] || '', r['Qty In'] ? String(r['Qty In']) : '', r['Qty Out'] ? String(r['Qty Out']) : '', String(running)]);
       });
     } else if (active.type === 'item-profit' && itemProfitData) {
-      title = `Item Profitability Detail: ${active.targetId}`;
+      title = `Item Profitability Detail: ${stockItemName || active.targetId}`;
       headers = ['Date', 'Ref No', 'Qty Sold', 'Cost', 'Sale Price', 'Total Rev', 'Gross Profit', 'Profit %'];
       let totQty = 0, totRev = 0, totProf = 0, totCost = 0;
       itemProfitData.rows.forEach((r: any) => {
@@ -680,13 +712,13 @@ export const DrillModal: React.FC<DrillModalProps> = ({
               {active.type === 'stock' && (
                 <span className="flex items-center gap-2">
                   <Package className="h-4 w-4 text-indigo-600" />
-                  <span>Stock Ledger: {active.targetId}</span>
+                  <span>Stock Ledger: {stockItemName || active.targetId}</span>
                 </span>
               )}
               {active.type === 'item-profit' && (
                 <span className="flex items-center gap-2">
                   <FileText className="h-4 w-4 text-indigo-600" />
-                  <span>Item Profitability Detail: {active.targetId}</span>
+                  <span>Item Profitability Detail: {stockItemName || active.targetId}</span>
                 </span>
               )}
               {active.type === 'ledger' && `Ledger Statement: ${active.targetId}`}

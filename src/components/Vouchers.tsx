@@ -66,6 +66,9 @@ import { DebitNoteEntry } from './vouchers/DebitNoteEntry';
 import { DeliveryNoteEntry } from './vouchers/DeliveryNoteEntry';
 import { PhysicalStockEntry } from './vouchers/PhysicalStockEntry';
 import { QuotationEntry } from './vouchers/QuotationEntry';
+import { SalesOrderEntry } from './vouchers/SalesOrderEntry';
+import { PurchaseOrderEntry } from './vouchers/PurchaseOrderEntry';
+import { ReceiptNoteEntry } from './vouchers/ReceiptNoteEntry';
 import {
   generateVoucherSlipPDF,
   generateVoucherRegisterPDF,
@@ -84,7 +87,7 @@ interface VouchersProps {
   onDataRefresh: () => void;
   onOpenNewLedgerModal?: (group?: string, onSelect?: (name: string) => void) => void;
   onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
-  onNavigateTo?: (view: string) => void;
+  onNavigateTo?: (view: string, reportTarget?: any) => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onDrillVoucher?: (refNo: string) => void;
   onBack?: (forceDirect?: boolean) => void;
@@ -145,6 +148,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
   const [editingVoucherNo, setEditingVoucherNo] = useState<string | null>(null);
   const [voucherNo, setVoucherNo] = useState(() => (isAutoMode ? peekNextVoucherNo('P', config) : ''));
   const [quotationTab, setQuotationTab] = useState<'create' | 'register'>('create');
+  const [salesOrderTab, setSalesOrderTab] = useState<'create' | 'register'>('create');
+  const [purchaseOrderTab, setPurchaseOrderTab] = useState<'create' | 'register'>('create');
+  const [receiptNoteTab, setReceiptNoteTab] = useState<'create' | 'register'>('create');
 
   // Method to load an existing voucher or report record directly into Entry screen
   const loadVoucherIntoEntry = (v: any) => {
@@ -158,6 +164,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
       v.voucherNo?.startsWith('DN-') ? 'DN' :
       v.voucherNo?.startsWith('DLV-') || v.noteNo ? 'DEL_NOTE' :
       v.voucherNo?.startsWith('QT-') || v.quotationNo ? 'QUOTATION' :
+      v.voucherNo?.startsWith('SO-') || v.orderNo ? 'SALES_ORDER' :
+      v.voucherNo?.startsWith('PO-') || v.poNo ? 'PURCHASE_ORDER' :
+      v.voucherNo?.startsWith('GRN-') || v.noteNo ? 'RECEIPT_NOTE' :
       v.voucherNo?.startsWith('PS-') ? 'PHYSICAL_STOCK' : ''
     );
 
@@ -165,11 +174,15 @@ export const Vouchers: React.FC<VouchersProps> = ({
     if (rawType === 'DLV') vType = 'DEL_NOTE';
     if (rawType === 'PHY') vType = 'PHYSICAL_STOCK';
     if (rawType === 'QTN') vType = 'QUOTATION';
+    if (rawType === 'SO') vType = 'SALES_ORDER';
+    if (rawType === 'PO') vType = 'PURCHASE_ORDER';
+    if (rawType === 'GRN') vType = 'RECEIPT_NOTE';
 
     if (['P', 'R', 'J', 'C'].includes(vType)) {
       setMainTab('entry');
       setActiveCategory('financial');
       setActiveVType(vType as any);
+      setVoucherTypeHistory([vType as any]);
       setEditingVoucherNo(v.voucherNo || null);
       setVoucherNo(v.voucherNo || '');
       if (v.date) {
@@ -229,9 +242,10 @@ export const Vouchers: React.FC<VouchersProps> = ({
       setTotalImportAmount(v.totalImportAmount !== undefined ? v.totalImportAmount : '');
       setCustomGstData(v.customGstData || {});
 
-    } else if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION'].includes(vType)) {
+    } else if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION', 'SALES_ORDER', 'PURCHASE_ORDER', 'RECEIPT_NOTE'].includes(vType)) {
       setMainTab('entry');
-      handleVTypeChange(vType as any);
+      handleVTypeChange(vType as any, false);
+      setVoucherTypeHistory([vType as any]);
     } else if (vType === 'INV' || vType === 'S') {
       const details = getVoucherDetails(v.voucherNo || v.invoiceNo);
       const inv = details?.header || v;
@@ -338,7 +352,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
   // Bill-wise Allocation State
   const [billAllocations, setBillAllocations] = useState<BillAllocation[]>([]);
   const [billModalOpen, setBillModalOpen] = useState(false);
-  const [showAcceptModal, setShowAcceptModal] = useState<'save' | 'share' | false>(false);
+  const [showAcceptModal, setShowAcceptModal] = useState<'save' | 'share' | 'print' | false>(false);
   const [billModalParty, setBillModalParty] = useState('');
   const [billModalTargetLineId, setBillModalTargetLineId] = useState<string | null>(null);
 
@@ -669,8 +683,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
         return true;
       }
     }
-    // If inside non-financial sub-vouchers (Quotation, Delivery Note, Credit Note, Debit Note, Physical Stock)
-    if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION'].includes(activeVType)) {
+    // If inside non-financial sub-vouchers (Quotation, Delivery Note, Credit Note, Debit Note, Physical Stock, Orders, GRN)
+    if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION', 'SALES_ORDER', 'PURCHASE_ORDER', 'RECEIPT_NOTE'].includes(activeVType)) {
       // Let the active sub-component handle its own back/quit confirmation
       return false;
     }
@@ -683,35 +697,17 @@ export const Vouchers: React.FC<VouchersProps> = ({
       handleVTypeChange(prevType, false);
       return true;
     }
-    if (activeVType !== 'P') {
-      handleVTypeChange('P', false);
-      return true;
-    }
-    
-    // Clean entry screen: navigate back directly
+
+    // Clean entry screen at root voucher: return false to signal that the screen has reached its root
+    return false;
+  };
+
+  const handleSubVoucherBack = () => {
     handleCancelOrResetEntry();
     if (onBack) {
       onBack(true);
     } else {
       window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
-    }
-    return true;
-  };
-
-  const handleSubVoucherBack = () => {
-    if (voucherTypeHistory.length > 1) {
-      const updated = [...voucherTypeHistory];
-      updated.pop();
-      const prevType = updated[updated.length - 1] || 'P';
-      setVoucherTypeHistory(updated);
-      handleVTypeChange(prevType, false);
-    } else {
-      handleCancelOrResetEntry();
-      if (onBack) {
-        onBack(true);
-      } else {
-        window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
-      }
     }
   };
 
@@ -720,33 +716,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
     if (isActive === false) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // If currently on a sub-voucher component, let the sub-component handle Escape, F2, etc.
-      if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION'].includes(activeVType)) {
+      // If currently on a sub-voucher component, let the sub-component handle F keys etc.
+      if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION', 'SALES_ORDER', 'PURCHASE_ORDER', 'RECEIPT_NOTE'].includes(activeVType)) {
         return;
-      }
-
-      if (e.key === 'Escape') {
-        if (e.defaultPrevented) return;
-        const handled = handleVoucherBack();
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation?.();
-          return;
-        }
-        if (onBack) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation?.();
-          onBack(true);
-          return;
-        } else if (onNavigateTo) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation?.();
-          window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
-          return;
-        }
       }
 
       if (e.key === 'F10') {
@@ -839,7 +811,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
     if (isActive === false) return;
 
     const handleBackEvent = (e: CustomEvent) => {
-      if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION'].includes(activeVType)) {
+      if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION', 'SALES_ORDER', 'PURCHASE_ORDER', 'RECEIPT_NOTE'].includes(activeVType)) {
         return;
       }
       const handled = handleVoucherBack();
@@ -881,6 +853,27 @@ export const Vouchers: React.FC<VouchersProps> = ({
     showShareRegisterModal,
     voucherTypeHistory
   ]);
+
+  // Register active voucher type provider for Alt+V shortcut
+  useEffect(() => {
+    const handleGetActiveType = () => {
+      const filterType = 
+        activeVType === 'P' ? 'Payment' :
+        activeVType === 'R' ? 'Receipt' :
+        activeVType === 'C' ? 'Contra' :
+        activeVType === 'J' ? 'Journal' :
+        activeVType === 'S' ? 'Sales' :
+        activeVType === 'PUR' ? 'Purchase' :
+        activeVType === 'CN' ? 'Credit Note' :
+        activeVType === 'DN' ? 'Debit Note' :
+        activeVType === 'DEL_NOTE' ? 'Stock Journal' :
+        activeVType === 'PHYSICAL_STOCK' ? 'Physical Stock' :
+        'ALL';
+      (window as any).__lastActiveVoucherType = filterType;
+    };
+    window.addEventListener('app:get-active-voucher-type', handleGetActiveType);
+    return () => window.removeEventListener('app:get-active-voucher-type', handleGetActiveType);
+  }, [activeVType]);
 
   // Open Quick Ledger Modal for Creating
   const openCreateLedgerModal = (lineId?: string, singleField?: string, initialGroup?: string) => {
@@ -1149,7 +1142,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
   const isBalanced = Math.abs(totalDr - totalCr) < 0.001 && totalDr > 0;
 
   // Submit Financial Voucher
-  const handleSubmit = (e?: React.FormEvent, action: 'save' | 'share' = 'save') => {
+  const handleSubmit = (e?: React.FormEvent, action: 'save' | 'share' | 'print' = 'save') => {
     if (e) e.preventDefault();
     if (billModalOpen) return;
     
@@ -1314,7 +1307,10 @@ export const Vouchers: React.FC<VouchersProps> = ({
         setNarration('');
         handleVTypeChange(activeVType);
         
-        if (action === 'share') {
+        if (action === 'print') {
+          const doc = generateVoucherSlipPDF(savedObj, config);
+          printPdfDoc(doc);
+        } else if (action === 'share') {
           setViewVoucher(savedObj);
         }
       }
@@ -1448,7 +1444,10 @@ export const Vouchers: React.FC<VouchersProps> = ({
         setTransactionId('');
         handleVTypeChange(activeVType);
         
-        if (action === 'share') {
+        if (action === 'print') {
+          const doc = generateVoucherSlipPDF(savedObj, config);
+          printPdfDoc(doc);
+        } else if (action === 'share') {
           setViewVoucher(savedObj);
         }
       } else {
@@ -1459,6 +1458,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
 
   // Helper to Reset / Cancel current voucher entry form
   const handleCancelOrResetEntry = () => {
+    setEditingVoucherNo(null);
+    loadedTargetKeyRef.current = null;
     if (entryMode === 'multi') {
       setLines([
         { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
@@ -1481,52 +1482,36 @@ export const Vouchers: React.FC<VouchersProps> = ({
     showToast('Voucher entry cancelled / reset to blank.', 'success');
   };
 
-  // Preview current voucher entry as printable slip before or after saving
-  const handlePreviewSlip = () => {
-    let previewVoucherObj: any = null;
-    if (entryMode === 'multi') {
-      const formattedLines = lines.map(l => ({
-        type: l.type,
-        ledger: l.ledger,
-        amount: l.type === 'Dr' ? Number(l.debit) || 0 : Number(l.credit) || 0,
-        narration: l.narration
-      }));
-      previewVoucherObj = {
-        voucherNo: voucherNo.trim() || 'DRAFT-PREVIEW',
-        type: activeVType as 'P' | 'R' | 'J' | 'C',
-        date: new Date(date).toISOString(),
-        narration: narration.trim(),
-        totalAmount: totalDr || 0,
-        amount: totalDr || 0,
-        lines: formattedLines,
-        status: 'Active'
-      };
+  // Helper for opening respective register for current financial voucher type
+  const registerLabel =
+    activeVType === 'P' ? 'Payment Register' :
+    activeVType === 'R' ? 'Receipt Register' :
+    activeVType === 'J' ? 'Journal Register' :
+    activeVType === 'C' ? 'Contra Register' :
+    'Voucher Register';
+
+  const handleOpenRespectiveRegister = () => {
+    const filterType =
+      activeVType === 'P' ? 'Payment' :
+      activeVType === 'R' ? 'Receipt' :
+      activeVType === 'C' ? 'Contra' :
+      activeVType === 'J' ? 'Journal' :
+      'ALL';
+
+    const target = {
+      category: 'reg' as const,
+      regSubTab: 'vouchers' as const,
+      voucherTypeFilter: filterType,
+      timestamp: Date.now()
+    };
+
+    if (onNavigateTo) {
+      onNavigateTo('reports', target);
     } else {
-      let debL = '';
-      let credL = '';
-      if (activeVType === 'P') { debL = partyLedger; credL = modeLedger; }
-      else if (activeVType === 'R') { debL = modeLedger; credL = partyLedger; }
-      else if (activeVType === 'J') { debL = debitLedger; credL = creditLedger; }
-      else if (activeVType === 'C') { debL = toAccount; credL = fromAccount; }
-
-      previewVoucherObj = {
-        voucherNo: voucherNo.trim() || 'DRAFT-PREVIEW',
-        type: activeVType as 'P' | 'R' | 'J' | 'C',
-        date: new Date(date).toISOString(),
-        amount: Number(amount) || 0,
-        totalAmount: Number(amount) || 0,
-        debitLedger: debL,
-        creditLedger: credL,
-        narration: narration.trim(),
-        status: 'Active'
-      };
+      window.dispatchEvent(new CustomEvent('app:navigate', {
+        detail: { view: 'reports', target }
+      }));
     }
-    setViewVoucher(previewVoucherObj);
-  };
-
-  // Save and immediately open share dialog
-  const handleSaveAndShare = () => {
-    handleSubmit(undefined, 'share');
   };
 
   // Cancel Voucher (Void with ledger reversal and audit reason)
@@ -1787,203 +1772,128 @@ export const Vouchers: React.FC<VouchersProps> = ({
         </div>
       )}
 
-      {/* Universal Prominent Dual-Tab Voucher Navigation Header */}
-      <div className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 shadow-xs flex flex-wrap items-center justify-between gap-2 text-xs">
-        {/* Left Section: Back Button + Segmented Dual Tabs */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {onNavigateTo && (
-            <button
-              type="button"
-              onClick={() => {
-                const handled = handleVoucherBack();
-                if (!handled && onNavigateTo) {
-                  onNavigateTo('dashboard');
-                }
-              }}
-              className="flex items-center gap-1 h-8 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs border border-slate-300 shadow-2xs transition active:scale-95 cursor-pointer"
-              title="Return to Previous Screen"
-            >
-              <ArrowLeft className="h-3.5 w-3.5 stroke-[2.5]" />
-              <span>Back</span>
-            </button>
-          )}
+      {/* Universal Prominent Voucher Header (hidden for forms that incorporate selector inline) */}
+      {!['DEL_NOTE', 'QUOTATION', 'CN', 'DN', 'PHYSICAL_STOCK', 'SALES_ORDER', 'PURCHASE_ORDER', 'RECEIPT_NOTE'].includes(activeVType) && (
+        <div className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 shadow-xs flex flex-wrap items-center justify-between gap-2 text-xs">
+          {/* Left Section: Voucher Type Selector + (for Financial Vouchers) Voucher Number & Date */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Voucher Type Dropdown */}
+            <div className="relative">
+              <select
+                value={activeVType}
+                onChange={e => handleVTypeChange(e.target.value as VoucherActionType | '')}
+                className="h-8.5 rounded-lg border-2 border-indigo-500 bg-indigo-50 pl-2.5 pr-7 font-black text-indigo-700 text-xs shadow-xs outline-none hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-600 appearance-none cursor-pointer transition-all"
+              >
+                <option value="" disabled>Select Voucher Form...</option>
+                <optgroup label="Financial & Accounting">
+                  <option value="P">Payment Voucher (F5)</option>
+                  <option value="R">Receipt Voucher (F6)</option>
+                  <option value="J">Journal Voucher (F7)</option>
+                  <option value="C">Contra Voucher (F4)</option>
+                </optgroup>
+                <optgroup label="Invoicing & Returns">
+                  <option value="CN">Credit Note / Sales Return (Ctrl+F8)</option>
+                  <option value="DN">Debit Note / Purchase Return (Ctrl+F9)</option>
+                  <option value="S">Sales Invoice / POS (F8)</option>
+                  <option value="PUR">Purchase Invoice (F9)</option>
+                </optgroup>
+                <optgroup label="Orders & Quotations">
+                  <option value="QUOTATION">Quotation / Estimate (Alt+F4)</option>
+                  <option value="SALES_ORDER">Sales Order (Alt+F5)</option>
+                  <option value="PURCHASE_ORDER">Purchase Order (Alt+F6)</option>
+                </optgroup>
+                <optgroup label="Inventory & Stock">
+                  <option value="DEL_NOTE">Delivery Note / Challan (Alt+F8)</option>
+                  <option value="RECEIPT_NOTE">Receipt Note / GRN (Alt+F9)</option>
+                  <option value="PHYSICAL_STOCK">Physical Stock Audit (Alt+F10)</option>
+                </optgroup>
+              </select>
+              <ChevronDown className="absolute right-2 top-2.5 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
+            </div>
 
-          {/* DUAL TABS: Voucher Entry vs Voucher Register */}
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 shadow-2xs">
-            <button
-              type="button"
-              onClick={() => setMainTab('entry')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md font-black text-xs transition cursor-pointer ${
-                mainTab === 'entry'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-              <span>Voucher Entry</span>
-              {activeVType && (
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${
-                    mainTab === 'entry' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+            {/* If Financial Voucher (P, R, J, C): show Voucher Number & Date right next to Voucher Type */}
+            {activeVType && ['P', 'R', 'J', 'C'].includes(activeVType) && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Voucher Number */}
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg">
+                  <label htmlFor="v-voucher-no" className="font-bold text-slate-700 text-[11px] whitespace-nowrap">Voucher Number</label>
+                  <input
+                    id="v-voucher-no"
+                    type="text"
+                    value={voucherNo || ''}
+                    onChange={e => setVoucherNo(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        focusElement('v-date');
+                      }
+                    }}
+                    disabled={Boolean(isAutoMode || editingVoucherNo)}
+                    className={`h-6.5 w-28 rounded-md border px-2 font-mono font-bold text-slate-900 outline-none text-xs ${
+                      (isAutoMode || editingVoucherNo) ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-white border-slate-300 focus:border-indigo-600'
+                    }`}
+                  />
+                </div>
+
+                {/* Voucher Date */}
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg">
+                  <label htmlFor="v-date" className="font-bold text-slate-700 text-[11px] whitespace-nowrap">Voucher Date</label>
+                  <input
+                    id="v-date"
+                    type="date"
+                    value={date || ''}
+                    onChange={e => setDate(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        if (entryMode === 'multi') {
+                          focusGridField(0, 'type');
+                        } else {
+                          focusElement('single-ledger-1');
+                        }
+                      } else if (e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        focusElement('v-voucher-no');
+                      }
+                    }}
+                    className="h-6.5 rounded-md border border-slate-300 bg-white px-2 font-semibold text-slate-900 outline-none focus:border-indigo-600 text-xs"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right Section: Single / Double Mode toggle for financial vouchers */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {activeVType && ['P', 'R', 'J', 'C'].includes(activeVType) && (
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEntryMode('single')}
+                  className={`rounded-md px-2.5 py-1 font-bold text-xs transition cursor-pointer ${
+                    entryMode === 'single'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  {activeVType === 'P'
-                    ? 'F5'
-                    : activeVType === 'R'
-                    ? 'F6'
-                    : activeVType === 'J'
-                    ? 'F7'
-                    : activeVType === 'C'
-                    ? 'F4'
-                    : activeVType === 'CN'
-                    ? 'Credit Note'
-                    : activeVType === 'DN'
-                    ? 'Debit Note'
-                    : activeVType === 'DEL_NOTE'
-                    ? 'Delivery'
-                    : activeVType}
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setMainTab('register');
-                loadRecentVouchers();
-              }}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-black text-xs transition cursor-pointer ${
-                mainTab === 'register'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <FileText className="h-3.5 w-3.5" />
-              <span>Voucher Register</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold font-mono ${
-                  mainTab === 'register' ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
-                }`}
-              >
-                {recentVouchers.length}
-              </span>
-            </button>
+                  Single Mode
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEntryMode('multi')}
+                  className={`rounded-md px-2.5 py-1 font-bold text-xs transition cursor-pointer ${
+                    entryMode === 'multi'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Double Entry Grid
+                </button>
+              </div>
+            )}
           </div>
         </div>
-
-        {/* Right Section: Mode Controls & Quick Actions */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {mainTab === 'entry' ? (
-            <>
-              {/* Voucher Type Dropdown */}
-              <div className="relative">
-                <select
-                  value={activeVType}
-                  onChange={e => handleVTypeChange(e.target.value as VoucherActionType | '')}
-                  className="h-10 rounded-xl border-2 border-indigo-500 bg-indigo-50 pl-3 pr-8 font-black text-indigo-700 text-sm shadow-md outline-none hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-600 appearance-none cursor-pointer transition-all"
-                >
-                  <option value="" disabled>Select Voucher Form...</option>
-                  <optgroup label="Financial & Accounting">
-                    <option value="P">Payment Voucher (F5)</option>
-                    <option value="R">Receipt Voucher (F6)</option>
-                    <option value="J">Journal Voucher (F7)</option>
-                    <option value="C">Contra Voucher (F4)</option>
-                  </optgroup>
-                  <optgroup label="Invoicing & Returns">
-                    <option value="CN">Credit Note / Sales Return (Ctrl+F8)</option>
-                    <option value="DN">Debit Note / Purchase Return (Ctrl+F9)</option>
-                    <option value="S">Sales Invoice / POS (F8)</option>
-                    <option value="PUR">Purchase Invoice (F9)</option>
-                  </optgroup>
-                  <optgroup label="Inventory & Stock">
-                    <option value="DEL_NOTE">Delivery Note / Challan (Alt+F8)</option>
-                    <option value="PHYSICAL_STOCK">Physical Stock Audit (Alt+F10)</option>
-                  </optgroup>
-                  <optgroup label="Orders & Quotations">
-                    <option value="QUOTATION">Quotation / Estimate (Alt+F4)</option>
-                  </optgroup>
-                </select>
-                <ChevronDown className="absolute right-2.5 top-3 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
-              </div>
-
-              
-
-              {/* Quotation Mode Switcher */}
-              {activeVType === 'QUOTATION' && (
-                <div className="flex items-center gap-1 bg-violet-100/70 p-0.5 rounded-xl border border-violet-200">
-                  <button
-                    type="button"
-                    onClick={() => setQuotationTab('create')}
-                    className={`rounded-lg px-2.5 py-1 font-bold text-xs transition cursor-pointer ${
-                      quotationTab === 'create'
-                        ? 'bg-violet-600 text-white shadow-2xs'
-                        : 'text-violet-800 hover:bg-violet-200/60'
-                    }`}
-                  >
-                    + Create New Quotation
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setQuotationTab('register')}
-                    className={`rounded-lg px-2.5 py-1 font-bold text-xs transition cursor-pointer flex items-center gap-1.5 ${
-                      quotationTab === 'register'
-                        ? 'bg-violet-600 text-white shadow-2xs'
-                        : 'text-violet-800 hover:bg-violet-200/60'
-                    }`}
-                  >
-                    <span>📜 Quotation Register</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold font-mono ${
-                      quotationTab === 'register' ? 'bg-white/20 text-white' : 'bg-violet-200 text-violet-900'
-                    }`}>
-                      {getQuotations().length}
-                    </span>
-                  </button>
-                </div>
-              )}
-
-              {/* Single / Double Mode toggle for financial vouchers */}
-              {activeVType && ['P', 'R', 'J', 'C'].includes(activeVType) && (
-                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => setEntryMode('single')}
-                    className={`rounded-lg px-2.5 py-1 font-bold text-xs transition cursor-pointer ${
-                      entryMode === 'single'
-                        ? 'bg-white text-slate-900 shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Single Mode
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEntryMode('multi')}
-                    className={`rounded-lg px-2.5 py-1 font-bold text-xs transition cursor-pointer ${
-                      entryMode === 'multi'
-                        ? 'bg-indigo-600 text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Double Entry Grid
-                  </button>
-                </div>
-              )}
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setMainTab('entry');
-                if (!activeVType) handleVTypeChange('P');
-              }}
-              className="flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition active:scale-95 cursor-pointer"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>New Voucher Entry</span>
-            </button>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Catalog Modal */}
       <VoucherCatalogModal
@@ -1993,386 +1903,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
         activeType={activeVType as VoucherActionType}
       />
 
-      {/* Render Active View: Voucher Register or Voucher Entry Forms */}
-      {mainTab === 'register' ? (
-        /* Voucher Register / History Table */
-        <div className="space-y-4 text-xs">
-          {/* Main Filter & Search Control Panel */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-4">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
-                  <FileText className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-sm">
-                    Accounting Voucher Register
-                  </h3>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    Click any row to drill down into voucher details, cancel/void, print, share, or edit.
-                  </p>
-                </div>
-              </div>
-
-              {/* Top Global Register Actions + Stats Badges */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-1.5">
-                  <span className="text-slate-500 font-semibold">Records:</span>
-                  <span className="font-bold text-slate-900 font-mono">{filteredRecent.length}</span>
-                </div>
-                <div className="px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center gap-1.5">
-                  <span className="text-indigo-700 font-semibold">Total:</span>
-                  <span className="font-black text-indigo-950 font-mono">
-                    {currencySymbol} {totalFilteredAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-
-                {/* Print Whole Register */}
-                <button
-                  type="button"
-                  onClick={printWholeRegister}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300 shadow-2xs transition active:scale-95 cursor-pointer"
-                  title="Print Entire Voucher Register Report (A4 Landscape PDF)"
-                >
-                  <Printer className="h-3.5 w-3.5 text-slate-600" />
-                  <span>Print Register</span>
-                </button>
-
-                {/* Share Whole Register */}
-                <button
-                  type="button"
-                  onClick={() => setShowShareRegisterModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 shadow-2xs transition active:scale-95 cursor-pointer"
-                  title="Share Whole Voucher Register (WhatsApp, Text, PDF)"
-                >
-                  <Share2 className="h-3.5 w-3.5" />
-                  <span>Share Register</span>
-                </button>
-
-                {/* Export to Excel */}
-                <button
-                  type="button"
-                  onClick={exportRegisterToExcel}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-300 shadow-2xs transition active:scale-95 cursor-pointer"
-                  title="Export Filtered Voucher Register to Excel (.xlsx)"
-                >
-                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-                  <span>Export Excel</span>
-                </button>
-
-                {/* Trash Bin */}
-                <button
-                  type="button"
-                  onClick={() => window.dispatchEvent(new CustomEvent('app:openTrash'))}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-300 shadow-2xs transition active:scale-95 cursor-pointer"
-                  title="Open Trash & Recycle Bin"
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Trash</span>
-                </button>
-
-                {/* Bulk Delete */}
-                <button
-                  type="button"
-                  onClick={() => window.dispatchEvent(new CustomEvent('app:openBulkDelete'))}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 shadow-2xs transition active:scale-95 cursor-pointer"
-                  title="Bulk Delete Data (Ctrl+Alt+D)"
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-rose-600" />
-                  <span>Bulk Delete</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Filter Inputs Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
-              {/* Date From */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1 text-[11px]">From Date</label>
-                <input
-                  type="date"
-                  value={filterStartDate}
-                  onChange={e => setFilterStartDate(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-indigo-600"
-                />
-              </div>
-
-              {/* Date To */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1 text-[11px]">To Date</label>
-                <input
-                  type="date"
-                  value={filterEndDate}
-                  onChange={e => setFilterEndDate(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-indigo-600"
-                />
-              </div>
-
-              {/* Voucher Type */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1 text-[11px]">Voucher Type</label>
-                <select
-                  value={filterVType}
-                  onChange={e => setFilterVType(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 font-bold text-slate-900 outline-none focus:border-indigo-600"
-                >
-                  <option value="ALL">All Types</option>
-                  <option value="P">Payment (F5)</option>
-                  <option value="R">Receipt (F6)</option>
-                  <option value="J">Journal (F7)</option>
-                  <option value="C">Contra (F4)</option>
-                  <option value="CN">Credit Note / Return</option>
-                  <option value="DN">Debit Note / Return</option>
-                  <option value="DEL_NOTE">Delivery Note</option>
-                  <option value="QUOTATION">Quotation</option>
-                  <option value="PHYSICAL_STOCK">Physical Stock</option>
-                </select>
-              </div>
-
-              {/* Status Filter */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1 text-[11px]">Status</label>
-                <select
-                  value={filterStatus}
-                  onChange={e => setFilterStatus(e.target.value as any)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 font-bold text-slate-900 outline-none focus:border-indigo-600"
-                >
-                  <option value="ALL">All Statuses</option>
-                  <option value="ACTIVE">Active Only</option>
-                  <option value="CANCELLED">Cancelled (Void) Only</option>
-                </select>
-              </div>
-
-              {/* Bill / Voucher No Filter */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1 text-[11px]">Voucher / Bill No.</label>
-                <input
-                  type="text"
-                  placeholder="e.g. PV-0001"
-                  value={filterBillNo}
-                  onChange={e => setFilterBillNo(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-indigo-600"
-                />
-              </div>
-
-              {/* Ledger Name Filter */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1 text-[11px]">Ledger Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Bank, Cash, Party..."
-                  value={filterLedger}
-                  onChange={e => setFilterLedger(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-indigo-600"
-                />
-              </div>
-
-              {/* Narration Filter */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1 text-[11px]">Narration Keyword</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Rent, Transfer..."
-                  value={filterNarration}
-                  onChange={e => setFilterNarration(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-indigo-600"
-                />
-              </div>
-            </div>
-
-            {/* Quick Action bar & Reset */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-slate-500 font-bold text-[11px] mr-1">Quick Date:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const today = new Date().toISOString().split('T')[0];
-                    setFilterStartDate(today);
-                    setFilterEndDate(today);
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition"
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const now = new Date();
-                    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-                    const today = now.toISOString().split('T')[0];
-                    setFilterStartDate(firstDay);
-                    setFilterEndDate(today);
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition"
-                >
-                  This Month
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFilterStartDate('');
-                    setFilterEndDate('');
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] transition"
-                >
-                  All Dates
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {(searchTerm || filterStartDate || filterEndDate || filterVType !== 'ALL' || filterStatus !== 'ALL' || filterBillNo || filterLedger || filterNarration) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearchTerm('');
-                      setFilterStartDate('');
-                      setFilterEndDate('');
-                      setFilterVType('ALL');
-                      setFilterStatus('ALL');
-                      setFilterBillNo('');
-                      setFilterLedger('');
-                      setFilterNarration('');
-                    }}
-                    className="px-3 py-1 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-xs border border-rose-200 transition"
-                  >
-                    Clear All Filters
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Table */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-3">
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-extrabold text-[11px]">
-                    <th className="py-2.5 px-3 w-28">Date</th>
-                    <th className="py-2.5 px-3 w-32">Voucher No</th>
-                    <th className="py-2.5 px-3 w-28">Type</th>
-                    <th className="py-2.5 px-3 w-24">Status</th>
-                    <th className="py-2.5 px-3">Debit / Particulars</th>
-                    <th className="py-2.5 px-3">Credit / Account</th>
-                    <th className="py-2.5 px-3">Narration</th>
-                    <th className="py-2.5 px-3 text-right w-36">Amount ({currencySymbol})</th>
-                    <th className="py-2.5 px-3 text-right w-16"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {filteredRecent.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="py-12 text-center text-slate-400 font-semibold">
-                        <FileText className="h-8 w-8 mx-auto mb-2 text-slate-300" />
-                        No vouchers match your search and filter criteria.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredRecent.map((v: any, idx: number) => {
-                      const isCancelled = v.status === 'Cancelled';
-                      return (
-                        <tr
-                          key={v.id ? `v-${v.id}-${idx}` : `v-${v.voucherNo || 'rec'}-${idx}`}
-                          onClick={() => handleRowClick(v)}
-                          className={`cursor-pointer transition-all duration-150 group border-b border-slate-100/80 ${
-                            isCancelled
-                              ? 'bg-rose-50/30 hover:bg-rose-100/60'
-                              : 'hover:bg-indigo-50/80 hover:shadow-xs'
-                          }`}
-                          title="Click row to drill down into full voucher details, cancel/void, print, share, or edit"
-                        >
-                          <td className="py-2.5 px-3 font-semibold text-slate-700 whitespace-nowrap">
-                            {formatDateDMY(v.date)}
-                          </td>
-                          <td className="py-2.5 px-3 font-mono font-bold text-indigo-700 whitespace-nowrap">
-                            <span className={isCancelled ? 'line-through text-slate-400' : 'group-hover:underline'}>
-                              {v.voucherNo}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            <span
-                              className={`rounded-md px-2 py-0.5 font-bold text-[10px] ${
-                                v.type === 'P'
-                                  ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                  : v.type === 'R'
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                  : v.type === 'J'
-                                  ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
-                              }`}
-                            >
-                              {v.type === 'P'
-                                ? 'Payment (F5)'
-                                : v.type === 'R'
-                                ? 'Receipt (F6)'
-                                : v.type === 'J'
-                                ? 'Journal (F7)'
-                                : v.type === 'C'
-                                ? 'Contra (F4)'
-                                : v.type}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            {isCancelled ? (
-                              <span
-                                className="inline-flex items-center gap-1 rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 font-bold text-[10px] text-rose-700"
-                                title={v.cancellationReason || 'Voucher has been voided'}
-                              >
-                                <Ban className="h-3 w-3" />
-                                Cancelled
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 font-bold text-[10px] text-emerald-700">
-                                <Check className="h-3 w-3" />
-                                Active
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 font-semibold text-slate-900">
-                            {v.lines ? (
-                              <span className="inline-flex items-center gap-1 text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded">
-                                {v.lines.length} Line Split
-                              </span>
-                            ) : (
-                              v.debitLedger
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-600">
-                            {v.lines ? 'Multi-account' : v.creditLedger}
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-500 italic max-w-xs truncate" title={v.narration}>
-                            {v.narration || '-'}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-black text-slate-900 whitespace-nowrap">
-                            {isCancelled ? (
-                              <span className="text-red-600 font-bold font-mono text-xs">
-                                {currencySymbol} 0.00
-                              </span>
-                            ) : (
-                              <span className="text-slate-900 font-mono">
-                                {currencySymbol} {(v.totalAmount || v.total || 0).toFixed(2)}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end text-slate-400 group-hover:text-indigo-600 font-semibold text-[11px] gap-1 transition">
-                              <span className="hidden sm:inline opacity-0 group-hover:opacity-100 transition duration-150">
-                                View
-                              </span>
-                              <ChevronRight className="h-4 w-4 transform group-hover:translate-x-0.5 transition" />
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      ) : activeVType === 'CN' ? (
+      {/* Render Active View: Voucher Entry Forms */}
+      {activeVType === 'CN' ? (
         <CreditNoteEntry
           config={config}
           items={items}
@@ -2382,6 +1914,37 @@ export const Vouchers: React.FC<VouchersProps> = ({
           onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
           onOpenNewItemModal={onOpenNewItemModal}
           onNavigateBack={handleSubVoucherBack}
+          voucherTypeSelector={
+            <div className="relative shrink-0">
+              <select
+                value={activeVType}
+                onChange={e => handleVTypeChange(e.target.value as VoucherActionType | '')}
+                className="h-8 rounded-lg border-2 border-indigo-500 bg-indigo-50 pl-2.5 pr-7 font-black text-indigo-700 text-xs shadow-xs outline-none hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-600 appearance-none cursor-pointer transition-all"
+              >
+                <option value="" disabled>Select Voucher Form...</option>
+                <optgroup label="Financial & Accounting">
+                  <option value="P">Payment Voucher (F5)</option>
+                  <option value="R">Receipt Voucher (F6)</option>
+                  <option value="J">Journal Voucher (F7)</option>
+                  <option value="C">Contra Voucher (F4)</option>
+                </optgroup>
+                <optgroup label="Invoicing & Returns">
+                  <option value="CN">Credit Note / Sales Return (Ctrl+F8)</option>
+                  <option value="DN">Debit Note / Purchase Return (Ctrl+F9)</option>
+                  <option value="S">Sales Invoice / POS (F8)</option>
+                  <option value="PUR">Purchase Invoice (F9)</option>
+                </optgroup>
+                <optgroup label="Inventory & Stock">
+                  <option value="DEL_NOTE">Delivery Note / Challan (Alt+F8)</option>
+                  <option value="PHYSICAL_STOCK">Physical Stock Audit (Alt+F10)</option>
+                </optgroup>
+                <optgroup label="Orders & Quotations">
+                  <option value="QUOTATION">Quotation / Estimate (Alt+F4)</option>
+                </optgroup>
+              </select>
+              <ChevronDown className="absolute right-2 top-2.5 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
+            </div>
+          }
         />
       ) : activeVType === 'DN' ? (
         <DebitNoteEntry
@@ -2393,6 +1956,37 @@ export const Vouchers: React.FC<VouchersProps> = ({
           onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
           onOpenNewItemModal={onOpenNewItemModal}
           onNavigateBack={handleSubVoucherBack}
+          voucherTypeSelector={
+            <div className="relative shrink-0">
+              <select
+                value={activeVType}
+                onChange={e => handleVTypeChange(e.target.value as VoucherActionType | '')}
+                className="h-8 rounded-lg border-2 border-indigo-500 bg-indigo-50 pl-2.5 pr-7 font-black text-indigo-700 text-xs shadow-xs outline-none hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-600 appearance-none cursor-pointer transition-all"
+              >
+                <option value="" disabled>Select Voucher Form...</option>
+                <optgroup label="Financial & Accounting">
+                  <option value="P">Payment Voucher (F5)</option>
+                  <option value="R">Receipt Voucher (F6)</option>
+                  <option value="J">Journal Voucher (F7)</option>
+                  <option value="C">Contra Voucher (F4)</option>
+                </optgroup>
+                <optgroup label="Invoicing & Returns">
+                  <option value="CN">Credit Note / Sales Return (Ctrl+F8)</option>
+                  <option value="DN">Debit Note / Purchase Return (Ctrl+F9)</option>
+                  <option value="S">Sales Invoice / POS (F8)</option>
+                  <option value="PUR">Purchase Invoice (F9)</option>
+                </optgroup>
+                <optgroup label="Inventory & Stock">
+                  <option value="DEL_NOTE">Delivery Note / Challan (Alt+F8)</option>
+                  <option value="PHYSICAL_STOCK">Physical Stock Audit (Alt+F10)</option>
+                </optgroup>
+                <optgroup label="Orders & Quotations">
+                  <option value="QUOTATION">Quotation / Estimate (Alt+F4)</option>
+                </optgroup>
+              </select>
+              <ChevronDown className="absolute right-2 top-2.5 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
+            </div>
+          }
         />
       ) : activeVType === 'DEL_NOTE' ? (
         <DeliveryNoteEntry
@@ -2404,6 +1998,37 @@ export const Vouchers: React.FC<VouchersProps> = ({
           onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
           onOpenNewItemModal={onOpenNewItemModal}
           onNavigateBack={handleSubVoucherBack}
+          voucherTypeSelector={
+            <div className="relative shrink-0">
+              <select
+                value={activeVType}
+                onChange={e => handleVTypeChange(e.target.value as VoucherActionType | '')}
+                className="h-7.5 rounded-lg border-2 border-indigo-500 bg-indigo-50 pl-2 pr-6 font-black text-indigo-700 text-xs shadow-xs outline-none hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-600 appearance-none cursor-pointer transition-all"
+              >
+                <option value="" disabled>Select Voucher Form...</option>
+                <optgroup label="Financial & Accounting">
+                  <option value="P">Payment Voucher (F5)</option>
+                  <option value="R">Receipt Voucher (F6)</option>
+                  <option value="J">Journal Voucher (F7)</option>
+                  <option value="C">Contra Voucher (F4)</option>
+                </optgroup>
+                <optgroup label="Invoicing & Returns">
+                  <option value="CN">Credit Note / Sales Return (Ctrl+F8)</option>
+                  <option value="DN">Debit Note / Purchase Return (Ctrl+F9)</option>
+                  <option value="S">Sales Invoice / POS (F8)</option>
+                  <option value="PUR">Purchase Invoice (F9)</option>
+                </optgroup>
+                <optgroup label="Inventory & Stock">
+                  <option value="DEL_NOTE">Delivery Note / Challan (Alt+F8)</option>
+                  <option value="PHYSICAL_STOCK">Physical Stock Audit (Alt+F10)</option>
+                </optgroup>
+                <optgroup label="Orders & Quotations">
+                  <option value="QUOTATION">Quotation / Estimate (Alt+F4)</option>
+                </optgroup>
+              </select>
+              <ChevronDown className="absolute right-2 top-2 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
+            </div>
+          }
         />
       ) : activeVType === 'PHYSICAL_STOCK' ? (
         <PhysicalStockEntry
@@ -2413,6 +2038,37 @@ export const Vouchers: React.FC<VouchersProps> = ({
           initialVoucherTarget={initialVoucherTarget}
           onOpenNewItemModal={onOpenNewItemModal}
           onNavigateBack={handleSubVoucherBack}
+          voucherTypeSelector={
+            <div className="relative shrink-0">
+              <select
+                value={activeVType}
+                onChange={e => handleVTypeChange(e.target.value as VoucherActionType | '')}
+                className="h-8 rounded-lg border-2 border-indigo-500 bg-indigo-50 pl-2.5 pr-7 font-black text-indigo-700 text-xs shadow-xs outline-none hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-600 appearance-none cursor-pointer transition-all"
+              >
+                <option value="" disabled>Select Voucher Form...</option>
+                <optgroup label="Financial & Accounting">
+                  <option value="P">Payment Voucher (F5)</option>
+                  <option value="R">Receipt Voucher (F6)</option>
+                  <option value="J">Journal Voucher (F7)</option>
+                  <option value="C">Contra Voucher (F4)</option>
+                </optgroup>
+                <optgroup label="Invoicing & Returns">
+                  <option value="CN">Credit Note / Sales Return (Ctrl+F8)</option>
+                  <option value="DN">Debit Note / Purchase Return (Ctrl+F9)</option>
+                  <option value="S">Sales Invoice / POS (F8)</option>
+                  <option value="PUR">Purchase Invoice (F9)</option>
+                </optgroup>
+                <optgroup label="Inventory & Stock">
+                  <option value="DEL_NOTE">Delivery Note / Challan (Alt+F8)</option>
+                  <option value="PHYSICAL_STOCK">Physical Stock Audit (Alt+F10)</option>
+                </optgroup>
+                <optgroup label="Orders & Quotations">
+                  <option value="QUOTATION">Quotation / Estimate (Alt+F4)</option>
+                </optgroup>
+              </select>
+              <ChevronDown className="absolute right-2 top-2.5 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
+            </div>
+          }
         />
       ) : activeVType === 'QUOTATION' ? (
         <QuotationEntry
@@ -2424,8 +2080,180 @@ export const Vouchers: React.FC<VouchersProps> = ({
           onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
           onOpenNewItemModal={onOpenNewItemModal}
           onNavigateBack={handleSubVoucherBack}
+          voucherTypeSelector={
+            <div className="relative shrink-0">
+              <select
+                value={activeVType}
+                onChange={e => handleVTypeChange(e.target.value as VoucherActionType | '')}
+                className="h-7.5 rounded-lg border-2 border-indigo-500 bg-indigo-50 pl-2 pr-6 font-black text-indigo-700 text-xs shadow-xs outline-none hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-600 appearance-none cursor-pointer transition-all"
+              >
+                <option value="" disabled>Select Voucher Form...</option>
+                <optgroup label="Financial & Accounting">
+                  <option value="P">Payment Voucher (F5)</option>
+                  <option value="R">Receipt Voucher (F6)</option>
+                  <option value="J">Journal Voucher (F7)</option>
+                  <option value="C">Contra Voucher (F4)</option>
+                </optgroup>
+                <optgroup label="Invoicing & Returns">
+                  <option value="CN">Credit Note / Sales Return (Ctrl+F8)</option>
+                  <option value="DN">Debit Note / Purchase Return (Ctrl+F9)</option>
+                  <option value="S">Sales Invoice / POS (F8)</option>
+                  <option value="PUR">Purchase Invoice (F9)</option>
+                </optgroup>
+                <optgroup label="Inventory & Stock">
+                  <option value="DEL_NOTE">Delivery Note / Challan (Alt+F8)</option>
+                  <option value="PHYSICAL_STOCK">Physical Stock Audit (Alt+F10)</option>
+                </optgroup>
+                <optgroup label="Orders & Quotations">
+                  <option value="QUOTATION">Quotation / Estimate (Alt+F4)</option>
+                </optgroup>
+              </select>
+              <ChevronDown className="absolute right-2 top-2 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
+            </div>
+          }
           activeTab={quotationTab}
           onTabChange={setQuotationTab}
+        />
+      ) : activeVType === 'SALES_ORDER' ? (
+        <SalesOrderEntry
+          config={config}
+          items={items}
+          ledgers={ledgers}
+          onDataRefresh={onDataRefresh}
+          initialVoucherTarget={initialVoucherTarget}
+          onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
+          onOpenNewItemModal={onOpenNewItemModal}
+          onNavigateBack={handleSubVoucherBack}
+          voucherTypeSelector={
+            <div className="relative shrink-0">
+              <select
+                value={activeVType}
+                onChange={e => handleVTypeChange(e.target.value as VoucherActionType | '')}
+                className="h-7.5 rounded-lg border-2 border-indigo-500 bg-indigo-50 pl-2 pr-6 font-black text-indigo-700 text-xs shadow-xs outline-none hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-600 appearance-none cursor-pointer transition-all"
+              >
+                <option value="" disabled>Select Voucher Form...</option>
+                <optgroup label="Financial & Accounting">
+                  <option value="P">Payment Voucher (F5)</option>
+                  <option value="R">Receipt Voucher (F6)</option>
+                  <option value="J">Journal Voucher (F7)</option>
+                  <option value="C">Contra Voucher (F4)</option>
+                </optgroup>
+                <optgroup label="Invoicing & Returns">
+                  <option value="CN">Credit Note / Sales Return (Ctrl+F8)</option>
+                  <option value="DN">Debit Note / Purchase Return (Ctrl+F9)</option>
+                  <option value="S">Sales Invoice / POS (F8)</option>
+                  <option value="PUR">Purchase Invoice (F9)</option>
+                </optgroup>
+                <optgroup label="Orders & Quotations">
+                  <option value="QUOTATION">Quotation / Estimate (Alt+F4)</option>
+                  <option value="SALES_ORDER">Sales Order (Alt+F5)</option>
+                  <option value="PURCHASE_ORDER">Purchase Order (Alt+F6)</option>
+                </optgroup>
+                <optgroup label="Inventory & Stock">
+                  <option value="DEL_NOTE">Delivery Note / Challan (Alt+F8)</option>
+                  <option value="RECEIPT_NOTE">Receipt Note / GRN (Alt+F9)</option>
+                  <option value="PHYSICAL_STOCK">Physical Stock Audit (Alt+F10)</option>
+                </optgroup>
+              </select>
+              <ChevronDown className="absolute right-2 top-2 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
+            </div>
+          }
+          activeTab={salesOrderTab}
+          onTabChange={setSalesOrderTab}
+        />
+      ) : activeVType === 'PURCHASE_ORDER' ? (
+        <PurchaseOrderEntry
+          config={config}
+          items={items}
+          ledgers={ledgers}
+          onDataRefresh={onDataRefresh}
+          initialVoucherTarget={initialVoucherTarget}
+          onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
+          onOpenNewItemModal={onOpenNewItemModal}
+          onNavigateBack={handleSubVoucherBack}
+          voucherTypeSelector={
+            <div className="relative shrink-0">
+              <select
+                value={activeVType}
+                onChange={e => handleVTypeChange(e.target.value as VoucherActionType | '')}
+                className="h-7.5 rounded-lg border-2 border-indigo-500 bg-indigo-50 pl-2 pr-6 font-black text-indigo-700 text-xs shadow-xs outline-none hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-600 appearance-none cursor-pointer transition-all"
+              >
+                <option value="" disabled>Select Voucher Form...</option>
+                <optgroup label="Financial & Accounting">
+                  <option value="P">Payment Voucher (F5)</option>
+                  <option value="R">Receipt Voucher (F6)</option>
+                  <option value="J">Journal Voucher (F7)</option>
+                  <option value="C">Contra Voucher (F4)</option>
+                </optgroup>
+                <optgroup label="Invoicing & Returns">
+                  <option value="CN">Credit Note / Sales Return (Ctrl+F8)</option>
+                  <option value="DN">Debit Note / Purchase Return (Ctrl+F9)</option>
+                  <option value="S">Sales Invoice / POS (F8)</option>
+                  <option value="PUR">Purchase Invoice (F9)</option>
+                </optgroup>
+                <optgroup label="Orders & Quotations">
+                  <option value="QUOTATION">Quotation / Estimate (Alt+F4)</option>
+                  <option value="SALES_ORDER">Sales Order (Alt+F5)</option>
+                  <option value="PURCHASE_ORDER">Purchase Order (Alt+F6)</option>
+                </optgroup>
+                <optgroup label="Inventory & Stock">
+                  <option value="DEL_NOTE">Delivery Note / Challan (Alt+F8)</option>
+                  <option value="RECEIPT_NOTE">Receipt Note / GRN (Alt+F9)</option>
+                  <option value="PHYSICAL_STOCK">Physical Stock Audit (Alt+F10)</option>
+                </optgroup>
+              </select>
+              <ChevronDown className="absolute right-2 top-2 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
+            </div>
+          }
+          activeTab={purchaseOrderTab}
+          onTabChange={setPurchaseOrderTab}
+        />
+      ) : activeVType === 'RECEIPT_NOTE' ? (
+        <ReceiptNoteEntry
+          config={config}
+          items={items}
+          ledgers={ledgers}
+          onDataRefresh={onDataRefresh}
+          initialVoucherTarget={initialVoucherTarget}
+          onOpenQuickLedger={grp => openCreateLedgerModal(undefined, undefined, grp)}
+          onOpenNewItemModal={onOpenNewItemModal}
+          onNavigateBack={handleSubVoucherBack}
+          voucherTypeSelector={
+            <div className="relative shrink-0">
+              <select
+                value={activeVType}
+                onChange={e => handleVTypeChange(e.target.value as VoucherActionType | '')}
+                className="h-7.5 rounded-lg border-2 border-indigo-500 bg-indigo-50 pl-2 pr-6 font-black text-indigo-700 text-xs shadow-xs outline-none hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-600 appearance-none cursor-pointer transition-all"
+              >
+                <option value="" disabled>Select Voucher Form...</option>
+                <optgroup label="Financial & Accounting">
+                  <option value="P">Payment Voucher (F5)</option>
+                  <option value="R">Receipt Voucher (F6)</option>
+                  <option value="J">Journal Voucher (F7)</option>
+                  <option value="C">Contra Voucher (F4)</option>
+                </optgroup>
+                <optgroup label="Invoicing & Returns">
+                  <option value="CN">Credit Note / Sales Return (Ctrl+F8)</option>
+                  <option value="DN">Debit Note / Purchase Return (Ctrl+F9)</option>
+                  <option value="S">Sales Invoice / POS (F8)</option>
+                  <option value="PUR">Purchase Invoice (F9)</option>
+                </optgroup>
+                <optgroup label="Orders & Quotations">
+                  <option value="QUOTATION">Quotation / Estimate (Alt+F4)</option>
+                  <option value="SALES_ORDER">Sales Order (Alt+F5)</option>
+                  <option value="PURCHASE_ORDER">Purchase Order (Alt+F6)</option>
+                </optgroup>
+                <optgroup label="Inventory & Stock">
+                  <option value="DEL_NOTE">Delivery Note / Challan (Alt+F8)</option>
+                  <option value="RECEIPT_NOTE">Receipt Note / GRN (Alt+F9)</option>
+                  <option value="PHYSICAL_STOCK">Physical Stock Audit (Alt+F10)</option>
+                </optgroup>
+              </select>
+              <ChevronDown className="absolute right-2 top-2 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
+            </div>
+          }
+          activeTab={receiptNoteTab}
+          onTabChange={setReceiptNoteTab}
         />
       ) : activeVType && ['P', 'R', 'J', 'C'].includes(activeVType) ? (
         /* Financial Vouchers (Payment, Receipt, Journal, Contra) */
@@ -2457,82 +2285,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
             </div>
           )}
 
-          {/* Form Header Info with Voucher Type selector in 3rd column */}
-          <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs space-y-2 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Voucher Number</label>
-                <input
-                  id="v-voucher-no"
-                  type="text"
-                  value={voucherNo || ''}
-                  onChange={e => setVoucherNo(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      focusElement('v-date');
-                    }
-                  }}
-                  disabled={Boolean(isAutoMode || editingVoucherNo)}
-                  className={`w-full rounded-lg border px-2.5 py-1.5 font-mono font-bold text-slate-900 outline-none text-xs ${
-                    (isAutoMode || editingVoucherNo) ? 'bg-slate-100 border-slate-200' : 'bg-white border-slate-300 focus:border-indigo-600'
-                  }`}
-                />
-              </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Voucher Date</label>
-                <input
-                  id="v-date"
-                  type="date"
-                  value={date || ''}
-                  onChange={e => setDate(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                      e.preventDefault();
-                      if (entryMode === 'multi') {
-                        focusGridField(0, 'type');
-                      } else {
-                        focusElement('single-ledger-1');
-                      }
-                    } else if (e.key === 'ArrowLeft') {
-                      e.preventDefault();
-                      focusElement('v-voucher-no');
-                    }
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 font-semibold text-slate-900 outline-none focus:border-indigo-600 text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-0.5 text-[11px]">Voucher Type</label>
-                <div className="w-full rounded-lg border border-indigo-200 bg-indigo-50/70 px-3 py-1.5 font-extrabold text-indigo-950 flex items-center justify-between text-xs">
-                  <span className="truncate">
-                    {activeVType === 'P'
-                      ? 'Payment Voucher'
-                      : activeVType === 'R'
-                      ? 'Receipt Voucher'
-                      : activeVType === 'J'
-                      ? 'Journal Voucher'
-                      : activeVType === 'C'
-                      ? 'Contra Voucher'
-                      : activeVType}
-                  </span>
-                  <span className="text-[10px] font-mono font-bold bg-white px-1.5 py-0.2 rounded border border-indigo-100 text-indigo-600 shrink-0 ml-2">
-                    {activeVType === 'P'
-                      ? 'F5'
-                      : activeVType === 'R'
-                      ? 'F6'
-                      : activeVType === 'J'
-                      ? 'F7'
-                      : activeVType === 'C'
-                      ? 'F4'
-                      : activeVType}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* Double-Entry Grid or Single Mode Fields */}
           {entryMode === 'multi' ? (
@@ -2586,6 +2339,18 @@ export const Vouchers: React.FC<VouchersProps> = ({
                                 id={`grid-ledger-${index}`}
                                 ledgers={ledgers}
                                 value={line.ledger}
+                                restrictToGroups={activeVType === 'C' ? ['Bank Accounts', 'Cash-in-Hand'] : undefined}
+                                prioritizeGroups={
+                                  activeVType === 'P' && line.type === 'Cr'
+                                    ? ['Bank Accounts', 'Cash-in-Hand']
+                                    : activeVType === 'R' && line.type === 'Dr'
+                                    ? ['Bank Accounts', 'Cash-in-Hand']
+                                    : (activeVType as string) === 'S' || (activeVType as string) === 'SL' || (activeVType as string) === 'Q' || (activeVType as string) === 'DN'
+                                    ? ['Sundry Debtors', 'Debtors']
+                                    : (activeVType as string) === 'PU' || (activeVType as string) === 'CN'
+                                    ? ['Sundry Creditors', 'Creditors']
+                                    : undefined
+                                }
                                 onChange={val => updateGridLine(line.id, 'ledger', val)}
                                 onCreateNew={() => openCreateLedgerModal(line.id)}
                                 onEnterNext={() => focusGridField(index, line.type === 'Dr' ? 'debit' : 'credit')}
@@ -2821,6 +2586,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
                   <SearchableLedgerSelect
                     id="single-ledger-1"
                     ledgers={ledgers}
+                    restrictToGroups={activeVType === 'C' ? ['Bank Accounts', 'Cash-in-Hand'] : undefined}
                     value={
                       activeVType === 'P' || activeVType === 'R'
                         ? partyLedger
@@ -2908,6 +2674,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
                   <SearchableLedgerSelect
                     id="single-ledger-2"
                     ledgers={ledgers}
+                    restrictToGroups={activeVType === 'C' ? ['Bank Accounts', 'Cash-in-Hand'] : undefined}
+                    prioritizeGroups={(activeVType === 'P' || activeVType === 'R') ? ['Bank Accounts', 'Cash-in-Hand'] : undefined}
                     value={
                       activeVType === 'P' || activeVType === 'R'
                         ? modeLedger
@@ -3132,6 +2900,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
               <span>Shortcuts:</span>
               <span><kbd className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700">F2</kbd> Save</span>
               <span>•</span>
+              <span><kbd className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700">Alt+V</kbd> Register</span>
+              <span>•</span>
               <span><kbd className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-700">Esc</kbd> Cancel</span>
             </div>
 
@@ -3147,26 +2917,16 @@ export const Vouchers: React.FC<VouchersProps> = ({
                 <span>Cancel / Clear</span>
               </button>
 
-              {/* Preview & Print Slip */}
+              {/* Respective Register Button (situated just left to Save Voucher) */}
               <button
                 type="button"
-                onClick={handlePreviewSlip}
+                onClick={handleOpenRespectiveRegister}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 px-3.5 py-1.5 font-bold text-slate-700 text-xs shadow-2xs transition active:scale-95 cursor-pointer"
-                title="Preview printable voucher slip"
+                title={`Open ${registerLabel} (Alt+V)`}
               >
-                <Printer className="h-3.5 w-3.5" />
-                <span>Preview &amp; Print</span>
-              </button>
-
-              {/* Save & Share */}
-              <button
-                type="button"
-                onClick={handleSaveAndShare}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 px-4 py-1.5 font-extrabold text-indigo-700 text-xs shadow-2xs transition active:scale-95 cursor-pointer"
-                title="Save voucher and open WhatsApp / PDF Share"
-              >
-                <Share2 className="h-3.5 w-3.5 text-indigo-600" />
-                <span>Save &amp; Share</span>
+                <BookOpen className="h-3.5 w-3.5 text-indigo-600" />
+                <span>{registerLabel}</span>
+                <span className="font-mono text-[10px] text-slate-400 font-normal ml-0.5">(Alt+V)</span>
               </button>
 
               {/* Save Voucher */}
@@ -4008,15 +3768,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
         onConfirm={() => {
           setShowQuitModal(false);
           handleCancelOrResetEntry();
-          if (voucherTypeHistory.length > 1) {
-            const updated = [...voucherTypeHistory];
-            updated.pop();
-            const prevType = updated[updated.length - 1] || 'P';
-            setVoucherTypeHistory(updated);
-            handleVTypeChange(prevType, false);
-          } else if (activeVType !== 'P') {
-            handleVTypeChange('P', false);
-          } else if (onBack) {
+          if (onBack) {
             onBack(true);
           } else {
             window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));

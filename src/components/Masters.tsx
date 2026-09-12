@@ -15,11 +15,14 @@ import {
   saveItem,
   deleteItem,
   saveItemGroup,
+  deleteItemGroup,
   saveUnit,
   saveUnitGroup,
+  deleteUnitGroup,
   saveLedger,
   deleteLedger,
   saveLedgerGroup,
+  deleteLedgerGroup,
   saveItemCategory,
   getItemCategories,
   generateBarcode,
@@ -30,6 +33,7 @@ import { SerialModal } from './SerialModal';
 import { VoucherTypeManager } from './vouchers/VoucherTypeManager';
 import { ExportStockExcelModal } from './ExportStockExcelModal';
 import { playSaveSound } from '../utils/audio';
+import { handleFormKeyDown, focusFirstFormInput } from '../utils/formKeyNavigation';
 
 interface MastersProps {
   config: Config;
@@ -139,16 +143,26 @@ export const Masters: React.FC<MastersProps> = ({
     setCategoryList(combined);
   }, [categories]);
 
-  // Quick Add Sub-Modals State
+  // Quick Add Sub-Modals & Group Management State
   const showCategory = String(config.EnableCategory) !== 'false';
+
+  const [itemGroupSearch, setItemGroupSearch] = useState('');
+  const [unitGroupSearch, setUnitGroupSearch] = useState('');
+  const [ledgerGroupSearch, setLedgerGroupSearch] = useState('');
 
   const [showQuickGroupModal, setShowQuickGroupModal] = useState(false);
   const [quickGroupName, setQuickGroupName] = useState('');
   const [quickGroupParent, setQuickGroupParent] = useState('');
+  const [editingItemGroupOldName, setEditingItemGroupOldName] = useState<string | null>(null);
 
   const [showQuickUnitModal, setShowQuickUnitModal] = useState(false);
   const [quickUnitName, setQuickUnitName] = useState('');
   const [quickUnitSymbol, setQuickUnitSymbol] = useState('');
+
+  const [showQuickUnitGroupModal, setShowQuickUnitGroupModal] = useState(false);
+  const [quickUnitGroupName, setQuickUnitGroupName] = useState('');
+  const [quickUnitGroupPrimaryUnit, setQuickUnitGroupPrimaryUnit] = useState('');
+  const [editingUnitGroupOldName, setEditingUnitGroupOldName] = useState<string | null>(null);
 
   const [showQuickCategoryModal, setShowQuickCategoryModal] = useState(false);
   const [quickCategoryName, setQuickCategoryName] = useState('');
@@ -157,6 +171,7 @@ export const Masters: React.FC<MastersProps> = ({
   const [quickLedgerGroupName, setQuickLedgerGroupName] = useState('');
   const [quickLedgerGroupParent, setQuickLedgerGroupParent] = useState('');
   const [quickLedgerGroupNature, setQuickLedgerGroupNature] = useState<'Asset' | 'Liability' | 'Income' | 'Expense' | 'Capital'>('Asset');
+  const [editingLedgerGroupOldName, setEditingLedgerGroupOldName] = useState<string | null>(null);
 
   // Auto trigger ledger or item modal if requested
   React.useEffect(() => {
@@ -224,7 +239,41 @@ export const Masters: React.FC<MastersProps> = ({
   const [justSavedQuickGroup, setJustSavedQuickGroup] = useState(false);
   const [justSavedQuickCategory, setJustSavedQuickCategory] = useState(false);
   const [justSavedQuickUnit, setJustSavedQuickUnit] = useState(false);
+  const [justSavedQuickUnitGroup, setJustSavedQuickUnitGroup] = useState(false);
   const [justSavedQuickLedgerGroup, setJustSavedQuickLedgerGroup] = useState(false);
+
+  // Modal Container Refs for Auto-Focus & Keyboard Traversal
+  const itemModalRef = useRef<HTMLDivElement>(null);
+  const ledgerModalRef = useRef<HTMLDivElement>(null);
+  const quickGroupModalRef = useRef<HTMLDivElement>(null);
+  const quickCategoryModalRef = useRef<HTMLDivElement>(null);
+  const quickUnitModalRef = useRef<HTMLDivElement>(null);
+  const quickUnitGroupModalRef = useRef<HTMLDivElement>(null);
+  const quickLedgerGroupModalRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (showItemModal) focusFirstFormInput(itemModalRef.current);
+  }, [showItemModal]);
+
+  useEffect(() => {
+    if (showLedgerModal) focusFirstFormInput(ledgerModalRef.current);
+  }, [showLedgerModal]);
+
+  useEffect(() => {
+    if (showQuickGroupModal) focusFirstFormInput(quickGroupModalRef.current);
+  }, [showQuickGroupModal]);
+
+  useEffect(() => {
+    if (showQuickCategoryModal) focusFirstFormInput(quickCategoryModalRef.current);
+  }, [showQuickCategoryModal]);
+
+  useEffect(() => {
+    if (showQuickUnitModal) focusFirstFormInput(quickUnitModalRef.current);
+  }, [showQuickUnitModal]);
+
+  useEffect(() => {
+    if (showQuickLedgerGroupModal) focusFirstFormInput(quickLedgerGroupModalRef.current);
+  }, [showQuickLedgerGroupModal]);
 
   const handleMastersBack = () => {
     if (showStockExportModal) {
@@ -292,13 +341,6 @@ export const Masters: React.FC<MastersProps> = ({
         e.preventDefault();
         e.stopPropagation();
         triggerMasterSave();
-      } else if (e.key === 'Escape') {
-        const handled = handleMastersBack();
-        if (handled) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation?.();
-        }
       }
     };
     window.addEventListener('keydown', handleKeyDown, true);
@@ -549,9 +591,13 @@ export const Masters: React.FC<MastersProps> = ({
       alert('Group Name is required.');
       return;
     }
-    const res = saveItemGroup({ 'Group Name': grpName, 'Parent Group': quickGroupParent.trim() });
+    const res = saveItemGroup({
+      'Group Name': grpName,
+      'Parent Group': quickGroupParent.trim(),
+      oldName: editingItemGroupOldName || undefined
+    });
     if (!res.ok) {
-      alert(res.error || 'Failed to create group.');
+      alert(res.error || 'Failed to save group.');
       return;
     }
     playSaveSound();
@@ -560,6 +606,7 @@ export const Masters: React.FC<MastersProps> = ({
     setItemSearchForm(prev => ({ ...prev, Group: grpName }));
     setQuickGroupName('');
     setQuickGroupParent('');
+    setEditingItemGroupOldName(null);
     setTimeout(() => {
       setJustSavedQuickGroup(false);
       setShowQuickGroupModal(false);
@@ -587,6 +634,33 @@ export const Masters: React.FC<MastersProps> = ({
     setTimeout(() => {
       setJustSavedQuickUnit(false);
       setShowQuickUnitModal(false);
+    }, 700);
+  };
+
+  const handleSaveQuickUnitGroup = () => {
+    const ugName = quickUnitGroupName.trim();
+    if (!ugName) {
+      alert('Unit Group Name is required.');
+      return;
+    }
+    const res = saveUnitGroup({
+      'Group Name': ugName,
+      'Primary Unit': quickUnitGroupPrimaryUnit.trim(),
+      oldName: editingUnitGroupOldName || undefined
+    });
+    if (!res.ok) {
+      alert(res.error || 'Failed to save unit group.');
+      return;
+    }
+    playSaveSound();
+    setJustSavedQuickUnitGroup(true);
+    onDataRefresh();
+    setQuickUnitGroupName('');
+    setQuickUnitGroupPrimaryUnit('');
+    setEditingUnitGroupOldName(null);
+    setTimeout(() => {
+      setJustSavedQuickUnitGroup(false);
+      setShowQuickUnitGroupModal(false);
     }, 700);
   };
 
@@ -622,10 +696,11 @@ export const Masters: React.FC<MastersProps> = ({
     const res = saveLedgerGroup({
       'Group Name': lgName,
       'Parent Group': quickLedgerGroupParent.trim(),
-      Nature: quickLedgerGroupNature
+      Nature: quickLedgerGroupNature,
+      oldName: editingLedgerGroupOldName || undefined
     });
     if (!res.ok) {
-      alert(res.error || 'Failed to create ledger group.');
+      alert(res.error || 'Failed to save ledger group.');
       return;
     }
     playSaveSound();
@@ -634,6 +709,7 @@ export const Masters: React.FC<MastersProps> = ({
     setLedgerForm(prev => ({ ...prev, Group: lgName }));
     setQuickLedgerGroupName('');
     setQuickLedgerGroupParent('');
+    setEditingLedgerGroupOldName(null);
     setTimeout(() => {
       setJustSavedQuickLedgerGroup(false);
       setShowQuickLedgerGroupModal(false);
@@ -873,16 +949,320 @@ export const Masters: React.FC<MastersProps> = ({
         </div>
       )}
 
-      {/* Item Groups, Unit Groups, Ledger Groups */}
-      {['itemgroups', 'unitgroups', 'ledgergroups'].includes(activeTab) && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <p className="text-xs text-slate-500">System pre-configured groups & units are loaded and active.</p>
+      {/* ITEM GROUPS MASTER */}
+      {activeTab === 'itemgroups' && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search item groups & sub-groups..."
+                value={itemGroupSearch}
+                onChange={e => setItemGroupSearch(e.target.value)}
+                className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none"
+              />
+            </div>
+            <button
+              onClick={() => {
+                setEditingItemGroupOldName(null);
+                setQuickGroupName('');
+                setQuickGroupParent('');
+                setShowQuickGroupModal(true);
+              }}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer"
+            >
+              <FolderPlus className="h-4 w-4" />
+              + New Item Group / Sub-Group
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-xs sm:text-sm">
+              <thead className="sticky top-0 z-10 bg-slate-100 shadow-sm border-b border-slate-200">
+                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
+                  <th className="py-2.5 px-3 text-left">Group Name</th>
+                  <th className="py-2.5 px-3 text-left">Parent Group</th>
+                  <th className="py-2.5 px-3 text-center">Items Count</th>
+                  <th className="py-2.5 px-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {itemGroups.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center text-slate-400 font-medium">No item groups created yet.</td>
+                  </tr>
+                ) : (
+                  itemGroups
+                    .filter(g => !itemGroupSearch || g['Group Name'].toLowerCase().includes(itemGroupSearch.toLowerCase()) || (g['Parent Group'] && g['Parent Group'].toLowerCase().includes(itemGroupSearch.toLowerCase())))
+                    .map(g => {
+                      const count = items.filter(i => i.Group === g['Group Name']).length;
+                      return (
+                        <tr key={g['Group Name']} className="hover:bg-slate-50 transition">
+                          <td className="py-2.5 px-3 font-bold text-slate-900">{g['Group Name']}</td>
+                          <td className="py-2.5 px-3 text-slate-600 font-medium">
+                            {g['Parent Group'] ? (
+                              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 px-2 py-0.5 rounded-md text-[11px] font-bold border border-amber-200/60">
+                                {g['Parent Group']}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-mono text-xs">Primary</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-bold text-slate-700">
+                            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs">
+                              {count} item{count !== 1 ? 's' : ''}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <div className="flex justify-center gap-1">
+                              <button
+                                onClick={() => {
+                                  setEditingItemGroupOldName(g['Group Name']);
+                                  setQuickGroupName(g['Group Name']);
+                                  setQuickGroupParent(g['Parent Group'] || '');
+                                  setShowQuickGroupModal(true);
+                                }}
+                                className="p-1 text-slate-500 hover:text-indigo-600 cursor-pointer"
+                                title="Edit Item Group"
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Are you sure you want to delete Item Group "${g['Group Name']}"?`)) {
+                                    deleteItemGroup(g['Group Name']);
+                                    onDataRefresh();
+                                  }
+                                }}
+                                className="p-1 text-slate-500 hover:text-rose-600 cursor-pointer"
+                                title="Delete Item Group"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* UNIT GROUPS MASTER */}
+      {activeTab === 'unitgroups' && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search unit groups..."
+                value={unitGroupSearch}
+                onChange={e => setUnitGroupSearch(e.target.value)}
+                className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none"
+              />
+            </div>
+            <button
+              onClick={() => {
+                setEditingUnitGroupOldName(null);
+                setQuickUnitGroupName('');
+                setQuickUnitGroupPrimaryUnit(units[0]?.['Unit Name'] || 'Pcs');
+                setShowQuickUnitGroupModal(true);
+              }}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer"
+            >
+              <Layers className="h-4 w-4" />
+              + New Unit Group
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-xs sm:text-sm">
+              <thead className="sticky top-0 z-10 bg-slate-100 shadow-sm border-b border-slate-200">
+                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
+                  <th className="py-2.5 px-3 text-left">Unit Group Name</th>
+                  <th className="py-2.5 px-3 text-left">Primary Unit</th>
+                  <th className="py-2.5 px-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {unitGroups.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="py-6 text-center text-slate-400 font-medium">No unit groups created yet.</td>
+                  </tr>
+                ) : (
+                  unitGroups
+                    .filter(ug => !unitGroupSearch || ug['Group Name']?.toLowerCase().includes(unitGroupSearch.toLowerCase()))
+                    .map(ug => (
+                      <tr key={ug['Group Name']} className="hover:bg-slate-50 transition">
+                        <td className="py-2.5 px-3 font-bold text-slate-900">{ug['Group Name']}</td>
+                        <td className="py-2.5 px-3 text-slate-600 font-semibold">{ug['Primary Unit'] || '-'}</td>
+                        <td className="py-2.5 px-3 text-center">
+                          <div className="flex justify-center gap-1">
+                            <button
+                              onClick={() => {
+                                setEditingUnitGroupOldName(ug['Group Name']);
+                                setQuickUnitGroupName(ug['Group Name']);
+                                setQuickUnitGroupPrimaryUnit(ug['Primary Unit'] || '');
+                                setShowQuickUnitGroupModal(true);
+                              }}
+                              className="p-1 text-slate-500 hover:text-indigo-600 cursor-pointer"
+                              title="Edit Unit Group"
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Are you sure you want to delete Unit Group "${ug['Group Name']}"?`)) {
+                                  deleteUnitGroup(ug['Group Name']);
+                                  onDataRefresh();
+                                }
+                              }}
+                              className="p-1 text-slate-500 hover:text-rose-600 cursor-pointer"
+                              title="Delete Unit Group"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* LEDGER GROUPS MASTER */}
+      {activeTab === 'ledgergroups' && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search ledger groups & sub-groups..."
+                value={ledgerGroupSearch}
+                onChange={e => setLedgerGroupSearch(e.target.value)}
+                className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none"
+              />
+            </div>
+            <button
+              onClick={() => {
+                setEditingLedgerGroupOldName(null);
+                setQuickLedgerGroupName('');
+                setQuickLedgerGroupParent('Current Assets');
+                setQuickLedgerGroupNature('Asset');
+                setShowQuickLedgerGroupModal(true);
+              }}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer"
+            >
+              <FolderPlus className="h-4 w-4" />
+              + New Ledger Group / Sub-Group
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-xs sm:text-sm">
+              <thead className="sticky top-0 z-10 bg-slate-100 shadow-sm border-b border-slate-200">
+                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
+                  <th className="py-2.5 px-3 text-left">Group Name</th>
+                  <th className="py-2.5 px-3 text-left">Parent Group</th>
+                  <th className="py-2.5 px-3 text-left">Nature</th>
+                  <th className="py-2.5 px-3 text-center">Ledgers Count</th>
+                  <th className="py-2.5 px-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {ledgerGroups.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-slate-400 font-medium">No ledger groups created yet.</td>
+                  </tr>
+                ) : (
+                  ledgerGroups
+                    .filter(lg => !ledgerGroupSearch || lg['Group Name'].toLowerCase().includes(ledgerGroupSearch.toLowerCase()) || (lg['Parent Group'] && lg['Parent Group'].toLowerCase().includes(ledgerGroupSearch.toLowerCase())))
+                    .map(lg => {
+                      const count = ledgers.filter(l => l.Group === lg['Group Name']).length;
+                      const natureColors: Record<string, string> = {
+                        Asset: 'bg-blue-50 text-blue-700 border-blue-200',
+                        Liability: 'bg-purple-50 text-purple-700 border-purple-200',
+                        Income: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                        Expense: 'bg-rose-50 text-rose-700 border-rose-200',
+                        Capital: 'bg-amber-50 text-amber-700 border-amber-200'
+                      };
+                      return (
+                        <tr key={lg['Group Name']} className="hover:bg-slate-50 transition">
+                          <td className="py-2.5 px-3 font-bold text-slate-900">{lg['Group Name']}</td>
+                          <td className="py-2.5 px-3 text-slate-600 font-medium">
+                            {lg['Parent Group'] ? (
+                              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 px-2 py-0.5 rounded-md text-[11px] font-bold border border-amber-200/60">
+                                {lg['Parent Group']}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-mono text-xs">Primary</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className={`inline-block px-2 py-0.5 text-[11px] font-bold rounded-md border ${natureColors[lg.Nature || 'Asset'] || 'bg-slate-100 text-slate-700'}`}>
+                              {lg.Nature || 'Asset'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-bold text-slate-700">
+                            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs">
+                              {count} ledger{count !== 1 ? 's' : ''}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <div className="flex justify-center gap-1">
+                              <button
+                                onClick={() => {
+                                  setEditingLedgerGroupOldName(lg['Group Name']);
+                                  setQuickLedgerGroupName(lg['Group Name']);
+                                  setQuickLedgerGroupParent(lg['Parent Group'] || '');
+                                  setQuickLedgerGroupNature(lg.Nature || 'Asset');
+                                  setShowQuickLedgerGroupModal(true);
+                                }}
+                                className="p-1 text-slate-500 hover:text-indigo-600 cursor-pointer"
+                                title="Edit Ledger Group"
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Are you sure you want to delete Ledger Group "${lg['Group Name']}"?`)) {
+                                    deleteLedgerGroup(lg['Group Name']);
+                                    onDataRefresh();
+                                  }
+                                }}
+                                className="p-1 text-slate-500 hover:text-rose-600 cursor-pointer"
+                                title="Delete Ledger Group"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {/* Item Modal */}
       {showItemModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3">
+        <div 
+          ref={itemModalRef}
+          onKeyDown={(e) => handleFormKeyDown(e, itemModalRef.current, handleSaveItem, () => setShowItemModal(false))}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3"
+        >
           <div className="w-full max-w-4xl max-h-[94vh] overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl border border-slate-200 space-y-3">
             {/* Modal Header */}
             <div className="flex justify-between items-center pb-2 border-b border-slate-200 bg-white -mx-4 -mt-4 px-4 py-2.5 rounded-t-2xl">
@@ -1253,7 +1633,11 @@ export const Masters: React.FC<MastersProps> = ({
 
       {/* Ledger Modal */}
       {showLedgerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+        <div 
+          ref={ledgerModalRef}
+          onKeyDown={(e) => handleFormKeyDown(e, ledgerModalRef.current, handleSaveLedger, () => setShowLedgerModal(false))}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4"
+        >
           <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-900">
@@ -1304,7 +1688,20 @@ export const Masters: React.FC<MastersProps> = ({
                 </div>
               </div>
 
-              {((ledgerForm.Group || '').toLowerCase().includes('bank')) && (
+              {(() => {
+                const grpName = (ledgerForm.Group || '').toLowerCase();
+                if (grpName.includes('bank')) return true;
+                let c: string | undefined = ledgerForm.Group;
+                while (c) {
+                  const g = ledgerGroups.find(x => x['Group Name'] === c);
+                  if (g && (g['Group Name'] || '').toLowerCase().includes('bank')) return true;
+                  if (g && g['Parent Group']) {
+                    if (g['Parent Group'].toLowerCase().includes('bank')) return true;
+                    c = g['Parent Group'];
+                  } else break;
+                }
+                return false;
+              })() && (
                 <div className="space-y-2.5 p-3 bg-blue-50/70 border border-blue-200 rounded-xl">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900 border-b border-blue-200/60 pb-1.5">
                     <Building2 className="h-4 w-4 text-blue-600" />
@@ -1472,12 +1869,16 @@ export const Masters: React.FC<MastersProps> = ({
 
       {/* Quick Add Item Group Sub-Modal */}
       {showQuickGroupModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+        <div 
+          ref={quickGroupModalRef}
+          onKeyDown={(e) => handleFormKeyDown(e, quickGroupModalRef.current, handleSaveQuickGroup, () => setShowQuickGroupModal(false))}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4"
+        >
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 space-y-4">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
               <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <FolderPlus className="w-4 h-4 text-orange-600" />
-                Quick Create Item Group
+                {editingItemGroupOldName ? 'Edit Item Group' : 'Quick Create Item Group'}
               </h4>
               <button onClick={() => setShowQuickGroupModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-4 w-4" />
@@ -1537,7 +1938,7 @@ export const Masters: React.FC<MastersProps> = ({
                 ) : (
                   <>
                     <Save className="h-3.5 w-3.5 text-orange-100" />
-                    <span>Create Group</span>
+                    <span>{editingItemGroupOldName ? 'Update Group' : 'Create Group'}</span>
                   </>
                 )}
               </button>
@@ -1548,7 +1949,11 @@ export const Masters: React.FC<MastersProps> = ({
 
       {/* Quick Add Category Sub-Modal */}
       {showQuickCategoryModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+        <div 
+          ref={quickCategoryModalRef}
+          onKeyDown={(e) => handleFormKeyDown(e, quickCategoryModalRef.current, handleSaveQuickCategory, () => setShowQuickCategoryModal(false))}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4"
+        >
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 space-y-4">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
               <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -1609,7 +2014,11 @@ export const Masters: React.FC<MastersProps> = ({
 
       {/* Quick Add Unit Sub-Modal */}
       {showQuickUnitModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+        <div 
+          ref={quickUnitModalRef}
+          onKeyDown={(e) => handleFormKeyDown(e, quickUnitModalRef.current, handleSaveQuickUnit, () => setShowQuickUnitModal(false))}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4"
+        >
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 space-y-4">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
               <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -1680,12 +2089,16 @@ export const Masters: React.FC<MastersProps> = ({
 
       {/* Quick Add Ledger Group Sub-Modal */}
       {showQuickLedgerGroupModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+        <div 
+          ref={quickLedgerGroupModalRef}
+          onKeyDown={(e) => handleFormKeyDown(e, quickLedgerGroupModalRef.current, handleSaveQuickLedgerGroup, () => setShowQuickLedgerGroupModal(false))}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4"
+        >
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 space-y-4">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
               <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <FolderPlus className="w-4 h-4 text-orange-600" />
-                Quick Create Ledger Group
+                {editingLedgerGroupOldName ? 'Edit Ledger Group' : 'Quick Create Ledger Group'}
               </h4>
               <button onClick={() => setShowQuickLedgerGroupModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-4 w-4" />
@@ -1704,10 +2117,19 @@ export const Masters: React.FC<MastersProps> = ({
                 />
               </div>
               <div>
-                <label className="block font-semibold text-slate-600 mb-1">Parent Group (Optional)</label>
+                <label className="block font-semibold text-slate-600 mb-1">Parent Group (e.g. Current Assets)</label>
                 <select
                   value={quickLedgerGroupParent}
-                  onChange={e => setQuickLedgerGroupParent(e.target.value)}
+                  onChange={e => {
+                    const pName = e.target.value;
+                    setQuickLedgerGroupParent(pName);
+                    if (pName) {
+                      const pObj = ledgerGroups.find(g => g['Group Name'] === pName);
+                      if (pObj && pObj.Nature) {
+                        setQuickLedgerGroupNature(pObj.Nature);
+                      }
+                    }
+                  }}
                   className="w-full h-9 rounded-xl border border-slate-300 px-2 font-medium outline-none"
                 >
                   <option value="">-- None / Primary Group --</option>
@@ -1759,7 +2181,87 @@ export const Masters: React.FC<MastersProps> = ({
                 ) : (
                   <>
                     <Save className="h-3.5 w-3.5 text-orange-100" />
-                    <span>Create Ledger Group</span>
+                    <span>{editingLedgerGroupOldName ? 'Update Ledger Group' : 'Create Ledger Group'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add Unit Group Sub-Modal */}
+      {showQuickUnitGroupModal && (
+        <div 
+          ref={quickUnitGroupModalRef}
+          onKeyDown={(e) => handleFormKeyDown(e, quickUnitGroupModalRef.current, handleSaveQuickUnitGroup, () => setShowQuickUnitGroupModal(false))}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-indigo-600" />
+                {editingUnitGroupOldName ? 'Edit Unit Group' : 'Quick Create Unit Group'}
+              </h4>
+              <button onClick={() => setShowQuickUnitGroupModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-600 mb-1">Unit Group Name *</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Mass, Volume, Count"
+                  value={quickUnitGroupName}
+                  onChange={e => setQuickUnitGroupName(e.target.value)}
+                  autoFocus
+                  className="w-full h-9 rounded-xl border border-slate-300 px-3 font-semibold outline-none focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-600 mb-1">Primary Unit</label>
+                <select
+                  value={quickUnitGroupPrimaryUnit}
+                  onChange={e => setQuickUnitGroupPrimaryUnit(e.target.value)}
+                  className="w-full h-9 rounded-xl border border-slate-300 px-2 font-medium outline-none"
+                >
+                  <option value="">-- Select Primary Unit --</option>
+                  {units.map(u => (
+                    <option key={u['Unit Name']} value={u['Unit Name']}>
+                      {u['Unit Name']} ({u.Symbol})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowQuickUnitGroupModal(false)}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-50 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={justSavedQuickUnitGroup}
+                onClick={handleSaveQuickUnitGroup}
+                className={`px-4 py-1.5 text-xs font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                  justSavedQuickUnitGroup
+                    ? 'bg-emerald-600 shadow-sm ring-2 ring-emerald-300'
+                    : 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800'
+                }`}
+              >
+                {justSavedQuickUnitGroup ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 stroke-[3]" />
+                    <span>Saved Successfully!</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-3.5 w-3.5 text-indigo-100" />
+                    <span>{editingUnitGroupOldName ? 'Update Unit Group' : 'Create Unit Group'}</span>
                   </>
                 )}
               </button>

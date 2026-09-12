@@ -6,6 +6,7 @@ export interface GridNavParams {
   field: 'item' | 'qty' | 'rate' | 'disc' | 'gst';
   totalRows: number;
   searchPickerId?: string; // ID of search input box to jump back to
+  hasRate?: boolean;
   hasDiscount?: boolean;
   hasGst?: boolean;
   onDeleteRow?: (idx: number) => void;
@@ -27,6 +28,7 @@ export function handleGridKeyDown(
     field,
     totalRows,
     searchPickerId,
+    hasRate = true,
     hasDiscount = true,
     hasGst = false,
     onDeleteRow,
@@ -124,36 +126,73 @@ export function handleGridKeyDown(
     if (field === 'item') {
       focusAndSelect(`${prefix}-qty-${idx}`);
     } else if (field === 'qty') {
-      focusAndSelect(`${prefix}-rate-${idx}`);
-    } else if (field === 'rate') {
-      if (hasDiscount) {
+      const hasRateEl = hasRate && !!document.getElementById(`${prefix}-rate-${idx}`);
+      const hasDiscEl = hasDiscount && !!document.getElementById(`${prefix}-disc-${idx}`);
+      const hasGstEl = hasGst && !!document.getElementById(`${prefix}-gst-${idx}`);
+
+      if (hasRateEl) {
+        focusAndSelect(`${prefix}-rate-${idx}`);
+      } else if (hasDiscEl) {
         focusAndSelect(`${prefix}-disc-${idx}`);
-      } else if (hasGst) {
+      } else if (hasGstEl) {
         focusAndSelect(`${prefix}-gst-${idx}`);
       } else if (idx < totalRows - 1) {
         focusAndSelect(`${prefix}-item-${idx + 1}`);
       } else if (onAddNewRow) {
         onAddNewRow();
-      } else if (searchPickerId) {
+      } else if (searchPickerId && !!document.getElementById(searchPickerId)) {
         focusAndSelect(searchPickerId);
+      } else if (!!document.getElementById(`${prefix}-narration`)) {
+        focusAndSelect(`${prefix}-narration`);
+      } else if (!!document.getElementById(`${prefix}-save-btn`)) {
+        focusAndSelect(`${prefix}-save-btn`);
+      }
+    } else if (field === 'rate') {
+      const hasDiscEl = hasDiscount && !!document.getElementById(`${prefix}-disc-${idx}`);
+      const hasGstEl = hasGst && !!document.getElementById(`${prefix}-gst-${idx}`);
+
+      if (hasDiscEl) {
+        focusAndSelect(`${prefix}-disc-${idx}`);
+      } else if (hasGstEl) {
+        focusAndSelect(`${prefix}-gst-${idx}`);
+      } else if (idx < totalRows - 1) {
+        focusAndSelect(`${prefix}-item-${idx + 1}`);
+      } else if (onAddNewRow) {
+        onAddNewRow();
+      } else if (searchPickerId && !!document.getElementById(searchPickerId)) {
+        focusAndSelect(searchPickerId);
+      } else if (!!document.getElementById(`${prefix}-narration`)) {
+        focusAndSelect(`${prefix}-narration`);
+      } else if (!!document.getElementById(`${prefix}-save-btn`)) {
+        focusAndSelect(`${prefix}-save-btn`);
       }
     } else if (field === 'disc') {
-      if (hasGst) {
+      const hasGstEl = hasGst && !!document.getElementById(`${prefix}-gst-${idx}`);
+
+      if (hasGstEl) {
         focusAndSelect(`${prefix}-gst-${idx}`);
       } else if (idx < totalRows - 1) {
         focusAndSelect(`${prefix}-item-${idx + 1}`);
       } else if (onAddNewRow) {
         onAddNewRow();
-      } else if (searchPickerId) {
+      } else if (searchPickerId && !!document.getElementById(searchPickerId)) {
         focusAndSelect(searchPickerId);
+      } else if (!!document.getElementById(`${prefix}-narration`)) {
+        focusAndSelect(`${prefix}-narration`);
+      } else if (!!document.getElementById(`${prefix}-save-btn`)) {
+        focusAndSelect(`${prefix}-save-btn`);
       }
     } else if (field === 'gst') {
       if (idx < totalRows - 1) {
         focusAndSelect(`${prefix}-item-${idx + 1}`);
       } else if (onAddNewRow) {
         onAddNewRow();
-      } else if (searchPickerId) {
+      } else if (searchPickerId && !!document.getElementById(searchPickerId)) {
         focusAndSelect(searchPickerId);
+      } else if (!!document.getElementById(`${prefix}-narration`)) {
+        focusAndSelect(`${prefix}-narration`);
+      } else if (!!document.getElementById(`${prefix}-save-btn`)) {
+        focusAndSelect(`${prefix}-save-btn`);
       }
     }
     return;
@@ -169,12 +208,26 @@ export function handleGridKeyDown(
       if (field === 'item') {
         focusAndSelect(`${prefix}-qty-${idx}`);
       } else if (field === 'qty') {
-        focusAndSelect(`${prefix}-rate-${idx}`);
+        const hasRateEl = hasRate && !!document.getElementById(`${prefix}-rate-${idx}`);
+        const hasDiscEl = hasDiscount && !!document.getElementById(`${prefix}-disc-${idx}`);
+        const hasGstEl = hasGst && !!document.getElementById(`${prefix}-gst-${idx}`);
+        if (hasRateEl) focusAndSelect(`${prefix}-rate-${idx}`);
+        else if (hasDiscEl) focusAndSelect(`${prefix}-disc-${idx}`);
+        else if (hasGstEl) focusAndSelect(`${prefix}-gst-${idx}`);
+        else if (idx < totalRows - 1) focusAndSelect(`${prefix}-item-${idx + 1}`);
+        else if (searchPickerId) focusAndSelect(searchPickerId);
       } else if (field === 'rate') {
-        if (hasDiscount) focusAndSelect(`${prefix}-disc-${idx}`);
-        else if (hasGst) focusAndSelect(`${prefix}-gst-${idx}`);
+        const hasDiscEl = hasDiscount && !!document.getElementById(`${prefix}-disc-${idx}`);
+        const hasGstEl = hasGst && !!document.getElementById(`${prefix}-gst-${idx}`);
+        if (hasDiscEl) focusAndSelect(`${prefix}-disc-${idx}`);
+        else if (hasGstEl) focusAndSelect(`${prefix}-gst-${idx}`);
+        else if (idx < totalRows - 1) focusAndSelect(`${prefix}-item-${idx + 1}`);
+        else if (searchPickerId) focusAndSelect(searchPickerId);
       } else if (field === 'disc') {
-        if (hasGst) focusAndSelect(`${prefix}-gst-${idx}`);
+        const hasGstEl = hasGst && !!document.getElementById(`${prefix}-gst-${idx}`);
+        if (hasGstEl) focusAndSelect(`${prefix}-gst-${idx}`);
+        else if (idx < totalRows - 1) focusAndSelect(`${prefix}-item-${idx + 1}`);
+        else if (searchPickerId) focusAndSelect(searchPickerId);
       }
     }
   } else if (e.key === 'ArrowLeft') {

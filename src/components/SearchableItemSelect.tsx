@@ -7,7 +7,9 @@ import { getActiveUser, getSerialNumbersStockReport } from '../services/storageS
 interface SearchableItemSelectProps {
   id?: string;
   valueCode?: string;
-  onSelect: (item: Item, scannedSerial?: string) => void;
+  value?: string;
+  onSelect?: (item: Item, scannedSerial?: string) => void;
+  onChange?: (code: string) => void;
   onClear?: () => void;
   onEnterNext?: () => void;
   items: Item[];
@@ -20,6 +22,7 @@ interface SearchableItemSelectProps {
   showPrice?: boolean;
   priceType?: 'sale' | 'purchase' | 'mrp';
   onCreateNew?: (onSelect?: (item: Item) => void) => void;
+  onAddNew?: () => void;
   onEditItem?: (item: Item) => void;
   onShowInfo?: (item: Item) => void;
   onSaveVoucher?: () => void;
@@ -35,8 +38,10 @@ interface SearchableItemSelectProps {
 
 export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
   id,
-  valueCode,
-  onSelect,
+  valueCode: valueCodeProp,
+  value: valueProp,
+  onSelect: onSelectProp,
+  onChange: onChangeProp,
   onClear,
   onEnterNext,
   items,
@@ -48,7 +53,8 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
   showStockBadge = true,
   showPrice = true,
   priceType = 'sale',
-  onCreateNew,
+  onCreateNew: onCreateNewProp,
+  onAddNew,
   onEditItem,
   onShowInfo,
   onSaveVoucher,
@@ -61,6 +67,12 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
   onKeyDown,
   variant = 'default'
 }) => {
+  const valueCode = valueCodeProp !== undefined ? valueCodeProp : valueProp;
+  const onCreateNew = onCreateNewProp || (onAddNew ? (_?: any) => onAddNew() : undefined);
+  const onSelect = (item: Item, scannedSerial?: string) => {
+    if (onSelectProp) onSelectProp(item, scannedSerial);
+    if (onChangeProp) onChangeProp(item['Item Code'] || (item as any).code || '');
+  };
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -131,6 +143,12 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
       setSearchTerm('');
     }
   }, [selectedItem, shouldClearOnSelect, valueCode]);
+
+  useEffect(() => {
+    if (disabled && isOpen) {
+      setIsOpen(false);
+    }
+  }, [disabled, isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -253,8 +271,27 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
   }, [highlightedIndex, isOpen]);
 
   useEffect(() => {
-    setHighlightedIndex(showEndOfList ? endOfListIdx : (onCreateNew && !filteredItems.length ? createNewIdx : itemsOffset));
+    setHighlightedIndex(showEndOfList ? endOfListIdx : (filteredItems.length > 0 ? itemsOffset : -1));
   }, [searchTerm, itemsOffset, showEndOfList, endOfListIdx, createNewIdx, filteredItems.length]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleCaptureEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation?.();
+        setIsOpen(false);
+        if (shouldClearOnSelect) {
+          setSearchTerm('');
+        } else {
+          setSearchTerm(selectedItem ? selectedItem['Item Name'] : '');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleCaptureEscape, true);
+    return () => window.removeEventListener('keydown', handleCaptureEscape, true);
+  }, [isOpen, shouldClearOnSelect, selectedItem]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -383,6 +420,10 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
           const itemIdx = highlightedIndex - itemsOffset;
           if (filteredItems[itemIdx]) {
             handleSelect(filteredItems[itemIdx]);
+          } else if (searchTerm.trim()) {
+            alert(`Item not found: "${searchTerm.trim()}"`);
+            inputRef.current?.focus();
+            inputRef.current?.select();
           }
         }
       } else {
