@@ -419,6 +419,9 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
 
     const currSym = config.CurrencySymbol || 'Nu.';
 
+    const gapMm = rollUp > 1 ? 1.5 : 0;
+    const totalRowWidthMm = (widthMm * rollUp) + (gapMm * (rollUp - 1));
+
     let html = `
       <!DOCTYPE html>
       <html>
@@ -426,27 +429,49 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
         <title>Barcode Roll Printing (${rollUp}-Up)</title>
         <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
         <style>
-          @page { margin: 0; size: auto; }
-          body {
-            font-family: Arial, sans-serif;
+          @page {
+            size: ${totalRowWidthMm}mm ${heightMm}mm;
             margin: 0;
-            padding: 1mm;
+          }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          html, body {
+            font-family: Arial, sans-serif;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: ${totalRowWidthMm}mm;
             background: #fff;
             color: #000;
           }
           .roll-container {
-            display: flex;
-            flex-direction: column;
-            gap: 1.5mm;
+            display: block;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: ${totalRowWidthMm}mm;
           }
           .roll-row {
             display: flex;
             flex-direction: row;
             align-items: center;
             justify-content: flex-start;
+            width: ${totalRowWidthMm}mm;
+            height: ${heightMm}mm;
+            max-height: ${heightMm}mm;
+            min-height: ${heightMm}mm;
+            margin: 0 !important;
+            padding: 0 !important;
+            page-break-after: always;
+            break-after: page;
             page-break-inside: avoid;
             break-inside: avoid;
-            margin-bottom: 1.5mm;
+            overflow: hidden;
+          }
+          .roll-row:last-child {
+            page-break-after: auto;
+            break-after: auto;
           }
           .label-box {
             width: ${widthMm}mm;
@@ -461,10 +486,15 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             overflow: hidden;
             padding: 0.5mm 1mm;
             text-align: center;
-            margin-right: 1.5mm;
+            margin: 0;
+            margin-right: ${gapMm}mm;
             background: #fff;
             page-break-inside: avoid;
             break-inside: avoid;
+            flex-shrink: 0;
+          }
+          .label-box:last-child {
+            margin-right: 0 !important;
           }
           .comp-title {
             font-size: ${fontCo}px;
@@ -522,7 +552,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
           }
           @media print {
             .label-box { border: none !important; }
-            body { margin: 0; padding: 0; }
+            html, body { margin: 0 !important; padding: 0 !important; }
           }
         </style>
       </head>

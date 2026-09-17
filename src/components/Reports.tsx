@@ -434,13 +434,7 @@ export const Reports: React.FC<ReportsProps> = ({
       return true;
     }
 
-    // 2. In Ledger Statement, if a specific ledger is open, step back to ledger selection
-    if (mainCategory === 'fin' && finSubTab === 'LED' && selectedLedger) {
-      setSelectedLedger('');
-      return true;
-    }
-
-    // 3. Contextual filter/search clearings
+    // 2. Contextual filter/search clearings
     if (voucherSearchQuery.trim()) {
       setVoucherSearchQuery('');
       return true;
