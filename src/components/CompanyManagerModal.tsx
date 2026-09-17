@@ -754,20 +754,25 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
               </p>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">
-                  Dedicated Direct URL
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Client Production Link (Original URL)
+                  </label>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono font-semibold">
+                    bhutan-pos.web.app
+                  </span>
+                </div>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     readOnly
-                    value={getCompanyDedicatedUrl(shareCompany.id)}
+                    value={`https://bhutan-pos.web.app/?company=${shareCompany.id}`}
                     className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-emerald-400 select-all focus:outline-hidden"
                   />
                   <button
                     type="button"
-                    onClick={() => handleCopyShareUrl(getCompanyDedicatedUrl(shareCompany.id))}
-                    className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    onClick={() => handleCopyShareUrl(`https://bhutan-pos.web.app/?company=${shareCompany.id}`)}
+                    className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
                   >
                     {copiedUrl ? <CheckCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                     <span>{copiedUrl ? 'Copied!' : 'Copy'}</span>
@@ -775,15 +780,38 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                 </div>
               </div>
 
+              {typeof window !== 'undefined' && !window.location.host.includes('bhutan-pos.web.app') && (
+                <div className="pt-1">
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                    Or Preview / Sandbox Link:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={getCompanyDedicatedUrl(shareCompany.id, true)}
+                      className="w-full bg-slate-950/70 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-slate-400 select-all focus:outline-hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleCopyShareUrl(getCompanyDedicatedUrl(shareCompany.id, true))}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition shrink-0 cursor-pointer"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-xs text-slate-400 space-y-1.5">
                 <div className="font-semibold text-slate-200 flex items-center gap-1.5">
                   <HelpCircle className="h-3.5 w-3.5 text-blue-400" />
-                  How to share:
+                  How to share with your client:
                 </div>
                 <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-400">
-                  <li>Send via WhatsApp, Email, or Messenger to the client.</li>
-                  <li>Opening this URL locks the browser into <strong>{shareCompany.company_name}</strong>.</li>
-                  <li>All demo vouchers, demo sales, and other companies will be completely hidden.</li>
+                  <li>Send <strong className="text-slate-300">https://bhutan-pos.web.app/?company={shareCompany.id}</strong> to the client via WhatsApp, SMS, or Email.</li>
+                  <li>Opening this link opens <strong>{shareCompany.company_name}</strong> in client mode.</li>
+                  <li>The company is completely isolated with its own data and 0 demo records.</li>
                 </ul>
               </div>
             </div>

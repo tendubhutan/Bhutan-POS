@@ -46,12 +46,17 @@ export function getDedicatedCompanyIdFromUrl(): string | null {
   }
 }
 
+export const PRODUCTION_BASE_URL = 'https://bhutan-pos.web.app';
+
 /**
- * Generates the full dedicated client portal URL for a specific company
+ * Generates the full dedicated client portal URL for a specific company.
+ * Defaults to the production domain: https://bhutan-pos.web.app/?company=...
  */
-export function getCompanyDedicatedUrl(companyId: string): string {
-  if (typeof window === 'undefined') return `?company=${companyId}`;
-  return `${window.location.origin}${window.location.pathname}?company=${companyId}`;
+export function getCompanyDedicatedUrl(companyId: string, forceCurrentOrigin: boolean = false): string {
+  if (forceCurrentOrigin && typeof window !== 'undefined') {
+    return `${window.location.origin}${window.location.pathname}?company=${companyId}`;
+  }
+  return `${PRODUCTION_BASE_URL}/?company=${companyId}`;
 }
 
 // Fallback / Initial Demo Company
