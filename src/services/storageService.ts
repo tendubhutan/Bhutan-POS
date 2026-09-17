@@ -324,7 +324,7 @@ const DEFAULT_LEDGER_GROUPS: LedgerGroup[] = [
   { 'Group Name': 'Freight & Carriage Inwards', 'Parent Group': 'Direct Expenses', Nature: 'Expense' }
 ];
 
-const DEFAULT_LEDGERS: Ledger[] = [
+export const DEFAULT_LEDGERS: Ledger[] = [
   { 'Ledger Name': 'Cash', Group: 'Cash-in-Hand', 'Opening Balance': 10000, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 10000 },
   { 'Ledger Name': 'BOB Account', Group: 'Bank Accounts', 'Bank Name': 'Bank of Bhutan', Branch: 'Main Branch', 'Account No': '1029384756', 'Opening Balance': 50000, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 50000 },
   { 'Ledger Name': 'BNBL Account', Group: 'Bank Accounts', 'Bank Name': 'Bhutan National Bank', Branch: 'Phuntsholing', 'Account No': '9876543210', 'Opening Balance': 25000, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 25000 },
@@ -887,7 +887,7 @@ export const DEFAULT_ITEMS: Item[] = [
 ];
 
 // Helper to get tenant-scoped storage key
-export function getTenantStorageKey(key: string): string {
+export function getTenantStorageKey(key: string, customCompanyId?: string): string {
   // Global keys that span across companies
   if (
     key.startsWith('supabase_') || 
@@ -898,7 +898,7 @@ export function getTenantStorageKey(key: string): string {
     return key;
   }
   
-  const cId = getActiveCompanyId();
+  const cId = customCompanyId || getActiveCompanyId();
   if (!cId || cId === DEFAULT_TENANT_COMPANY.id) {
     return key; // Default primary demo company uses the standard un-prefixed keys
   }
@@ -931,9 +931,22 @@ export function loadJson<T>(key: string, fallback: T): T {
         key === STORAGE_KEYS.EMPLOYEE_ADVANCES ||
         key === STORAGE_KEYS.BANK_RECON ||
         key === STORAGE_KEYS.TRASH_LOG ||
-        key === STORAGE_KEYS.AUDIT_LOG
+        key === STORAGE_KEYS.AUDIT_LOG ||
+        key === STORAGE_KEYS.ITEMS ||
+        key === 'deep_pos_am_assets' ||
+        key === 'deep_pos_am_disposals'
       ) {
         return ([] as unknown) as T;
+      }
+
+      // For standard default ledgers in a new company, initialize standard chart of accounts with ZERO balances
+      if (key === STORAGE_KEYS.LEDGERS && Array.isArray(fallback)) {
+        const cleanLedgers = (fallback as unknown as Ledger[]).map(l => ({
+          ...l,
+          'Opening Balance': 0,
+          'Current Balance': 0
+        }));
+        return (cleanLedgers as unknown) as T;
       }
     }
 
@@ -941,6 +954,74 @@ export function loadJson<T>(key: string, fallback: T): T {
   } catch (e) {
     return fallback;
   }
+}
+
+/**
+ * Resets a specific tenant company completely to a blank slate:
+ * - 0 vouchers
+ * - 0 sales invoices
+ * - 0 purchase bills
+ * - 0 inventory items
+ * - 0 ledger log / stock ledger entries
+ * - Reset sequential numbering counters back to 0 (so next is 1)
+ * - Standard chart of accounts initialized with 0 opening and 0 current balances
+ */
+export function resetCompanyToBlank(companyId: string): void {
+  if (!companyId) return;
+
+  const emptyArrayKeys = [
+    STORAGE_KEYS.VOUCHERS,
+    STORAGE_KEYS.SALES_INVOICES,
+    STORAGE_KEYS.PURCHASE_INVOICES,
+    STORAGE_KEYS.STOCK_LEDGER,
+    STORAGE_KEYS.LEDGER_LOG,
+    STORAGE_KEYS.HELD_BILLS,
+    STORAGE_KEYS.ITEMS,
+    STORAGE_KEYS.QUOTATIONS,
+    STORAGE_KEYS.DELIVERY_NOTES,
+    STORAGE_KEYS.SALES_ORDERS,
+    STORAGE_KEYS.PURCHASE_ORDERS,
+    STORAGE_KEYS.RECEIPT_NOTES,
+    STORAGE_KEYS.PHYSICAL_STOCK,
+    STORAGE_KEYS.MONTHLY_PAYROLLS,
+    STORAGE_KEYS.EMPLOYEE_ADVANCES,
+    STORAGE_KEYS.BANK_RECON,
+    STORAGE_KEYS.TRASH_LOG,
+    STORAGE_KEYS.AUDIT_LOG,
+    STORAGE_KEYS.DELETED_ITEMS,
+    STORAGE_KEYS.DELETED_LEDGERS,
+    'deep_pos_am_assets',
+    'deep_pos_am_disposals'
+  ];
+
+  emptyArrayKeys.forEach(k => {
+    localStorage.setItem(getTenantStorageKey(k, companyId), '[]');
+  });
+
+  // Reset sequential numbering counters so new transactions start clean from 1
+  localStorage.setItem(getTenantStorageKey(STORAGE_KEYS.COUNTERS, companyId), JSON.stringify({
+    SalesInvoice: 0,
+    POSInvoice: 0,
+    PurchaseInvoice: 0,
+    PaymentVoucher: 0,
+    ReceiptVoucher: 0,
+    JournalVoucher: 0,
+    ContraVoucher: 0,
+    CreditNote: 0,
+    DebitNote: 0,
+    Voucher: 0
+  }));
+
+  // Clean standard chart of accounts with 0 opening and 0 current balance
+  const cleanLedgers = DEFAULT_LEDGERS.map(l => ({
+    ...l,
+    'Opening Balance': 0,
+    'Current Balance': 0
+  }));
+  localStorage.setItem(getTenantStorageKey(STORAGE_KEYS.LEDGERS, companyId), JSON.stringify(cleanLedgers));
+
+  // Notify components of tenant data change
+  window.dispatchEvent(new CustomEvent('supabase:tenant_changed', { detail: { companyId } }));
 }
 
 export function migrateExistingItemsOpeningAmount() {
@@ -986,6 +1067,7 @@ export function nextCounter(name: string): number {
 export function getLedgers(): Ledger[] {
   let leds = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
   const deletedLedgers = new Set(loadJson<string[]>(STORAGE_KEYS.DELETED_LEDGERS, []).map(d => (d || '').trim().toLowerCase()));
+  const isDefaultDemoCompany = !getActiveCompanyId() || getActiveCompanyId() === DEFAULT_TENANT_COMPANY.id;
 
   // Auto-purge TD/DA Expenses if present and unused (consolidating to TA/DA Expenses)
   leds = leds.filter(l => {
@@ -1000,7 +1082,9 @@ export function getLedgers(): Ledger[] {
   DEFAULT_LEDGERS.forEach(dl => {
     const normName = (dl['Ledger Name'] || '').trim().toLowerCase();
     if (!existingLedgerNames.has(normName) && !deletedLedgers.has(normName)) {
-      leds.push(dl);
+      // If it's a new company, ensure zero starting balance
+      const newLedgerEntry = isDefaultDemoCompany ? { ...dl } : { ...dl, 'Opening Balance': 0, 'Current Balance': 0 };
+      leds.push(newLedgerEntry);
       existingLedgerNames.add(normName);
       ledgersUpdated = true;
     }
@@ -1044,18 +1128,18 @@ export function getInitialData() {
     }
   });
 
-  // Save if missing or updated
-  if (!localStorage.getItem(STORAGE_KEYS.CONFIG)) saveJson(STORAGE_KEYS.CONFIG, cfg);
-  if (!localStorage.getItem(STORAGE_KEYS.ITEMS)) saveJson(STORAGE_KEYS.ITEMS, items);
-  if (!localStorage.getItem(STORAGE_KEYS.UNITS)) saveJson(STORAGE_KEYS.UNITS, units);
-  if (!localStorage.getItem(STORAGE_KEYS.UNIT_GROUPS)) saveJson(STORAGE_KEYS.UNIT_GROUPS, uGrps);
-  if (!localStorage.getItem(STORAGE_KEYS.ITEM_GROUPS)) saveJson(STORAGE_KEYS.ITEM_GROUPS, iGrps);
-  if (!localStorage.getItem(STORAGE_KEYS.ITEM_CATEGORIES)) saveJson(STORAGE_KEYS.ITEM_CATEGORIES, iCats);
-  if (!localStorage.getItem(STORAGE_KEYS.LEDGERS)) saveJson(STORAGE_KEYS.LEDGERS, leds);
-  if (!localStorage.getItem(STORAGE_KEYS.LEDGER_GROUPS) || groupsUpdated) saveJson(STORAGE_KEYS.LEDGER_GROUPS, lGrps);
-  if (!localStorage.getItem(STORAGE_KEYS.PAY_HEADS)) saveJson(STORAGE_KEYS.PAY_HEADS, payHeads);
-  if (!localStorage.getItem(STORAGE_KEYS.EMPLOYEES)) saveJson(STORAGE_KEYS.EMPLOYEES, employees);
-  if (!localStorage.getItem(STORAGE_KEYS.VOUCHER_TYPES)) saveJson(STORAGE_KEYS.VOUCHER_TYPES, DEFAULT_VOUCHER_TYPES);
+  // Save with tenant-scoped keys if missing or updated
+  if (!localStorage.getItem(getTenantStorageKey(STORAGE_KEYS.CONFIG))) saveJson(STORAGE_KEYS.CONFIG, cfg);
+  if (!localStorage.getItem(getTenantStorageKey(STORAGE_KEYS.ITEMS))) saveJson(STORAGE_KEYS.ITEMS, items);
+  if (!localStorage.getItem(getTenantStorageKey(STORAGE_KEYS.UNITS))) saveJson(STORAGE_KEYS.UNITS, units);
+  if (!localStorage.getItem(getTenantStorageKey(STORAGE_KEYS.UNIT_GROUPS))) saveJson(STORAGE_KEYS.UNIT_GROUPS, uGrps);
+  if (!localStorage.getItem(getTenantStorageKey(STORAGE_KEYS.ITEM_GROUPS))) saveJson(STORAGE_KEYS.ITEM_GROUPS, iGrps);
+  if (!localStorage.getItem(getTenantStorageKey(STORAGE_KEYS.ITEM_CATEGORIES))) saveJson(STORAGE_KEYS.ITEM_CATEGORIES, iCats);
+  if (!localStorage.getItem(getTenantStorageKey(STORAGE_KEYS.LEDGERS))) saveJson(STORAGE_KEYS.LEDGERS, leds);
+  if (!localStorage.getItem(getTenantStorageKey(STORAGE_KEYS.LEDGER_GROUPS)) || groupsUpdated) saveJson(STORAGE_KEYS.LEDGER_GROUPS, lGrps);
+  if (!localStorage.getItem(getTenantStorageKey(STORAGE_KEYS.PAY_HEADS))) saveJson(STORAGE_KEYS.PAY_HEADS, payHeads);
+  if (!localStorage.getItem(getTenantStorageKey(STORAGE_KEYS.EMPLOYEES))) saveJson(STORAGE_KEYS.EMPLOYEES, employees);
+  if (!localStorage.getItem(getTenantStorageKey(STORAGE_KEYS.VOUCHER_TYPES))) saveJson(STORAGE_KEYS.VOUCHER_TYPES, DEFAULT_VOUCHER_TYPES);
 
   const vTypes = loadJson<VoucherType[]>(STORAGE_KEYS.VOUCHER_TYPES, DEFAULT_VOUCHER_TYPES);
 

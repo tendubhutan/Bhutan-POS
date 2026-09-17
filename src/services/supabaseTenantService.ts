@@ -32,6 +32,28 @@ export function generateUUID(): string {
   });
 }
 
+/**
+ * Check if the browser URL specifies a dedicated tenant company
+ * e.g. https://.../?company=uuid or ?cid=uuid
+ */
+export function getDedicatedCompanyIdFromUrl(): string | null {
+  try {
+    if (typeof window === 'undefined' || !window.location) return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('company') || params.get('cid') || params.get('tenant') || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generates the full dedicated client portal URL for a specific company
+ */
+export function getCompanyDedicatedUrl(companyId: string): string {
+  if (typeof window === 'undefined') return `?company=${companyId}`;
+  return `${window.location.origin}${window.location.pathname}?company=${companyId}`;
+}
+
 // Fallback / Initial Demo Company
 export const DEFAULT_TENANT_COMPANY: SupabaseCompany = {
   id: '00000000-0000-0000-0000-000000000001',
@@ -54,13 +76,35 @@ export const DEFAULT_TENANT_FY: SupabaseFinancialYear = {
   is_locked: false
 };
 
+// Filter companies according to dedicated client URL or hide demo company preference
+function filterCompaniesForView(list: SupabaseCompany[]): SupabaseCompany[] {
+  if (!list || list.length === 0) return [DEFAULT_TENANT_COMPANY];
+
+  // 1. If accessed via dedicated client URL parameter (?company=...), lock ONLY to this specific company
+  const dedicatedId = getDedicatedCompanyIdFromUrl();
+  if (dedicatedId) {
+    const matched = list.filter(c => c.id === dedicatedId);
+    if (matched.length > 0) return matched;
+  }
+
+  // 2. If client mode is active, or if user explicitly chose to hide demo company, and at least one real company exists
+  const hideDemo = typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_hide_demo_company') === 'true';
+  const isClient = typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_is_client_mode') === 'true';
+  if ((hideDemo || isClient) && list.length > 1) {
+    const withoutDemo = list.filter(c => c.id !== DEFAULT_TENANT_COMPANY.id);
+    if (withoutDemo.length > 0) return withoutDemo;
+  }
+
+  return list;
+}
+
 // Load companies from Supabase or cached offline state
 export async function fetchUserCompanies(): Promise<{ companies: SupabaseCompany[]; error?: string }> {
   try {
     if (!isSupabaseConfigured) {
       const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES);
-      const list = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
-      return { companies: list };
+      const list: SupabaseCompany[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
+      return { companies: filterCompaniesForView(list) };
     }
 
     const { data, error } = await supabase
@@ -71,13 +115,13 @@ export async function fetchUserCompanies(): Promise<{ companies: SupabaseCompany
     if (error) {
       console.warn('Supabase fetchUserCompanies error, falling back to local cached list:', error.message);
       const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES);
-      const list = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
-      return { companies: list, error: error.message };
+      const list: SupabaseCompany[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
+      return { companies: filterCompaniesForView(list), error: error.message };
     }
 
     if (data && data.length > 0) {
       localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(data));
-      return { companies: data };
+      return { companies: filterCompaniesForView(data) };
     }
 
     // If Supabase table is empty, auto-bootstrap the initial default company into Supabase
@@ -111,7 +155,7 @@ export async function fetchUserCompanies(): Promise<{ companies: SupabaseCompany
 
       localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify([insertedComp]));
       localStorage.setItem(STORAGE_KEYS.TENANT_COMPANY_ID, insertedComp.id);
-      return { companies: [insertedComp] };
+      return { companies: filterCompaniesForView([insertedComp]) };
     }
 
     return { companies: [DEFAULT_TENANT_COMPANY] };
@@ -155,6 +199,8 @@ export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'c
         is_locked: false
       });
 
+      // Initialize clean blank slate for new tenant
+      initializeBlankTenantStorage(data.id);
       return { company: data };
     } else {
       // Local demo persistence
@@ -178,11 +224,56 @@ export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'c
         is_locked: false
       });
 
+      // Initialize clean blank slate for new tenant
+      initializeBlankTenantStorage(newComp.id);
       return { company: newComp };
     }
   } catch (err: any) {
     return { error: err?.message || 'Failed to create company' };
   }
+}
+
+export function initializeBlankTenantStorage(cId: string) {
+  if (!cId || typeof localStorage === 'undefined') return;
+  const prefixes = [
+    'deep_pos_vouchers',
+    'deep_pos_sales_invoices',
+    'deep_pos_purchase_invoices',
+    'deep_pos_stock_ledger',
+    'deep_pos_ledger_log',
+    'deep_pos_held_bills',
+    'deep_pos_items',
+    'deep_pos_quotations',
+    'deep_pos_delivery_notes',
+    'deep_pos_sales_orders',
+    'deep_pos_purchase_orders',
+    'deep_pos_receipt_notes',
+    'deep_pos_physical_stock',
+    'deep_pos_monthly_payrolls',
+    'deep_pos_employee_advances',
+    'deep_pos_bank_recon',
+    'deep_pos_trash',
+    'deep_pos_audit_log',
+    'deep_pos_deleted_items',
+    'deep_pos_deleted_ledgers',
+    'deep_pos_am_assets',
+    'deep_pos_am_disposals'
+  ];
+  prefixes.forEach(p => {
+    localStorage.setItem(`${p}_${cId}`, '[]');
+  });
+  localStorage.setItem(`deep_pos_counters_${cId}`, JSON.stringify({
+    SalesInvoice: 0,
+    POSInvoice: 0,
+    PurchaseInvoice: 0,
+    PaymentVoucher: 0,
+    ReceiptVoucher: 0,
+    JournalVoucher: 0,
+    ContraVoucher: 0,
+    CreditNote: 0,
+    DebitNote: 0,
+    Voucher: 0
+  }));
 }
 
 // Fetch financial years for a company
@@ -299,9 +390,70 @@ export async function createFinancialYear(fyData: Omit<SupabaseFinancialYear, 'i
   }
 }
 
+/**
+ * Permanently delete a company and purge its tenant data
+ */
+export async function deleteCompany(companyId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES);
+    let list: SupabaseCompany[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
+
+    if (list.length <= 1) {
+      return { success: false, error: 'Cannot delete the only registered company. Create another company first.' };
+    }
+
+    list = list.filter(c => c.id !== companyId);
+    localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(list));
+
+    // Clear all tenant-scoped data keys for this company from localStorage
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.endsWith(`_${companyId}`)) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+
+    // Also remove financial years for this company
+    const cachedFYs = localStorage.getItem(STORAGE_KEYS.LOCAL_FYS);
+    if (cachedFYs) {
+      try {
+        let fys: SupabaseFinancialYear[] = JSON.parse(cachedFYs);
+        fys = fys.filter(f => f.company_id !== companyId);
+        localStorage.setItem(STORAGE_KEYS.LOCAL_FYS, JSON.stringify(fys));
+      } catch {}
+    }
+
+    // If deleted company was active, switch active company to the first remaining company
+    if (getActiveCompanyId() === companyId) {
+      const nextComp = list[0];
+      setActiveCompanyId(nextComp.id);
+    }
+
+    if (isSupabaseConfigured) {
+      await supabase.from('companies').delete().eq('id', companyId);
+      await supabase.from('financial_years').delete().eq('company_id', companyId);
+    }
+
+    window.dispatchEvent(new CustomEvent('supabase:tenant_changed', { detail: { companyId: list[0].id } }));
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to delete company' };
+  }
+}
+
 // Get and Set Active Company and FY IDs
 export function getActiveCompanyId(): string {
-  return localStorage.getItem(STORAGE_KEYS.TENANT_COMPANY_ID) || DEFAULT_TENANT_COMPANY.id;
+  const urlId = getDedicatedCompanyIdFromUrl();
+  if (urlId) {
+    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.TENANT_COMPANY_ID) : null;
+    if (stored !== urlId && typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEYS.TENANT_COMPANY_ID, urlId);
+    }
+    return urlId;
+  }
+  return (typeof localStorage !== 'undefined' && localStorage.getItem(STORAGE_KEYS.TENANT_COMPANY_ID)) || DEFAULT_TENANT_COMPANY.id;
 }
 
 export function setActiveCompanyId(id: string): void {

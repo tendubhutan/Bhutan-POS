@@ -279,11 +279,19 @@ export default function App() {
     }
   };
 
+  const firestoreUnsubRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     loadTenantDetails();
     const handleTenantChange = () => {
       loadTenantDetails();
       refreshData();
+      if (firestoreUnsubRef.current) {
+        firestoreUnsubRef.current();
+      }
+      firestoreUnsubRef.current = initFirestoreSync(() => {
+        refreshData();
+      });
     };
     window.addEventListener('supabase:tenant_changed', handleTenantChange);
     window.addEventListener('supabase:fy_changed', handleTenantChange);
@@ -356,7 +364,7 @@ export default function App() {
     });
 
     // Initialize real-time Firestore synchronization
-    const unsubFirestore = initFirestoreSync(() => {
+    firestoreUnsubRef.current = initFirestoreSync(() => {
       refreshData();
     });
 
@@ -415,7 +423,7 @@ export default function App() {
 
     return () => {
       unsubStatus();
-      unsubFirestore();
+      if (firestoreUnsubRef.current) firestoreUnsubRef.current();
       window.removeEventListener('app:navigate', handleAppNavigate);
       window.removeEventListener('app:navigate-back-direct', handleDirectBack);
       window.removeEventListener('app:openTrash', handleOpenTrash);

@@ -6,25 +6,38 @@ import {
   Check, 
   ShieldCheck, 
   ChevronRight, 
-  Database, 
   RefreshCw, 
   AlertCircle, 
-  Sparkles,
-  Lock,
-  Globe
+  Lock, 
+  Globe, 
+  Share2, 
+  Copy, 
+  Trash2, 
+  RotateCcw, 
+  ExternalLink, 
+  EyeOff, 
+  Eye, 
+  CheckCheck,
+  CheckCircle2,
+  HelpCircle
 } from 'lucide-react';
 import { 
   SupabaseCompany, 
   SupabaseFinancialYear, 
   fetchUserCompanies, 
   createCompany, 
+  deleteCompany,
   fetchFinancialYears, 
   createFinancialYear, 
   getActiveCompanyId, 
   setActiveCompanyId, 
   getActiveFYId, 
-  setActiveFYId 
+  setActiveFYId,
+  getCompanyDedicatedUrl,
+  initializeBlankTenantStorage,
+  DEFAULT_TENANT_COMPANY
 } from '../services/supabaseTenantService';
+import { resetCompanyToBlank } from '../services/storageService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { GlowButton } from './common/GlowButton';
 
@@ -48,6 +61,20 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'create_company' | 'create_fy'>('list');
 
+  // Dedicated URL Share Modal state
+  const [shareCompany, setShareCompany] = useState<SupabaseCompany | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+
+  // Reset & Delete confirmation states
+  const [confirmResetCompany, setConfirmResetCompany] = useState<SupabaseCompany | null>(null);
+  const [confirmDeleteCompany, setConfirmDeleteCompany] = useState<SupabaseCompany | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Preference: Hide demo company
+  const [hideDemoCompany, setHideDemoCompany] = useState<boolean>(() => {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_hide_demo_company') === 'true';
+  });
+
   // Form states for New Company
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newTradeLicense, setNewTradeLicense] = useState('');
@@ -64,6 +91,11 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
   const [newFYStart, setNewFYStart] = useState(`${currentYr}-01-01`);
   const [newFYEnd, setNewFYEnd] = useState(`${currentYr}-12-31`);
 
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 4500);
+  };
+
   const loadData = async () => {
     setLoading(true);
     setError(null);
@@ -73,7 +105,6 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
       setCompanies(comps);
 
       let currentCmpId = getActiveCompanyId();
-      // Ensure currentCmpId exists in comps
       if (!comps.some(c => c.id === currentCmpId) && comps.length > 0) {
         currentCmpId = comps[0].id;
         setActiveCompanyId(currentCmpId);
@@ -96,8 +127,19 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
     if (isOpen) {
       loadData();
       setViewMode('list');
+      setShareCompany(null);
+      setConfirmResetCompany(null);
+      setConfirmDeleteCompany(null);
     }
   }, [isOpen]);
+
+  const toggleHideDemo = async () => {
+    const nextVal = !hideDemoCompany;
+    setHideDemoCompany(nextVal);
+    localStorage.setItem('deep_pos_hide_demo_company', String(nextVal));
+    await loadData();
+    showToast(nextVal ? 'Demo company hidden from view.' : 'Demo company visible in list.');
+  };
 
   const handleSelectCompany = async (company: SupabaseCompany) => {
     setActiveCompanyId(company.id);
@@ -146,6 +188,10 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         return;
       }
 
+      // Guarantee clean blank slate for newly created client company
+      resetCompanyToBlank(company.id);
+      initializeBlankTenantStorage(company.id);
+
       // Reset form
       setNewCompanyName('');
       setNewTradeLicense('');
@@ -158,6 +204,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
       await loadData();
       handleSelectCompany(company);
       setViewMode('list');
+      showToast(`Company "${company.company_name}" created with a clean blank slate.`);
     } catch (err: any) {
       setError(err?.message || 'Unexpected error creating company');
     } finally {
@@ -187,22 +234,53 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         return;
       }
 
-      setNewFYName('');
-      await loadData();
+      const { financialYears: fys } = await fetchFinancialYears(activeCompanyId);
+      setFinancialYears(fys);
       handleSelectFY(financialYear);
       setViewMode('list');
     } catch (err: any) {
-      setError(err?.message || 'Error creating financial year');
+      setError(err?.message || 'Unexpected error creating financial year');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleConfirmReset = (comp: SupabaseCompany) => {
+    resetCompanyToBlank(comp.id);
+    initializeBlankTenantStorage(comp.id);
+    setConfirmResetCompany(null);
+    showToast(`Company "${comp.company_name}" was successfully reset to a blank slate.`);
+    if (comp.id === activeCompanyId) {
+      window.dispatchEvent(new CustomEvent('supabase:tenant_changed', { detail: { companyId: comp.id } }));
+    }
+  };
+
+  const handleConfirmDelete = async (comp: SupabaseCompany) => {
+    const res = await deleteCompany(comp.id);
+    if (!res.success) {
+      setError(res.error || 'Failed to delete company');
+    } else {
+      setConfirmDeleteCompany(null);
+      showToast(`Company "${comp.company_name}" has been deleted.`);
+      await loadData();
+    }
+  };
+
+  const handleCopyShareUrl = (url: string) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2500);
+      showToast('Dedicated client portal URL copied to clipboard!');
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 animate-in fade-in duration-150">
       <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        
         {/* Modal Header */}
         <div className="bg-slate-800/90 border-b border-slate-700/80 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -211,19 +289,19 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                Multi-Tenant Company & Financial Year
+                Multi-Tenant Company Workspaces
                 {isSupabaseConfigured ? (
                   <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono px-2 py-0.5 rounded-full flex items-center gap-1">
                     <ShieldCheck className="h-3 w-3" /> Supabase RLS Active
                   </span>
                 ) : (
-                  <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] font-mono px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <Lock className="h-3 w-3" /> Local Tenant Sandbox
+                  <span className="bg-blue-500/10 text-blue-400 border border-blue-500/30 text-[10px] font-mono px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Lock className="h-3 w-3" /> Isolated Cloud Tenant
                   </span>
                 )}
               </h2>
               <p className="text-xs text-slate-400">
-                Switch or create isolated company databases with strict Row-Level Security isolation.
+                Manage separate company profiles, share dedicated client URLs, and maintain clean tenant data.
               </p>
             </div>
           </div>
@@ -234,6 +312,14 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
             ✕
           </button>
         </div>
+
+        {/* Toast Notification Banner */}
+        {toastMsg && (
+          <div className="bg-emerald-500/15 border-b border-emerald-500/30 px-6 py-2.5 text-emerald-300 text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+            <span>{toastMsg}</span>
+          </div>
+        )}
 
         {/* Content Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
@@ -248,18 +334,38 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
             <div className="space-y-6">
               {/* Companies Section */}
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Building2 className="h-4 w-4 text-blue-400" />
-                    Registered Companies ({companies.length})
-                  </span>
-                  <button
-                    onClick={() => setViewMode('create_company')}
-                    className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition shadow-xs cursor-pointer"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>Create Company</span>
-                  </button>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Building2 className="h-4 w-4 text-blue-400" />
+                      Registered Companies ({companies.length})
+                    </span>
+                    
+                    {/* Hide / Show Demo Company Toggle */}
+                    <button
+                      type="button"
+                      onClick={toggleHideDemo}
+                      className={`text-[11px] px-2.5 py-0.5 rounded-md border flex items-center gap-1 transition cursor-pointer ${
+                        hideDemoCompany 
+                          ? 'bg-blue-500/20 text-blue-300 border-blue-500/40 hover:bg-blue-500/30' 
+                          : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                      }`}
+                      title="Hide or show the initial Demo Company (Bhutan Retail Enterprise)"
+                    >
+                      {hideDemoCompany ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                      <span>{hideDemoCompany ? 'Demo Hidden' : 'Demo Visible'}</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setViewMode('create_company')}
+                      className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition shadow-xs cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Create Company</span>
+                    </button>
+                  </div>
                 </div>
 
                 {loading ? (
@@ -271,33 +377,91 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {companies.map((comp) => {
                       const isSelected = comp.id === activeCompanyId;
+                      const isDemo = comp.id === DEFAULT_TENANT_COMPANY.id;
+
                       return (
                         <div
                           key={comp.id}
-                          onClick={() => handleSelectCompany(comp)}
-                          className={`p-4 rounded-xl border transition-all cursor-pointer relative ${
+                          className={`p-4 rounded-xl border transition-all relative flex flex-col justify-between ${
                             isSelected
                               ? 'bg-blue-950/40 border-blue-500 shadow-md shadow-blue-950/30'
                               : 'bg-slate-800/60 border-slate-700/80 hover:border-slate-600 hover:bg-slate-800'
                           }`}
                         >
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <h4 className="font-bold text-sm text-white">{comp.company_name}</h4>
-                              <p className="text-xs text-slate-400 mt-0.5">
-                                {comp.tax_payer_id ? `TPN: ${comp.tax_payer_id}` : 'Standard Tenant'}
-                              </p>
-                              {comp.address && (
-                                <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">{comp.address}</p>
+                          {/* Card Top: Clickable to select */}
+                          <div 
+                            onClick={() => handleSelectCompany(comp)}
+                            className="cursor-pointer"
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1 pr-2">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h4 className="font-bold text-sm text-white">{comp.company_name}</h4>
+                                  {isDemo && (
+                                    <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono font-semibold">
+                                      DEMO
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-slate-400 mt-0.5">
+                                  {comp.tax_payer_id ? `TPN: ${comp.tax_payer_id}` : 'Clean Client Workspace'}
+                                </p>
+                                {comp.address && (
+                                  <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">{comp.address}</p>
+                                )}
+                              </div>
+                              {isSelected ? (
+                                <span className="h-6 w-6 shrink-0 rounded-full bg-blue-500 text-white flex items-center justify-center shadow-xs">
+                                  <Check className="h-3.5 w-3.5 stroke-[3]" />
+                                </span>
+                              ) : (
+                                <ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />
                               )}
                             </div>
-                            {isSelected ? (
-                              <span className="h-6 w-6 rounded-full bg-blue-500 text-white flex items-center justify-center shadow-xs">
-                                <Check className="h-3.5 w-3.5 stroke-[3]" />
-                              </span>
-                            ) : (
-                              <ChevronRight className="h-4 w-4 text-slate-500" />
-                            )}
+                          </div>
+
+                          {/* Action Toolbar on Card */}
+                          <div className="mt-3 pt-2.5 border-t border-slate-700/60 flex items-center justify-between text-xs">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShareCompany(comp);
+                              }}
+                              className="text-blue-400 hover:text-blue-300 flex items-center gap-1 font-medium hover:underline cursor-pointer"
+                              title="View & Share Dedicated Client URL"
+                            >
+                              <Share2 className="h-3 w-3" />
+                              <span>Share Client Link</span>
+                            </button>
+
+                            <div className="flex items-center gap-2">
+                              {/* Reset to Blank Slate Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmResetCompany(comp);
+                                }}
+                                className="text-slate-400 hover:text-amber-400 p-1 rounded hover:bg-slate-700/50 transition cursor-pointer"
+                                title="Reset this company to 0 vouchers, 0 sales, 0 items (clean slate)"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                              </button>
+
+                              {/* Delete Company Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmDeleteCompany(comp);
+                                }}
+                                className="text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-slate-700/50 transition cursor-pointer"
+                                title="Permanently delete this company"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </div>
                         </div>
                       );
@@ -318,38 +482,31 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                     className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition shadow-xs cursor-pointer"
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    <span>New Financial Year</span>
+                    <span>Add Financial Year</span>
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {financialYears.map((fy) => {
                     const isSelected = fy.id === activeFYId;
                     return (
                       <div
                         key={fy.id}
                         onClick={() => handleSelectFY(fy)}
-                        className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                        className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
                           isSelected
-                            ? 'bg-emerald-950/40 border-emerald-500 shadow-md shadow-emerald-950/30'
-                            : 'bg-slate-800/60 border-slate-700/80 hover:border-slate-600 hover:bg-slate-800'
+                            ? 'bg-emerald-950/40 border-emerald-500 text-emerald-200'
+                            : 'bg-slate-800/40 border-slate-700 hover:border-slate-600 text-slate-300'
                         }`}
                       >
                         <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-xs text-white">{fy.fy_name}</h4>
-                            {fy.is_locked && (
-                              <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-mono">
-                                Locked
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
+                          <span className="font-bold text-sm block">{fy.fy_name}</span>
+                          <span className="text-[11px] font-mono text-slate-400">
                             {fy.start_date} → {fy.end_date}
-                          </p>
+                          </span>
                         </div>
                         {isSelected && (
-                          <span className="h-5 w-5 rounded-full bg-emerald-500 text-white flex items-center justify-center">
+                          <span className="h-5 w-5 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center font-bold">
                             <Check className="h-3 w-3 stroke-[3]" />
                           </span>
                         )}
@@ -361,87 +518,97 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
             </div>
           )}
 
-          {/* Create Company View */}
+          {/* CREATE COMPANY VIEW */}
           {viewMode === 'create_company' && (
             <form onSubmit={handleCreateCompanySubmit} className="space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <h3 className="font-bold text-sm text-white flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-blue-400" />
-                  Create New Isolated Company Tenant
+                  Register New Client Company (Starts 100% Blank)
                 </h3>
                 <button
                   type="button"
                   onClick={() => setViewMode('list')}
-                  className="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+                  className="text-xs text-slate-400 hover:text-white"
                 >
-                  Cancel
+                  Back to List
                 </button>
+              </div>
+
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-xs text-blue-300">
+                ✨ <strong>Guaranteed Clean Slate:</strong> The new company starts with 0 vouchers, 0 sales invoices, and 0 demo items.
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Company / Store Name *</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Company / Trade Name <span className="text-rose-400">*</span>
+                  </label>
                   <input
                     type="text"
                     required
+                    placeholder="e.g. Druk Wangyel Supermarket"
                     value={newCompanyName}
                     onChange={(e) => setNewCompanyName(e.target.value)}
-                    placeholder="e.g. Royal Himalayan Trading Pvt Ltd"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">TPN / Tax ID</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Trade License Number
+                  </label>
                   <input
                     type="text"
-                    value={newTPN}
-                    onChange={(e) => setNewTPN(e.target.value)}
-                    placeholder="e.g. TPN-1029384"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Trade License No</label>
-                  <input
-                    type="text"
+                    placeholder="e.g. TRD-2026-9041"
                     value={newTradeLicense}
                     onChange={(e) => setNewTradeLicense(e.target.value)}
-                    placeholder="e.g. TRD-2024-8891"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Phone / Mobile</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Tax Payer Number (TPN)
+                  </label>
                   <input
                     type="text"
+                    placeholder="e.g. TPN-4050607"
+                    value={newTPN}
+                    onChange={(e) => setNewTPN(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Contact Phone</label>
+                  <input
+                    type="text"
+                    placeholder="+975 17 000 000"
                     value={newPhone}
                     onChange={(e) => setNewPhone(e.target.value)}
-                    placeholder="e.g. +975 17 123 456"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Currency Symbol</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Official Email</label>
                   <input
-                    type="text"
-                    value={newCurrency}
-                    onChange={(e) => setNewCurrency(e.target.value)}
-                    placeholder="e.g. Nu. or $"
+                    type="email"
+                    placeholder="accounts@store.bt"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Office / Store Address</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Physical Address</label>
                   <input
                     type="text"
+                    placeholder="e.g. Changlam Square, Thimphu"
                     value={newAddress}
                     onChange={(e) => setNewAddress(e.target.value)}
-                    placeholder="e.g. Norzin Lam, Thimphu, Bhutan"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
                   />
                 </div>
@@ -461,38 +628,40 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                   className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 transition shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {submitting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                  <span>Save & Switch to Company</span>
+                  <span>Save Clean Company</span>
                 </button>
               </div>
             </form>
           )}
 
-          {/* Create Financial Year View */}
+          {/* CREATE FINANCIAL YEAR VIEW */}
           {viewMode === 'create_fy' && (
             <form onSubmit={handleCreateFYSubmit} className="space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <h3 className="font-bold text-sm text-white flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-emerald-400" />
                   Add Financial Year
                 </h3>
                 <button
                   type="button"
                   onClick={() => setViewMode('list')}
-                  className="text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+                  className="text-xs text-slate-400 hover:text-white"
                 >
-                  Cancel
+                  Back to List
                 </button>
               </div>
 
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Financial Year Name *</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Financial Year Label
+                  </label>
                   <input
                     type="text"
                     required
+                    placeholder="e.g. FY 2026"
                     value={newFYName}
                     onChange={(e) => setNewFYName(e.target.value)}
-                    placeholder="e.g. FY 2026"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-emerald-500 focus:outline-hidden"
                   />
                 </div>
@@ -546,7 +715,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         <div className="bg-slate-800/90 border-t border-slate-700/80 px-6 py-3 flex items-center justify-between text-xs text-slate-400">
           <div className="flex items-center gap-2">
             <Globe className="h-3.5 w-3.5 text-blue-400" />
-            <span>Supabase Database Tenant Isolation</span>
+            <span>Dedicated Tenant Isolation Enabled</span>
           </div>
           <button
             onClick={onClose}
@@ -556,6 +725,167 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* DEDICATED CLIENT URL SHARE POPUP */}
+      {shareCompany && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-blue-500/60 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
+                  <Share2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">Dedicated Client Portal URL</h3>
+                  <p className="text-xs text-slate-400">{shareCompany.company_name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShareCompany(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Provide this dedicated URL to your client or bookmark it on their POS terminal. When accessed via this link, the system opens directly into their isolated company workspace with no demo data.
+              </p>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">
+                  Dedicated Direct URL
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={getCompanyDedicatedUrl(shareCompany.id)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-emerald-400 select-all focus:outline-hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleCopyShareUrl(getCompanyDedicatedUrl(shareCompany.id))}
+                    className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+                  >
+                    {copiedUrl ? <CheckCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    <span>{copiedUrl ? 'Copied!' : 'Copy'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-xs text-slate-400 space-y-1.5">
+                <div className="font-semibold text-slate-200 flex items-center gap-1.5">
+                  <HelpCircle className="h-3.5 w-3.5 text-blue-400" />
+                  How to share:
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-400">
+                  <li>Send via WhatsApp, Email, or Messenger to the client.</li>
+                  <li>Opening this URL locks the browser into <strong>{shareCompany.company_name}</strong>.</li>
+                  <li>All demo vouchers, demo sales, and other companies will be completely hidden.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShareCompany(null)}
+                className="px-4 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => window.open(getCompanyDedicatedUrl(shareCompany.id), '_blank')}
+                className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span>Open in New Tab</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM RESET TO BLANK SLATE DIALOG */}
+      {confirmResetCompany && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-amber-500/60 w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                <RotateCcw className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-white">Reset to 100% Blank Slate?</h3>
+                <p className="text-xs text-amber-300 font-semibold">{confirmResetCompany.company_name}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              This will erase any demo vouchers, test sales invoices, purchase records, and items for this company, returning it to a completely empty, fresh state.
+            </p>
+
+            <div className="pt-2 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmResetCompany(null)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs hover:bg-slate-700 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmReset(confirmResetCompany)}
+                className="px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Yes, Reset to Blank</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM DELETE COMPANY DIALOG */}
+      {confirmDeleteCompany && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-rose-500/60 w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-white">Permanently Delete Company?</h3>
+                <p className="text-xs text-rose-300 font-semibold">{confirmDeleteCompany.company_name}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Are you sure you want to delete this company workspace? All associated financial years and isolated records will be permanently removed.
+            </p>
+
+            <div className="pt-2 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteCompany(null)}
+                className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 text-xs hover:bg-slate-700 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmDelete(confirmDeleteCompany)}
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Delete Company</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
