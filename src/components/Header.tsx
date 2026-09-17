@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft } from 'lucide-react';
+import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown } from 'lucide-react';
 import { Config } from '../types';
 import { AIAssistant } from './AIAssistant';
 
@@ -12,6 +12,9 @@ interface HeaderProps {
   isPosMode?: boolean;
   firebaseStatus?: 'connected' | 'syncing' | 'offline' | 'error';
   firebaseMessage?: string;
+  onOpenCompanyManager?: () => void;
+  activeCompanyName?: string;
+  activeFYName?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,7 +25,10 @@ export const Header: React.FC<HeaderProps> = ({
   onNavigateBack,
   isPosMode = false,
   firebaseStatus = 'connected',
-  firebaseMessage
+  firebaseMessage,
+  onOpenCompanyManager,
+  activeCompanyName,
+  activeFYName
 }) => {
   return (
     <header className={`bg-blue-700 text-white border-b border-blue-800 px-3 sm:px-4 ${isPosMode ? 'py-1.5' : 'py-2'} flex items-center justify-between shadow-md relative z-50`}>
@@ -48,20 +54,46 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        <div className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-lg bg-blue-800 border border-blue-600 flex items-center justify-center text-white shadow-xs">
-            <Store className="h-4 w-4 text-blue-200" />
+        {/* Company & Financial Year Selector Pill */}
+        {onOpenCompanyManager ? (
+          <button
+            type="button"
+            onClick={onOpenCompanyManager}
+            className="flex items-center gap-2 px-2.5 py-1 bg-blue-800/80 hover:bg-blue-900 border border-blue-600 rounded-xl transition text-left cursor-pointer group shadow-xs"
+            title="Switch Company / Financial Year Tenant (Alt+C)"
+          >
+            <div className="h-7 w-7 rounded-lg bg-blue-600/40 border border-blue-400/40 flex items-center justify-center text-blue-200 group-hover:text-white transition">
+              <Building2 className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1">
+                <span className="font-extrabold text-xs sm:text-sm text-white tracking-wide leading-tight">
+                  {activeCompanyName || config.CompanyName || 'Deep POS'}
+                </span>
+                <ChevronDown className="h-3 w-3 text-blue-300 group-hover:text-white transition" />
+              </div>
+              <span className="text-[10px] text-emerald-300 font-medium font-mono leading-tight">
+                {activeFYName || 'FY 2026'}
+              </span>
+            </div>
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-7 rounded-lg bg-blue-800 border border-blue-600 flex items-center justify-center text-white shadow-xs">
+              <Store className="h-4 w-4 text-blue-200" />
+            </div>
+            <div>
+              <span className="font-extrabold text-sm sm:text-base text-white tracking-wide block leading-tight">
+                {config.CompanyName || 'Deep POS'}
+              </span>
+              <span className="text-[10px] text-blue-200 font-medium hidden sm:block">
+                {isPosMode ? '⚡ Full-Screen Workspace' : 'High Density POS System'}
+              </span>
+            </div>
           </div>
-          <div>
-            <span className="font-extrabold text-sm sm:text-base text-white tracking-wide block leading-tight">
-              {config.CompanyName || 'Deep POS'}
-            </span>
-            <span className="text-[10px] text-blue-200 font-medium hidden sm:block">
-              {isPosMode ? '⚡ Full-Screen Workspace' : 'High Density POS System'}
-            </span>
-          </div>
-        </div>
+        )}
       </div>
+
 
       {/* High Density Status Indicators & Action Bar */}
       <div className="flex items-center gap-2 sm:gap-3">

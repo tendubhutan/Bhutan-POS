@@ -22,6 +22,15 @@ import { DrillModal, TargetState } from './components/DrillModal';
 import { QuickLedgerSearchModal } from './components/QuickLedgerSearchModal';
 import { TrashModal } from './components/TrashModal';
 import { BulkDeleteModal } from './components/BulkDeleteModal';
+import { CompanyManagerModal } from './components/CompanyManagerModal';
+import { 
+  fetchUserCompanies, 
+  fetchFinancialYears, 
+  getActiveCompanyId, 
+  getActiveFYId,
+  SupabaseCompany,
+  SupabaseFinancialYear 
+} from './services/supabaseTenantService';
 
 interface DrillReturnContext {
   activeDrill: { type: 'group' | 'stock' | 'ledger' | 'voucher' | 'item-profit'; targetId: string; fromDate?: string; toDate?: string };
@@ -223,6 +232,55 @@ export default function App() {
   const [barcodeQueueInitial, setBarcodeQueueInitial] = useState<BarcodeQueueItem[]>([]);
   const [quickLedgerModalProps, setQuickLedgerModalProps] = useState<{isOpen: boolean, group: string, onSelect?: (name: string) => void}>({isOpen: false, group: 'Sundry Debtors'});
   const [quickItemModalProps, setQuickItemModalProps] = useState<{isOpen: boolean, onSelect?: (item: Item) => void}>({isOpen: false});
+
+  // Multi-Tenant State
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [activeCompany, setActiveCompany] = useState<SupabaseCompany | null>(null);
+  const [activeFY, setActiveFY] = useState<SupabaseFinancialYear | null>(null);
+
+  // Load active company and FY details
+  const loadTenantDetails = async () => {
+    try {
+      const cId = getActiveCompanyId();
+      const fyId = getActiveFYId();
+      const { companies: comps } = await fetchUserCompanies();
+      const currentC = comps.find(c => c.id === cId) || comps[0];
+      if (currentC) {
+        setActiveCompany(currentC);
+        // Automatically sync company profile to config if company name differs
+        if (currentC.company_name && currentC.company_name !== config.CompanyName) {
+          setConfig(prev => ({
+            ...prev,
+            CompanyName: currentC.company_name,
+            Address: currentC.address || prev.Address,
+            CompanyTPNNo: currentC.tax_payer_id || prev.CompanyTPNNo,
+            CompanyGSTNo: currentC.trade_license_no || prev.CompanyGSTNo,
+            CompanyPhone: currentC.phone || prev.CompanyPhone,
+            CurrencySymbol: currentC.currency_symbol || prev.CurrencySymbol
+          }));
+        }
+        const { financialYears: fys } = await fetchFinancialYears(currentC.id);
+        const currentF = fys.find(f => f.id === fyId) || fys[0];
+        if (currentF) setActiveFY(currentF);
+      }
+    } catch (e) {
+      console.warn('Error loading tenant details:', e);
+    }
+  };
+
+  useEffect(() => {
+    loadTenantDetails();
+    const handleTenantChange = () => {
+      loadTenantDetails();
+      refreshData();
+    };
+    window.addEventListener('supabase:tenant_changed', handleTenantChange);
+    window.addEventListener('supabase:fy_changed', handleTenantChange);
+    return () => {
+      window.removeEventListener('supabase:tenant_changed', handleTenantChange);
+      window.removeEventListener('supabase:fy_changed', handleTenantChange);
+    };
+  }, []);
 
   // State Ref to prevent stale closures in global key listeners
   const appStateRef = useRef({
@@ -536,6 +594,9 @@ export default function App() {
           isPosMode={true}
           firebaseStatus={firebaseStatus}
           firebaseMessage={firebaseMessage}
+          onOpenCompanyManager={() => setShowCompanyModal(true)}
+          activeCompanyName={activeCompany?.company_name}
+          activeFYName={activeFY?.fy_name}
         />
 
         <main className={`flex-1 ${currentView === 'reports' ? 'overflow-y-auto' : isHighDensityView ? 'p-1.5 sm:p-2 pb-1.5 overflow-hidden flex flex-col min-h-0' : 'p-3 sm:p-6 pb-6 lg:pb-8 overflow-y-auto'} relative`}>
@@ -799,6 +860,25 @@ export default function App() {
         isOpen={showBulkDeleteModal}
         onClose={() => setShowBulkDeleteModal(false)}
         onDataCleared={refreshData}
+      />
+
+      {/* Multi-Tenant Company & Financial Year Manager Modal */}
+      <CompanyManagerModal
+        isOpen={showCompanyModal}
+        onClose={() => setShowCompanyModal(false)}
+        onCompanySelected={(c) => {
+          setActiveCompany(c);
+          setConfig(prev => ({
+            ...prev,
+            CompanyName: c.company_name,
+            Address: c.address || prev.Address,
+            CompanyTPNNo: c.tax_payer_id || prev.CompanyTPNNo,
+            CompanyGSTNo: c.trade_license_no || prev.CompanyGSTNo,
+            CompanyPhone: c.phone || prev.CompanyPhone,
+            CurrencySymbol: c.currency_symbol || prev.CurrencySymbol
+          }));
+          refreshData();
+        }}
       />
     </div>
   );
