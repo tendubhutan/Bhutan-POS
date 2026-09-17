@@ -17,6 +17,8 @@ interface SavedBarcodeSettings {
   rollUp: number;
   widthMm: number;
   heightMm: number;
+  gapMm?: number;
+  showBorder?: boolean;
   showCompany: boolean;
   showName: boolean;
   showPrice: boolean;
@@ -57,6 +59,8 @@ const loadSavedBarcodeSettings = (): SavedBarcodeSettings => {
         rollUp: typeof parsed.rollUp === 'number' ? parsed.rollUp : 3,
         widthMm: typeof parsed.widthMm === 'number' ? parsed.widthMm : 34,
         heightMm: typeof parsed.heightMm === 'number' ? parsed.heightMm : 22,
+        gapMm: typeof parsed.gapMm === 'number' ? parsed.gapMm : 2,
+        showBorder: typeof parsed.showBorder === 'boolean' ? parsed.showBorder : true,
         showCompany: typeof parsed.showCompany === 'boolean' ? parsed.showCompany : false,
         showName: typeof parsed.showName === 'boolean' ? parsed.showName : true,
         showPrice: typeof parsed.showPrice === 'boolean' ? parsed.showPrice : true,
@@ -75,6 +79,8 @@ const loadSavedBarcodeSettings = (): SavedBarcodeSettings => {
     rollUp: 3,
     widthMm: 34,
     heightMm: 22,
+    gapMm: 2,
+    showBorder: true,
     showCompany: false,
     showName: true,
     showPrice: true,
@@ -116,6 +122,7 @@ const StickerPreviewCard: React.FC<{
   showPrice: boolean;
   showWholesalePrice: boolean;
   showCodeTxt: boolean;
+  showBorder?: boolean;
   priceLabel: string;
   priceFormat: PriceDisplayFormat;
   printedPrice: number;
@@ -132,6 +139,7 @@ const StickerPreviewCard: React.FC<{
   showPrice,
   showWholesalePrice,
   showCodeTxt,
+  showBorder = true,
   priceLabel,
   priceFormat,
   printedPrice,
@@ -194,7 +202,7 @@ const StickerPreviewCard: React.FC<{
         height: `${cardHeightPx}px`,
         padding: '2px 3px'
       }}
-      className="bg-white border border-slate-400 rounded-md flex flex-col items-center justify-center text-center shadow-xs overflow-hidden leading-tight flex-shrink-0 box-border"
+      className={`bg-white ${showBorder ? 'border border-slate-400' : 'border border-dashed border-slate-300'} rounded-md flex flex-col items-center justify-center text-center shadow-xs overflow-hidden leading-tight flex-shrink-0 box-border`}
     >
       {showCompany && config.CompanyName && (
         <div style={{ fontSize: `${fontCo}px` }} className="font-bold truncate max-w-full text-slate-800 leading-none mb-0.5">
@@ -246,6 +254,8 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
   const [rollUp, setRollUp] = useState<number>(savedSettings.rollUp);
   const [widthMm, setWidthMm] = useState<number>(savedSettings.widthMm);
   const [heightMm, setHeightMm] = useState<number>(savedSettings.heightMm);
+  const [gapMm, setGapMm] = useState<number>(savedSettings.gapMm ?? (savedSettings.rollUp > 1 ? 2 : 0));
+  const [showBorder, setShowBorder] = useState<boolean>(savedSettings.showBorder ?? true);
 
   // Sticker Content Options
   const [showCompany, setShowCompany] = useState<boolean>(savedSettings.showCompany);
@@ -264,6 +274,8 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
       rollUp,
       widthMm,
       heightMm,
+      gapMm,
+      showBorder,
       showCompany,
       showName,
       showPrice,
@@ -279,7 +291,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
     } catch (e) {
       console.error('Error saving barcode settings:', e);
     }
-  }, [rollUp, widthMm, heightMm, showCompany, showName, showPrice, showWholesalePrice, barcodeHeightMm, addGstToPrice, priceLabel, priceFormat, showCodeTxt]);
+  }, [rollUp, widthMm, heightMm, gapMm, showBorder, showCompany, showName, showPrice, showWholesalePrice, barcodeHeightMm, addGstToPrice, priceLabel, priceFormat, showCodeTxt]);
 
   // Initialize initial queue if passed (e.g. from Purchase Entry)
   useEffect(() => {
@@ -298,10 +310,10 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
   // Handle Up preset selection
   const handleRollUpChange = (up: number) => {
     setRollUp(up);
-    if (up === 1) { setWidthMm(50); setHeightMm(30); setBarcodeHeightMm(11); }
-    else if (up === 2) { setWidthMm(38); setHeightMm(25); setBarcodeHeightMm(8); }
-    else if (up === 3) { setWidthMm(34); setHeightMm(22); setBarcodeHeightMm(7); }
-    else if (up === 4) { setWidthMm(25); setHeightMm(15); setBarcodeHeightMm(5); }
+    if (up === 1) { setWidthMm(50); setHeightMm(30); setGapMm(0); setBarcodeHeightMm(11); }
+    else if (up === 2) { setWidthMm(38); setHeightMm(25); setGapMm(2); setBarcodeHeightMm(8); }
+    else if (up === 3) { setWidthMm(34); setHeightMm(22); setGapMm(2); setBarcodeHeightMm(7); }
+    else if (up === 4) { setWidthMm(25); setHeightMm(15); setGapMm(1.5); setBarcodeHeightMm(5); }
   };
 
   const addItemToQueue = (item: Item) => {
@@ -419,8 +431,8 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
 
     const currSym = config.CurrencySymbol || 'Nu.';
 
-    const gapMm = rollUp > 1 ? 1.5 : 0;
-    const totalRowWidthMm = (widthMm * rollUp) + (gapMm * (rollUp - 1));
+    const actualGapMm = rollUp > 1 ? Math.max(0, gapMm) : 0;
+    const totalRowWidthMm = (widthMm * rollUp) + (actualGapMm * (rollUp - 1));
 
     let html = `
       <!DOCTYPE html>
@@ -477,7 +489,6 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             width: ${widthMm}mm;
             height: ${heightMm}mm;
             max-height: ${heightMm}mm;
-            border: 1px dotted #ccc;
             box-sizing: border-box;
             display: flex;
             flex-direction: column;
@@ -487,8 +498,10 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             padding: 0.5mm 1mm;
             text-align: center;
             margin: 0;
-            margin-right: ${gapMm}mm;
+            margin-right: ${actualGapMm}mm;
             background: #fff;
+            border-radius: 1mm;
+            border: ${showBorder ? '0.75px solid #475569' : 'none'};
             page-break-inside: avoid;
             break-inside: avoid;
             flex-shrink: 0;
@@ -551,7 +564,9 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             margin-top: ${showCodeTxt ? '1.2mm' : '0.4mm'};
           }
           @media print {
-            .label-box { border: none !important; }
+            .label-box {
+              border: ${showBorder ? '0.75px solid #475569' : 'none'} !important;
+            }
             html, body { margin: 0 !important; padding: 0 !important; }
           }
         </style>
@@ -864,7 +879,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             <div className="flex flex-wrap gap-1 pt-1">
               <button
                 type="button"
-                onClick={() => { setRollUp(3); setWidthMm(34); setHeightMm(22); setBarcodeHeightMm(7); }}
+                onClick={() => { setRollUp(3); setWidthMm(34); setHeightMm(22); setGapMm(2); setBarcodeHeightMm(7); }}
                 className={`text-[11px] px-2 py-0.5 rounded-md font-semibold border transition ${
                   widthMm === 34 && heightMm === 22 && rollUp === 3
                     ? 'bg-indigo-50 border-indigo-400 text-indigo-700 font-bold'
@@ -875,7 +890,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
               </button>
               <button
                 type="button"
-                onClick={() => { setRollUp(2); setWidthMm(38); setHeightMm(25); setBarcodeHeightMm(8); }}
+                onClick={() => { setRollUp(2); setWidthMm(38); setHeightMm(25); setGapMm(2); setBarcodeHeightMm(8); }}
                 className={`text-[11px] px-2 py-0.5 rounded-md font-semibold border transition ${
                   widthMm === 38 && heightMm === 25 && rollUp === 2
                     ? 'bg-indigo-50 border-indigo-400 text-indigo-700 font-bold'
@@ -886,7 +901,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
               </button>
               <button
                 type="button"
-                onClick={() => { setRollUp(1); setWidthMm(50); setHeightMm(25); setBarcodeHeightMm(9); }}
+                onClick={() => { setRollUp(1); setWidthMm(50); setHeightMm(25); setGapMm(0); setBarcodeHeightMm(9); }}
                 className={`text-[11px] px-2 py-0.5 rounded-md font-semibold border transition ${
                   widthMm === 50 && heightMm === 25 && rollUp === 1
                     ? 'bg-indigo-50 border-indigo-400 text-indigo-700 font-bold'
@@ -900,7 +915,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
 
           {/* Roll Dimensions & Barcode Bar Height */}
           <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div>
                 <label className="block font-bold text-slate-600 mb-1">Sticker Width (mm)</label>
                 <input
@@ -917,6 +932,20 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                   value={heightMm}
                   onChange={e => setHeightMm(Number(e.target.value))}
                   className="w-full h-8 rounded-lg border border-slate-300 px-2 font-bold bg-white outline-none"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Column Gap (mm)</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="10"
+                  value={gapMm}
+                  onChange={e => setGapMm(Number(e.target.value))}
+                  className="w-full h-8 rounded-lg border border-slate-300 px-2 font-bold bg-white outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                  disabled={rollUp <= 1}
+                  title="Horizontal gap between stickers in a row"
                 />
               </div>
             </div>
@@ -992,7 +1021,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             </div>
 
             {/* Display Field Checkboxes */}
-            <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs pt-1">
               <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
                 <input type="checkbox" checked={showCompany} onChange={e => setShowCompany(e.target.checked)} className="rounded border-slate-300 text-indigo-600" />
                 Company Name
@@ -1013,6 +1042,10 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                 <input type="checkbox" checked={showCodeTxt} onChange={e => setShowCodeTxt(e.target.checked)} className="rounded border-slate-300 text-indigo-600" />
                 Barcode Text
               </label>
+              <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
+                <input type="checkbox" checked={showBorder} onChange={e => setShowBorder(e.target.checked)} className="rounded border-slate-300 text-indigo-600" />
+                Sticker Border
+              </label>
             </div>
           </div>
 
@@ -1020,14 +1053,19 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
           <div className="space-y-1.5 border-t border-slate-100 pt-3">
             <div className="flex justify-between items-center text-xs font-bold text-slate-700">
               <span>Paper Roll Preview ({rollUp}-Up)</span>
-              <span className="text-[10px] text-slate-500 font-mono">{widthMm}x{heightMm}mm per label</span>
+              <span className="text-[10px] text-slate-500 font-mono">
+                {widthMm}×{heightMm}mm {rollUp > 1 ? `(${gapMm}mm gap)` : ''}
+              </span>
             </div>
 
             <div className="p-3 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center min-h-[130px] overflow-x-auto">
               {queue.length === 0 ? (
                 <span className="text-xs text-slate-400 italic">Add items to preview sticker roll</span>
               ) : (
-                <div className="flex items-center gap-1.5 bg-slate-200 p-2 rounded border border-slate-300">
+                <div
+                  className="flex items-center bg-slate-200 p-2 rounded border border-slate-300"
+                  style={{ gap: `${Math.max(3, Math.round(gapMm * 2.8))}px` }}
+                >
                   {Array.from({ length: rollUp }).map((_, idx) => {
                     const sample = queue[idx % queue.length];
                     const printedPrice = getPrintedPrice(sample);
@@ -1045,6 +1083,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                         showPrice={showPrice}
                         showWholesalePrice={showWholesalePrice}
                         showCodeTxt={showCodeTxt}
+                        showBorder={showBorder}
                         priceLabel={priceLabel}
                         priceFormat={priceFormat}
                         printedPrice={printedPrice}
