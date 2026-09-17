@@ -466,7 +466,10 @@ export interface Voucher {
   cancellationReason?: string;
   lines?: VoucherLine[];
   partyName?: string;
+  partyGstNo?: string;
   originalInvoiceRef?: string;
+  taxable?: number;
+  gstAmt?: number;
   billNo?: string;
   // GST Input Tracking Fields
   gstInputType?: 'Local Purchase' | 'Local Expenses' | 'Bank Charges' | 'Import Customs GST Payment' | 'Import Purchase' | 'None';
@@ -591,6 +594,7 @@ export interface BarcodeQueueItem {
   itemName: string;
   barcode: string;
   rate: number;
+  wholesaleRate?: number;
   mrp: number;
   gstPct: number;
   qty: number;

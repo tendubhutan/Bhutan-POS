@@ -3913,7 +3913,7 @@ export function saveCreditNote(payload: {
     debitLedger: salesReturnAcc,
     creditLedger: partyAcc,
     partyName: partyAcc,
-    partyGstNo: payload.partyGstNo || '',
+    partyGstNo: (payload as any).partyGstNo || '',
     originalInvoiceRef: payload.originalInvoiceRef || '',
     amount: totalAmt,
     taxable: taxableAmt,
@@ -5146,7 +5146,8 @@ export function getDailyColumnarReport(from: string, to: string, flt?: { itemWis
   // Retrieve Sales Returns (Credit Notes) within selected date range
   const shouldIncludeReturns = flt?.includeSalesReturn !== false;
   const creditNotes = shouldIncludeReturns ? vouchers.filter(v => {
-    if (v.type !== 'CN' && v.type !== 'Credit Note' && (v as any).voucherTypeName !== 'Credit Note' && v.type !== 'Sales Return') return false;
+    const vType = v.type as any;
+    if (vType !== 'CN' && vType !== 'Credit Note' && (v as any).voucherTypeName !== 'Credit Note' && vType !== 'Sales Return') return false;
     const rawDate = (v as any).DateIso || v.date || (v as any).Date;
     if (!rawDate) return false;
     const d = new Date(rawDate).getTime();
@@ -5354,7 +5355,8 @@ export function getGSTReport(from: string, to: string) {
 
   // Include Credit Notes (Sales Return GST Reversals)
   vouchers.forEach(v => {
-    if (v.type !== 'CN' && v.type !== 'Credit Note' && (v as any).voucherTypeName !== 'Credit Note' && v.type !== 'Sales Return') return;
+    const vType = v.type as any;
+    if (vType !== 'CN' && vType !== 'Credit Note' && (v as any).voucherTypeName !== 'Credit Note' && vType !== 'Sales Return') return;
     const rawDate = (v as any).DateIso || v.date || (v as any).Date;
     if (!rawDate) return;
     const d = new Date(rawDate).getTime();
@@ -5606,7 +5608,8 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
     });
 
     const filteredReturns = allV.filter(v => {
-      if (v.type !== 'CN' && v.type !== 'Credit Note' && (v as any).voucherTypeName !== 'Credit Note' && v.type !== 'Sales Return') return false;
+      const vType = v.type as any;
+      if (vType !== 'CN' && vType !== 'Credit Note' && (v as any).voucherTypeName !== 'Credit Note' && vType !== 'Sales Return') return false;
       const rawDate = (v as any).DateIso || v.date || (v as any).Date;
       const d = new Date(rawDate).getTime();
       return d >= fr && d <= toDt;
@@ -5670,7 +5673,8 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
     });
 
     const filteredReturns = allV.filter(v => {
-      if (v.type !== 'DN' && v.type !== 'Debit Note' && (v as any).voucherTypeName !== 'Debit Note' && v.type !== 'Purchase Return') return false;
+      const vType = v.type as any;
+      if (vType !== 'DN' && vType !== 'Debit Note' && (v as any).voucherTypeName !== 'Debit Note' && vType !== 'Purchase Return') return false;
       const rawDate = (v as any).DateIso || v.date || (v as any).Date;
       const d = new Date(rawDate).getTime();
       return d >= fr && d <= toDt;
@@ -8019,7 +8023,8 @@ export function getGSTInputDomReport(from: string, to: string) {
 
   // 3. Purchase Returns (Debit Notes - DN)
   vouchers.forEach(v => {
-    if (v.type !== 'DN' && v.type !== 'Debit Note' && (v as any).voucherTypeName !== 'Debit Note' && v.type !== 'Purchase Return') return;
+    const vType = v.type as any;
+    if (vType !== 'DN' && vType !== 'Debit Note' && (v as any).voucherTypeName !== 'Debit Note' && vType !== 'Purchase Return') return;
     const rawDate = (v as any).DateIso || v.date || (v as any).Date;
     if (!rawDate) return;
     const d = parseDateToMs(rawDate);

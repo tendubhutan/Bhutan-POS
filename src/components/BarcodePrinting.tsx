@@ -20,6 +20,8 @@ interface SavedBarcodeSettings {
   showCompany: boolean;
   showName: boolean;
   showPrice: boolean;
+  showWholesalePrice?: boolean;
+  barcodeHeightMm?: number;
   addGstToPrice: boolean;
   priceLabel: 'MRP' | 'Sale Price' | 'Price';
   priceFormat?: PriceDisplayFormat;
@@ -52,12 +54,14 @@ const loadSavedBarcodeSettings = (): SavedBarcodeSettings => {
     if (raw) {
       const parsed = JSON.parse(raw);
       return {
-        rollUp: typeof parsed.rollUp === 'number' ? parsed.rollUp : 2,
-        widthMm: typeof parsed.widthMm === 'number' ? parsed.widthMm : 38,
-        heightMm: typeof parsed.heightMm === 'number' ? parsed.heightMm : 25,
-        showCompany: typeof parsed.showCompany === 'boolean' ? parsed.showCompany : true,
+        rollUp: typeof parsed.rollUp === 'number' ? parsed.rollUp : 3,
+        widthMm: typeof parsed.widthMm === 'number' ? parsed.widthMm : 34,
+        heightMm: typeof parsed.heightMm === 'number' ? parsed.heightMm : 22,
+        showCompany: typeof parsed.showCompany === 'boolean' ? parsed.showCompany : false,
         showName: typeof parsed.showName === 'boolean' ? parsed.showName : true,
         showPrice: typeof parsed.showPrice === 'boolean' ? parsed.showPrice : true,
+        showWholesalePrice: typeof parsed.showWholesalePrice === 'boolean' ? parsed.showWholesalePrice : false,
+        barcodeHeightMm: typeof parsed.barcodeHeightMm === 'number' ? parsed.barcodeHeightMm : 7,
         addGstToPrice: typeof parsed.addGstToPrice === 'boolean' ? parsed.addGstToPrice : true,
         priceLabel: parsed.priceLabel || 'Sale Price',
         priceFormat: parsed.priceFormat || 'label_only',
@@ -68,12 +72,14 @@ const loadSavedBarcodeSettings = (): SavedBarcodeSettings => {
     console.error('Error loading barcode settings:', e);
   }
   return {
-    rollUp: 2,
-    widthMm: 38,
-    heightMm: 25,
-    showCompany: true,
+    rollUp: 3,
+    widthMm: 34,
+    heightMm: 22,
+    showCompany: false,
     showName: true,
     showPrice: true,
+    showWholesalePrice: false,
+    barcodeHeightMm: 7,
     addGstToPrice: true,
     priceLabel: 'Sale Price',
     priceFormat: 'label_only',
@@ -108,42 +114,52 @@ const StickerPreviewCard: React.FC<{
   showCompany: boolean;
   showName: boolean;
   showPrice: boolean;
+  showWholesalePrice: boolean;
   showCodeTxt: boolean;
   priceLabel: string;
   priceFormat: PriceDisplayFormat;
   printedPrice: number;
+  printedWholesalePrice: number;
   currSym: string;
-}> = ({ sample, config, widthMm, heightMm, showCompany, showName, showPrice, showCodeTxt, priceLabel, priceFormat, printedPrice, currSym }) => {
+  barcodeHeightMm: number;
+}> = ({
+  sample,
+  config,
+  widthMm,
+  heightMm,
+  showCompany,
+  showName,
+  showPrice,
+  showWholesalePrice,
+  showCodeTxt,
+  priceLabel,
+  priceFormat,
+  printedPrice,
+  printedWholesalePrice,
+  currSym,
+  barcodeHeightMm,
+}) => {
   const svgRef = useRef<SVGSVGElement>(null);
 
   // Scaled dimensions for preview
-  const cardWidthPx = Math.max(70, Math.min(125, Math.round(widthMm * 2.8)));
+  const cardWidthPx = Math.max(70, Math.min(130, Math.round(widthMm * 2.8)));
   const cardHeightPx = Math.max(50, Math.min(95, Math.round(heightMm * 2.8)));
 
-  const fontCo = Math.max(6, Math.min(9, Math.round(heightMm * 0.32)));
-  const fontNm = Math.max(7, Math.min(10, Math.round(heightMm * 0.38)));
-  const fontBc = Math.max(6, Math.min(9, Math.round(heightMm * 0.28)));
-  const fontPr = Math.max(7, Math.min(10, Math.round(heightMm * 0.38)));
+  const scaleFactor = Math.min(widthMm / 34, heightMm / 22);
+  const fontCo = Math.max(6, Math.min(8.5, Math.round(7.5 * scaleFactor)));
+  const fontNm = Math.max(6.5, Math.min(9, Math.round(8.5 * scaleFactor)));
+  const fontBc = Math.max(6, Math.min(8, Math.round(7.5 * scaleFactor)));
+  const fontPr = Math.max(6, Math.min(8.5, Math.round(8.0 * scaleFactor)));
 
   const itemFontSize = getItemNameFontSize(sample.itemName, fontNm, widthMm);
 
   useEffect(() => {
     if (svgRef.current && sample.barcode) {
       try {
-        // Calculate dynamic barcode height multiplier based on active text fields
-        const activeTextCount = (showCompany && config.CompanyName ? 1 : 0)
-                              + (showName ? 1 : 0)
-                              + (showCodeTxt ? 1 : 0)
-                              + (showPrice ? 1 : 0);
-
-        let heightRatio = 0.45; // default when all 4 fields are active
-        if (activeTextCount === 3) heightRatio = 0.58;
-        else if (activeTextCount === 2) heightRatio = 0.72; // Product Name + Price Tag only
-        else if (activeTextCount === 1) heightRatio = 0.82;
-        else if (activeTextCount === 0) heightRatio = 0.92;
-
-        const bcHeight = Math.max(16, Math.min(70, Math.round(cardHeightPx * heightRatio)));
-        const bcWidth = Math.max(0.7, Math.min(1.3, widthMm * 0.032));
+        // Target barcode bar height in mm
+        const targetBcMm = barcodeHeightMm > 0 ? barcodeHeightMm : (heightMm <= 22 ? 7 : (heightMm <= 25 ? 8 : 11));
+        const bcHeight = Math.max(14, Math.min(46, Math.round(targetBcMm * 2.8)));
+        const bcWidth = Math.max(0.65, Math.min(1.15, widthMm * 0.026));
 
         JsBarcode(svgRef.current, sample.barcode, {
           format: 'CODE128',
@@ -156,9 +172,20 @@ const StickerPreviewCard: React.FC<{
         console.error('JsBarcode preview error', e);
       }
     }
-  }, [sample.barcode, widthMm, heightMm, showCompany, showName, showPrice, showCodeTxt, config.CompanyName, cardHeightPx]);
+  }, [sample.barcode, widthMm, heightMm, barcodeHeightMm, cardHeightPx]);
 
-  const priceText = formatPriceDisplay(priceLabel, currSym, printedPrice, priceFormat);
+  const salePriceText = formatPriceDisplay(
+    showWholesalePrice ? (priceLabel === 'Sale Price' ? 'Sale' : priceLabel) : priceLabel,
+    currSym,
+    printedPrice,
+    priceFormat
+  );
+  const wholesalePriceText = formatPriceDisplay(
+    showPrice ? 'WS' : 'Wholesale',
+    currSym,
+    printedWholesalePrice,
+    priceFormat
+  );
 
   return (
     <div
@@ -179,7 +206,7 @@ const StickerPreviewCard: React.FC<{
           style={{
             fontSize: `${itemFontSize}px`,
             lineHeight: 1.05,
-            maxHeight: `${itemFontSize * 2.2}px`
+            maxHeight: `${itemFontSize * 2.1}px`
           }}
           className="font-bold text-slate-900 text-center w-full break-words overflow-hidden line-clamp-2 my-0.5"
         >
@@ -190,13 +217,15 @@ const StickerPreviewCard: React.FC<{
         <svg ref={svgRef} className="max-w-full max-h-full" />
       </div>
       {showCodeTxt && (
-        <div style={{ fontSize: `${fontBc}px` }} className="font-mono text-slate-700 leading-none tracking-tight">
+        <div style={{ fontSize: `${fontBc}px` }} className="font-mono font-bold text-slate-700 leading-none tracking-tight">
           {sample.barcode}
         </div>
       )}
-      {showPrice && (
-        <div style={{ fontSize: `${fontPr}px` }} className="font-extrabold text-slate-900 whitespace-nowrap leading-none mt-0.5">
-          {priceText}
+      {(showPrice || showWholesalePrice) && (
+        <div style={{ fontSize: `${fontPr}px` }} className="font-extrabold text-slate-900 whitespace-nowrap leading-none mt-0.5 flex items-center justify-center gap-1 max-w-full overflow-hidden">
+          {showPrice && <span>{salePriceText}</span>}
+          {showPrice && showWholesalePrice && <span className="text-slate-400 font-normal">|</span>}
+          {showWholesalePrice && <span className="text-indigo-800">{wholesalePriceText}</span>}
         </div>
       )}
     </div>
@@ -219,6 +248,8 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
   const [showCompany, setShowCompany] = useState<boolean>(savedSettings.showCompany);
   const [showName, setShowName] = useState<boolean>(savedSettings.showName);
   const [showPrice, setShowPrice] = useState<boolean>(savedSettings.showPrice);
+  const [showWholesalePrice, setShowWholesalePrice] = useState<boolean>(savedSettings.showWholesalePrice ?? false);
+  const [barcodeHeightMm, setBarcodeHeightMm] = useState<number>(savedSettings.barcodeHeightMm ?? (savedSettings.heightMm <= 22 ? 7 : (savedSettings.heightMm <= 25 ? 8 : 11)));
   const [addGstToPrice, setAddGstToPrice] = useState<boolean>(savedSettings.addGstToPrice);
   const [priceLabel, setPriceLabel] = useState<'MRP' | 'Sale Price' | 'Price'>(savedSettings.priceLabel);
   const [priceFormat, setPriceFormat] = useState<PriceDisplayFormat>(savedSettings.priceFormat || 'label_only');
@@ -233,6 +264,8 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
       showCompany,
       showName,
       showPrice,
+      showWholesalePrice,
+      barcodeHeightMm,
       addGstToPrice,
       priceLabel,
       priceFormat,
@@ -243,26 +276,34 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
     } catch (e) {
       console.error('Error saving barcode settings:', e);
     }
-  }, [rollUp, widthMm, heightMm, showCompany, showName, showPrice, addGstToPrice, priceLabel, priceFormat, showCodeTxt]);
+  }, [rollUp, widthMm, heightMm, showCompany, showName, showPrice, showWholesalePrice, barcodeHeightMm, addGstToPrice, priceLabel, priceFormat, showCodeTxt]);
 
   // Initialize initial queue if passed (e.g. from Purchase Entry)
   useEffect(() => {
     if (initialQueue && initialQueue.length > 0) {
-      setQueue(initialQueue);
+      setQueue(initialQueue.map(q => {
+        if (q.wholesaleRate !== undefined && q.wholesaleRate > 0) return q;
+        const matchedItem = items.find(i => i['Item Code'] === q.itemCode);
+        return {
+          ...q,
+          wholesaleRate: Number(matchedItem?.['Wholesale Rate'] || (matchedItem as any)?.wholesaleRate || (matchedItem as any)?.wholesalePrice || 0)
+        };
+      }));
     }
-  }, [initialQueue]);
+  }, [initialQueue, items]);
 
   // Handle Up preset selection
   const handleRollUpChange = (up: number) => {
     setRollUp(up);
-    if (up === 1) { setWidthMm(50); setHeightMm(30); }
-    else if (up === 2) { setWidthMm(38); setHeightMm(25); }
-    else if (up === 3) { setWidthMm(32); setHeightMm(19); }
-    else if (up === 4) { setWidthMm(25); setHeightMm(15); }
+    if (up === 1) { setWidthMm(50); setHeightMm(30); setBarcodeHeightMm(11); }
+    else if (up === 2) { setWidthMm(38); setHeightMm(25); setBarcodeHeightMm(8); }
+    else if (up === 3) { setWidthMm(34); setHeightMm(22); setBarcodeHeightMm(7); }
+    else if (up === 4) { setWidthMm(25); setHeightMm(15); setBarcodeHeightMm(5); }
   };
 
   const addItemToQueue = (item: Item) => {
     const existing = queue.find(q => q.itemCode === item['Item Code']);
+    const wholesaleVal = Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate'] || (item as any)['wholesalePrice'] || 0);
     if (existing) {
       setQueue(queue.map(q => q.itemCode === item['Item Code'] ? { ...q, qty: q.qty + 1 } : q));
     } else {
@@ -273,6 +314,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
           itemName: item['Item Name'],
           barcode: item.Barcode || '100001',
           rate: item['Sale Rate'] || 0,
+          wholesaleRate: wholesaleVal,
           mrp: item.MRP || item['Sale Rate'] || 0,
           gstPct: item['GST %'] || 0,
           qty: 1
@@ -288,6 +330,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
       itemName: item['Item Name'],
       barcode: item.Barcode || '100001',
       rate: item['Sale Rate'] || 0,
+      wholesaleRate: Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate'] || (item as any)['wholesalePrice'] || 0),
       mrp: item.MRP || item['Sale Rate'] || 0,
       gstPct: item['GST %'] || 0,
       qty: 1
@@ -310,6 +353,16 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
   // Calculate Printed Price for a Queue Item
   const getPrintedPrice = (item: BarcodeQueueItem) => {
     let base = item.rate;
+    const enableGst = String(config.EnableGST) !== 'false';
+    if (addGstToPrice && enableGst && item.gstPct > 0) {
+      base = base + (base * item.gstPct / 100);
+    }
+    return Math.round((base + Number.EPSILON) * 100) / 100;
+  };
+
+  // Calculate Printed Wholesale Price for a Queue Item
+  const getPrintedWholesalePrice = (item: BarcodeQueueItem) => {
+    let base = item.wholesaleRate || 0;
     const enableGst = String(config.EnableGST) !== 'false';
     if (addGstToPrice && enableGst && item.gstPct > 0) {
       base = base + (base * item.gstPct / 100);
@@ -350,27 +403,16 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
       rows.push(flatList.slice(i, i + rollUp));
     }
 
-    const scaleFactor = Math.min(widthMm / 38, heightMm / 25);
-    const fontCo = Math.max(6, Math.round(8 * scaleFactor));
-    const fontNm = Math.max(7, Math.round(9 * scaleFactor));
-    const fontBc = Math.max(6, Math.round(8 * scaleFactor));
-    const fontPr = Math.max(7, Math.round(9 * scaleFactor));
+    const scaleFactor = Math.min(widthMm / 34, heightMm / 22);
+    const fontCo = Math.max(6, Math.round(7.5 * scaleFactor));
+    const fontNm = Math.max(6.5, Math.round(8.5 * scaleFactor));
+    const fontBc = Math.max(6, Math.round(7.5 * scaleFactor));
+    const fontPr = Math.max(6.5, Math.round(8.0 * scaleFactor));
 
-    const activeTextCount = (showCompany && config.CompanyName ? 1 : 0)
-                          + (showName ? 1 : 0)
-                          + (showCodeTxt ? 1 : 0)
-                          + (showPrice ? 1 : 0);
-
-    let heightRatio = 0.50; // default for 4 items
-    if (activeTextCount === 3) heightRatio = 0.65;
-    else if (activeTextCount === 2) heightRatio = 0.80; // Product Name + Price Tag only -> Auto increase height!
-    else if (activeTextCount === 1) heightRatio = 0.88;
-    else if (activeTextCount === 0) heightRatio = 0.95;
-
-    // Convert heightMm (in mm) to printable barcode pixel height
-    const totalLabelPx = heightMm * 3.78; // 3.78px per mm
-    const barcodeH = Math.max(16, Math.round(totalLabelPx * heightRatio));
-    const barcodeW = Math.max(0.7, Math.min(1.2, 1.0 * (widthMm / 38)));
+    // Target barcode bar height in mm: clean proportion prevents cutting off bottom text
+    const targetBcMm = barcodeHeightMm > 0 ? barcodeHeightMm : (heightMm <= 22 ? 7 : (heightMm <= 25 ? 8 : 11));
+    const barcodeH = Math.max(14, Math.round(targetBcMm * 3.78));
+    const barcodeW = Math.max(0.65, Math.min(1.15, 0.88 * (widthMm / 34)));
 
     const currSym = config.CurrencySymbol || 'Nu.';
 
@@ -384,8 +426,8 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
           @page { margin: 0; size: auto; }
           body {
             font-family: Arial, sans-serif;
-            margin: 2px;
-            padding: 0;
+            margin: 0;
+            padding: 1mm;
             background: #fff;
             color: #000;
           }
@@ -400,11 +442,13 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             align-items: center;
             justify-content: flex-start;
             page-break-inside: avoid;
-            margin-bottom: 1mm;
+            break-inside: avoid;
+            margin-bottom: 1.5mm;
           }
           .label-box {
             width: ${widthMm}mm;
             height: ${heightMm}mm;
+            max-height: ${heightMm}mm;
             border: 1px dotted #ccc;
             box-sizing: border-box;
             display: flex;
@@ -412,16 +456,17 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             align-items: center;
             justify-content: space-between;
             overflow: hidden;
-            padding: 1px 2px;
+            padding: 0.8mm 1.2mm;
             text-align: center;
             margin-right: 1.5mm;
             background: #fff;
             page-break-inside: avoid;
+            break-inside: avoid;
           }
           .comp-title {
             font-size: ${fontCo}px;
             font-weight: bold;
-            line-height: 1;
+            line-height: 1.05;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -438,21 +483,39 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             -webkit-box-orient: vertical;
             max-width: 100%;
           }
+          .barcode-wrapper {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            overflow: hidden;
+            margin: 0.3mm 0;
+          }
           .barcode-txt {
             font-size: ${fontBc}px;
             font-family: monospace;
+            font-weight: bold;
             line-height: 1;
             letter-spacing: 0.5px;
           }
           .price-tag {
             font-size: ${fontPr}px;
             font-weight: bold;
-            line-height: 1;
+            line-height: 1.05;
             white-space: nowrap;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
           }
           @media print {
             .label-box { border: none !important; }
-            body { margin: 0; }
+            body { margin: 0; padding: 0; }
           }
         </style>
       </head>
@@ -464,6 +527,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
       html += `<div class="roll-row">`;
       rowItems.forEach(x => {
         const printedPrice = getPrintedPrice(x);
+        const printedWholesalePrice = getPrintedWholesalePrice(x);
         const randId = Math.random().toString(36).substring(2, 7);
 
         html += `<div class="label-box">`;
@@ -472,15 +536,38 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
         }
         if (showName) {
           const itemFontSize = getItemNameFontSize(x.itemName, fontNm, widthMm);
-          html += `<div class="item-title" style="font-size: ${itemFontSize}px; max-height: ${itemFontSize * 2.2}px;">${x.itemName}</div>`;
+          html += `<div class="item-title" style="font-size: ${itemFontSize}px; max-height: ${itemFontSize * 2.1}px;">${x.itemName}</div>`;
         }
-        html += `<svg id="bc_${x.barcode}_${randId}" style="max-width: 100%; max-height: ${barcodeH}px;"></svg>`;
+        html += `<div class="barcode-wrapper">`;
+        html += `<svg id="bc_${x.barcode}_${randId}" style="max-width: 98%; height: ${barcodeH}px; display: block; margin: 0 auto;"></svg>`;
+        html += `</div>`;
         if (showCodeTxt) {
           html += `<div class="barcode-txt">${x.barcode}</div>`;
         }
-        if (showPrice) {
-          const priceText = formatPriceDisplay(priceLabel, currSym, printedPrice, priceFormat);
-          html += `<div class="price-tag">${priceText}</div>`;
+        if (showPrice || showWholesalePrice) {
+          html += `<div class="price-tag">`;
+          if (showPrice) {
+            const salePriceText = formatPriceDisplay(
+              showWholesalePrice ? (priceLabel === 'Sale Price' ? 'Sale' : priceLabel) : priceLabel,
+              currSym,
+              printedPrice,
+              priceFormat
+            );
+            html += `<span>${salePriceText}</span>`;
+          }
+          if (showPrice && showWholesalePrice) {
+            html += `<span style="color: #94a3b8; font-weight: normal; margin: 0 1px;">|</span>`;
+          }
+          if (showWholesalePrice) {
+            const wholesalePriceText = formatPriceDisplay(
+              showPrice ? 'WS' : 'Wholesale',
+              currSym,
+              printedWholesalePrice,
+              priceFormat
+            );
+            html += `<span style="color: #1e1b4b;">${wholesalePriceText}</span>`;
+          }
+          html += `</div>`;
         }
         html += `</div>`;
       });
@@ -638,6 +725,9 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                     <th className="py-2.5 px-3 text-left">Product Name</th>
                     <th className="py-2.5 px-3 text-left">Barcode</th>
                     <th className="py-2.5 px-3 text-right">Selling Rate</th>
+                    {showWholesalePrice && (
+                      <th className="py-2.5 px-3 text-right text-indigo-800">Wholesale Rate</th>
+                    )}
                     <th className="py-2.5 px-3 text-center">Sticker Qty</th>
                     <th className="py-2.5 px-3 text-center"></th>
                   </tr>
@@ -645,13 +735,14 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                 <tbody className="divide-y divide-slate-100">
                   {queue.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-10 text-center text-slate-400 italic">
+                      <td colSpan={showWholesalePrice ? 6 : 5} className="py-10 text-center text-slate-400 italic">
                         Queue is empty. Search products above or click "Add All Master Products".
                       </td>
                     </tr>
                   ) : (
                     queue.map(q => {
                       const printedPrice = getPrintedPrice(q);
+                      const printedWholesale = getPrintedWholesalePrice(q);
                       return (
                         <tr key={q.itemCode} className="hover:bg-slate-50">
                           <td className="py-2.5 px-3 font-semibold text-slate-800">
@@ -666,6 +757,11 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                           <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
                             {currSym} {printedPrice.toFixed(2)}
                           </td>
+                          {showWholesalePrice && (
+                            <td className="py-2.5 px-3 text-right font-mono font-bold text-indigo-800">
+                              {currSym} {printedWholesale.toFixed(2)}
+                            </td>
+                          )}
                           <td className="py-2.5 px-3 text-center">
                             <input
                               type="number"
@@ -703,9 +799,14 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
 
           {/* Paper Roll Layout Presets (1-Up, 2-Up, 3-Up, 4-Up) */}
           <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700">
-              Roll Layout (Stickers Across Roll)
-            </label>
+            <div className="flex justify-between items-center">
+              <label className="block text-xs font-bold text-slate-700">
+                Roll Layout (Stickers Across Roll)
+              </label>
+              <span className="text-[11px] font-semibold text-indigo-600">
+                {rollUp}-Up ({widthMm}x{heightMm}mm)
+              </span>
+            </div>
             <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
               {[1, 2, 3, 4].map(up => (
                 <button
@@ -722,27 +823,89 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                 </button>
               ))}
             </div>
+            {/* Quick Presets */}
+            <div className="flex flex-wrap gap-1 pt-1">
+              <button
+                type="button"
+                onClick={() => { setRollUp(3); setWidthMm(34); setHeightMm(22); setBarcodeHeightMm(7); }}
+                className={`text-[11px] px-2 py-0.5 rounded-md font-semibold border transition ${
+                  widthMm === 34 && heightMm === 22 && rollUp === 3
+                    ? 'bg-indigo-50 border-indigo-400 text-indigo-700 font-bold'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                34×22 mm (3-Up)
+              </button>
+              <button
+                type="button"
+                onClick={() => { setRollUp(2); setWidthMm(38); setHeightMm(25); setBarcodeHeightMm(8); }}
+                className={`text-[11px] px-2 py-0.5 rounded-md font-semibold border transition ${
+                  widthMm === 38 && heightMm === 25 && rollUp === 2
+                    ? 'bg-indigo-50 border-indigo-400 text-indigo-700 font-bold'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                38×25 mm (2-Up)
+              </button>
+              <button
+                type="button"
+                onClick={() => { setRollUp(1); setWidthMm(50); setHeightMm(25); setBarcodeHeightMm(9); }}
+                className={`text-[11px] px-2 py-0.5 rounded-md font-semibold border transition ${
+                  widthMm === 50 && heightMm === 25 && rollUp === 1
+                    ? 'bg-indigo-50 border-indigo-400 text-indigo-700 font-bold'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                50×25 mm (1-Up)
+              </button>
+            </div>
           </div>
 
-          {/* Roll Dimensions */}
-          <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-            <div>
-              <label className="block font-bold text-slate-600 mb-1">Sticker Width (mm)</label>
-              <input
-                type="number"
-                value={widthMm}
-                onChange={e => setWidthMm(Number(e.target.value))}
-                className="w-full h-8 rounded-lg border border-slate-300 px-2 font-bold bg-white outline-none"
-              />
+          {/* Roll Dimensions & Barcode Bar Height */}
+          <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Sticker Width (mm)</label>
+                <input
+                  type="number"
+                  value={widthMm}
+                  onChange={e => setWidthMm(Number(e.target.value))}
+                  className="w-full h-8 rounded-lg border border-slate-300 px-2 font-bold bg-white outline-none"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Sticker Height (mm)</label>
+                <input
+                  type="number"
+                  value={heightMm}
+                  onChange={e => setHeightMm(Number(e.target.value))}
+                  className="w-full h-8 rounded-lg border border-slate-300 px-2 font-bold bg-white outline-none"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block font-bold text-slate-600 mb-1">Sticker Height (mm)</label>
-              <input
-                type="number"
-                value={heightMm}
-                onChange={e => setHeightMm(Number(e.target.value))}
-                className="w-full h-8 rounded-lg border border-slate-300 px-2 font-bold bg-white outline-none"
-              />
+
+            {/* Barcode Height Control */}
+            <div className="pt-1 border-t border-slate-200/80">
+              <div className="flex justify-between items-center mb-1">
+                <label className="font-bold text-slate-700">Barcode Bar Height:</label>
+                <span className="font-mono font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded text-[11px]">
+                  {barcodeHeightMm} mm
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="5"
+                  max="14"
+                  step="1"
+                  value={barcodeHeightMm}
+                  onChange={e => setBarcodeHeightMm(Number(e.target.value))}
+                  className="w-full accent-indigo-600 cursor-pointer h-1.5 bg-slate-200 rounded-lg"
+                />
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1">
+                For 22mm height stickers, 6–7mm bar height leaves plenty of space so text below never cuts off.
+              </p>
             </div>
           </div>
 
@@ -751,7 +914,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             {/* Add GST Checkbox */}
             <label className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between cursor-pointer">
               <div className="text-xs">
-                <span className="block font-bold text-emerald-950">Add GST to Sale Price</span>
+                <span className="block font-bold text-emerald-950">Add GST to Price</span>
                 <span className="text-[11px] text-emerald-800">Includes GST % directly in the printed sticker rate</span>
               </div>
               <input
@@ -803,7 +966,11 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
               </label>
               <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
                 <input type="checkbox" checked={showPrice} onChange={e => setShowPrice(e.target.checked)} className="rounded border-slate-300 text-indigo-600" />
-                Price Tag
+                Sale Price Tag
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
+                <input type="checkbox" checked={showWholesalePrice} onChange={e => setShowWholesalePrice(e.target.checked)} className="rounded border-slate-300 text-indigo-600" />
+                Wholesale Price Tag
               </label>
               <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
                 <input type="checkbox" checked={showCodeTxt} onChange={e => setShowCodeTxt(e.target.checked)} className="rounded border-slate-300 text-indigo-600" />
@@ -827,6 +994,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                   {Array.from({ length: rollUp }).map((_, idx) => {
                     const sample = queue[idx % queue.length];
                     const printedPrice = getPrintedPrice(sample);
+                    const printedWholesalePrice = getPrintedWholesalePrice(sample);
 
                     return (
                       <StickerPreviewCard
@@ -838,11 +1006,14 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                         showCompany={showCompany}
                         showName={showName}
                         showPrice={showPrice}
+                        showWholesalePrice={showWholesalePrice}
                         showCodeTxt={showCodeTxt}
                         priceLabel={priceLabel}
                         priceFormat={priceFormat}
                         printedPrice={printedPrice}
+                        printedWholesalePrice={printedWholesalePrice}
                         currSym={currSym}
+                        barcodeHeightMm={barcodeHeightMm}
                       />
                     );
                   })}

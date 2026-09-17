@@ -35,18 +35,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   config
 }) => {
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'D' },
-    ...(config.EnablePOS !== 'false' ? [{ id: 'pos', label: 'POS Billing', icon: ShoppingCart, shortcut: 'P' }] : []),
-    ...(config.EnableNormalSale !== 'false' ? [{ id: 'normalsale', label: 'Sales Invoice (B2B)', icon: ShoppingBag, shortcut: 'N' }] : []),
-    { id: 'purchase', label: 'Purchase Entry', icon: ShoppingBag, shortcut: 'U' },
-    { id: 'vouchers', label: 'Vouchers', icon: BookOpen, shortcut: 'V' },
-    { id: 'masters', label: 'Masters Directory', icon: FolderKanban, shortcut: 'M' },
-    { id: 'barcode', label: 'Barcode Print', icon: Barcode, shortcut: 'B' },
-    ...(config.EnablePayroll !== 'false' ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users }] : []),
-    ...(config.EnableAssetManagement !== 'false' ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'A' }] : []),
-    ...(config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'K' }] : []),
-    { id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'R' },
-    { id: 'settings', label: 'Settings', icon: Settings, shortcut: 'S' }
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+H' },
+    ...(config.EnablePOS !== 'false' ? [{ id: 'pos', label: 'POS Billing', icon: ShoppingCart, shortcut: 'Alt+P' }] : []),
+    ...(config.EnableNormalSale !== 'false' ? [{ id: 'normalsale', label: 'Sales Invoice', icon: ShoppingBag, shortcut: 'Alt+N' }] : []),
+    { id: 'purchase', label: 'Purchase Entry', icon: ShoppingBag, shortcut: 'Alt+U' },
+    { id: 'vouchers', label: 'Vouchers', icon: BookOpen, shortcut: 'Alt+V' },
+    { id: 'masters', label: 'Masters', icon: FolderKanban, shortcut: 'Alt+M' },
+    { id: 'barcode', label: 'Barcode Print', icon: Barcode, shortcut: 'Alt+K' },
+    ...(config.EnablePayroll !== 'false' ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users, shortcut: 'Alt+Y' }] : []),
+    ...(config.EnableAssetManagement !== 'false' ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'Alt+E' }] : []),
+    ...(config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
+    { id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R' },
+    { id: 'settings', label: 'Settings', icon: Settings, shortcut: 'Alt+S' }
   ];
 
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -103,7 +103,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Sidebar Drawer Container */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 w-64 bg-slate-900 text-white flex flex-col p-4 shadow-2xl transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 bottom-0 left-0 z-50 w-64 sm:w-68 bg-slate-900 text-white flex flex-col p-3.5 shadow-2xl transition-transform duration-300 ease-in-out ${
           hideDesktop ? '' : 'lg:static lg:translate-x-0'
         } ${isOpenMobile ? 'translate-x-0' : '-translate-x-full'}`}
       >
@@ -132,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <nav 
           role="navigation"
           aria-label="Main Application Menu"
-          className="flex-1 space-y-1 overflow-y-auto"
+          className="flex-1 space-y-1 overflow-y-auto pr-1"
         >
           {navItems.map((item, idx) => {
             const Icon = item.icon;
@@ -145,22 +145,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onNavigate(item.id);
                   onCloseMobile();
                 }}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-bold text-xs sm:text-sm transition group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg font-bold text-xs sm:text-sm transition group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
                   isActive
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'text-slate-300 hover:bg-slate-800/90 hover:text-white hover:border-slate-700/80 border border-transparent'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                  <span>{item.label}</span>
+                <div className="flex items-center gap-3 min-w-0 pr-1">
+                  <Icon className={`h-4 w-4 shrink-0 transition-colors ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-400'}`} />
+                  <span className="truncate whitespace-nowrap">{item.label}</span>
                 </div>
                 {item.shortcut && (
                   <kbd
-                    className={`px-1.5 py-0.5 text-[10px] rounded font-mono transition ${
+                    className={`px-1.5 py-0.5 text-[10px] rounded font-mono whitespace-nowrap shrink-0 ml-2 transition ${
                       isActive
-                        ? 'bg-blue-700 text-blue-100'
-                        : 'bg-slate-800/90 text-slate-400 border border-slate-700 group-hover:text-slate-200'
+                        ? 'bg-blue-700 text-blue-100 border border-blue-500/50'
+                        : 'bg-slate-800 text-slate-400 border border-slate-700/80 group-hover:bg-slate-700 group-hover:text-slate-100 group-hover:border-slate-600'
                     }`}
                   >
                     {item.shortcut}

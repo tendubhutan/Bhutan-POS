@@ -411,34 +411,12 @@ export default function App() {
         return;
       }
 
-      // Voucher Register Shortcut (Alt+V) - Options: Option B (Reports view) + Auto-filter by active voucher type
+      // Vouchers Shortcut (Alt+V)
       const isKeyV = e.code === 'KeyV' || rawKey === 'v' || rawKey === '√';
       if (e.altKey && !e.ctrlKey && !e.metaKey && isKeyV) {
         e.preventDefault();
         e.stopPropagation();
-        
-        let vTypeFilter = 'ALL';
-        if (currentView === 'pos' || currentView === 'normalsale') {
-          vTypeFilter = 'Sales';
-        } else if (currentView === 'purchase') {
-          vTypeFilter = 'Purchase';
-        }
-
-        (window as any).__lastActiveVoucherType = undefined;
-        window.dispatchEvent(new CustomEvent('app:get-active-voucher-type'));
-        if ((window as any).__lastActiveVoucherType) {
-          vTypeFilter = (window as any).__lastActiveVoucherType;
-          delete (window as any).__lastActiveVoucherType;
-        }
-
-        const t: ReportTarget = {
-          category: 'reg',
-          regSubTab: 'vouchers',
-          voucherTypeFilter: vTypeFilter,
-          timestamp: Date.now()
-        };
-        setReportTarget(t);
-        navigateTo('reports', t);
+        navigateTo('vouchers');
         return;
       }
 
@@ -477,33 +455,45 @@ export default function App() {
         return;
       }
 
-      // Main Menu Single-Key Shortcuts (when NOT typing inside inputs/textareas/selects)
-      if (!isInput && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const key = e.key.toLowerCase();
-        if (key === 'p') {
-          e.preventDefault();
-          navigateTo('pos');
-        } else if (key === 'r') {
-          e.preventDefault();
-          navigateTo('reports');
-        } else if (key === 'v') {
-          e.preventDefault();
-          navigateTo('vouchers');
-        } else if (key === 'd') {
+      // Main Menu Alt-Key Combination Shortcuts (Alt+H, Alt+P, Alt+N, Alt+U, Alt+V, Alt+M, Alt+K, Alt+Y, Alt+E, Alt+B, Alt+R, Alt+S)
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        const key = rawKey;
+        if (key === 'h' || e.code === 'KeyH' || key === '˙') {
           e.preventDefault();
           navigateTo('dashboard');
-        } else if (key === 'i' || key === 'm') {
+        } else if (key === 'p' || e.code === 'KeyP' || key === 'π') {
           e.preventDefault();
-          navigateTo('masters');
-        } else if (key === 'b') {
+          navigateTo('pos');
+        } else if (key === 'n' || e.code === 'KeyN' || key === '˜') {
           e.preventDefault();
-          navigateTo('barcode');
-        } else if (key === 's') {
-          e.preventDefault();
-          navigateTo('settings');
-        } else if (key === 'u') {
+          navigateTo('normalsale');
+        } else if (key === 'u' || e.code === 'KeyU' || key === '¨') {
           e.preventDefault();
           navigateTo('purchase');
+        } else if (key === 'v' || e.code === 'KeyV' || key === '√') {
+          e.preventDefault();
+          navigateTo('vouchers');
+        } else if (key === 'm' || e.code === 'KeyM' || key === 'µ') {
+          e.preventDefault();
+          navigateTo('masters');
+        } else if (key === 'k' || e.code === 'KeyK' || key === '') {
+          e.preventDefault();
+          navigateTo('barcode');
+        } else if (key === 'y' || e.code === 'KeyY' || key === '¥') {
+          e.preventDefault();
+          navigateTo('payroll');
+        } else if (key === 'e' || e.code === 'KeyE' || key === '´') {
+          e.preventDefault();
+          navigateTo('assets');
+        } else if (key === 'b' || e.code === 'KeyB' || key === '∫') {
+          e.preventDefault();
+          navigateTo('bankrecon');
+        } else if (key === 'r' || e.code === 'KeyR' || key === '®') {
+          e.preventDefault();
+          navigateTo('reports');
+        } else if (key === 's' || e.code === 'KeyS' || key === 'ß') {
+          e.preventDefault();
+          navigateTo('settings');
         }
       }
     };

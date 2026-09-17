@@ -564,6 +564,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         itemName: line.itemName,
         barcode: matchedItem?.Barcode || '100001',
         rate: matchedItem?.['Sale Rate'] || line.rate,
+        wholesaleRate: Number(matchedItem?.['Wholesale Rate'] || (matchedItem as any)?.wholesaleRate || (matchedItem as any)?.wholesalePrice || 0),
         mrp: matchedItem?.MRP || matchedItem?.['Sale Rate'] || line.rate,
         gstPct: isGstMode ? (line.gstPct || Number(matchedItem?.['GST %']) || 0) : 0,
         qty: line.qty
