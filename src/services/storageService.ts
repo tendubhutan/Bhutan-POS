@@ -64,6 +64,7 @@ import {
   syncVoucherToFirestore,
   deleteVoucherFromFirestore
 } from './firebaseSyncService';
+import { getActiveCompanyId, DEFAULT_TENANT_COMPANY } from './supabaseTenantService';
 
 
 export const STORAGE_KEYS = {
@@ -885,10 +886,58 @@ export const DEFAULT_ITEMS: Item[] = [
   }
 ];
 
+// Helper to get tenant-scoped storage key
+export function getTenantStorageKey(key: string): string {
+  // Global keys that span across companies
+  if (
+    key.startsWith('supabase_') || 
+    key === 'deep_pos_users' || 
+    key === 'deep_pos_active_user_id' || 
+    key === 'bhutan_pos_session_unlocked'
+  ) {
+    return key;
+  }
+  
+  const cId = getActiveCompanyId();
+  if (!cId || cId === DEFAULT_TENANT_COMPANY.id) {
+    return key; // Default primary demo company uses the standard un-prefixed keys
+  }
+  return `${key}_${cId}`;
+}
+
 export function loadJson<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
+    const effectiveKey = getTenantStorageKey(key);
+    const raw = localStorage.getItem(effectiveKey);
+    if (raw) return JSON.parse(raw);
+
+    // If new company has no custom config/vouchers/items yet, provide clean defaults
+    if (effectiveKey !== key) {
+      // Clean blank state for vouchers, invoices, and transactions in a brand new company
+      if (
+        key === STORAGE_KEYS.SALES_INVOICES ||
+        key === STORAGE_KEYS.PURCHASE_INVOICES ||
+        key === STORAGE_KEYS.VOUCHERS ||
+        key === STORAGE_KEYS.STOCK_LEDGER ||
+        key === STORAGE_KEYS.LEDGER_LOG ||
+        key === STORAGE_KEYS.HELD_BILLS ||
+        key === STORAGE_KEYS.QUOTATIONS ||
+        key === STORAGE_KEYS.DELIVERY_NOTES ||
+        key === STORAGE_KEYS.SALES_ORDERS ||
+        key === STORAGE_KEYS.PURCHASE_ORDERS ||
+        key === STORAGE_KEYS.RECEIPT_NOTES ||
+        key === STORAGE_KEYS.PHYSICAL_STOCK ||
+        key === STORAGE_KEYS.MONTHLY_PAYROLLS ||
+        key === STORAGE_KEYS.EMPLOYEE_ADVANCES ||
+        key === STORAGE_KEYS.BANK_RECON ||
+        key === STORAGE_KEYS.TRASH_LOG ||
+        key === STORAGE_KEYS.AUDIT_LOG
+      ) {
+        return ([] as unknown) as T;
+      }
+    }
+
+    return fallback;
   } catch (e) {
     return fallback;
   }
@@ -915,7 +964,8 @@ export function migrateExistingItemsOpeningAmount() {
 
 export function saveJson<T>(key: string, val: T): void {
   try {
-    localStorage.setItem(key, JSON.stringify(val));
+    const effectiveKey = getTenantStorageKey(key);
+    localStorage.setItem(effectiveKey, JSON.stringify(val));
   } catch (e) {
     console.error('Failed to save to localStorage:', key, e);
   }

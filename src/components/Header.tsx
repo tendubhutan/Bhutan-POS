@@ -1,5 +1,5 @@
 import React from 'react';
-import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown, UserCircle } from 'lucide-react';
+import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown, UserCircle, Lock } from 'lucide-react';
 import { Config, AppUser } from '../types';
 import { AIAssistant } from './AIAssistant';
 
@@ -17,6 +17,7 @@ interface HeaderProps {
   activeFYName?: string;
   currentUser?: AppUser;
   onOpenUserAuthModal?: () => void;
+  onLockTerminal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,7 +33,8 @@ export const Header: React.FC<HeaderProps> = ({
   activeCompanyName,
   activeFYName,
   currentUser,
-  onOpenUserAuthModal
+  onOpenUserAuthModal,
+  onLockTerminal
 }) => {
   return (
     <header className={`bg-blue-700 text-white border-b border-blue-800 px-3 sm:px-4 ${isPosMode ? 'py-1.5' : 'py-2'} flex items-center justify-between shadow-md relative z-50`}>
@@ -156,6 +158,19 @@ export const Header: React.FC<HeaderProps> = ({
                 {currentUser?.role || 'Staff'}
               </span>
             </div>
+          </button>
+        )}
+
+        {/* Lock Terminal Button */}
+        {onLockTerminal && (
+          <button
+            type="button"
+            onClick={onLockTerminal}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-800 hover:bg-rose-700/80 border border-blue-600 text-xs font-bold text-white shadow-xs transition cursor-pointer"
+            title="Lock Terminal Screen (Alt+L)"
+          >
+            <Lock className="h-3.5 w-3.5 text-amber-300" />
+            <span className="hidden md:inline text-[11px]">Lock</span>
           </button>
         )}
 

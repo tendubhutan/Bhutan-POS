@@ -24,6 +24,7 @@ import { TrashModal } from './components/TrashModal';
 import { BulkDeleteModal } from './components/BulkDeleteModal';
 import { CompanyManagerModal } from './components/CompanyManagerModal';
 import { UserAuthModal } from './components/UserAuthModal';
+import { LoginGate } from './components/LoginGate';
 import { getActiveUser } from './services/storageService';
 import { AppUser } from './types';
 import { 
@@ -240,6 +241,11 @@ export default function App() {
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showUserAuthModal, setShowUserAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<AppUser>(getActiveUser());
+  const [isTerminalLocked, setIsTerminalLocked] = useState<boolean>(() => {
+    // Check if session has explicitly logged in or is locked
+    const sessionUnlocked = sessionStorage.getItem('bhutan_pos_session_unlocked');
+    return sessionUnlocked !== 'true';
+  });
   const [activeCompany, setActiveCompany] = useState<SupabaseCompany | null>(null);
   const [activeFY, setActiveFY] = useState<SupabaseFinancialYear | null>(null);
 
@@ -586,6 +592,7 @@ export default function App() {
         onCloseMobile={() => setIsMobileOpen(false)}
         hideDesktop={true}
         config={config}
+        currentUser={currentUser}
       />
 
       {/* Main Content Area */}
@@ -604,6 +611,10 @@ export default function App() {
           activeFYName={activeFY?.fy_name}
           currentUser={currentUser}
           onOpenUserAuthModal={() => setShowUserAuthModal(true)}
+          onLockTerminal={() => {
+            sessionStorage.removeItem('bhutan_pos_session_unlocked');
+            setIsTerminalLocked(true);
+          }}
         />
 
         <main className={`flex-1 ${currentView === 'reports' ? 'overflow-y-auto' : isHighDensityView ? 'p-1.5 sm:p-2 pb-1.5 overflow-hidden flex flex-col min-h-0' : 'p-3 sm:p-6 pb-6 lg:pb-8 overflow-y-auto'} relative`}>
@@ -897,6 +908,20 @@ export default function App() {
           refreshData();
         }}
       />
+
+      {/* Terminal Login Gate Lock Screen */}
+      {isTerminalLocked && (
+        <LoginGate
+          activeCompany={activeCompany}
+          activeFY={activeFY}
+          onUnlock={(user) => {
+            sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
+            setCurrentUser(user);
+            setIsTerminalLocked(false);
+            refreshData();
+          }}
+        />
+      )}
     </div>
   );
 }

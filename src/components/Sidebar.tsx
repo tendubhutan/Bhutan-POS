@@ -15,7 +15,7 @@ import {
   Landmark,
   History
 } from 'lucide-react';
-import { Config } from "../types";
+import { Config, AppUser } from "../types";
 
 interface SidebarProps {
   currentView: string;
@@ -24,6 +24,7 @@ interface SidebarProps {
   onCloseMobile: () => void;
   hideDesktop?: boolean;
   config: Config;
+  currentUser?: AppUser;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -32,21 +33,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpenMobile,
   onCloseMobile,
   hideDesktop = false,
-  config
+  config,
+  currentUser
 }) => {
+  const isCashier = currentUser?.role === 'Cashier';
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+H' },
     ...(config.EnablePOS !== 'false' ? [{ id: 'pos', label: 'POS Billing', icon: ShoppingCart, shortcut: 'Alt+P' }] : []),
     ...(config.EnableNormalSale !== 'false' ? [{ id: 'normalsale', label: 'Sales Invoice', icon: ShoppingBag, shortcut: 'Alt+N' }] : []),
-    { id: 'purchase', label: 'Purchase Entry', icon: ShoppingBag, shortcut: 'Alt+U' },
-    { id: 'vouchers', label: 'Vouchers', icon: BookOpen, shortcut: 'Alt+V' },
+    ...(!isCashier ? [{ id: 'purchase', label: 'Purchase Entry', icon: ShoppingBag, shortcut: 'Alt+U' }] : []),
+    ...(!isCashier ? [{ id: 'vouchers', label: 'Vouchers', icon: BookOpen, shortcut: 'Alt+V' }] : []),
     { id: 'masters', label: 'Masters', icon: FolderKanban, shortcut: 'Alt+M' },
     { id: 'barcode', label: 'Barcode Print', icon: Barcode, shortcut: 'Alt+K' },
-    ...(config.EnablePayroll !== 'false' ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users, shortcut: 'Alt+Y' }] : []),
-    ...(config.EnableAssetManagement !== 'false' ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'Alt+E' }] : []),
-    ...(config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
-    { id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R' },
-    { id: 'settings', label: 'Settings', icon: Settings, shortcut: 'Alt+S' }
+    ...(!isCashier && config.EnablePayroll !== 'false' ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users, shortcut: 'Alt+Y' }] : []),
+    ...(!isCashier && config.EnableAssetManagement !== 'false' ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'Alt+E' }] : []),
+    ...(!isCashier && config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
+    ...(!isCashier ? [{ id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R' }] : []),
+    ...(!isCashier ? [{ id: 'settings', label: 'Settings', icon: Settings, shortcut: 'Alt+S' }] : [])
   ];
 
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
