@@ -933,10 +933,65 @@ export function loadJson<T>(key: string, fallback: T): T {
         key === STORAGE_KEYS.TRASH_LOG ||
         key === STORAGE_KEYS.AUDIT_LOG ||
         key === STORAGE_KEYS.ITEMS ||
+        key === STORAGE_KEYS.EMPLOYEES ||
+        key === STORAGE_KEYS.PAY_HEADS ||
         key === 'deep_pos_am_assets' ||
         key === 'deep_pos_am_disposals'
       ) {
         return ([] as unknown) as T;
+      }
+
+      // Clean counters for non-demo tenant
+      if (key === STORAGE_KEYS.COUNTERS) {
+        return ({
+          SalesInvoice: 0,
+          POSInvoice: 0,
+          PurchaseInvoice: 0,
+          PaymentVoucher: 0,
+          ReceiptVoucher: 0,
+          JournalVoucher: 0,
+          ContraVoucher: 0,
+          CreditNote: 0,
+          DebitNote: 0,
+          Voucher: 0
+        } as unknown) as T;
+      }
+
+      // Company configuration: Do NOT inherit "Bhutan Retail Enterprise" demo profile!
+      if (key === STORAGE_KEYS.CONFIG) {
+        let compName = 'Client Enterprise';
+        let tpn = '';
+        let phone = '';
+        let address = '';
+        let currency = 'Nu.';
+        try {
+          const cached = localStorage.getItem('supabase_cached_companies');
+          if (cached) {
+            const cId = getActiveCompanyId();
+            const list = JSON.parse(cached);
+            const found = list.find((x: any) => x.id === cId);
+            if (found) {
+              compName = found.company_name || compName;
+              tpn = found.tax_payer_id || '';
+              phone = found.phone || '';
+              address = found.address || '';
+              currency = found.currency_symbol || currency;
+            }
+          }
+        } catch {}
+
+        const clientCfg = {
+          ...(fallback as any),
+          CompanyName: compName,
+          CompanyTPNNo: tpn,
+          CompanyGSTNo: '',
+          CompanyPhone: phone,
+          CompanyAddress: address,
+          CurrencySymbol: currency,
+          ReceiptHeader: compName,
+          TaxRatePercent: 0
+        };
+        return (clientCfg as unknown) as T;
       }
 
       // For standard default ledgers in a new company, initialize standard chart of accounts with ZERO balances

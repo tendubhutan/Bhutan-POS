@@ -1,5 +1,17 @@
 import { supabase, isSupabaseConfigured, SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser } from '../lib/supabase';
 import { Config, AppUser } from '../types';
+import { db } from '../lib/firebase';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy
+} from 'firebase/firestore';
 
 export type { SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser };
 
@@ -39,8 +51,17 @@ export function generateUUID(): string {
 export function getDedicatedCompanyIdFromUrl(): string | null {
   try {
     if (typeof window === 'undefined' || !window.location) return null;
-    const params = new URLSearchParams(window.location.search);
-    return params.get('company') || params.get('cid') || params.get('tenant') || null;
+    const searchParams = new URLSearchParams(window.location.search);
+    const fromSearch = searchParams.get('company') || searchParams.get('cid') || searchParams.get('tenant');
+    if (fromSearch) return fromSearch;
+
+    // Support hash fragment URLs like /#/?company=... or /#/path?company=...
+    if (window.location.hash && window.location.hash.includes('?')) {
+      const hashQuery = window.location.hash.split('?')[1];
+      const hashParams = new URLSearchParams(hashQuery);
+      return hashParams.get('company') || hashParams.get('cid') || hashParams.get('tenant') || null;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -83,14 +104,21 @@ export const DEFAULT_TENANT_FY: SupabaseFinancialYear = {
 
 // Filter companies according to dedicated client URL or hide demo company preference
 function filterCompaniesForView(list: SupabaseCompany[]): SupabaseCompany[] {
-  if (!list || list.length === 0) return [DEFAULT_TENANT_COMPANY];
-
-  // 1. If accessed via dedicated client URL parameter (?company=...), lock ONLY to this specific company
+  // 1. If accessed via dedicated client URL parameter (?company=...), lock ONLY to this specific company!
+  // CRITICAL: Demo company MUST NEVER leak into a client link!
   const dedicatedId = getDedicatedCompanyIdFromUrl();
   if (dedicatedId) {
     const matched = list.filter(c => c.id === dedicatedId);
     if (matched.length > 0) return matched;
+    // If not yet loaded from Firestore, return a clean client tenant placeholder so demo company is NEVER shown
+    return [{
+      id: dedicatedId,
+      company_name: 'Client Workspace',
+      currency_symbol: 'Nu.'
+    }];
   }
+
+  if (!list || list.length === 0) return [DEFAULT_TENANT_COMPANY];
 
   // 2. If client mode is active, or if user explicitly chose to hide demo company, and at least one real company exists
   const hideDemo = typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_hide_demo_company') === 'true';
@@ -103,136 +131,110 @@ function filterCompaniesForView(list: SupabaseCompany[]): SupabaseCompany[] {
   return list;
 }
 
-// Load companies from Supabase or cached offline state
+// Load companies from Firestore & local offline cache
 export async function fetchUserCompanies(): Promise<{ companies: SupabaseCompany[]; error?: string }> {
   try {
-    if (!isSupabaseConfigured) {
-      const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES);
-      const list: SupabaseCompany[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
-      return { companies: filterCompaniesForView(list) };
+    const dedicatedId = getDedicatedCompanyIdFromUrl();
+    const mergedMap = new Map<string, SupabaseCompany>();
+
+    // Load locally cached companies first
+    const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES) : null;
+    if (cached) {
+      try {
+        const localList: SupabaseCompany[] = JSON.parse(cached);
+        localList.forEach(c => {
+          if (c && c.id) mergedMap.set(c.id, c);
+        });
+      } catch {}
     }
 
-    const { data, error } = await supabase
-      .from('companies')
-      .select('*')
-      .order('company_name', { ascending: true });
-
-    if (error) {
-      console.warn('Supabase fetchUserCompanies error, falling back to local cached list:', error.message);
-      const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES);
-      const list: SupabaseCompany[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
-      return { companies: filterCompaniesForView(list), error: error.message };
+    // Always ensure default demo company is present in map unless in dedicated client mode
+    if (!dedicatedId) {
+      mergedMap.set(DEFAULT_TENANT_COMPANY.id, DEFAULT_TENANT_COMPANY);
     }
 
-    if (data && data.length > 0) {
-      localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(data));
-      return { companies: filterCompaniesForView(data) };
+    // If dedicated client URL was provided, attempt to fetch that specific company from Firestore immediately
+    if (dedicatedId && !mergedMap.has(dedicatedId)) {
+      try {
+        const compDocRef = doc(db, 'companies', dedicatedId);
+        const compDocSnap = await getDoc(compDocRef);
+        if (compDocSnap.exists()) {
+          const compData = compDocSnap.data() as SupabaseCompany;
+          mergedMap.set(compData.id, compData);
+        }
+      } catch (e) {
+        console.warn('Could not fetch dedicated company directly from Firestore:', e);
+      }
     }
 
-    // If Supabase table is empty, auto-bootstrap the initial default company into Supabase
-    const { data: insertedComp, error: insertErr } = await supabase
-      .from('companies')
-      .insert([{
-        company_name: DEFAULT_TENANT_COMPANY.company_name,
-        trade_license_no: DEFAULT_TENANT_COMPANY.trade_license_no,
-        tax_payer_id: DEFAULT_TENANT_COMPANY.tax_payer_id,
-        phone: DEFAULT_TENANT_COMPANY.phone,
-        email: DEFAULT_TENANT_COMPANY.email,
-        address: DEFAULT_TENANT_COMPANY.address,
-        currency_symbol: DEFAULT_TENANT_COMPANY.currency_symbol
-      }])
-      .select()
-      .single();
-
-    if (!insertErr && insertedComp) {
-      // Also bootstrap initial FY
-      const curYr = new Date().getFullYear();
-      await supabase
-        .from('financial_years')
-        .insert([{
-          company_id: insertedComp.id,
-          fy_name: `FY ${curYr}`,
-          start_date: `${curYr}-01-01`,
-          end_date: `${curYr}-12-31`,
-          is_active: true,
-          is_locked: false
-        }]);
-
-      localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify([insertedComp]));
-      localStorage.setItem(STORAGE_KEYS.TENANT_COMPANY_ID, insertedComp.id);
-      return { companies: filterCompaniesForView([insertedComp]) };
+    // Fetch all registered companies from Cloud Firestore
+    try {
+      const companiesCollRef = collection(db, 'companies');
+      const snap = await getDocs(companiesCollRef);
+      snap.forEach(d => {
+        const data = d.data() as SupabaseCompany;
+        if (data && data.id) {
+          mergedMap.set(data.id, data);
+        }
+      });
+    } catch (fsErr) {
+      console.warn('Firestore fetch companies warning:', fsErr);
     }
 
-    return { companies: [DEFAULT_TENANT_COMPANY] };
+    const allList = Array.from(mergedMap.values());
+    if (typeof localStorage !== 'undefined' && allList.length > 0) {
+      localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(allList));
+    }
+
+    return { companies: filterCompaniesForView(allList) };
   } catch (err: any) {
-    return { companies: [DEFAULT_TENANT_COMPANY], error: err?.message || 'Error fetching companies' };
+    const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES) : null;
+    const list: SupabaseCompany[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
+    return { companies: filterCompaniesForView(list), error: err?.message };
   }
 }
 
-// Create new company in Supabase
+// Create new company in Firestore and local storage
 export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'created_at'>): Promise<{ company?: SupabaseCompany; error?: string }> {
   try {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase
-        .from('companies')
-        .insert([{
-          company_name: companyData.company_name,
-          trade_license_no: companyData.trade_license_no,
-          tax_payer_id: companyData.tax_payer_id,
-          phone: companyData.phone,
-          email: companyData.email,
-          address: companyData.address,
-          currency_symbol: companyData.currency_symbol,
-          logo_url: companyData.logo_url
-        }])
-        .select()
-        .single();
+    const newId = generateUUID();
+    const newComp: SupabaseCompany = {
+      id: newId,
+      ...companyData,
+      created_at: new Date().toISOString()
+    };
 
-      if (error) {
-        console.error('Failed to create company in Supabase:', error);
-        return { error: error.message };
-      }
-
-      // Automatically create the initial default Financial Year for this new company (Bhutan: Jan 1 - Dec 31)
-      const currentYear = new Date().getFullYear();
-      await createFinancialYear({
-        company_id: data.id,
-        fy_name: `FY ${currentYear}`,
-        start_date: `${currentYear}-01-01`,
-        end_date: `${currentYear}-12-31`,
-        is_active: true,
-        is_locked: false
-      });
-
-      // Initialize clean blank slate for new tenant
-      initializeBlankTenantStorage(data.id);
-      return { company: data };
-    } else {
-      // Local demo persistence
-      const newId = generateUUID();
-      const newComp: SupabaseCompany = {
-        id: newId,
-        ...companyData
-      };
-      const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES);
-      const list: SupabaseCompany[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
-      list.push(newComp);
-      localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(list));
-
-      const currentYear = new Date().getFullYear();
-      await createFinancialYear({
-        company_id: newComp.id,
-        fy_name: `FY ${currentYear}`,
-        start_date: `${currentYear}-01-01`,
-        end_date: `${currentYear}-12-31`,
-        is_active: true,
-        is_locked: false
-      });
-
-      // Initialize clean blank slate for new tenant
-      initializeBlankTenantStorage(newComp.id);
-      return { company: newComp };
+    // 1. Save to Cloud Firestore
+    try {
+      const compRef = doc(db, 'companies', newId);
+      await setDoc(compRef, newComp);
+    } catch (fsErr) {
+      console.warn('Could not write company to Firestore, saving offline:', fsErr);
     }
+
+    // 2. Save in local cache
+    const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES) : null;
+    const list: SupabaseCompany[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
+    list.push(newComp);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(list));
+    }
+
+    // 3. Automatically create initial Financial Year for this new company (Jan 1 - Dec 31)
+    const currentYear = new Date().getFullYear();
+    await createFinancialYear({
+      company_id: newComp.id,
+      fy_name: `FY ${currentYear}`,
+      start_date: `${currentYear}-01-01`,
+      end_date: `${currentYear}-12-31`,
+      is_active: true,
+      is_locked: false
+    });
+
+    // 4. Initialize clean blank slate for new tenant (0 vouchers, 0 sales, reset counters)
+    initializeBlankTenantStorage(newComp.id);
+
+    return { company: newComp };
   } catch (err: any) {
     return { error: err?.message || 'Failed to create company' };
   }
@@ -284,112 +286,93 @@ export function initializeBlankTenantStorage(cId: string) {
 // Fetch financial years for a company
 export async function fetchFinancialYears(companyId: string): Promise<{ financialYears: SupabaseFinancialYear[]; error?: string }> {
   try {
-    if (!isSupabaseConfigured) {
-      const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_FYS);
-      let list: SupabaseFinancialYear[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_FY];
-      
-      // Auto-migrate any legacy 2025-2026 April-March entries to standard Bhutan Jan-Dec calendar
-      let modified = false;
-      list = list.map(fy => {
-        if (fy.id === 'fy_2025_2026' || fy.fy_name === 'FY 2025-2026' || fy.start_date.endsWith('-04-01')) {
-          modified = true;
-          return {
-            ...fy,
-            id: '00000000-0000-0000-0000-000000000002',
-            fy_name: 'FY 2026',
-            start_date: '2026-01-01',
-            end_date: '2026-12-31'
-          };
-        }
-        return fy;
+    // 1. Try fetching from Cloud Firestore
+    try {
+      const fyCollRef = collection(db, 'financial_years');
+      const q = query(fyCollRef, where('company_id', '==', companyId));
+      const snap = await getDocs(q);
+      const fsFYs: SupabaseFinancialYear[] = [];
+      snap.forEach(d => {
+        const data = d.data() as SupabaseFinancialYear;
+        if (data && data.id) fsFYs.push(data);
       });
-      if (modified) {
-        localStorage.setItem(STORAGE_KEYS.LOCAL_FYS, JSON.stringify(list));
+      if (fsFYs.length > 0) {
+        return { financialYears: fsFYs };
       }
-
-      const filtered = list.filter(f => f.company_id === companyId);
-      return { financialYears: filtered.length > 0 ? filtered : [DEFAULT_TENANT_FY] };
+    } catch (fsErr) {
+      console.warn('Firestore fetch financial years error:', fsErr);
     }
 
-    // If companyId is not a valid UUID format (e.g. legacy cached 'cmp_demo_main'), try finding first real company in db
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    let targetCompanyId = companyId;
-
-    if (!uuidRegex.test(targetCompanyId)) {
-      const { companies } = await fetchUserCompanies();
-      const validCompany = companies.find(c => uuidRegex.test(c.id));
-      if (validCompany) {
-        targetCompanyId = validCompany.id;
-        setActiveCompanyId(targetCompanyId);
-      } else {
-        return { financialYears: [DEFAULT_TENANT_FY] };
+    // 2. Fallback to local storage
+    const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_FYS) : null;
+    let list: SupabaseFinancialYear[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_FY];
+    
+    // Auto-migrate any legacy 2025-2026 April-March entries to standard Bhutan Jan-Dec calendar
+    let modified = false;
+    list = list.map(fy => {
+      if (fy.id === 'fy_2025_2026' || fy.fy_name === 'FY 2025-2026' || fy.start_date.endsWith('-04-01')) {
+        modified = true;
+        return {
+          ...fy,
+          id: '00000000-0000-0000-0000-000000000002',
+          fy_name: 'FY 2026',
+          start_date: '2026-01-01',
+          end_date: '2026-12-31'
+        };
       }
+      return fy;
+    });
+    if (modified && typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEYS.LOCAL_FYS, JSON.stringify(list));
     }
 
-    const { data, error } = await supabase
-      .from('financial_years')
-      .select('*')
-      .eq('company_id', targetCompanyId)
-      .order('start_date', { ascending: false });
-
-    if (error) {
-      return { financialYears: [], error: error.message };
+    const filtered = list.filter(f => f.company_id === companyId);
+    if (filtered.length > 0) {
+      return { financialYears: filtered };
     }
 
-    return { financialYears: data || [] };
+    // Default financial year for this company
+    const curYear = new Date().getFullYear();
+    const fallbackFY: SupabaseFinancialYear = {
+      id: generateUUID(),
+      company_id: companyId,
+      fy_name: `FY ${curYear}`,
+      start_date: `${curYear}-01-01`,
+      end_date: `${curYear}-12-31`,
+      is_active: true,
+      is_locked: false
+    };
+    return { financialYears: [fallbackFY] };
   } catch (err: any) {
-    return { financialYears: [], error: err?.message || 'Error fetching financial years' };
+    return { financialYears: [DEFAULT_TENANT_FY], error: err?.message || 'Error fetching financial years' };
   }
 }
 
 // Create new financial year for active company
 export async function createFinancialYear(fyData: Omit<SupabaseFinancialYear, 'id' | 'created_at'>): Promise<{ financialYear?: SupabaseFinancialYear; error?: string }> {
   try {
-    if (isSupabaseConfigured) {
-      // Ensure company_id is a valid UUID
-      let targetCompanyId = fyData.company_id;
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(targetCompanyId)) {
-        const { companies } = await fetchUserCompanies();
-        const validCompany = companies.find(c => uuidRegex.test(c.id));
-        if (validCompany) {
-          targetCompanyId = validCompany.id;
-          setActiveCompanyId(targetCompanyId);
-        } else {
-          return { error: 'Invalid Company selection. Please select or create a valid company first.' };
-        }
-      }
+    const newId = generateUUID();
+    const newFY: SupabaseFinancialYear = {
+      id: newId,
+      ...fyData
+    };
 
-      const { data, error } = await supabase
-        .from('financial_years')
-        .insert([{
-          company_id: targetCompanyId,
-          fy_name: fyData.fy_name,
-          start_date: fyData.start_date,
-          end_date: fyData.end_date,
-          is_active: fyData.is_active ?? true,
-          is_locked: fyData.is_locked ?? false
-        }])
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Failed to create financial year in Supabase:', error);
-        return { error: error.message };
-      }
-      return { financialYear: data };
-    } else {
-      const newId = generateUUID();
-      const newFY: SupabaseFinancialYear = {
-        id: newId,
-        ...fyData
-      };
-      const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_FYS);
-      const list: SupabaseFinancialYear[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_FY];
-      list.push(newFY);
-      localStorage.setItem(STORAGE_KEYS.LOCAL_FYS, JSON.stringify(list));
-      return { financialYear: newFY };
+    // Save to Firestore
+    try {
+      const fyDocRef = doc(db, 'financial_years', newId);
+      await setDoc(fyDocRef, newFY);
+    } catch (fsErr) {
+      console.warn('Could not write financial year to Firestore, saving offline:', fsErr);
     }
+
+    // Save to local cache
+    const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_FYS) : null;
+    const list: SupabaseFinancialYear[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_FY];
+    list.push(newFY);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEYS.LOCAL_FYS, JSON.stringify(list));
+    }
+    return { financialYear: newFY };
   } catch (err: any) {
     return { error: err?.message || 'Failed to create financial year' };
   }
@@ -400,7 +383,7 @@ export async function createFinancialYear(fyData: Omit<SupabaseFinancialYear, 'i
  */
 export async function deleteCompany(companyId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES);
+    const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES) : null;
     let list: SupabaseCompany[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
 
     if (list.length <= 1) {
@@ -408,21 +391,32 @@ export async function deleteCompany(companyId: string): Promise<{ success: boole
     }
 
     list = list.filter(c => c.id !== companyId);
-    localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(list));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(list));
+    }
+
+    // 1. Delete from Firestore
+    try {
+      await deleteDoc(doc(db, 'companies', companyId));
+    } catch (fsErr) {
+      console.warn('Firestore delete company error:', fsErr);
+    }
 
     // Clear all tenant-scoped data keys for this company from localStorage
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.endsWith(`_${companyId}`)) {
-        keysToRemove.push(k);
+    if (typeof localStorage !== 'undefined') {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.endsWith(`_${companyId}`)) {
+          keysToRemove.push(k);
+        }
       }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
     }
-    keysToRemove.forEach(k => localStorage.removeItem(k));
 
     // Also remove financial years for this company
-    const cachedFYs = localStorage.getItem(STORAGE_KEYS.LOCAL_FYS);
-    if (cachedFYs) {
+    const cachedFYs = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_FYS) : null;
+    if (cachedFYs && typeof localStorage !== 'undefined') {
       try {
         let fys: SupabaseFinancialYear[] = JSON.parse(cachedFYs);
         fys = fys.filter(f => f.company_id !== companyId);
@@ -436,12 +430,9 @@ export async function deleteCompany(companyId: string): Promise<{ success: boole
       setActiveCompanyId(nextComp.id);
     }
 
-    if (isSupabaseConfigured) {
-      await supabase.from('companies').delete().eq('id', companyId);
-      await supabase.from('financial_years').delete().eq('company_id', companyId);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('supabase:tenant_changed', { detail: { companyId: list[0].id } }));
     }
-
-    window.dispatchEvent(new CustomEvent('supabase:tenant_changed', { detail: { companyId: list[0].id } }));
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Failed to delete company' };
@@ -462,8 +453,30 @@ export function getActiveCompanyId(): string {
 }
 
 export function setActiveCompanyId(id: string): void {
-  localStorage.setItem(STORAGE_KEYS.TENANT_COMPANY_ID, id);
-  window.dispatchEvent(new CustomEvent('supabase:tenant_changed', { detail: { companyId: id } }));
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(STORAGE_KEYS.TENANT_COMPANY_ID, id);
+  }
+
+  // Update browser URL seamlessly so refresh or copying URL retains the chosen company
+  if (typeof window !== 'undefined' && window.history && window.location) {
+    try {
+      const url = new URL(window.location.href);
+      if (id === DEFAULT_TENANT_COMPANY.id) {
+        url.searchParams.delete('company');
+        url.searchParams.delete('cid');
+        url.searchParams.delete('tenant');
+      } else {
+        url.searchParams.set('company', id);
+      }
+      window.history.replaceState({}, '', url.toString());
+    } catch (e) {
+      console.warn('Could not update URL parameter on company switch:', e);
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('supabase:tenant_changed', { detail: { companyId: id } }));
+  }
 }
 
 export function getActiveFYId(): string {

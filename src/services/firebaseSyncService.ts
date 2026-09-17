@@ -254,8 +254,13 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
     // 2. Items listener with non-destructive local merge
     const itemsRef = collection(db, 'tenants', cId, 'items');
     const unsubItems = onSnapshot(itemsRef, (snapshot) => {
-      // If snapshot is empty for a non-demo company, keep company's items blank!
+      // If snapshot is empty for a non-demo company, enforce clean blank items list!
       if (snapshot.empty && !isDemo) {
+        const currentLocal = loadJson<Item[]>(STORAGE_KEYS.ITEMS, []);
+        if (currentLocal.length > 0) {
+          saveJson(STORAGE_KEYS.ITEMS, []);
+          if (onDataUpdated) onDataUpdated();
+        }
         return;
       }
 
@@ -359,7 +364,12 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
     const salesRef = collection(db, 'tenants', cId, 'sales_invoices');
     const unsubSales = onSnapshot(salesRef, (snapshot) => {
       if (snapshot.empty && !isDemo) {
-        // Client company has 0 sales. Do NOT populate with demo sales!
+        // Client company has 0 sales in Firestore. Enforce clean 0 sales!
+        const currentLocal = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+        if (currentLocal.length > 0) {
+          saveJson(STORAGE_KEYS.SALES_INVOICES, []);
+          if (onDataUpdated) onDataUpdated();
+        }
         return;
       }
 
@@ -388,7 +398,7 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
       });
 
       const mergedSales = Array.from(salesMap.values());
-      if (mergedSales.length > 0) {
+      if (mergedSales.length > 0 || isDemo) {
         saveJson(STORAGE_KEYS.SALES_INVOICES, mergedSales);
         if (onDataUpdated) onDataUpdated();
       }
@@ -407,6 +417,11 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
     const purchaseRef = collection(db, 'tenants', cId, 'purchase_invoices');
     const unsubPurchase = onSnapshot(purchaseRef, (snapshot) => {
       if (snapshot.empty && !isDemo) {
+        const currentLocal = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+        if (currentLocal.length > 0) {
+          saveJson(STORAGE_KEYS.PURCHASE_INVOICES, []);
+          if (onDataUpdated) onDataUpdated();
+        }
         return;
       }
 
@@ -435,7 +450,7 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
       });
 
       const mergedPurchases = Array.from(purchaseMap.values());
-      if (mergedPurchases.length > 0) {
+      if (mergedPurchases.length > 0 || isDemo) {
         saveJson(STORAGE_KEYS.PURCHASE_INVOICES, mergedPurchases);
         if (onDataUpdated) onDataUpdated();
       }
@@ -454,7 +469,12 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
     const vouchersRef = collection(db, 'tenants', cId, 'vouchers');
     const unsubVouchers = onSnapshot(vouchersRef, (snapshot) => {
       if (snapshot.empty && !isDemo) {
-        // Client company has 0 vouchers. Keep completely blank!
+        // Client company has 0 vouchers in Firestore. Enforce clean 0 vouchers!
+        const currentLocal = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+        if (currentLocal.length > 0) {
+          saveJson(STORAGE_KEYS.VOUCHERS, []);
+          if (onDataUpdated) onDataUpdated();
+        }
         return;
       }
 

@@ -628,6 +628,7 @@ export default function App() {
         <main className={`flex-1 ${currentView === 'reports' ? 'overflow-y-auto' : isHighDensityView ? 'p-1.5 sm:p-2 pb-1.5 overflow-hidden flex flex-col min-h-0' : 'p-3 sm:p-6 pb-6 lg:pb-8 overflow-y-auto'} relative`}>
           {currentView === 'dashboard' && (
             <Dashboard
+              key={activeCompany?.id || 'default_dash'}
               config={config}
               items={items}
               ledgers={ledgers}
@@ -648,6 +649,7 @@ export default function App() {
           {/* POS Billing is rendered and kept active to preserve cart state */}
           <div className={currentView === 'pos' ? 'flex-1 min-h-0 flex flex-col h-full' : 'hidden'}>
             <POSBilling
+              key={activeCompany?.id || 'default_pos'}
               config={config}
               items={items}
               ledgers={ledgers}
@@ -672,6 +674,7 @@ export default function App() {
           {config.EnableNormalSale !== 'false' && (
             <div className={currentView === 'normalsale' ? 'flex-1 min-h-0 flex flex-col h-full w-full' : 'hidden'}>
               <SalesInvoiceEntry
+                key={activeCompany?.id || 'default_sales'}
                 config={config}
                 items={items}
                 ledgers={ledgers}
@@ -686,6 +689,7 @@ export default function App() {
           )}
           <div className={currentView === 'purchase' ? 'flex-1 min-h-0 flex flex-col h-full w-full' : 'hidden'}>
             <PurchaseEntry
+              key={activeCompany?.id || 'default_purchase'}
               config={config}
               items={items}
               ledgers={ledgers}
@@ -704,6 +708,7 @@ export default function App() {
 
           {currentView === 'vouchers' && (
             <Vouchers
+              key={activeCompany?.id || 'default_vouchers'}
               config={config}
               items={items}
               ledgers={ledgers}
@@ -719,6 +724,7 @@ export default function App() {
 
           {currentView === 'masters' && (
             <Masters
+              key={activeCompany?.id || 'default_masters'}
               config={config}
               items={items}
               itemGroups={itemGroups}
@@ -739,11 +745,12 @@ export default function App() {
           )}
 
           {currentView === 'payroll' && config.EnablePayroll !== 'false' && (
-            <Payroll config={config} ledgers={ledgers} onDataRefresh={refreshData} />
+            <Payroll key={activeCompany?.id || 'default_payroll'} config={config} ledgers={ledgers} onDataRefresh={refreshData} />
           )}
 
           {currentView === 'assets' && config.EnableAssetManagement !== 'false' && (
             <AssetManagementModule 
+              key={activeCompany?.id || 'default_assets'}
               config={config} 
               ledgers={ledgers} 
               onDataRefresh={refreshData} 
@@ -753,6 +760,7 @@ export default function App() {
 
           {currentView === 'reports' && (
             <Reports
+              key={activeCompany?.id || 'default_reports'}
               config={config}
               items={items}
               ledgers={ledgers}
