@@ -1,6 +1,8 @@
 import { supabase, isSupabaseConfigured, SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser } from '../lib/supabase';
 import { Config, AppUser } from '../types';
 
+export type { SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser };
+
 export interface MultiTenantSessionState {
   currentCompany: SupabaseCompany | null;
   currentFinancialYear: SupabaseFinancialYear | null;

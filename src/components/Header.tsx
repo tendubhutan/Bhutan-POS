@@ -1,6 +1,6 @@
 import React from 'react';
-import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown } from 'lucide-react';
-import { Config } from '../types';
+import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown, UserCircle } from 'lucide-react';
+import { Config, AppUser } from '../types';
 import { AIAssistant } from './AIAssistant';
 
 interface HeaderProps {
@@ -15,6 +15,8 @@ interface HeaderProps {
   onOpenCompanyManager?: () => void;
   activeCompanyName?: string;
   activeFYName?: string;
+  currentUser?: AppUser;
+  onOpenUserAuthModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -28,7 +30,9 @@ export const Header: React.FC<HeaderProps> = ({
   firebaseMessage,
   onOpenCompanyManager,
   activeCompanyName,
-  activeFYName
+  activeFYName,
+  currentUser,
+  onOpenUserAuthModal
 }) => {
   return (
     <header className={`bg-blue-700 text-white border-b border-blue-800 px-3 sm:px-4 ${isPosMode ? 'py-1.5' : 'py-2'} flex items-center justify-between shadow-md relative z-50`}>
@@ -133,6 +137,26 @@ export const Header: React.FC<HeaderProps> = ({
             <Database className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-300 animate-pulse" />
             <span>FIRESTORE ONLINE</span>
           </div>
+        )}
+
+        {/* Active User / Shift Profile Button */}
+        {onOpenUserAuthModal && (
+          <button
+            type="button"
+            onClick={onOpenUserAuthModal}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-800 hover:bg-blue-900 border border-blue-600 text-xs font-bold text-white shadow-xs transition cursor-pointer"
+            title="Switch User / Counter Shift Profile"
+          >
+            <UserCircle className="h-4 w-4 text-emerald-300" />
+            <div className="hidden sm:flex flex-col items-start leading-none text-left">
+              <span className="font-bold text-[11px] text-white">
+                {currentUser?.fullName || 'Admin User'}
+              </span>
+              <span className="text-[9px] text-emerald-300 font-mono">
+                {currentUser?.role || 'Staff'}
+              </span>
+            </div>
+          </button>
         )}
 
         <button

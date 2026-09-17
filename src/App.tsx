@@ -23,6 +23,9 @@ import { QuickLedgerSearchModal } from './components/QuickLedgerSearchModal';
 import { TrashModal } from './components/TrashModal';
 import { BulkDeleteModal } from './components/BulkDeleteModal';
 import { CompanyManagerModal } from './components/CompanyManagerModal';
+import { UserAuthModal } from './components/UserAuthModal';
+import { getActiveUser } from './services/storageService';
+import { AppUser } from './types';
 import { 
   fetchUserCompanies, 
   fetchFinancialYears, 
@@ -233,8 +236,10 @@ export default function App() {
   const [quickLedgerModalProps, setQuickLedgerModalProps] = useState<{isOpen: boolean, group: string, onSelect?: (name: string) => void}>({isOpen: false, group: 'Sundry Debtors'});
   const [quickItemModalProps, setQuickItemModalProps] = useState<{isOpen: boolean, onSelect?: (item: Item) => void}>({isOpen: false});
 
-  // Multi-Tenant State
+  // Multi-Tenant & User Auth State
   const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [showUserAuthModal, setShowUserAuthModal] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AppUser>(getActiveUser());
   const [activeCompany, setActiveCompany] = useState<SupabaseCompany | null>(null);
   const [activeFY, setActiveFY] = useState<SupabaseFinancialYear | null>(null);
 
@@ -597,6 +602,8 @@ export default function App() {
           onOpenCompanyManager={() => setShowCompanyModal(true)}
           activeCompanyName={activeCompany?.company_name}
           activeFYName={activeFY?.fy_name}
+          currentUser={currentUser}
+          onOpenUserAuthModal={() => setShowUserAuthModal(true)}
         />
 
         <main className={`flex-1 ${currentView === 'reports' ? 'overflow-y-auto' : isHighDensityView ? 'p-1.5 sm:p-2 pb-1.5 overflow-hidden flex flex-col min-h-0' : 'p-3 sm:p-6 pb-6 lg:pb-8 overflow-y-auto'} relative`}>
@@ -877,6 +884,16 @@ export default function App() {
             CompanyPhone: c.phone || prev.CompanyPhone,
             CurrencySymbol: c.currency_symbol || prev.CurrencySymbol
           }));
+          refreshData();
+        }}
+      />
+
+      {/* User Login & Role Shift Switcher Modal */}
+      <UserAuthModal
+        isOpen={showUserAuthModal}
+        onClose={() => setShowUserAuthModal(false)}
+        onUserChanged={(u) => {
+          setCurrentUser(u);
           refreshData();
         }}
       />
