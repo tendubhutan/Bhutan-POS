@@ -307,29 +307,6 @@ export const DrillModal: React.FC<DrillModalProps> = ({
     return () => window.removeEventListener('app:back' as any, handleAppBack);
   }, [active, history, showCancelModal, showDeleteModal, showShareModal, showReceiptModal, showChangePeriodModal, onClose]);
 
-  // Keyboard Escape Handler (Steps back drilled history, or closes modal) - runs in capture phase
-  useEffect(() => {
-    if (!active || !active.type || !active.targetId) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation?.();
-        if (showChangePeriodModal) {
-          setShowChangePeriodModal(false);
-          return;
-        }
-        if (showCancelModal || showDeleteModal || showShareModal || showReceiptModal) {
-          resetActionModals();
-          return;
-        }
-        handleBack();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [active, history, showCancelModal, showDeleteModal, showShareModal, showReceiptModal, showChangePeriodModal, onClose]);
-
   if (!active || !active.type || !active.targetId) return null;
 
   const navigateTo = (nextType: 'group' | 'stock' | 'ledger' | 'voucher', nextId: string) => {
@@ -1193,48 +1170,118 @@ export const DrillModal: React.FC<DrillModalProps> = ({
         )}
 
         {/* LEDGER STATEMENT */}
-        {active.type === 'ledger' && (
-          <div className="overflow-auto max-h-[65vh] text-xs">
-            <table className="w-full border-collapse">
-              <thead className="sticky top-0 z-10 bg-slate-100 shadow-sm">
-                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
-                  <th className="py-2 px-3 text-left">Date</th>
-                  <th className="py-2 px-3 text-left">Type</th>
-                  <th className="py-2 px-3 text-left">Ref No</th>
-                  <th className="py-2 px-3 text-left">Narration</th>
-                  <th className="py-2 px-3 text-right">Debit</th>
-                  <th className="py-2 px-3 text-right">Credit</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                <tr className="bg-slate-50 font-bold">
-                  <td colSpan={4} className="py-2 px-3 text-left">
-                    Opening Balance
-                  </td>
-                  <td colSpan={2} className="py-2 px-3 text-right font-mono">
-                    {ledgerLog.openingBalance >= 0
-                      ? `${fmt(ledgerLog.openingBalance)} Dr`
-                      : `${fmt(Math.abs(ledgerLog.openingBalance))} Cr`}
-                  </td>
-                </tr>
-                {ledgerLog.rows.map((row, idx) => (
-                  <tr
-                    key={idx}
-                    onClick={() => row['Ref No'] && navigateTo('voucher', row['Ref No'])}
-                    className="hover:bg-indigo-50/60 cursor-pointer transition"
-                  >
-                    <td className="py-2 px-3 font-mono text-slate-500">{formatDateStr(row.DateIso)}</td>
-                    <td className="py-2 px-3 font-medium">{row.Type}</td>
-                    <td className="py-2 px-3 font-bold text-indigo-600">{row['Ref No']}</td>
-                    <td className="py-2 px-3 text-slate-600">{row.Narration}</td>
-                    <td className="py-2 px-3 text-right font-mono text-emerald-600">{row.Debit ? fmt(row.Debit) : ''}</td>
-                    <td className="py-2 px-3 text-right font-mono text-rose-600">{row.Credit ? fmt(row.Credit) : ''}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {active.type === 'ledger' && (() => {
+          const opBal = Number(ledgerLog.openingBalance) || 0;
+          let runningBal = opBal;
+          let totalDr = 0;
+          let totalCr = 0;
+
+          const processedRows = (ledgerLog.rows || []).map((row: any) => {
+            const isCancelled = row.isCancelled || row.Status === 'Cancelled';
+            const dr = isCancelled ? 0 : (Number(row.Debit) || 0);
+            const cr = isCancelled ? 0 : (Number(row.Credit) || 0);
+            totalDr += dr;
+            totalCr += cr;
+            runningBal = runningBal + dr - cr;
+            return {
+              ...row,
+              isCancelled,
+              dr,
+              cr,
+              runningBal
+            };
+          });
+
+          const finalBal = runningBal;
+          const currency = getEffectiveConfig().CurrencySymbol || 'Nu.';
+
+          return (
+            <div className="space-y-3 text-xs">
+              {/* Statement Table */}
+              <div className="overflow-auto max-h-[62vh] rounded-xl border border-slate-200 shadow-xs">
+                <table className="w-full border-collapse">
+                  <thead className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-xs shadow-xs">
+                    <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200 tracking-wider">
+                      <th className="py-2.5 px-3 text-left">Date</th>
+                      <th className="py-2.5 px-3 text-left">Type</th>
+                      <th className="py-2.5 px-3 text-left">Ref No</th>
+                      <th className="py-2.5 px-3 text-left">Narration</th>
+                      <th className="py-2.5 px-3 text-right">Debit</th>
+                      <th className="py-2.5 px-3 text-right">Credit</th>
+                      <th className="py-2.5 px-3 text-right">Running Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    <tr className="bg-slate-50 font-semibold border-b border-slate-200">
+                      <td className="py-2.5 px-3 text-center text-slate-400 font-mono">-</td>
+                      <td className="py-2.5 px-3 text-slate-600 font-bold">Opening Balance</td>
+                      <td className="py-2.5 px-3 text-slate-400 font-mono">-</td>
+                      <td className="py-2.5 px-3 text-slate-600 italic">Opening Balance Brought Forward</td>
+                      <td className="py-2.5 px-3 text-right font-mono text-emerald-700">{opBal >= 0 ? fmt(opBal) : ''}</td>
+                      <td className="py-2.5 px-3 text-right font-mono text-rose-700">{opBal < 0 ? fmt(Math.abs(opBal)) : ''}</td>
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 bg-indigo-50/30">
+                        {fmt(Math.abs(opBal))} <span className="text-[10px] font-bold text-indigo-700">{opBal >= 0 ? 'Dr' : 'Cr'}</span>
+                      </td>
+                    </tr>
+                    {processedRows.map((row: any, idx: number) => (
+                      <tr
+                        key={idx}
+                        onClick={() => row['Ref No'] && navigateTo('voucher', row['Ref No'])}
+                        className={`hover:bg-indigo-50/60 cursor-pointer transition ${row.isCancelled ? 'bg-rose-50/40' : ''}`}
+                      >
+                        <td className="py-2.5 px-3 font-mono text-slate-500">{formatDateStr(row.DateIso)}</td>
+                        <td className="py-2.5 px-3 font-medium">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                            {row.Type}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-indigo-600">{row['Ref No']}</td>
+                        <td className="py-2.5 px-3 text-slate-600">
+                          {row.isCancelled ? <span className="text-rose-600 font-bold">Cancelled / Void</span> : row.Narration}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-emerald-600">
+                          {row.isCancelled ? '0.00' : (row.dr ? fmt(row.dr) : '')}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-rose-600">
+                          {row.isCancelled ? '0.00' : (row.cr ? fmt(row.cr) : '')}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 bg-slate-50/40">
+                          {fmt(Math.abs(row.runningBal))} <span className={`text-[10px] font-bold ${row.runningBal >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{row.runningBal >= 0 ? 'Dr' : 'Cr'}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="sticky bottom-0 z-10 bg-slate-900 text-white font-bold shadow-lg">
+                    <tr className="border-t border-slate-800">
+                      <td colSpan={4} className="py-3 px-3.5 uppercase text-[11px] tracking-wider font-extrabold text-slate-200">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-indigo-400"></span>
+                          <span>Total Movement & Closing Balance</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-bold text-emerald-400 text-xs sm:text-sm">
+                        {fmtMoney(totalDr)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-bold text-rose-400 text-xs sm:text-sm">
+                        {fmtMoney(totalCr)}
+                      </td>
+                      <td className="py-3 px-3.5 text-right font-mono font-black text-xs sm:text-sm bg-slate-800/80">
+                        <div className="inline-flex items-center gap-1.5 justify-end">
+                          <span className="text-slate-100 font-extrabold">{currency} {fmtMoney(Math.abs(finalBal))}</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black tracking-wider shadow-xs ${
+                            finalBal >= 0 ? 'bg-indigo-500 text-white' : 'bg-amber-500 text-slate-950'
+                          }`}>
+                            {finalBal >= 0 ? 'Dr' : 'Cr'}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* VOUCHER DETAILS WITH FULL ACTION SUITE */}
         {active.type === 'voucher' && voucherData && (() => {

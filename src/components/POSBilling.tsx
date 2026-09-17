@@ -556,12 +556,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     }
 
     resetPosForm();
-    if (onBack) {
-      onBack(true);
-    } else {
-      window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
-    }
-    return true;
+    return false;
   };
 
   // ESC and Global Keyboard Shortcuts

@@ -165,6 +165,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const [itemWise, setItemWise] = useState(false);
   const [isControlsCollapsed, setIsControlsCollapsed] = useState(false);
   const [gstOnly, setGstOnly] = useState(false);
+  const [includeSalesReturn, setIncludeSalesReturn] = useState(true);
   const [selectedLedger, setSelectedLedger] = useState('');
 
   // Report View Navigation History (for strict sequential Escape key back navigation)
@@ -633,7 +634,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
   useEffect(() => {
     runReport();
-  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, selectedLedger]);
+  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, includeSalesReturn, selectedLedger]);
 
   useEffect(() => {
     const handleRefresh = () => {
@@ -648,13 +649,13 @@ export const Reports: React.FC<ReportsProps> = ({
       window.removeEventListener('voucher:cancelled', handleRefresh);
       window.removeEventListener('voucher:deleted', handleRefresh);
     };
-  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, selectedLedger]);
+  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, includeSalesReturn, selectedLedger]);
 
   const runReport = () => {
     setLoading(true);
     try {
       if (mainCategory === 'daily') {
-        const data = getDailyColumnarReport(fromDate, toDate, { itemWise, gstOnly });
+        const data = getDailyColumnarReport(fromDate, toDate, { itemWise, gstOnly, includeSalesReturn });
         setReportData(data);
       } else if (mainCategory === 'gst') {
         const data = getGSTReport(fromDate, toDate);
@@ -1306,54 +1307,214 @@ export const Reports: React.FC<ReportsProps> = ({
           { label: 'Total Debits', value: `Nu. ${fmt(totDr)}` },
           { label: 'Total Credits', value: `Nu. ${fmt(totCr)}` }
         ];
-      } else if (regSubTab === 'sales' && Array.isArray(reportData)) {
-        reportTitle = 'Sales Register';
-        headers = ['Date', 'Invoice No', 'Customer', 'Payment Mode', 'Total Amount (Nu.)'];
-        let totAmount = 0;
-        reportData.forEach((inv: any) => {
-          const amt = Number(inv.totalAmount) || 0;
-          totAmount += amt;
-          let paymentStr = [];
-          if (inv.payment?.cash > 0) paymentStr.push('Cash');
-          if (inv.payment?.bank1 > 0) paymentStr.push('Bank1');
-          if (inv.payment?.bank2 > 0) paymentStr.push('Bank2');
-          rows.push([
-            formatDateStr(inv.date),
-            inv.invoiceNo || '-',
-            inv.customer?.name || 'CASH',
-            paymentStr.join(', ') || '-',
-            fmt(amt)
-          ]);
-        });
-        totalsRow = ['TOTAL', '', '', '', fmt(totAmount)];
-        summaryCards = [
-          { label: 'Total Invoices', value: reportData.length },
-          { label: 'Total Sales Revenue', value: `Nu. ${fmt(totAmount)}` }
-        ];
-      } else if (regSubTab === 'purchases' && Array.isArray(reportData)) {
-        reportTitle = 'Purchase Register';
-        headers = ['Date', 'Bill No', 'Supplier', 'Payment Mode', 'Total Amount (Nu.)'];
-        let totAmount = 0;
-        reportData.forEach((inv: any) => {
-          const amt = Number(inv.totalAmount) || 0;
-          totAmount += amt;
-          let paymentStr = [];
-          if (inv.payment?.cash > 0) paymentStr.push('Cash');
-          if (inv.payment?.bank1 > 0) paymentStr.push('Bank1');
-          if (inv.payment?.bank2 > 0) paymentStr.push('Bank2');
-          rows.push([
-            formatDateStr(inv.date),
-            inv.supplierBillNo || inv.billNo || '-',
-            inv.supplier?.name || 'Supplier',
-            paymentStr.join(', ') || '-',
-            fmt(amt)
-          ]);
-        });
-        totalsRow = ['TOTAL', '', '', '', fmt(totAmount)];
-        summaryCards = [
-          { label: 'Total Bills', value: reportData.length },
-          { label: 'Total Purchase Amount', value: `Nu. ${fmt(totAmount)}` }
-        ];
+      } else if (regSubTab === 'sales' && reportData) {
+        const sales = Array.isArray(reportData) ? reportData : (reportData.sales || []);
+        const returns = Array.isArray(reportData?.returns) ? reportData.returns : [];
+        const grossSales = typeof reportData.grossSales === 'number' ? reportData.grossSales : sales.reduce((sum: number, s: any) => sum + (s.isCancelled ? 0 : (Number(s.totalAmount) || 0)), 0);
+        const salesReturn = typeof reportData.salesReturn === 'number' ? reportData.salesReturn : returns.reduce((sum: number, r: any) => sum + (r.isCancelled ? 0 : (Number(r.totalAmount) || 0)), 0);
+        const netSales = grossSales - salesReturn;
+
+        if (itemWise) {
+          reportTitle = 'Sales Register (Item-wise)';
+          headers = ['Date', 'Ref No', 'Customer', 'Item Name', 'Qty', 'Unit', 'Rate (Nu.)', 'Discount (Nu.)', 'Net Amount (Nu.)'];
+          let totQty = 0;
+          let totAmt = 0;
+          sales.forEach((inv: any) => {
+            if (inv.isCancelled) return;
+            (inv.items || []).forEach((it: any) => {
+              const q = Number(it.Qty || it.qty) || 0;
+              const r = Number(it.Rate || it.rate || it.price) || 0;
+              const d = Number(it.Discount || it.discount) || 0;
+              const lineTot = (q * r) - d;
+              totQty += q;
+              totAmt += lineTot;
+              rows.push([
+                formatDateStr(inv.date),
+                inv.invoiceNo || '-',
+                inv.customer?.name || 'CASH',
+                it['Item Name'] || it.itemName || it.name || '-',
+                q,
+                it.Unit || it.unit || 'Pcs',
+                fmt(r),
+                fmt(d),
+                fmt(lineTot)
+              ]);
+            });
+          });
+          returns.forEach((cn: any) => {
+            if (cn.isCancelled) return;
+            const items = (cn.items && cn.items.length > 0) ? cn.items : [{ itemName: 'Sales Return', qty: 1, rate: cn.totalAmount, unit: 'Job', discount: 0 }];
+            items.forEach((it: any) => {
+              const q = Number(it.Qty || it.qty) || 0;
+              const r = Number(it.Rate || it.rate || it.price) || 0;
+              const d = Number(it.Discount || it.discount) || 0;
+              const lineTot = (q * r) - d;
+              totQty -= q;
+              totAmt -= lineTot;
+              rows.push([
+                formatDateStr(cn.date),
+                `${cn.invoiceNo || cn.voucherNo || 'CN'} (Return)`,
+                cn.customer?.name || 'Customer',
+                it['Item Name'] || it.itemName || it.name || 'Sales Return',
+                `- ${q}`,
+                it.Unit || it.unit || 'Pcs',
+                fmt(r),
+                fmt(d),
+                `- ${fmt(lineTot)}`
+              ]);
+            });
+          });
+          totalsRow = ['NET TOTAL', '', '', '', totQty, '', '', '', fmt(netSales)];
+          summaryCards = [
+            { label: 'Gross Sales', value: `Nu. ${fmt(grossSales)}` },
+            { label: 'Sales Return (CN)', value: `Nu. ${fmt(salesReturn)}` },
+            { label: 'Net Sales', value: `Nu. ${fmt(netSales)}` }
+          ];
+        } else {
+          reportTitle = 'Sales Register (Bill-wise)';
+          headers = ['Date', 'Type', 'Ref No', 'Customer', 'Payment / Ref', 'Gross Amt (Nu.)', 'Return Amt (Nu.)', 'Net Amount (Nu.)'];
+          sales.forEach((inv: any) => {
+            const amt = Number(inv.totalAmount) || 0;
+            let paymentStr = [];
+            if (inv.payment?.cash > 0) paymentStr.push('Cash');
+            if (inv.payment?.bank1 > 0) paymentStr.push('Bank1');
+            if (inv.payment?.bank2 > 0) paymentStr.push('Bank2');
+            if (inv.payment?.credit > 0) paymentStr.push('Credit');
+            rows.push([
+              formatDateStr(inv.date),
+              'Sales Invoice',
+              inv.invoiceNo || '-',
+              inv.customer?.name || 'CASH',
+              paymentStr.join(', ') || 'Cash',
+              inv.isCancelled ? '0.00 (Cancelled)' : fmt(amt),
+              '0.00',
+              inv.isCancelled ? '0.00' : fmt(amt)
+            ]);
+          });
+          returns.forEach((cn: any) => {
+            const amt = Number(cn.totalAmount) || 0;
+            rows.push([
+              formatDateStr(cn.date),
+              'Credit Note (Return)',
+              cn.invoiceNo || cn.voucherNo || '-',
+              cn.customer?.name || 'Customer',
+              cn.originalRef ? `Against ${cn.originalRef}` : 'Sales Return',
+              '0.00',
+              cn.isCancelled ? '0.00 (Cancelled)' : fmt(amt),
+              cn.isCancelled ? '0.00' : `- ${fmt(amt)}`
+            ]);
+          });
+          totalsRow = ['NET TOTAL', '', '', '', '', fmt(grossSales), fmt(salesReturn), fmt(netSales)];
+          summaryCards = [
+            { label: 'Gross Sales', value: `Nu. ${fmt(grossSales)}` },
+            { label: 'Sales Return (CN)', value: `Nu. ${fmt(salesReturn)}` },
+            { label: 'Net Sales', value: `Nu. ${fmt(netSales)}` }
+          ];
+        }
+      } else if (regSubTab === 'purchases' && reportData) {
+        const purchases = Array.isArray(reportData) ? reportData : (reportData.purchases || []);
+        const returns = Array.isArray(reportData?.returns) ? reportData.returns : [];
+        const grossPurchases = typeof reportData.grossPurchases === 'number' ? reportData.grossPurchases : purchases.reduce((sum: number, p: any) => sum + (p.isCancelled ? 0 : (Number(p.totalAmount) || 0)), 0);
+        const purchaseReturn = typeof reportData.purchaseReturn === 'number' ? reportData.purchaseReturn : returns.reduce((sum: number, r: any) => sum + (r.isCancelled ? 0 : (Number(r.totalAmount) || 0)), 0);
+        const netPurchases = grossPurchases - purchaseReturn;
+
+        if (itemWise) {
+          reportTitle = 'Purchase Register (Item-wise)';
+          headers = ['Date', 'Bill No', 'Supplier', 'Item Name', 'Qty', 'Unit', 'Rate (Nu.)', 'Discount (Nu.)', 'Net Amount (Nu.)'];
+          let totQty = 0;
+          let totAmt = 0;
+          purchases.forEach((inv: any) => {
+            if (inv.isCancelled) return;
+            (inv.items || []).forEach((it: any) => {
+              const q = Number(it.Qty || it.qty) || 0;
+              const r = Number(it.Rate || it.rate || it.price) || 0;
+              const d = Number(it.Discount || it.discount) || 0;
+              const lineTot = (q * r) - d;
+              totQty += q;
+              totAmt += lineTot;
+              rows.push([
+                formatDateStr(inv.date),
+                inv.supplierBillNo || inv.billNo || '-',
+                inv.supplier?.name || 'Supplier',
+                it['Item Name'] || it.itemName || it.name || '-',
+                q,
+                it.Unit || it.unit || 'Pcs',
+                fmt(r),
+                fmt(d),
+                fmt(lineTot)
+              ]);
+            });
+          });
+          returns.forEach((dn: any) => {
+            if (dn.isCancelled) return;
+            const items = (dn.items && dn.items.length > 0) ? dn.items : [{ itemName: 'Purchase Return', qty: 1, rate: dn.totalAmount, unit: 'Job', discount: 0 }];
+            items.forEach((it: any) => {
+              const q = Number(it.Qty || it.qty) || 0;
+              const r = Number(it.Rate || it.rate || it.price) || 0;
+              const d = Number(it.Discount || it.discount) || 0;
+              const lineTot = (q * r) - d;
+              totQty -= q;
+              totAmt -= lineTot;
+              rows.push([
+                formatDateStr(dn.date),
+                `${dn.billNo || dn.voucherNo || 'DN'} (Return)`,
+                dn.supplier?.name || 'Supplier',
+                it['Item Name'] || it.itemName || it.name || 'Purchase Return',
+                `- ${q}`,
+                it.Unit || it.unit || 'Pcs',
+                fmt(r),
+                fmt(d),
+                `- ${fmt(lineTot)}`
+              ]);
+            });
+          });
+          totalsRow = ['NET TOTAL', '', '', '', totQty, '', '', '', fmt(netPurchases)];
+          summaryCards = [
+            { label: 'Gross Purchase', value: `Nu. ${fmt(grossPurchases)}` },
+            { label: 'Purchase Return (DN)', value: `Nu. ${fmt(purchaseReturn)}` },
+            { label: 'Net Purchase', value: `Nu. ${fmt(netPurchases)}` }
+          ];
+        } else {
+          reportTitle = 'Purchase Register (Bill-wise)';
+          headers = ['Date', 'Type', 'Bill No', 'Supplier', 'Payment / Ref', 'Gross Amt (Nu.)', 'Return Amt (Nu.)', 'Net Amount (Nu.)'];
+          purchases.forEach((inv: any) => {
+            const amt = Number(inv.totalAmount) || 0;
+            let paymentStr = [];
+            if (inv.payment?.cash > 0) paymentStr.push('Cash');
+            if (inv.payment?.bank1 > 0) paymentStr.push('Bank1');
+            if (inv.payment?.bank2 > 0) paymentStr.push('Bank2');
+            if (inv.payment?.credit > 0) paymentStr.push('Credit');
+            rows.push([
+              formatDateStr(inv.date),
+              'Purchase Bill',
+              inv.supplierBillNo || inv.billNo || '-',
+              inv.supplier?.name || 'Supplier',
+              paymentStr.join(', ') || 'Credit',
+              inv.isCancelled ? '0.00 (Cancelled)' : fmt(amt),
+              '0.00',
+              inv.isCancelled ? '0.00' : fmt(amt)
+            ]);
+          });
+          returns.forEach((dn: any) => {
+            const amt = Number(dn.totalAmount) || 0;
+            rows.push([
+              formatDateStr(dn.date),
+              'Debit Note (Return)',
+              dn.billNo || dn.voucherNo || '-',
+              dn.supplier?.name || 'Supplier',
+              dn.originalRef ? `Against ${dn.originalRef}` : 'Purchase Return',
+              '0.00',
+              dn.isCancelled ? '0.00 (Cancelled)' : fmt(amt),
+              dn.isCancelled ? '0.00' : `- ${fmt(amt)}`
+            ]);
+          });
+          totalsRow = ['NET TOTAL', '', '', '', '', fmt(grossPurchases), fmt(purchaseReturn), fmt(netPurchases)];
+          summaryCards = [
+            { label: 'Gross Purchase', value: `Nu. ${fmt(grossPurchases)}` },
+            { label: 'Purchase Return (DN)', value: `Nu. ${fmt(purchaseReturn)}` },
+            { label: 'Net Purchase', value: `Nu. ${fmt(netPurchases)}` }
+          ];
+        }
       } else if (regSubTab === 'quotations' && Array.isArray(reportData)) {
         reportTitle = 'Quotation Register';
         headers = ['Date', 'Quotation No', 'Customer', 'Valid Until', 'Items Count', 'Total Amount (Nu.)', 'Status'];
@@ -1942,25 +2103,36 @@ export const Reports: React.FC<ReportsProps> = ({
             );
           })()}
 
-          {/* Contextual Filter for Daily Sales */}
-          {mainCategory === 'daily' && (
+          {/* Contextual Filter for Daily Sales and Sales/Purchase Registers */}
+          {(mainCategory === 'daily' || (mainCategory === 'reg' && (regSubTab === 'sales' || regSubTab === 'purchases'))) && (
             <div className="flex items-center gap-2 pl-1">
-              <label className="flex items-center gap-1 cursor-pointer font-semibold text-slate-700">
+              <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200/70 px-2.5 py-1 rounded-lg border border-slate-200 transition text-xs">
                 <input
                   type="checkbox"
                   checked={itemWise}
                   onChange={e => setItemWise(e.target.checked)}
-                  className="rounded border-slate-300"
+                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
                 />
-                Item-wise
+                Item-wise View
               </label>
-              {showGst && (
-                <label className="flex items-center gap-1 cursor-pointer font-semibold text-slate-700">
+              {mainCategory === 'daily' && (
+                <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-rose-800 bg-rose-50/80 hover:bg-rose-100 px-2.5 py-1 rounded-lg border border-rose-200 transition text-xs">
+                  <input
+                    type="checkbox"
+                    checked={includeSalesReturn}
+                    onChange={e => setIncludeSalesReturn(e.target.checked)}
+                    className="rounded border-rose-300 text-rose-600 focus:ring-rose-500 h-3.5 w-3.5"
+                  />
+                  Include Sales Return
+                </label>
+              )}
+              {mainCategory === 'daily' && showGst && (
+                <label className="flex items-center gap-1.5 cursor-pointer font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200/70 px-2.5 py-1 rounded-lg border border-slate-200 transition text-xs">
                   <input
                     type="checkbox"
                     checked={gstOnly}
                     onChange={e => setGstOnly(e.target.checked)}
-                    className="rounded border-slate-300"
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
                   />
                   GST Only
                 </label>
@@ -2421,95 +2593,134 @@ export const Reports: React.FC<ReportsProps> = ({
           <div className="border-t border-slate-200">
             {/* Daily Sales */}
             {mainCategory === 'daily' && (
-              <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                  <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
-                    {reportData.mode === 'itemwise' ? (
-                      <>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Qty Sold</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Taxable</th>
-                        {showGst && <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">GST</th>}
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Total</th>
-                      </>
-                    ) : (
-                      <>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Date</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Invoice No</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Customer</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Cash</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{config.Bank1Ledger || 'Bank 1'}</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{config.Bank2Ledger || 'Bank 2'}</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Credit</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Total Amount</th>
-                      </>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {reportData.mode === 'itemwise'
-                    ? (reportData.rows || []).map((r: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-slate-50 transition">
-                          <td className="py-2 px-3 font-semibold text-slate-800 text-left">{r.itemName}</td>
-                          <td className="py-2 px-3 text-center font-mono">{r.qty}</td>
-                          <td className="py-2 px-3 text-right font-mono">{fmt(r.taxable)}</td>
-                          {showGst && <td className="py-2 px-3 text-right font-mono">{fmt(r.gst)}</td>}
-                          <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono">{fmt(r.total)}</td>
-                        </tr>
-                      ))
-                    : (reportData.rows || []).map((r: any, idx: number) => (
-                        <tr
-                          key={idx}
-                          onClick={() => onDrillVoucher(r.invoiceNo, fromDate, toDate)}
-                          className="hover:bg-slate-50 cursor-pointer transition"
-                        >
-                          <td className="py-2 px-3 text-center font-mono text-slate-500">{formatDateStr(r.date)}</td>
-                          <td className="py-2 px-3 font-bold text-indigo-600 text-left">{r.invoiceNo}</td>
-                          <td className="py-2 px-3 font-medium text-slate-800 text-left">
-                            {(() => {
-                              const cName = typeof r.customer === 'object' ? (r.customer.name || r.customer.ledger || 'Cash Customer') : r.customer;
-                              if (r.isCancelled && typeof cName === 'string' && cName.includes(' (Cancelled)')) {
-                                return (
-                                  <>
-                                    {cName.replace(' (Cancelled)', '')}
-                                    <span className="text-red-500 font-bold ml-1 text-[10px]">(Cancelled)</span>
-                                  </>
-                                );
-                              }
-                              return cName;
-                            })()}
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.cash)}</td>
-                          <td className="py-2 px-3 text-right font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.bank1)}</td>
-                          <td className="py-2 px-3 text-right font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.bank2)}</td>
-                          <td className="py-2 px-3 text-right font-mono text-amber-600">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.credit)}</td>
-                          <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.total)}</td>
-                        </tr>
-                      ))}
-                </tbody>
-                <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
-                  <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900 text-xs">
-                    {reportData.mode === 'itemwise' ? (
-                      <>
-                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-left">TOTAL</td>
-                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-center font-mono">{reportData.totals?.qty || 0}</td>
-                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.taxable)}</td>
-                        {showGst && <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.gst)}</td>}
-                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.total)}</td>
-                      </>
-                    ) : (
-                      <>
-                        <td colSpan={3} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left">TOTAL SUMMARY</td>
-                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.cash)}</td>
-                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.bank1)}</td>
-                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.bank2)}</td>
-                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.credit)}</td>
-                        <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-sm">{fmt(reportData.totals?.total)}</td>
-                      </>
-                    )}
-                  </tr>
-                </tfoot>
-              </table>
+              <div>
+                {/* Gross / Return / Net Summary Bar */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 border-b border-slate-200">
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Gross Sales</span>
+                      <p className="text-sm font-bold font-mono text-emerald-700">{fmt(reportData.totals?.grossSales ?? reportData.totals?.total)}</p>
+                    </div>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-emerald-50 text-emerald-700 border border-emerald-200">Billed</span>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sales Returns (CN)</span>
+                      <p className="text-sm font-bold font-mono text-rose-700">{fmt(reportData.totals?.salesReturns ?? 0)}</p>
+                    </div>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-rose-50 text-rose-700 border border-rose-200">Deducted</span>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-lg border border-indigo-200 shadow-2xs flex items-center justify-between bg-indigo-50/40">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">Net Realized Sales</span>
+                      <p className="text-sm font-black font-mono text-indigo-900">{fmt(reportData.totals?.netSales ?? reportData.totals?.total)}</p>
+                    </div>
+                    <span className="px-2 py-0.5 text-[10px] font-bold rounded bg-indigo-100 text-indigo-800 border border-indigo-300">Net Total</span>
+                  </div>
+                </div>
+
+                <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                  <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                    <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                      {reportData.mode === 'itemwise' ? (
+                        <>
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Qty Sold</th>
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Taxable</th>
+                          {showGst && <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">GST</th>}
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Total</th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Date</th>
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Invoice No</th>
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Customer</th>
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Cash</th>
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{config.Bank1Ledger || 'Bank 1'}</th>
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{config.Bank2Ledger || 'Bank 2'}</th>
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Credit</th>
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Total Amount</th>
+                        </>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {reportData.mode === 'itemwise'
+                      ? (reportData.rows || []).map((r: any, idx: number) => {
+                          const isNegative = Number(r.total) < 0 || Number(r.qty) < 0;
+                          return (
+                            <tr key={idx} className={`hover:bg-slate-50 transition ${isNegative ? 'bg-rose-50/40' : ''}`}>
+                              <td className="py-2 px-3 font-semibold text-slate-800 text-left">
+                                {r.itemName}
+                                {isNegative && <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-1 py-0.5 rounded ml-2">NET RETURN</span>}
+                              </td>
+                              <td className={`py-2 px-3 text-center font-mono ${isNegative ? 'text-rose-700 font-bold' : ''}`}>{r.qty}</td>
+                              <td className={`py-2 px-3 text-right font-mono ${isNegative ? 'text-rose-700 font-bold' : ''}`}>{fmt(r.taxable)}</td>
+                              {showGst && <td className={`py-2 px-3 text-right font-mono ${isNegative ? 'text-rose-700 font-bold' : ''}`}>{fmt(r.gst)}</td>}
+                              <td className={`py-2 px-3 text-right font-bold font-mono ${isNegative ? 'text-rose-700' : 'text-slate-900'}`}>{fmt(r.total)}</td>
+                            </tr>
+                          );
+                        })
+                      : (reportData.rows || []).map((r: any, idx: number) => {
+                          const isCN = r.type === 'CN' || Number(r.total) < 0;
+                          return (
+                            <tr
+                              key={idx}
+                              onClick={() => onDrillVoucher(r.invoiceNo, fromDate, toDate)}
+                              className={`hover:bg-slate-50 cursor-pointer transition ${isCN ? 'bg-rose-50/40' : ''}`}
+                            >
+                              <td className="py-2 px-3 text-center font-mono text-slate-500">{formatDateStr(r.date)}</td>
+                              <td className={`py-2 px-3 font-bold text-left ${isCN ? 'text-rose-600' : 'text-indigo-600'}`}>{r.invoiceNo}</td>
+                              <td className="py-2 px-3 font-medium text-slate-800 text-left">
+                                {(() => {
+                                  const cName = typeof r.customer === 'object' ? (r.customer.name || r.customer.ledger || 'Cash Customer') : r.customer;
+                                  if (r.isCancelled && typeof cName === 'string' && cName.includes(' (Cancelled)')) {
+                                    return (
+                                      <>
+                                        {cName.replace(' (Cancelled)', '')}
+                                        <span className="text-red-500 font-bold ml-1 text-[10px]">(Cancelled)</span>
+                                      </>
+                                    );
+                                  }
+                                  if (isCN) {
+                                    return <span className="text-rose-700 font-bold">{cName}</span>;
+                                  }
+                                  return cName;
+                                })()}
+                              </td>
+                              <td className={`py-2 px-3 text-right font-mono ${isCN && Number(r.cash) !== 0 ? 'text-rose-700 font-bold' : ''}`}>{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.cash)}</td>
+                              <td className={`py-2 px-3 text-right font-mono ${isCN && Number(r.bank1) !== 0 ? 'text-rose-700 font-bold' : ''}`}>{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.bank1)}</td>
+                              <td className={`py-2 px-3 text-right font-mono ${isCN && Number(r.bank2) !== 0 ? 'text-rose-700 font-bold' : ''}`}>{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.bank2)}</td>
+                              <td className={`py-2 px-3 text-right font-mono ${isCN && Number(r.credit) !== 0 ? 'text-rose-700 font-bold' : 'text-amber-600'}`}>{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.credit)}</td>
+                              <td className={`py-2 px-3 text-right font-bold font-mono ${isCN ? 'text-rose-700' : 'text-slate-900'}`}>{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.total)}</td>
+                            </tr>
+                          );
+                        })}
+                  </tbody>
+                  <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                    <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900 text-xs">
+                      {reportData.mode === 'itemwise' ? (
+                        <>
+                          <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-left">NET TOTAL</td>
+                          <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-center font-mono">{reportData.totals?.qty || 0}</td>
+                          <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.taxable)}</td>
+                          {showGst && <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.gst)}</td>}
+                          <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.total)}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td colSpan={3} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left">NET TOTAL SUMMARY</td>
+                          <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.cash)}</td>
+                          <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.bank1)}</td>
+                          <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.bank2)}</td>
+                          <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.credit)}</td>
+                          <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-sm">{fmt(reportData.totals?.total)}</td>
+                        </>
+                      )}
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             )}
 
             {/* GST Report */}
@@ -2528,25 +2739,30 @@ export const Reports: React.FC<ReportsProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {(reportData.rows || []).map((r: any, idx: number) => (
-                    <tr key={idx} onClick={() => onDrillVoucher(r.billNumber, fromDate, toDate)} className="hover:bg-slate-50 cursor-pointer transition">
-                      <td className="py-2 px-3 text-center font-mono">{formatDateStr(r.billDate)}</td>
-                      <td className="py-2 px-3 font-semibold text-slate-800">
-                        {r.isCancelled && typeof r.customerName === 'string' && r.customerName.includes(' (Cancelled)') ? (
-                          <>
-                            {r.customerName.replace(' (Cancelled)', '')}
-                            <span className="text-red-500 font-bold ml-1 text-[10px]">(Cancelled)</span>
-                          </>
-                        ) : r.customerName}
-                      </td>
-                      <td className="py-2 px-3 font-mono text-slate-500">{r.customerGST || '-'}</td>
-                      <td className="py-2 px-3 font-bold text-indigo-600">{r.billNumber}</td>
-                      <td className="py-2 px-3 text-right font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.taxable)}</td>
-                      <td className="py-2 px-3 text-right font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.zeroRated)}</td>
-                      <td className="py-2 px-3 text-right font-mono text-indigo-700">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.gstAmount)}</td>
-                      <td className="py-2 px-3 text-right font-bold font-mono">{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.total)}</td>
-                    </tr>
-                  ))}
+                  {(reportData.rows || []).map((r: any, idx: number) => {
+                    const isReturn = r.type === 'CN' || Number(r.gstAmount) < 0 || Number(r.taxable) < 0;
+                    return (
+                      <tr key={idx} onClick={() => onDrillVoucher(r.billNumber, fromDate, toDate)} className={`hover:bg-slate-50 cursor-pointer transition ${isReturn ? 'bg-rose-50/40' : ''}`}>
+                        <td className="py-2 px-3 text-center font-mono">{formatDateStr(r.billDate)}</td>
+                        <td className="py-2 px-3 font-semibold text-slate-800">
+                          {r.isCancelled && typeof r.customerName === 'string' && r.customerName.includes(' (Cancelled)') ? (
+                            <>
+                              {r.customerName.replace(' (Cancelled)', '')}
+                              <span className="text-red-500 font-bold ml-1 text-[10px]">(Cancelled)</span>
+                            </>
+                          ) : (
+                            <span className={isReturn ? 'text-rose-700 font-bold' : ''}>{r.customerName}</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 font-mono text-slate-500">{r.customerGST || '-'}</td>
+                        <td className={`py-2 px-3 font-bold ${isReturn ? 'text-rose-600' : 'text-indigo-600'}`}>{r.billNumber}</td>
+                        <td className={`py-2 px-3 text-right font-mono ${isReturn ? 'text-rose-700 font-bold' : ''}`}>{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.taxable)}</td>
+                        <td className={`py-2 px-3 text-right font-mono ${isReturn ? 'text-rose-700 font-bold' : ''}`}>{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.zeroRated)}</td>
+                        <td className={`py-2 px-3 text-right font-mono ${isReturn ? 'text-rose-700 font-extrabold' : 'text-indigo-700'}`}>{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.gstAmount)}</td>
+                        <td className={`py-2 px-3 text-right font-bold font-mono ${isReturn ? 'text-rose-700 font-bold' : ''}`}>{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.total)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
                 <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
                   <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
@@ -3350,100 +3566,378 @@ export const Reports: React.FC<ReportsProps> = ({
                   );
                 })()}
 
-                {/* Sales Register Table */}
-                {regSubTab === 'sales' && Array.isArray(reportData) && (
-                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-                    <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                      <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                        <tr className="bg-slate-50 border-b border-slate-200">
-                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Date</th>
-                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Invoice No</th>
-                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Customer</th>
-                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Payment</th>
-                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-right font-bold text-slate-700">Total Amt</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {reportData.map((inv: any, i) => (
-                          <tr key={i} className={`cursor-pointer transition hover:bg-indigo-50/60 ${inv.isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
-                             if (inv.invoiceNo) {
-                               onDrillVoucher(inv.invoiceNo, fromDate, toDate);
-                             }
-                          }}>
-                            <td className="py-3 px-4 text-slate-700">{formatDateStr(inv.date)}</td>
-                            <td className="py-3 px-4 text-slate-700 font-medium flex items-center gap-2">
-                              {inv.invoiceNo}
-                              {inv.isCancelled && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">CANCELLED</span>}
-                            </td>
-                            <td className="py-3 px-4 text-slate-600">{inv.customer?.name || 'Walk-in'}</td>
-                            <td className="py-3 px-4 text-slate-600">
-                              {inv.payment?.cash > 0 ? 'Cash ' : ''}
-                              {inv.payment?.bank1 > 0 ? 'Bank1 ' : ''}
-                              {inv.payment?.bank2 > 0 ? 'Bank2 ' : ''}
-                            </td>
-                            <td className="py-3 px-4 text-right font-bold font-mono">
-                              {inv.isCancelled ? (
-                                <span className="text-red-600 font-bold">0.00</span>
-                              ) : (
-                                <span className="text-slate-900">{fmt(inv.totalAmount)}</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                        {reportData.length === 0 && (
-                          <tr><td colSpan={5} className="py-8 text-center text-slate-500 italic">No sales found in this period.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                {/* Sales Register Table & Summary */}
+                {regSubTab === 'sales' && reportData && (
+                  (() => {
+                    const sales = Array.isArray(reportData) ? reportData : (reportData.sales || []);
+                    const returns = Array.isArray(reportData?.returns) ? reportData.returns : [];
+                    const grossSales = typeof reportData.grossSales === 'number' ? reportData.grossSales : sales.reduce((sum: number, s: any) => sum + (s.isCancelled ? 0 : (Number(s.totalAmount) || 0)), 0);
+                    const salesReturn = typeof reportData.salesReturn === 'number' ? reportData.salesReturn : returns.reduce((sum: number, r: any) => sum + (r.isCancelled ? 0 : (Number(r.totalAmount) || 0)), 0);
+                    const netSales = grossSales - salesReturn;
+
+                    // Combined rows for Bill-wise view
+                    const combinedRows = [...sales, ...returns].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                    return (
+                      <div className="space-y-4">
+                        {/* Table View: Item-wise vs Bill-wise */}
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                          {itemWise ? (
+                            /* ITEM-WISE SALES TABLE */
+                            <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                              <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                                <tr className="bg-slate-50 border-b border-slate-200">
+                                  <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Date</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Ref No</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Customer</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Item Name</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-center font-bold text-slate-700">Qty</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-center font-bold text-slate-700">Unit</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-right font-bold text-slate-700">Rate (Nu.)</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-right font-bold text-slate-700">Disc (Nu.)</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-right font-bold text-slate-700">Net Amt (Nu.)</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {(() => {
+                                  let itemRows: Array<React.ReactNode> = [];
+
+                                  // 1. Sales Invoice items
+                                  sales.forEach((inv: any, sIdx: number) => {
+                                    if (inv.isCancelled) return;
+                                    (inv.items || []).forEach((it: any, iIdx: number) => {
+                                      const q = Number(it.Qty || it.qty) || 0;
+                                      const r = Number(it.Rate || it.rate || it.price) || 0;
+                                      const d = Number(it.Discount || it.discount) || 0;
+                                      const lineTot = (q * r) - d;
+
+                                      itemRows.push(
+                                        <tr key={`s-${sIdx}-${iIdx}`} className="hover:bg-indigo-50/40 transition cursor-pointer" onClick={() => inv.invoiceNo && onDrillVoucher(inv.invoiceNo, fromDate, toDate)}>
+                                          <td className="py-2.5 px-3 text-slate-600">{formatDateStr(inv.date)}</td>
+                                          <td className="py-2.5 px-3 font-semibold text-slate-800">{inv.invoiceNo}</td>
+                                          <td className="py-2.5 px-3 text-slate-600">{inv.customer?.name || 'Walk-in'}</td>
+                                          <td className="py-2.5 px-3 font-medium text-slate-900">{it['Item Name'] || it.itemName || it.name || '-'}</td>
+                                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800">{q}</td>
+                                          <td className="py-2.5 px-3 text-center text-slate-500">{it.Unit || it.unit || 'Pcs'}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono text-slate-600">{fmt(r)}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono text-slate-500">{fmt(d)}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">{fmt(lineTot)}</td>
+                                        </tr>
+                                      );
+                                    });
+                                  });
+
+                                  // 2. Return (Credit Note) items
+                                  returns.forEach((cn: any, cIdx: number) => {
+                                    if (cn.isCancelled) return;
+                                    const items = (cn.items && cn.items.length > 0) ? cn.items : [{ itemName: 'Sales Return', qty: 1, rate: cn.totalAmount, unit: 'Job', discount: 0 }];
+                                    items.forEach((it: any, iIdx: number) => {
+                                      const q = Number(it.Qty || it.qty) || 0;
+                                      const r = Number(it.Rate || it.rate || it.price) || 0;
+                                      const d = Number(it.Discount || it.discount) || 0;
+                                      const lineTot = (q * r) - d;
+
+                                      itemRows.push(
+                                        <tr key={`c-${cIdx}-${iIdx}`} className="bg-rose-50/30 hover:bg-rose-50/70 transition cursor-pointer" onClick={() => cn.invoiceNo && onDrillVoucher(cn.invoiceNo, fromDate, toDate)}>
+                                          <td className="py-2.5 px-3 text-slate-600">{formatDateStr(cn.date)}</td>
+                                          <td className="py-2.5 px-3 font-semibold text-rose-700 flex items-center gap-1">
+                                            {cn.invoiceNo || cn.voucherNo}
+                                            <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-1 rounded">RETURN</span>
+                                          </td>
+                                          <td className="py-2.5 px-3 text-slate-600">{cn.customer?.name || 'Customer'}</td>
+                                          <td className="py-2.5 px-3 font-medium text-rose-800">{it['Item Name'] || it.itemName || it.name || 'Sales Return'}</td>
+                                          <td className="py-2.5 px-3 text-center font-mono font-bold text-rose-700">-{q}</td>
+                                          <td className="py-2.5 px-3 text-center text-slate-500">{it.Unit || it.unit || 'Pcs'}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono text-slate-600">{fmt(r)}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono text-slate-500">{fmt(d)}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-700">-{fmt(lineTot)}</td>
+                                        </tr>
+                                      );
+                                    });
+                                  });
+
+                                  if (itemRows.length === 0) {
+                                    return <tr><td colSpan={9} className="py-8 text-center text-slate-500 italic">No sales or return items found in this period.</td></tr>;
+                                  }
+
+                                  return itemRows;
+                                })()}
+                              </tbody>
+                              <tfoot className="bg-slate-900 text-white font-bold text-xs sm:text-sm">
+                                <tr>
+                                  <td colSpan={4} className="py-3 px-4 text-left uppercase tracking-wider text-slate-300">NET SALES TOTAL</td>
+                                  <td className="py-3 px-3 text-center font-mono text-amber-300">{sales.reduce((sum: number, s: any) => sum + (s.items || []).reduce((iq: number, it: any) => iq + (Number(it.qty || it.Qty) || 0), 0), 0) - returns.reduce((sum: number, r: any) => sum + (r.items || []).reduce((iq: number, it: any) => iq + (Number(it.qty || it.Qty) || 0), 0), 0)}</td>
+                                  <td colSpan={3} className="py-3 px-3 text-right text-slate-400 text-xs">Gross Nu. {fmt(grossSales)} - Return Nu. {fmt(salesReturn)} =</td>
+                                  <td className="py-3 px-4 text-right font-mono text-emerald-400 text-base">Nu. {fmt(netSales)}</td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          ) : (
+                            /* BILL-WISE SALES TABLE */
+                            <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                              <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                                <tr className="bg-slate-50 border-b border-slate-200">
+                                  <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Date</th>
+                                  <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Type / Ref No</th>
+                                  <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Customer</th>
+                                  <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Payment / Ref</th>
+                                  <th className="bg-slate-100 py-3 px-4 text-right font-bold text-slate-700">Gross Amt</th>
+                                  <th className="bg-slate-100 py-3 px-4 text-right font-bold text-slate-700">Return Amt</th>
+                                  <th className="bg-slate-100 py-3 px-4 text-right font-bold text-slate-700">Net Amt (Nu.)</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {combinedRows.map((inv: any, i: number) => {
+                                  const isCN = inv.type === 'CN' || inv.invoiceNo?.startsWith('CN');
+                                  const amt = Number(inv.totalAmount) || 0;
+                                  return (
+                                    <tr key={i} className={`cursor-pointer transition ${isCN ? 'bg-rose-50/30 hover:bg-rose-50/60' : 'hover:bg-indigo-50/60'} ${inv.isCancelled ? 'opacity-50 bg-red-50/20' : ''}`} onClick={() => inv.invoiceNo && onDrillVoucher(inv.invoiceNo, fromDate, toDate)}>
+                                      <td className="py-3 px-4 text-slate-700">{formatDateStr(inv.date)}</td>
+                                      <td className="py-3 px-4 font-semibold text-slate-800 flex items-center gap-2">
+                                        <span>{inv.invoiceNo}</span>
+                                        {isCN ? (
+                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-700 border border-rose-300">SALES RETURN</span>
+                                        ) : (
+                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-emerald-100 text-emerald-700 border border-emerald-300">SALE</span>
+                                        )}
+                                        {inv.isCancelled && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">CANCELLED</span>}
+                                      </td>
+                                      <td className="py-3 px-4 text-slate-700 font-medium">{inv.customer?.name || 'Walk-in'}</td>
+                                      <td className="py-3 px-4 text-slate-600">
+                                        {isCN ? (
+                                          <span className="italic text-slate-500">{inv.originalRef ? `Against ${inv.originalRef}` : 'Credit Note'}</span>
+                                        ) : (
+                                          <>
+                                            {inv.payment?.cash > 0 ? 'Cash ' : ''}
+                                            {inv.payment?.bank1 > 0 ? 'Bank1 ' : ''}
+                                            {inv.payment?.bank2 > 0 ? 'Bank2 ' : ''}
+                                            {inv.payment?.credit > 0 ? 'Credit ' : ''}
+                                          </>
+                                        )}
+                                      </td>
+                                      <td className="py-3 px-4 text-right font-mono font-medium text-slate-800">
+                                        {!isCN && !inv.isCancelled ? fmt(amt) : '0.00'}
+                                      </td>
+                                      <td className="py-3 px-4 text-right font-mono font-semibold text-rose-600">
+                                        {isCN && !inv.isCancelled ? `-${fmt(amt)}` : '0.00'}
+                                      </td>
+                                      <td className="py-3 px-4 text-right font-bold font-mono text-slate-900">
+                                        {inv.isCancelled ? (
+                                          <span className="text-red-500">0.00</span>
+                                        ) : isCN ? (
+                                          <span className="text-rose-700 font-extrabold">-{fmt(amt)}</span>
+                                        ) : (
+                                          <span className="text-slate-900">{fmt(amt)}</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                                {combinedRows.length === 0 && (
+                                  <tr><td colSpan={7} className="py-8 text-center text-slate-500 italic">No sales or returns found in this period.</td></tr>
+                                )}
+                              </tbody>
+                              <tfoot className="bg-slate-900 text-white font-bold text-xs sm:text-sm">
+                                <tr>
+                                  <td colSpan={4} className="py-3.5 px-4 text-left uppercase tracking-wider text-slate-300">NET SALES SUMMARY</td>
+                                  <td className="py-3.5 px-4 text-right font-mono text-slate-300">Nu. {fmt(grossSales)}</td>
+                                  <td className="py-3.5 px-4 text-right font-mono text-rose-300">- Nu. {fmt(salesReturn)}</td>
+                                  <td className="py-3.5 px-4 text-right font-mono text-emerald-400 text-base">Nu. {fmt(netSales)}</td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()
                 )}
 
-                {/* Purchase Register Table */}
-                {regSubTab === 'purchases' && Array.isArray(reportData) && (
-                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
-                    <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                      <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                        <tr className="bg-slate-50 border-b border-slate-200">
-                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Date</th>
-                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Bill No</th>
-                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Supplier</th>
-                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Payment</th>
-                          <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-right font-bold text-slate-700">Total Amt</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {reportData.map((inv: any, i) => (
-                          <tr key={i} className={`cursor-pointer transition hover:bg-indigo-50/60 ${inv.isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
-                             if (inv.billNo) {
-                               onDrillVoucher(inv.billNo, fromDate, toDate);
-                             }
-                          }}>
-                            <td className="py-3 px-4 text-slate-700">{formatDateStr(inv.date)}</td>
-                            <td className="py-3 px-4 text-slate-700 font-medium flex items-center gap-2">
-                              {inv.supplierBillNo || inv.billNo}
-                              {inv.isCancelled && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">CANCELLED</span>}
-                            </td>
-                            <td className="py-3 px-4 text-slate-600">{inv.supplier?.name || 'Supplier'}</td>
-                            <td className="py-3 px-4 text-slate-600">
-                              {inv.payment?.cash > 0 ? 'Cash ' : ''}
-                              {inv.payment?.bank1 > 0 ? 'Bank1 ' : ''}
-                              {inv.payment?.bank2 > 0 ? 'Bank2 ' : ''}
-                            </td>
-                            <td className="py-3 px-4 text-right font-bold font-mono">
-                              {inv.isCancelled ? (
-                                <span className="text-red-600 font-bold">0.00</span>
-                              ) : (
-                                <span className="text-slate-900">{fmt(inv.totalAmount)}</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                        {reportData.length === 0 && (
-                          <tr><td colSpan={5} className="py-8 text-center text-slate-500 italic">No purchases found in this period.</td></tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
+                {/* Purchase Register Table & Summary */}
+                {regSubTab === 'purchases' && reportData && (
+                  (() => {
+                    const purchases = Array.isArray(reportData) ? reportData : (reportData.purchases || []);
+                    const returns = Array.isArray(reportData?.returns) ? reportData.returns : [];
+                    const grossPurchases = typeof reportData.grossPurchases === 'number' ? reportData.grossPurchases : purchases.reduce((sum: number, p: any) => sum + (p.isCancelled ? 0 : (Number(p.totalAmount) || 0)), 0);
+                    const purchaseReturn = typeof reportData.purchaseReturn === 'number' ? reportData.purchaseReturn : returns.reduce((sum: number, r: any) => sum + (r.isCancelled ? 0 : (Number(r.totalAmount) || 0)), 0);
+                    const netPurchases = grossPurchases - purchaseReturn;
+
+                    // Combined rows for Bill-wise view
+                    const combinedRows = [...purchases, ...returns].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                    return (
+                      <div className="space-y-4">
+                        {/* Table View: Item-wise vs Bill-wise */}
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                          {itemWise ? (
+                            /* ITEM-WISE PURCHASE TABLE */
+                            <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                              <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                                <tr className="bg-slate-50 border-b border-slate-200">
+                                  <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Date</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Bill No</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Supplier</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Item Name</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-center font-bold text-slate-700">Qty</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-center font-bold text-slate-700">Unit</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-right font-bold text-slate-700">Rate (Nu.)</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-right font-bold text-slate-700">Disc (Nu.)</th>
+                                  <th className="bg-slate-100 py-3 px-3 text-right font-bold text-slate-700">Net Amt (Nu.)</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {(() => {
+                                  let itemRows: Array<React.ReactNode> = [];
+
+                                  // 1. Purchase Bill items
+                                  purchases.forEach((inv: any, pIdx: number) => {
+                                    if (inv.isCancelled) return;
+                                    (inv.items || []).forEach((it: any, iIdx: number) => {
+                                      const q = Number(it.Qty || it.qty) || 0;
+                                      const r = Number(it.Rate || it.rate || it.price) || 0;
+                                      const d = Number(it.Discount || it.discount) || 0;
+                                      const lineTot = (q * r) - d;
+
+                                      itemRows.push(
+                                        <tr key={`p-${pIdx}-${iIdx}`} className="hover:bg-indigo-50/40 transition cursor-pointer" onClick={() => (inv.supplierBillNo || inv.billNo) && onDrillVoucher(inv.supplierBillNo || inv.billNo, fromDate, toDate)}>
+                                          <td className="py-2.5 px-3 text-slate-600">{formatDateStr(inv.date)}</td>
+                                          <td className="py-2.5 px-3 font-semibold text-slate-800">{inv.supplierBillNo || inv.billNo}</td>
+                                          <td className="py-2.5 px-3 text-slate-600">{inv.supplier?.name || 'Supplier'}</td>
+                                          <td className="py-2.5 px-3 font-medium text-slate-900">{it['Item Name'] || it.itemName || it.name || '-'}</td>
+                                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800">{q}</td>
+                                          <td className="py-2.5 px-3 text-center text-slate-500">{it.Unit || it.unit || 'Pcs'}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono text-slate-600">{fmt(r)}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono text-slate-500">{fmt(d)}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">{fmt(lineTot)}</td>
+                                        </tr>
+                                      );
+                                    });
+                                  });
+
+                                  // 2. Return (Debit Note) items
+                                  returns.forEach((dn: any, dIdx: number) => {
+                                    if (dn.isCancelled) return;
+                                    const items = (dn.items && dn.items.length > 0) ? dn.items : [{ itemName: 'Purchase Return', qty: 1, rate: dn.totalAmount, unit: 'Job', discount: 0 }];
+                                    items.forEach((it: any, iIdx: number) => {
+                                      const q = Number(it.Qty || it.qty) || 0;
+                                      const r = Number(it.Rate || it.rate || it.price) || 0;
+                                      const d = Number(it.Discount || it.discount) || 0;
+                                      const lineTot = (q * r) - d;
+
+                                      itemRows.push(
+                                        <tr key={`d-${dIdx}-${iIdx}`} className="bg-rose-50/30 hover:bg-rose-50/70 transition cursor-pointer" onClick={() => (dn.billNo || dn.voucherNo) && onDrillVoucher(dn.billNo || dn.voucherNo, fromDate, toDate)}>
+                                          <td className="py-2.5 px-3 text-slate-600">{formatDateStr(dn.date)}</td>
+                                          <td className="py-2.5 px-3 font-semibold text-rose-700 flex items-center gap-1">
+                                            {dn.billNo || dn.voucherNo}
+                                            <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-1 rounded">RETURN</span>
+                                          </td>
+                                          <td className="py-2.5 px-3 text-slate-600">{dn.supplier?.name || 'Supplier'}</td>
+                                          <td className="py-2.5 px-3 font-medium text-rose-800">{it['Item Name'] || it.itemName || it.name || 'Purchase Return'}</td>
+                                          <td className="py-2.5 px-3 text-center font-mono font-bold text-rose-700">-{q}</td>
+                                          <td className="py-2.5 px-3 text-center text-slate-500">{it.Unit || it.unit || 'Pcs'}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono text-slate-600">{fmt(r)}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono text-slate-500">{fmt(d)}</td>
+                                          <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-700">-{fmt(lineTot)}</td>
+                                        </tr>
+                                      );
+                                    });
+                                  });
+
+                                  if (itemRows.length === 0) {
+                                    return <tr><td colSpan={9} className="py-8 text-center text-slate-500 italic">No purchase or return items found in this period.</td></tr>;
+                                  }
+
+                                  return itemRows;
+                                })()}
+                              </tbody>
+                              <tfoot className="bg-slate-900 text-white font-bold text-xs sm:text-sm">
+                                <tr>
+                                  <td colSpan={4} className="py-3 px-4 text-left uppercase tracking-wider text-slate-300">NET PURCHASE TOTAL</td>
+                                  <td className="py-3 px-3 text-center font-mono text-amber-300">{purchases.reduce((sum: number, p: any) => sum + (p.items || []).reduce((iq: number, it: any) => iq + (Number(it.qty || it.Qty) || 0), 0), 0) - returns.reduce((sum: number, r: any) => sum + (r.items || []).reduce((iq: number, it: any) => iq + (Number(it.qty || it.Qty) || 0), 0), 0)}</td>
+                                  <td colSpan={3} className="py-3 px-3 text-right text-slate-400 text-xs">Gross Nu. {fmt(grossPurchases)} - Return Nu. {fmt(purchaseReturn)} =</td>
+                                  <td className="py-3 px-4 text-right font-mono text-emerald-400 text-base">Nu. {fmt(netPurchases)}</td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          ) : (
+                            /* BILL-WISE PURCHASE TABLE */
+                            <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                              <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                                <tr className="bg-slate-50 border-b border-slate-200">
+                                  <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Date</th>
+                                  <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Type / Bill No</th>
+                                  <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Supplier</th>
+                                  <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Payment / Ref</th>
+                                  <th className="bg-slate-100 py-3 px-4 text-right font-bold text-slate-700">Gross Amt</th>
+                                  <th className="bg-slate-100 py-3 px-4 text-right font-bold text-slate-700">Return Amt</th>
+                                  <th className="bg-slate-100 py-3 px-4 text-right font-bold text-slate-700">Net Amt (Nu.)</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {combinedRows.map((inv: any, i: number) => {
+                                  const isDN = inv.type === 'DN' || inv.billNo?.startsWith('DN') || inv.supplierBillNo?.startsWith('DN');
+                                  const amt = Number(inv.totalAmount) || 0;
+                                  return (
+                                    <tr key={i} className={`cursor-pointer transition ${isDN ? 'bg-rose-50/30 hover:bg-rose-50/60' : 'hover:bg-indigo-50/60'} ${inv.isCancelled ? 'opacity-50 bg-red-50/20' : ''}`} onClick={() => (inv.supplierBillNo || inv.billNo) && onDrillVoucher(inv.supplierBillNo || inv.billNo, fromDate, toDate)}>
+                                      <td className="py-3 px-4 text-slate-700">{formatDateStr(inv.date)}</td>
+                                      <td className="py-3 px-4 font-semibold text-slate-800 flex items-center gap-2">
+                                        <span>{inv.supplierBillNo || inv.billNo}</span>
+                                        {isDN ? (
+                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-700 border border-rose-300">PURCHASE RETURN</span>
+                                        ) : (
+                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-blue-100 text-blue-700 border border-blue-300">PURCHASE</span>
+                                        )}
+                                        {inv.isCancelled && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">CANCELLED</span>}
+                                      </td>
+                                      <td className="py-3 px-4 text-slate-700 font-medium">{inv.supplier?.name || 'Supplier'}</td>
+                                      <td className="py-3 px-4 text-slate-600">
+                                        {isDN ? (
+                                          <span className="italic text-slate-500">{inv.originalRef ? `Against ${inv.originalRef}` : 'Debit Note'}</span>
+                                        ) : (
+                                          <>
+                                            {inv.payment?.cash > 0 ? 'Cash ' : ''}
+                                            {inv.payment?.bank1 > 0 ? 'Bank1 ' : ''}
+                                            {inv.payment?.bank2 > 0 ? 'Bank2 ' : ''}
+                                            {inv.payment?.credit > 0 ? 'Credit ' : ''}
+                                          </>
+                                        )}
+                                      </td>
+                                      <td className="py-3 px-4 text-right font-mono font-medium text-slate-800">
+                                        {!isDN && !inv.isCancelled ? fmt(amt) : '0.00'}
+                                      </td>
+                                      <td className="py-3 px-4 text-right font-mono font-semibold text-rose-600">
+                                        {isDN && !inv.isCancelled ? `-${fmt(amt)}` : '0.00'}
+                                      </td>
+                                      <td className="py-3 px-4 text-right font-bold font-mono text-slate-900">
+                                        {inv.isCancelled ? (
+                                          <span className="text-red-500">0.00</span>
+                                        ) : isDN ? (
+                                          <span className="text-rose-700 font-extrabold">-{fmt(amt)}</span>
+                                        ) : (
+                                          <span className="text-slate-900">{fmt(amt)}</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                                {combinedRows.length === 0 && (
+                                  <tr><td colSpan={7} className="py-8 text-center text-slate-500 italic">No purchases or returns found in this period.</td></tr>
+                                )}
+                              </tbody>
+                              <tfoot className="bg-slate-900 text-white font-bold text-xs sm:text-sm">
+                                <tr>
+                                  <td colSpan={4} className="py-3.5 px-4 text-left uppercase tracking-wider text-slate-300">NET PURCHASE SUMMARY</td>
+                                  <td className="py-3.5 px-4 text-right font-mono text-slate-300">Nu. {fmt(grossPurchases)}</td>
+                                  <td className="py-3.5 px-4 text-right font-mono text-rose-300">- Nu. {fmt(purchaseReturn)}</td>
+                                  <td className="py-3.5 px-4 text-right font-mono text-emerald-400 text-base">Nu. {fmt(netPurchases)}</td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()
                 )}
 
                 {/* Quotation Register Table */}

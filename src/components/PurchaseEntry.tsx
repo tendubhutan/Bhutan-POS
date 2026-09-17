@@ -399,15 +399,10 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     }
 
     resetForm();
-    if (onBack) {
-      onBack(true);
-    } else {
-      window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
-    }
-    return true;
+    return false;
   };
 
-  // Global Keyboard Shortcuts (F2 Accept/Save, Ctrl+A Accept/Save, F7/Ctrl+I Item/Ledger Info, ESC Back)
+  // Global Keyboard Shortcuts (F2 Accept/Save, Ctrl+A Accept/Save, F7/Ctrl+I Item/Ledger Info)
   useEffect(() => {
     if (isActive === false) return;
 
@@ -452,13 +447,6 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
           }
         }
         return;
-      }
-
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation?.();
-        handlePurchaseBack();
       }
     };
 

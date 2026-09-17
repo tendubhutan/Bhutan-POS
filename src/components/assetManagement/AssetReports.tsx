@@ -38,6 +38,7 @@ import * as XLSX from 'xlsx-js-style';
 
 interface AssetReportsProps {
   config: Config;
+  onDrillVoucher?: (refNo: string, fromDate?: string, toDate?: string) => void;
 }
 
 // Standard PPE categories fallback matching Note 2 schedule
@@ -66,7 +67,7 @@ const DEFAULT_PPE_CATEGORIES: Partial<AssetCategory>[] = [
 export const AssetReports: React.FC<AssetReportsProps & {
   isFullScreen?: boolean;
   onToggleFullScreen?: (val: boolean) => void;
-}> = ({ config, isFullScreen = false, onToggleFullScreen }) => {
+}> = ({ config, onDrillVoucher, isFullScreen = false, onToggleFullScreen }) => {
   const [activeTab, setActiveTab] = useState<'ppe' | 'schedule' | 'register'>('ppe');
   const [assets, setAssets] = useState<FixedAsset[]>([]);
   const [categories, setCategories] = useState<AssetCategory[]>([]);
@@ -1239,13 +1240,11 @@ export const AssetReports: React.FC<AssetReportsProps & {
                             <td className="px-2.5 py-2 text-right font-mono text-slate-600 whitespace-nowrap">{fmt(r.netPrev)}</td>
                           </tr>
 
-                          {/* Deep-Down Itemized Assets */}
+                          {/* Itemized Assets under PPE Category */}
                           {isExpanded && r.itemizedAssets.map((item, itemIdx) => (
                             <tr 
                               key={`${idx}-${itemIdx}`}
-                              onClick={() => setSelectedDeepAsset(item.asset)}
-                              className="bg-indigo-50/30 hover:bg-indigo-100/50 transition-colors cursor-pointer border-l-4 border-l-indigo-600 text-[10.5px]"
-                              title="Click to deep dive into this asset's full records and audit history"
+                              className="bg-indigo-50/30 hover:bg-indigo-100/30 transition-colors border-l-4 border-l-indigo-600 text-[10.5px]"
                             >
                               <td className="pl-6 pr-3 py-1.5 border-r border-slate-200/80 whitespace-nowrap">
                                 <div className="flex items-center gap-1.5">
@@ -1254,10 +1253,20 @@ export const AssetReports: React.FC<AssetReportsProps & {
                                     {item.asset.assetId}
                                   </span>
                                   <span className="font-medium text-slate-800">{item.asset.name}</span>
-                                  <span className="ml-auto inline-flex items-center gap-0.5 text-[9.5px] font-bold text-indigo-600 bg-white/80 px-1.5 py-0.5 rounded border border-indigo-200/60 shadow-2xs hover:bg-white">
-                                    <Eye className="h-3 w-3 text-indigo-600" />
-                                    Deep-Down
-                                  </span>
+                                  {item.asset.purchaseVoucherId && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onDrillVoucher?.(item.asset.purchaseVoucherId!);
+                                      }}
+                                      className="ml-auto inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-300 shadow-2xs hover:bg-emerald-50 transition cursor-pointer"
+                                      title="Click to view New Asset Entry Journal"
+                                    >
+                                      <FileText className="h-3 w-3 text-emerald-600" />
+                                      Entry Journal: {item.asset.purchaseVoucherId}
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                               <td className="px-2 py-1.5 border-r border-slate-200/80 text-center font-mono text-[10px] text-slate-500 whitespace-nowrap">
@@ -1347,23 +1356,44 @@ export const AssetReports: React.FC<AssetReportsProps & {
                       return (
                         <tr 
                           key={idx} 
-                          onClick={() => {
-                            if (asset) setSelectedDeepAsset(asset);
-                          }}
-                          className={`transition ${asset ? 'cursor-pointer hover:bg-indigo-50/50' : 'hover:bg-slate-50'}`}
-                          title={asset ? "Click to deep dive into this asset's full records and audit history" : undefined}
+                          className="hover:bg-slate-50/80 transition"
                         >
                           <td className="px-4 py-3 text-slate-600 font-mono">{d.depreciationDate}</td>
-                          <td className="px-4 py-3 font-mono text-indigo-700 font-bold">{d.journalId || '-'}</td>
+                          <td className="px-4 py-3 font-mono">
+                            {d.journalId ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDrillVoucher?.(d.journalId);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold border border-indigo-200 text-xs transition cursor-pointer"
+                                title="Click to view Depreciation Journal Entry"
+                              >
+                                <FileText className="h-3.5 w-3.5 text-indigo-600" />
+                                <span>{d.journalId}</span>
+                              </button>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 font-mono text-slate-700 font-bold">{asset?.assetId || '-'}</td>
                           <td className="px-4 py-3 font-bold text-slate-900">
                             <div className="flex items-center justify-between gap-2">
                               <span>{asset?.name || 'Asset Record'}</span>
-                              {asset && (
-                                <span className="inline-flex items-center gap-1 text-[10px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200">
-                                  <Eye className="h-3 w-3" />
-                                  Deep-Down
-                                </span>
+                              {asset?.purchaseVoucherId && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDrillVoucher?.(asset.purchaseVoucherId!);
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 cursor-pointer transition"
+                                  title="Click to view New Asset Entry Journal"
+                                >
+                                  <FileText className="h-3 w-3 text-emerald-600" />
+                                  Entry Journal: {asset.purchaseVoucherId}
+                                </button>
                               )}
                             </div>
                           </td>
@@ -1444,22 +1474,28 @@ export const AssetReports: React.FC<AssetReportsProps & {
                     return (
                       <tr 
                         key={idx} 
-                        onClick={() => setSelectedDeepAsset(asset)}
-                        className="hover:bg-indigo-50/50 transition cursor-pointer"
-                        title="Click to deep dive into this asset's full records and audit history"
+                        className="hover:bg-slate-50/80 transition"
                       >
                         <td className="px-4 py-3 font-mono text-xs text-indigo-700 font-bold">
-                          <div className="flex items-center gap-1.5">
-                            <Eye className="h-3.5 w-3.5 text-indigo-500" />
-                            <span>{asset.assetId}</span>
-                          </div>
+                          <span>{asset.assetId}</span>
                         </td>
                         <td className="px-4 py-3 font-bold text-slate-900">
                           <div className="flex items-center justify-between gap-2">
                             <span>{asset.name}</span>
-                            <span className="inline-flex items-center gap-1 text-[10px] text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-200">
-                              Deep-Down
-                            </span>
+                            {asset.purchaseVoucherId && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDrillVoucher?.(asset.purchaseVoucherId!);
+                                }}
+                                className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 cursor-pointer transition"
+                                title="Click to view New Asset Entry Journal"
+                              >
+                                <FileText className="h-3 w-3 text-emerald-600" />
+                                Entry Journal: {asset.purchaseVoucherId}
+                              </button>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3 text-slate-600 font-semibold">{cat?.name || 'Uncategorized'}</td>

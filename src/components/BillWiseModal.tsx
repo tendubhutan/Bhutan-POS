@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Check, FileText, Calendar, ArrowRight, CheckCircle2, RotateCcw, Sparkles } from 'lucide-react';
 import { BillAllocation, BillWiseDetail } from '../types';
 import { getPartyOutstandingBills } from '../services/storageService';
@@ -31,6 +31,9 @@ export const BillWiseModal: React.FC<BillWiseModalProps> = ({
   
   // Custom confirmation modal state
   const [showConfirm, setShowConfirm] = useState(false);
+
+  const applyBtnRef = useRef<HTMLButtonElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
   
   const partyType = voucherType === 'P' ? 'creditor' : voucherType === 'R' ? 'debtor' : undefined;
 
@@ -57,6 +60,36 @@ export const BillWiseModal: React.FC<BillWiseModalProps> = ({
       setAdvanceAmt(advAmt > 0 ? advAmt : '');
     }
   }, [isOpen, partyName, partyType]);
+
+  // Auto-focus first input field or Apply button when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        if (modalRef.current) {
+          const firstInput = modalRef.current.querySelector<HTMLInputElement>(
+            'input[type="number"], input[type="text"]'
+          );
+          if (firstInput) {
+            firstInput.focus();
+            firstInput.select?.();
+          } else if (applyBtnRef.current) {
+            applyBtnRef.current.focus();
+          }
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (applyBtnRef.current) {
+        applyBtnRef.current.focus();
+      }
+    }
+  };
 
   const billAllocatedAmount = useMemo(() => {
     return Object.values(allocations).reduce((acc, v) => acc + (Number(v) || 0), 0);
@@ -205,6 +238,7 @@ export const BillWiseModal: React.FC<BillWiseModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div 
+        ref={modalRef}
         className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]"
         onClick={e => e.stopPropagation()}
       >
@@ -315,6 +349,7 @@ export const BillWiseModal: React.FC<BillWiseModalProps> = ({
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleBillSelection(b)}
+                            onKeyDown={handleInputKeyDown}
                             className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-slate-300 cursor-pointer"
                           />
                         </td>
@@ -346,6 +381,7 @@ export const BillWiseModal: React.FC<BillWiseModalProps> = ({
                               value={allocations[b.billNo] ?? ''}
                               placeholder="0.00"
                               onChange={e => handleAmountChange(b.billNo, e.target.value, b.pendingAmount)}
+                              onKeyDown={handleInputKeyDown}
                               className={`w-24 text-right font-mono font-bold text-xs px-2 py-1 bg-white border rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-hidden ${isSelected ? 'border-indigo-300' : 'border-slate-300'}`}
                             />
                           </div>
@@ -373,6 +409,7 @@ export const BillWiseModal: React.FC<BillWiseModalProps> = ({
                   placeholder="e.g. Advance Payment / Cheque No"
                   value={advanceRef}
                   onChange={e => setAdvanceRef(e.target.value)}
+                  onKeyDown={handleInputKeyDown}
                   className="w-full text-xs px-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:border-indigo-500 outline-hidden"
                 />
               </div>
@@ -387,6 +424,7 @@ export const BillWiseModal: React.FC<BillWiseModalProps> = ({
                     placeholder="0.00"
                     value={advanceAmt}
                     onChange={e => setAdvanceAmt(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                    onKeyDown={handleInputKeyDown}
                     className="w-full text-xs font-mono font-bold px-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:border-indigo-500 outline-hidden"
                   />
                 </div>
@@ -433,9 +471,17 @@ export const BillWiseModal: React.FC<BillWiseModalProps> = ({
               Cancel
             </button>
             <button
+              ref={applyBtnRef}
               type="button"
               onClick={handleApply}
-              className="px-5 py-2 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 shadow-md shadow-indigo-600/20 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleApply();
+                }
+              }}
+              className="px-5 py-2 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 outline-hidden shadow-md shadow-indigo-600/20 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
             >
               <Check className="w-4 h-4" />
               <span>Apply Allocations</span>
@@ -463,8 +509,15 @@ export const BillWiseModal: React.FC<BillWiseModalProps> = ({
               </button>
               <button
                 type="button"
+                autoFocus
                 onClick={proceedApply}
-                className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    proceedApply();
+                  }
+                }}
+                className="px-4 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 rounded-lg transition"
               >
                 Proceed & Overwrite
               </button>

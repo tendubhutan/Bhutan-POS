@@ -704,10 +704,15 @@ export const Vouchers: React.FC<VouchersProps> = ({
 
   const handleSubVoucherBack = () => {
     handleCancelOrResetEntry();
-    if (onBack) {
-      onBack(true);
+    if (voucherTypeHistory.length > 1) {
+      const updated = [...voucherTypeHistory];
+      updated.pop();
+      const prevType = updated[updated.length - 1] || 'P';
+      setVoucherTypeHistory(updated);
+      handleVTypeChange(prevType, false);
     } else {
-      window.dispatchEvent(new CustomEvent('app:navigate-back-direct'));
+      setVoucherTypeHistory(['P']);
+      handleVTypeChange('P', false);
     }
   };
 

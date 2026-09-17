@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, X } from 'lucide-react';
 import { Ledger } from '../types';
+import { getFullLedgerStatement } from '../services/storageService';
 
 interface QuickLedgerSearchModalProps {
   ledgers: Ledger[];
@@ -103,6 +104,15 @@ export const QuickLedgerSearchModal: React.FC<QuickLedgerSearchModalProps> = ({ 
               const ledgerName = l['Ledger Name'] || '';
               const groupName = l['Group'] || l['Under Group'] || 'General Ledger';
 
+              const stmt = getFullLedgerStatement(ledgerName);
+              let bal = stmt.openingBalance;
+              stmt.rows.forEach(r => {
+                if (!r.isCancelled && (r as any).Status !== 'Cancelled') {
+                  bal += (Number(r.Debit) || 0) - (Number(r.Credit) || 0);
+                }
+              });
+              const balStr = `${Math.abs(bal).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${bal >= 0 ? 'Dr' : 'Cr'}`;
+
               return (
                 <div
                   key={ledgerName || idx}
@@ -122,11 +132,20 @@ export const QuickLedgerSearchModal: React.FC<QuickLedgerSearchModalProps> = ({ 
                       {groupName}
                     </span>
                   </div>
-                  <span className={`text-xs font-mono font-bold px-2 py-1 rounded-lg shrink-0 ${
-                    isSelected ? 'bg-indigo-700 text-white shadow-2xs' : 'bg-slate-100 text-slate-600 border border-slate-200'
-                  }`}>
-                    Select ↵
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={`text-xs font-mono font-bold px-2 py-1 rounded-lg ${
+                      isSelected
+                        ? 'bg-indigo-700/80 text-white'
+                        : 'bg-indigo-50 text-indigo-900 border border-indigo-200'
+                    }`}>
+                      {balStr}
+                    </span>
+                    <span className={`text-xs font-mono font-bold px-2 py-1 rounded-lg ${
+                      isSelected ? 'bg-indigo-800 text-white shadow-2xs' : 'bg-slate-100 text-slate-600 border border-slate-200'
+                    }`}>
+                      Select ↵
+                    </span>
+                  </div>
                 </div>
               );
             })

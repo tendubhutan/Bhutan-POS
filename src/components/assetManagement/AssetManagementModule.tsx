@@ -26,6 +26,7 @@ interface AssetManagementModuleProps {
   config: Config;
   ledgers: Ledger[];
   onDataRefresh: () => void;
+  onDrillVoucher?: (refNo: string, fromDate?: string, toDate?: string) => void;
 }
 
 export type AssetTab = 
@@ -43,7 +44,8 @@ export type AssetTab =
 export const AssetManagementModule: React.FC<AssetManagementModuleProps> = ({
   config,
   ledgers,
-  onDataRefresh
+  onDataRefresh,
+  onDrillVoucher
 }) => {
   const [activeTab, setActiveTab] = useState<AssetTab>('register');
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
@@ -92,6 +94,7 @@ export const AssetManagementModule: React.FC<AssetManagementModuleProps> = ({
                  config={config} 
                  isFullScreen={isFullScreenReport} 
                  onToggleFullScreen={(val) => setIsFullScreenReport(val)} 
+                 onDrillVoucher={onDrillVoucher}
                />;
       default:
         return <AssetRegister onEditAsset={handleEditAsset} config={config} />;

@@ -137,9 +137,30 @@ export default function App() {
     });
   };
 
-  const navigateBack = (forceDirect: boolean = true) => {
+  const navigateBack = (forceDirect: boolean = false) => {
     if (forceDirect === true) {
       navigateBackDirect();
+      return;
+    }
+
+    if (showTrashModal) {
+      setShowTrashModal(false);
+      return;
+    }
+    if (showBulkDeleteModal) {
+      setShowBulkDeleteModal(false);
+      return;
+    }
+    if (showGlobalLedgerSearch) {
+      setShowGlobalLedgerSearch(false);
+      return;
+    }
+    if (quickLedgerModalProps.isOpen) {
+      setQuickLedgerModalProps(p => ({ ...p, isOpen: false }));
+      return;
+    }
+    if (quickItemModalProps.isOpen) {
+      setQuickItemModalProps(p => ({ ...p, isOpen: false }));
       return;
     }
 
@@ -152,8 +173,8 @@ export default function App() {
 
     // 2. Allow active sub-screen or modal to handle back navigation first
     const backEvent = new CustomEvent('app:back', { cancelable: true });
-    const handled = window.dispatchEvent(backEvent);
-    if (!handled) return;
+    const notHandled = window.dispatchEvent(backEvent);
+    if (!notHandled) return;
 
     navigateBackDirect();
   };
@@ -445,65 +466,14 @@ export default function App() {
       // Escape key: step back in navigation history until reaching Main Menu
       if (e.key === 'Escape') {
         if (e.defaultPrevented) return;
+        e.preventDefault();
 
-        const state = appStateRef.current;
-
-        // 1. Check if top-level global dialogs in App.tsx are open
-        if (state.showTrashModal) {
-          e.preventDefault();
-          setShowTrashModal(false);
-          return;
-        }
-        if (state.showBulkDeleteModal) {
-          e.preventDefault();
-          setShowBulkDeleteModal(false);
-          return;
-        }
-        if (state.showGlobalLedgerSearch) {
-          e.preventDefault();
-          setShowGlobalLedgerSearch(false);
-          return;
-        }
-        if (state.quickLedgerModalProps.isOpen) {
-          e.preventDefault();
-          setQuickLedgerModalProps(p => ({ ...p, isOpen: false }));
-          return;
-        }
-        if (state.quickItemModalProps.isOpen) {
-          e.preventDefault();
-          setQuickItemModalProps(p => ({ ...p, isOpen: false }));
-          return;
-        }
-
-        // 2. If drilldown modal is open, dispatch app:back so DrillModal steps back sequentially
-        if (state.drillModal?.type) {
-          e.preventDefault();
-          const backEvent = new CustomEvent('app:back', { cancelable: true });
-          window.dispatchEvent(backEvent);
-          return;
-        }
-
-        // 3. Dispatch app:back event so active screen/modal/sub-flow handles step-back first
-        const backEvent = new CustomEvent('app:back', { cancelable: true });
-        const notHandled = window.dispatchEvent(backEvent);
-        if (!notHandled) {
-          // Handled by child component (e.preventDefault was called)
-          e.preventDefault();
-          return;
-        }
-
-        // 4. If typing inside an input/select/textarea and not handled by modal, blur it
-        if (isInput) {
+        // If typing inside an input/select/textarea and no modal is active, blur it first
+        if (isInput && !isAnyModalOpen) {
           (activeEl as HTMLElement)?.blur?.();
         }
 
-        // 5. Navigate back to previous screen in history stack or restore drilldown context
-        if (state.drillReturnContext || state.currentView !== 'dashboard' || state.viewHistory.length > 1) {
-          e.preventDefault();
-          navigateBackDirect();
-          return;
-        }
-
+        navigateBack(false);
         return;
       }
 
@@ -696,7 +666,12 @@ export default function App() {
           )}
 
           {currentView === 'assets' && config.EnableAssetManagement !== 'false' && (
-            <AssetManagementModule config={config} ledgers={ledgers} onDataRefresh={refreshData} />
+            <AssetManagementModule 
+              config={config} 
+              ledgers={ledgers} 
+              onDataRefresh={refreshData} 
+              onDrillVoucher={(refNo) => setDrillModal({ type: 'voucher', targetId: refNo })}
+            />
           )}
 
           {currentView === 'reports' && (

@@ -3887,8 +3887,21 @@ export function saveCreditNote(payload: {
   const salesReturnAcc = payload.salesReturnLedger || 'Sales Account';
   const partyAcc = payload.partyLedger;
   const totalAmt = round2(Number(payload.amount) || 0);
-  const gstAmt = round2(Number(payload.gstAmt) || 0);
-  const taxableAmt = round2(totalAmt - gstAmt);
+  let gstAmt = round2(Number(payload.gstAmt) || 0);
+  if (!gstAmt && payload.items && payload.items.length > 0) {
+    gstAmt = round2(payload.items.reduce((sum, it) => {
+      const q = Number(it.qty) || 0;
+      const r = Number(it.rate) || 0;
+      const d = Number(it.discount) || 0;
+      const g = Number(it.gstPct) || 0;
+      const lineVal = (q * r) - d;
+      return sum + ((lineVal * g) / 100);
+    }, 0));
+  }
+  let taxableAmt = round2(Number(payload.taxable) || 0);
+  if (!taxableAmt) {
+    taxableAmt = round2(totalAmt - gstAmt);
+  }
   const narr = payload.narration || `Credit Note against ${payload.originalInvoiceRef || 'Sales Return'}`;
 
   // 1. Save voucher entry
@@ -3900,8 +3913,13 @@ export function saveCreditNote(payload: {
     debitLedger: salesReturnAcc,
     creditLedger: partyAcc,
     partyName: partyAcc,
+    partyGstNo: payload.partyGstNo || '',
     originalInvoiceRef: payload.originalInvoiceRef || '',
     amount: totalAmt,
+    taxable: taxableAmt,
+    taxableAmount: taxableAmt,
+    gstAmt: gstAmt,
+    gstAmount: gstAmt,
     narration: narr,
     lines: [
       { type: 'Dr', ledger: salesReturnAcc, amount: taxableAmt, narration: 'Sales Return' },
@@ -4009,8 +4027,21 @@ export function saveDebitNote(payload: {
   const purchaseReturnAcc = payload.purchaseReturnLedger || 'Purchase Account';
   const supplierAcc = payload.supplierLedger;
   const totalAmt = round2(Number(payload.amount) || 0);
-  const gstAmt = round2(Number(payload.gstAmt) || 0);
-  const taxableAmt = round2(totalAmt - gstAmt);
+  let gstAmt = round2(Number(payload.gstAmt) || 0);
+  if (!gstAmt && payload.items && payload.items.length > 0) {
+    gstAmt = round2(payload.items.reduce((sum, it) => {
+      const q = Number(it.qty) || 0;
+      const r = Number(it.rate) || 0;
+      const d = Number(it.discount) || 0;
+      const g = Number(it.gstPct) || 0;
+      const lineVal = (q * r) - d;
+      return sum + ((lineVal * g) / 100);
+    }, 0));
+  }
+  let taxableAmt = round2(Number(payload.taxable) || 0);
+  if (!taxableAmt) {
+    taxableAmt = round2(totalAmt - gstAmt);
+  }
   const narr = payload.narration || `Debit Note against ${payload.originalBillRef || 'Purchase Return'}`;
 
   // 1. Save voucher entry
@@ -4022,8 +4053,13 @@ export function saveDebitNote(payload: {
     debitLedger: supplierAcc,
     creditLedger: purchaseReturnAcc,
     partyName: supplierAcc,
+    supplierGstNo: (payload as any).supplierGstNo || '',
     originalInvoiceRef: payload.originalBillRef || '',
     amount: totalAmt,
+    taxable: taxableAmt,
+    taxableAmount: taxableAmt,
+    gstAmt: gstAmt,
+    gstAmount: gstAmt,
     narration: narr,
     lines: [
       { type: 'Dr', ledger: supplierAcc, amount: totalAmt, narration: `Debit charged to ${supplierAcc}` },
@@ -5091,10 +5127,13 @@ export function getDeduplicatedPurchases(): PurchaseInvoice[] {
   return Array.from(map.values());
 }
 
-export function getDailyColumnarReport(from: string, to: string, flt?: { itemWise?: boolean; gstOnly?: boolean }) {
+export function getDailyColumnarReport(from: string, to: string, flt?: { itemWise?: boolean; gstOnly?: boolean; includeSalesReturn?: boolean }) {
   const fr = new Date(from).setHours(0, 0, 0, 0);
   const toDt = new Date(to).setHours(23, 59, 59, 999);
   const sales = getDeduplicatedSales();
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+  const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG as any);
+
   let rows = sales.filter(r => {
     const d = new Date(r.date).getTime();
     return d >= fr && d <= toDt;
@@ -5104,27 +5143,107 @@ export function getDailyColumnarReport(from: string, to: string, flt?: { itemWis
     rows = rows.filter(r => Number(r.gstAmt) > 0);
   }
 
+  // Retrieve Sales Returns (Credit Notes) within selected date range
+  const shouldIncludeReturns = flt?.includeSalesReturn !== false;
+  const creditNotes = shouldIncludeReturns ? vouchers.filter(v => {
+    if (v.type !== 'CN' && v.type !== 'Credit Note' && (v as any).voucherTypeName !== 'Credit Note' && v.type !== 'Sales Return') return false;
+    const rawDate = (v as any).DateIso || v.date || (v as any).Date;
+    if (!rawDate) return false;
+    const d = new Date(rawDate).getTime();
+    return !isNaN(d) && d >= fr && d <= toDt;
+  }) : [];
+
   if (flt && flt.itemWise) {
     const map: Record<string, { itemName: string; qty: number; taxable: number; gst: number; total: number }> = {};
+    
+    // Add positive sales items
     rows.filter(r => (r.status as string) !== 'Cancelled').forEach(inv => {
-      inv.items.forEach(si => {
-        const k = si['Item Name'];
-        if (!map[k]) map[k] = { itemName: k, qty: 0, taxable: 0, gst: 0, total: 0 };
-        map[k].qty += Number(si.Qty) || 0;
-        map[k].taxable += Number(si['Taxable Value']) || 0;
-        map[k].gst += Number(si['GST Amount']) || 0;
-        map[k].total += Number(si['Line Total']) || 0;
-      });
+      if (inv.items) {
+        inv.items.forEach(si => {
+          const k = si['Item Name'];
+          if (!map[k]) map[k] = { itemName: k, qty: 0, taxable: 0, gst: 0, total: 0 };
+          map[k].qty += Number(si.Qty) || 0;
+          map[k].taxable += Number(si['Taxable Value']) || 0;
+          map[k].gst += Number(si['GST Amount']) || 0;
+          map[k].total += Number(si['Line Total']) || 0;
+        });
+      }
     });
+
+    let returnQtySum = 0;
+    let returnTaxableSum = 0;
+    let returnGstSum = 0;
+    let returnTotalSum = 0;
+
+    // Deduct returns from items
+    creditNotes.filter(v => v.status !== 'Cancelled').forEach(v => {
+      if (v.items && v.items.length > 0) {
+        v.items.forEach((it: any) => {
+          const k = it.itemName || it['Item Name'] || 'Returned Item';
+          const q = Number(it.qty || it.Qty) || 0;
+          const r = Number(it.rate || it.Rate || it.price) || 0;
+          const d = Number(it.discount || it.Discount) || 0;
+          const gP = Number(it.gstPct || it['GST %']) || 0;
+          const lineVal = (q * r) - d;
+          const lineGst = (lineVal * gP) / 100;
+          const lineTot = lineVal + lineGst;
+
+          returnQtySum += q;
+          returnTaxableSum += lineVal;
+          returnGstSum += lineGst;
+          returnTotalSum += lineTot;
+
+          if (!map[k]) map[k] = { itemName: k, qty: 0, taxable: 0, gst: 0, total: 0 };
+          map[k].qty -= q;
+          map[k].taxable -= lineVal;
+          map[k].gst -= lineGst;
+          map[k].total -= lineTot;
+        });
+      } else {
+        const totAmt = Number(v.amount || (v as any).totalAmount) || 0;
+        const gstVal = Number((v as any).gstAmt || (v as any).gstAmount) || 0;
+        const taxVal = Number((v as any).taxable || (v as any).taxableAmount) || (totAmt - gstVal);
+        returnTaxableSum += taxVal;
+        returnGstSum += gstVal;
+        returnTotalSum += totAmt;
+      }
+    });
+
     const ir = Object.values(map);
+    const grossQty = ir.reduce((s, r) => s + (r.qty > 0 ? r.qty : 0), 0);
+    const grossTaxable = ir.reduce((s, r) => s + (r.taxable > 0 ? r.taxable : 0), 0);
+    const grossGst = ir.reduce((s, r) => s + (r.gst > 0 ? r.gst : 0), 0);
+    const grossTotal = ir.reduce((s, r) => s + (r.total > 0 ? r.total : 0), 0);
+
     const totals = ir.reduce((a, r) => { a.qty += r.qty; a.taxable += r.taxable; a.gst += r.gst; a.total += r.total; return a; }, { qty: 0, taxable: 0, gst: 0, total: 0 });
-    return { mode: 'itemwise' as const, rows: ir, totals };
+
+    return {
+      mode: 'itemwise' as const,
+      rows: ir,
+      totals: {
+        ...totals,
+        grossQty,
+        returnQty: returnQtySum,
+        grossTaxable,
+        returnTaxable: returnTaxableSum,
+        grossGst,
+        returnGst: returnGstSum,
+        grossSales: grossTotal,
+        salesReturns: returnTotalSum,
+        netSales: totals.total
+      }
+    };
   }
 
-  const data = rows.map(r => {
+  // Bill-wise Columnar Mode
+  let grossSales = 0;
+  const data: any[] = rows.map(r => {
     const isCancelled = (r.status as string) === 'Cancelled';
     let cust = r.customer ? (typeof r.customer === 'object' ? (r.customer.ledger || r.customer.name) : r.customer) : 'Cash Customer';
     if (isCancelled) cust += ' (Cancelled)';
+    const totalVal = isCancelled ? 0 : (Number(r.total) || 0);
+    if (!isCancelled) grossSales += totalVal;
+
     return {
       date: r.date,
       invoiceNo: r.invoiceNo,
@@ -5133,31 +5252,87 @@ export function getDailyColumnarReport(from: string, to: string, flt?: { itemWis
       bank1: isCancelled ? 0 : (Number(r.bank1) || 0),
       bank2: isCancelled ? 0 : (Number(r.bank2) || 0),
       credit: isCancelled ? 0 : (Number(r.credit) || 0),
-      total: isCancelled ? 0 : (Number(r.total) || 0),
+      total: totalVal,
       status: r.status || (isCancelled ? 'Cancelled' : 'Active'),
       isCancelled,
-      remarks: isCancelled ? 'Cancelled' : (r.credit > 0 ? 'Due / Credit' : 'Paid')
+      remarks: isCancelled ? 'Cancelled' : (r.credit > 0 ? 'Due / Credit' : 'Paid'),
+      type: 'SALE'
     };
   });
+
+  let salesReturns = 0;
+
+  // Append Sales Returns (Credit Notes)
+  creditNotes.forEach(v => {
+    const isCancelled = v.status === 'Cancelled';
+    const totalAmt = Number(v.amount || (v as any).totalAmount) || 0;
+    if (!isCancelled) salesReturns += totalAmt;
+
+    const party = v.partyName || v.debitLedger || v.creditLedger || 'Customer';
+    const partyUpper = party.trim().toLowerCase();
+    const b1Upper = (cfg.Bank1Ledger || 'BOB Account').trim().toLowerCase();
+    const b2Upper = (cfg.Bank2Ledger || 'BNBL Account').trim().toLowerCase();
+
+    let cash = 0, bank1 = 0, bank2 = 0, credit = 0;
+
+    if (partyUpper.includes('cash')) {
+      cash = isCancelled ? 0 : -totalAmt;
+    } else if (partyUpper === b1Upper || partyUpper.includes('bob')) {
+      bank1 = isCancelled ? 0 : -totalAmt;
+    } else if (partyUpper === b2Upper || partyUpper.includes('bnbl')) {
+      bank2 = isCancelled ? 0 : -totalAmt;
+    } else {
+      credit = isCancelled ? 0 : -totalAmt;
+    }
+
+    data.push({
+      date: (v as any).DateIso || v.date,
+      invoiceNo: v.voucherNo || 'CN',
+      customer: `${party} (Sales Return)`,
+      cash,
+      bank1,
+      bank2,
+      credit,
+      total: isCancelled ? 0 : -totalAmt,
+      status: v.status || (isCancelled ? 'Cancelled' : 'Active'),
+      isCancelled,
+      remarks: isCancelled ? 'Cancelled' : 'Sales Return',
+      type: 'CN'
+    });
+  });
+
+  // Sort by date ascending
+  data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const totals = data.reduce((a, r) => {
     a.cash += r.cash; a.bank1 += r.bank1; a.bank2 += r.bank2; a.credit += r.credit; a.total += r.total;
     return a;
   }, { cash: 0, bank1: 0, bank2: 0, credit: 0, total: 0 });
 
-  return { mode: 'daily' as const, rows: data, totals };
+  return {
+    mode: 'daily' as const,
+    rows: data,
+    totals: {
+      ...totals,
+      grossSales,
+      salesReturns,
+      netSales: grossSales - salesReturns
+    }
+  };
 }
 
 export function getGSTReport(from: string, to: string) {
   const fr = new Date(from).setHours(0, 0, 0, 0);
   const toDt = new Date(to).setHours(23, 59, 59, 999);
   const sales = getDeduplicatedSales();
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+
   const rows = sales.filter(r => {
     const d = new Date(r.date).getTime();
     return d >= fr && d <= toDt;
   });
 
-  const data = rows.map(r => {
+  const data: any[] = rows.map(r => {
     const isCancelled = (r.status as string) === 'Cancelled';
     let custName = r.customer ? (typeof r.customer === 'object' ? (r.customer.name || r.customer.ledger) : r.customer) : 'Cash Customer';
     if (isCancelled) custName += ' (Cancelled)';
@@ -5172,9 +5347,64 @@ export function getGSTReport(from: string, to: string) {
       total: isCancelled ? 0 : (Number(r.total) || 0),
       status: r.status || (isCancelled ? 'Cancelled' : 'Active'),
       isCancelled,
-      remarks: isCancelled ? 'Cancelled' : 'Normal'
+      remarks: isCancelled ? 'Cancelled' : 'Normal',
+      type: 'SALE'
     };
   });
+
+  // Include Credit Notes (Sales Return GST Reversals)
+  vouchers.forEach(v => {
+    if (v.type !== 'CN' && v.type !== 'Credit Note' && (v as any).voucherTypeName !== 'Credit Note' && v.type !== 'Sales Return') return;
+    const rawDate = (v as any).DateIso || v.date || (v as any).Date;
+    if (!rawDate) return;
+    const d = new Date(rawDate).getTime();
+    if (isNaN(d) || d < fr || d > toDt) return;
+
+    const isCancelled = v.status === 'Cancelled';
+    const totalAmt = Number(v.amount || (v as any).totalAmount) || 0;
+    
+    let gstVal = Number((v as any).gstAmt || (v as any).gstAmount) || 0;
+    let taxableVal = Number((v as any).taxable || (v as any).taxableAmount) || 0;
+
+    if (!gstVal && v.lines && v.lines.length > 0) {
+      const gstLine = v.lines.find(l => (l.type === 'Dr' || (l.type as string) === 'dr') && (l.ledger.toLowerCase().includes('gst') || l.ledger.toLowerCase().includes('tax')));
+      if (gstLine) gstVal = Number(gstLine.amount) || 0;
+    }
+
+    if (!gstVal && v.items && v.items.length > 0) {
+      gstVal = v.items.reduce((sum: number, it: any) => {
+        const q = Number(it.qty || it.Qty) || 0;
+        const r = Number(it.rate || it.Rate || it.price) || 0;
+        const d = Number(it.discount || it.Discount) || 0;
+        const gstP = Number(it.gstPct || it['GST %']) || 0;
+        const lineNet = (q * r) - d;
+        return sum + ((lineNet * gstP) / 100);
+      }, 0);
+    }
+
+    if (!taxableVal) {
+      taxableVal = Math.max(0, totalAmt - gstVal);
+    }
+
+    const party = v.partyName || v.debitLedger || v.creditLedger || 'Customer';
+
+    data.push({
+      billNumber: v.voucherNo || 'CN',
+      billDate: (v as any).DateIso || v.date,
+      customerName: `${party} (Sales Return)`,
+      customerGST: (v as any).partyGstNo || '',
+      taxable: isCancelled ? 0 : -taxableVal,
+      zeroRated: 0,
+      gstAmount: isCancelled ? 0 : -gstVal,
+      total: isCancelled ? 0 : -totalAmt,
+      status: v.status || (isCancelled ? 'Cancelled' : 'Active'),
+      isCancelled,
+      remarks: isCancelled ? 'Cancelled' : 'Sales Return (GST Reversal)',
+      type: 'CN'
+    });
+  });
+
+  data.sort((a, b) => new Date(a.billDate).getTime() - new Date(b.billDate).getTime());
 
   const totals = data.reduce((a, r) => {
     a.taxable += r.taxable; a.zeroRated += r.zeroRated; a.gstAmount += r.gstAmount; a.total += r.total;
@@ -5353,9 +5583,11 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
 
   if (type === 'sales') {
     const sales = getDeduplicatedSales();
+    const allV = getVouchers();
     const fr = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
     const toDt = to ? new Date(to).setHours(23, 59, 59, 999) : Date.now();
-    return sales.filter(r => {
+
+    const filteredSales = sales.filter(r => {
       const d = new Date(r.date).getTime();
       return d >= fr && d <= toDt;
     }).map(r => {
@@ -5367,16 +5599,58 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
         payment: { cash: isCancelled ? 0 : (Number(r.cash) || 0), bank1: isCancelled ? 0 : (Number(r.bank1) || 0), bank2: isCancelled ? 0 : (Number(r.bank2) || 0), credit: isCancelled ? 0 : (Number(r.credit) || 0) },
         totalAmount: isCancelled ? 0 : (Number(r.total) || 0),
         status: r.status || (isCancelled ? 'Cancelled' : 'Active'),
-        isCancelled
+        isCancelled,
+        items: r.items || [],
+        type: 'SALE'
       };
     });
+
+    const filteredReturns = allV.filter(v => {
+      if (v.type !== 'CN' && v.type !== 'Credit Note' && (v as any).voucherTypeName !== 'Credit Note' && v.type !== 'Sales Return') return false;
+      const rawDate = (v as any).DateIso || v.date || (v as any).Date;
+      const d = new Date(rawDate).getTime();
+      return d >= fr && d <= toDt;
+    }).map(v => {
+      const isCancelled = v.status === 'Cancelled';
+      const amt = isCancelled ? 0 : (Number(v.amount || (v as any).totalAmount) || 0);
+      const party = v.partyName || v.debitLedger || v.creditLedger || 'Customer';
+      return {
+        date: (v as any).DateIso || v.date,
+        invoiceNo: v.voucherNo || 'CN',
+        originalRef: (v as any).originalInvoiceRef || '',
+        customer: { name: party },
+        payment: { cash: 0, bank1: 0, bank2: 0, credit: amt },
+        totalAmount: amt,
+        status: v.status || (isCancelled ? 'Cancelled' : 'Active'),
+        isCancelled,
+        items: v.items || [],
+        type: 'CN'
+      };
+    });
+
+    let grossSales = 0;
+    filteredSales.forEach(s => { if (!s.isCancelled) grossSales += s.totalAmount; });
+    let salesReturn = 0;
+    filteredReturns.forEach(r => { if (!r.isCancelled) salesReturn += r.totalAmount; });
+    const netSales = grossSales - salesReturn;
+
+    return {
+      type: 'sales',
+      sales: filteredSales,
+      returns: filteredReturns,
+      grossSales,
+      salesReturn,
+      netSales
+    };
   }
 
   if (type === 'purchases') {
     const purchases = getDeduplicatedPurchases();
+    const allV = getVouchers();
     const fr = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
     const toDt = to ? new Date(to).setHours(23, 59, 59, 999) : Date.now();
-    return purchases.filter(r => {
+
+    const filteredPurchases = purchases.filter(r => {
       const d = new Date(r.date).getTime();
       return d >= fr && d <= toDt;
     }).map(r => {
@@ -5389,9 +5663,50 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
         payment: { cash: isCancelled ? 0 : (Number(r.cash) || 0), bank1: isCancelled ? 0 : (Number(r.bank1) || 0), bank2: isCancelled ? 0 : (Number(r.bank2) || 0), credit: isCancelled ? 0 : (Number(r.credit) || 0) },
         totalAmount: isCancelled ? 0 : (Number(r.total) || 0),
         status: r.status || (isCancelled ? 'Cancelled' : 'Active'),
-        isCancelled
+        isCancelled,
+        items: r.items || [],
+        type: 'PURCHASE'
       };
     });
+
+    const filteredReturns = allV.filter(v => {
+      if (v.type !== 'DN' && v.type !== 'Debit Note' && (v as any).voucherTypeName !== 'Debit Note' && v.type !== 'Purchase Return') return false;
+      const rawDate = (v as any).DateIso || v.date || (v as any).Date;
+      const d = new Date(rawDate).getTime();
+      return d >= fr && d <= toDt;
+    }).map(v => {
+      const isCancelled = v.status === 'Cancelled';
+      const amt = isCancelled ? 0 : (Number(v.amount || (v as any).totalAmount) || 0);
+      const party = v.partyName || v.creditLedger || v.debitLedger || 'Supplier';
+      return {
+        date: (v as any).DateIso || v.date,
+        billNo: v.voucherNo || 'DN',
+        supplierBillNo: (v as any).supplierBillNo || v.voucherNo,
+        originalRef: (v as any).originalBillRef || '',
+        supplier: { name: party },
+        payment: { cash: 0, bank1: 0, bank2: 0, credit: amt },
+        totalAmount: amt,
+        status: v.status || (isCancelled ? 'Cancelled' : 'Active'),
+        isCancelled,
+        items: v.items || [],
+        type: 'DN'
+      };
+    });
+
+    let grossPurchases = 0;
+    filteredPurchases.forEach(p => { if (!p.isCancelled) grossPurchases += p.totalAmount; });
+    let purchaseReturn = 0;
+    filteredReturns.forEach(r => { if (!r.isCancelled) purchaseReturn += r.totalAmount; });
+    const netPurchases = grossPurchases - purchaseReturn;
+
+    return {
+      type: 'purchases',
+      purchases: filteredPurchases,
+      returns: filteredReturns,
+      grossPurchases,
+      purchaseReturn,
+      netPurchases
+    };
   }
 
   if (type === 'quotations' || type === 'quotation') {
@@ -7700,6 +8015,57 @@ export function getGSTInputDomReport(from: string, to: string) {
         }
       }
     }
+  });
+
+  // 3. Purchase Returns (Debit Notes - DN)
+  vouchers.forEach(v => {
+    if (v.type !== 'DN' && v.type !== 'Debit Note' && (v as any).voucherTypeName !== 'Debit Note' && v.type !== 'Purchase Return') return;
+    const rawDate = (v as any).DateIso || v.date || (v as any).Date;
+    if (!rawDate) return;
+    const d = parseDateToMs(rawDate);
+    if (d < fr || d > toDt) return;
+
+    const isCancelled = v.status === 'Cancelled';
+    const totalAmt = Number(v.amount || (v as any).totalAmount) || 0;
+    
+    let gstVal = Number((v as any).gstAmt || (v as any).gstAmount) || 0;
+    let taxableVal = Number((v as any).taxable || (v as any).taxableAmount) || 0;
+
+    if (!gstVal && v.lines && v.lines.length > 0) {
+      const gstLine = v.lines.find(l => (l.type === 'Cr' || (l.type as string) === 'cr') && (l.ledger.toLowerCase().includes('gst') || l.ledger.toLowerCase().includes('tax')));
+      if (gstLine) gstVal = Number(gstLine.amount) || 0;
+    }
+
+    if (!gstVal && v.items && v.items.length > 0) {
+      gstVal = v.items.reduce((sum: number, it: any) => {
+        const q = Number(it.qty || it.Qty) || 0;
+        const r = Number(it.rate || it.Rate || it.price) || 0;
+        const d = Number(it.discount || it.Discount) || 0;
+        const gstP = Number(it.gstPct || it['GST %']) || 0;
+        const lineNet = (q * r) - d;
+        return sum + ((lineNet * gstP) / 100);
+      }, 0);
+    }
+
+    if (!taxableVal) {
+      taxableVal = Math.max(0, totalAmt - gstVal);
+    }
+
+    const sName = v.partyName || (v as any).supplierName || v.creditLedger || v.debitLedger || 'Supplier';
+
+    results.push({
+      transactionType: 'Purchase Return (DN)',
+      supplierName: `${sName} (Return)`,
+      supplierGstNo: (v as any).supplierGstNo || (v as any).partyGstNo || '-',
+      invoiceDate: (v as any).DateIso || v.date,
+      invoiceNo: v.voucherNo || 'DN',
+      referenceNo: (v as any).originalInvoiceRef || '',
+      voucherNo: v.voucherNo || '',
+      taxable: isCancelled ? 0 : -taxableVal,
+      exempted: 0,
+      gstAmount: isCancelled ? 0 : -gstVal,
+      customGstData: {}
+    });
   });
 
   // Sort by invoiceDate ascending
