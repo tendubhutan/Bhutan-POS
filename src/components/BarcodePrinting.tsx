@@ -194,10 +194,10 @@ const StickerPreviewCard: React.FC<{
         height: `${cardHeightPx}px`,
         padding: '2px 3px'
       }}
-      className="bg-white border border-slate-400 rounded-md flex flex-col items-center justify-between text-center shadow-xs overflow-hidden leading-tight flex-shrink-0 box-border"
+      className="bg-white border border-slate-400 rounded-md flex flex-col items-center justify-center text-center shadow-xs overflow-hidden leading-tight flex-shrink-0 box-border"
     >
       {showCompany && config.CompanyName && (
-        <div style={{ fontSize: `${fontCo}px` }} className="font-bold truncate max-w-full text-slate-800 leading-none">
+        <div style={{ fontSize: `${fontCo}px` }} className="font-bold truncate max-w-full text-slate-800 leading-none mb-0.5">
           {config.CompanyName}
         </div>
       )}
@@ -208,21 +208,24 @@ const StickerPreviewCard: React.FC<{
             lineHeight: 1.05,
             maxHeight: `${itemFontSize * 2.1}px`
           }}
-          className="font-bold text-slate-900 text-center w-full break-words overflow-hidden line-clamp-2 my-0.5"
+          className="font-bold text-slate-900 text-center w-full break-words overflow-hidden line-clamp-2 mb-0.5"
         >
           {sample.itemName}
         </div>
       )}
-      <div className="flex-1 flex items-center justify-center w-full min-h-0 overflow-hidden my-0.5">
-        <svg ref={svgRef} className="max-w-full max-h-full" />
+      <div className="flex items-center justify-center w-full overflow-hidden leading-none">
+        <svg ref={svgRef} className="max-w-full max-h-full block" />
       </div>
       {showCodeTxt && (
-        <div style={{ fontSize: `${fontBc}px` }} className="font-mono font-bold text-slate-700 leading-none tracking-tight">
+        <div style={{ fontSize: `${fontBc}px` }} className="font-mono font-bold text-slate-700 leading-none tracking-tight mt-0.5">
           {sample.barcode}
         </div>
       )}
       {(showPrice || showWholesalePrice) && (
-        <div style={{ fontSize: `${fontPr}px` }} className="font-extrabold text-slate-900 whitespace-nowrap leading-none mt-0.5 flex items-center justify-center gap-1 max-w-full overflow-hidden">
+        <div
+          style={{ fontSize: `${fontPr}px` }}
+          className={`font-extrabold text-slate-900 whitespace-nowrap leading-none ${showCodeTxt ? 'mt-1.5' : 'mt-0.5'} flex items-center justify-center gap-1 max-w-full overflow-hidden`}
+        >
           {showPrice && <span>{salePriceText}</span>}
           {showPrice && showWholesalePrice && <span className="text-slate-400 font-normal">|</span>}
           {showWholesalePrice && <span className="text-indigo-800">{wholesalePriceText}</span>}
@@ -454,9 +457,9 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: space-between;
+            justify-content: center;
             overflow: hidden;
-            padding: 0.8mm 1.2mm;
+            padding: 0.5mm 1mm;
             text-align: center;
             margin-right: 1.5mm;
             background: #fff;
@@ -471,6 +474,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             overflow: hidden;
             text-overflow: ellipsis;
             max-width: 100%;
+            margin-bottom: 0.3mm;
           }
           .item-title {
             font-weight: bold;
@@ -482,16 +486,17 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             max-width: 100%;
+            margin-bottom: 0.3mm;
           }
           .barcode-wrapper {
-            flex: 1;
-            min-height: 0;
             display: flex;
             align-items: center;
             justify-content: center;
             width: 100%;
             overflow: hidden;
-            margin: 0.3mm 0;
+            margin: 0;
+            padding: 0;
+            line-height: 0;
           }
           .barcode-txt {
             font-size: ${fontBc}px;
@@ -499,6 +504,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             font-weight: bold;
             line-height: 1;
             letter-spacing: 0.5px;
+            margin-top: 0.3mm;
           }
           .price-tag {
             font-size: ${fontPr}px;
@@ -512,6 +518,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             align-items: center;
             justify-content: center;
             gap: 2px;
+            margin-top: ${showCodeTxt ? '1.2mm' : '0.4mm'};
           }
           @media print {
             .label-box { border: none !important; }
