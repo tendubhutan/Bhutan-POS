@@ -81,11 +81,22 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
   // Verify superadmin access
   const session = getCurrentTenantSession();
+  const rawRole = (
+    session?.role || 
+    currentUser?.role || 
+    (typeof localStorage !== 'undefined' ? (
+      localStorage.getItem('deep_pos_auth_role') ||
+      localStorage.getItem('supabase_active_role') ||
+      localStorage.getItem('user_role') ||
+      localStorage.getItem('role') ||
+      ''
+    ) : '')
+  ).toString().toLowerCase().trim();
+
   const isSuperadminUser = 
     checkIsSuperAdmin() || 
-    session?.role === 'superadmin' || 
-    currentUser?.role === 'superadmin' ||
-    (typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_auth_role') === 'superadmin');
+    session?.isSuperadmin === true || 
+    rawRole === 'superadmin';
 
   // Load companies directly from Supabase / master list
   const loadMasterCompanies = async () => {

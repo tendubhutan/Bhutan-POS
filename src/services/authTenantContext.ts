@@ -105,19 +105,29 @@ export function getCurrentTenantSession(): TenantAuthSession | null {
   if (currentSessionCache) return currentSessionCache;
 
   const unlocked = typeof sessionStorage !== 'undefined' && sessionStorage.getItem(SESSION_STORAGE_KEYS.SESSION_UNLOCKED) === 'true';
-  const role = (typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_STORAGE_KEYS.AUTH_ROLE) : null) as UserTenantRole | null;
+  const rawRole = typeof localStorage !== 'undefined' 
+    ? (
+        localStorage.getItem(SESSION_STORAGE_KEYS.AUTH_ROLE) ||
+        localStorage.getItem('supabase_active_role') ||
+        localStorage.getItem('user_role') ||
+        localStorage.getItem('role') ||
+        ''
+      )
+    : '';
+  const cleanRole = rawRole.toLowerCase().trim();
   const assignedCompanyId = typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_STORAGE_KEYS.AUTH_ASSIGNED_COMPANY) : null;
   const uid = typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_STORAGE_KEYS.AUTH_UID) : null;
   const activeCompanyId = typeof localStorage !== 'undefined' ? (localStorage.getItem(SESSION_STORAGE_KEYS.ACTIVE_COMPANY_ID) || DEMO_COMPANY_UUID) : DEMO_COMPANY_UUID;
 
-  if (unlocked && role) {
-    const isSuperadmin = role === 'superadmin';
-    const isClientAdmin = role === 'admin';
+  if (cleanRole) {
+    const isSuperadmin = cleanRole === 'superadmin';
+    const isClientAdmin = cleanRole === 'admin' || cleanRole === 'administrator';
+    const mappedRole = (isSuperadmin ? 'superadmin' : isClientAdmin ? 'admin' : cleanRole) as UserTenantRole;
     currentSessionCache = {
       uid: uid || 'restored_session_user',
-      email: isSuperadmin ? 'admin@bhutanerp.bt' : 'client@tenant.bt',
-      fullName: isSuperadmin ? 'Platform System Administrator' : 'Tenant Administrator',
-      role,
+      email: isSuperadmin ? 'superadmin@system.local' : 'client@tenant.bt',
+      fullName: isSuperadmin ? 'Superadmin' : 'Tenant Administrator',
+      role: mappedRole,
       assignedCompanyId,
       activeCompanyId: isSuperadmin ? activeCompanyId : (assignedCompanyId || activeCompanyId),
       isSuperadmin,
@@ -132,7 +142,20 @@ export function getCurrentTenantSession(): TenantAuthSession | null {
 
 export function isSuperAdmin(): boolean {
   const session = getCurrentTenantSession();
-  return Boolean(session?.isSuperadmin);
+  if (session?.isSuperadmin || (session?.role && session.role.toLowerCase() === 'superadmin')) {
+    return true;
+  }
+  if (typeof localStorage !== 'undefined') {
+    const r = (
+      localStorage.getItem('deep_pos_auth_role') ||
+      localStorage.getItem('supabase_active_role') ||
+      localStorage.getItem('user_role') ||
+      localStorage.getItem('role') ||
+      ''
+    ).toLowerCase().trim();
+    if (r === 'superadmin') return true;
+  }
+  return false;
 }
 
 export function isClientAdmin(): boolean {
@@ -155,19 +178,41 @@ export async function resolveUserTenantProfile(userId: string, email: string): P
 }> {
   const cleanEmail = (email || '').trim().toLowerCase();
 
-  // 1. Try querying company_users in Supabase
+  // 1. Try querying company_users in Supabase (by user_id or email)
   try {
-    const { data: compUser, error: compErr } = await supabase
-      .from('company_users')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
+    let compUser: any = null;
+    if (userId) {
+      const { data, error } = await supabase
+        .from('company_users')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (data && !error) compUser = data;
+    }
 
-    if (compUser && !compErr) {
+    if (!compUser && cleanEmail) {
+      const { data, error } = await supabase
+        .from('company_users')
+        .select('*')
+        .eq('email', cleanEmail)
+        .maybeSingle();
+      if (data && !error) compUser = data;
+    }
+
+    if (compUser) {
+      const rawRole = (compUser.role || '').toString().toLowerCase().trim();
+      const role: UserTenantRole = 
+        rawRole === 'superadmin' ? 'superadmin' :
+        rawRole === 'admin' || rawRole === 'administrator' ? 'admin' :
+        rawRole === 'cashier' ? 'cashier' :
+        rawRole === 'manager' ? 'manager' :
+        rawRole === 'accountant' ? 'accountant' :
+        rawRole === 'auditor' ? 'auditor' : 'cashier';
+
       return {
-        role: compUser.role as UserTenantRole,
+        role,
         assignedCompanyId: compUser.company_id || null,
-        fullName: compUser.full_name || 'System User'
+        fullName: compUser.full_name || (role === 'superadmin' ? 'Superadmin' : 'System User')
       };
     }
   } catch (e) {
@@ -183,17 +228,18 @@ export async function resolveUserTenantProfile(userId: string, email: string): P
       .maybeSingle();
 
     if (appUser && !appErr) {
+      const rawRole = (appUser.role || '').toString().toLowerCase().trim();
       const mappedRole: UserTenantRole = 
-        appUser.role === 'superadmin' ? 'superadmin' :
-        appUser.role === 'Administrator' || appUser.role === 'admin' ? 'admin' :
-        appUser.role === 'Cashier' ? 'cashier' :
-        appUser.role === 'Accountant' ? 'accountant' :
-        appUser.role === 'Auditor' ? 'auditor' : 'manager';
+        rawRole === 'superadmin' ? 'superadmin' :
+        rawRole === 'administrator' || rawRole === 'admin' ? 'admin' :
+        rawRole === 'cashier' ? 'cashier' :
+        rawRole === 'accountant' ? 'accountant' :
+        rawRole === 'auditor' ? 'auditor' : 'manager';
 
       return {
         role: mappedRole,
         assignedCompanyId: appUser.company_id || null,
-        fullName: appUser.full_name || 'System User'
+        fullName: appUser.full_name || (mappedRole === 'superadmin' ? 'Superadmin' : 'System User')
       };
     }
   } catch (e) {

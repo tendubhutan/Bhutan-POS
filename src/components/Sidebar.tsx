@@ -40,11 +40,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const isCashier = currentUser?.role === 'Cashier';
   const session = getCurrentTenantSession();
+  const rawRole = (
+    session?.role || 
+    currentUser?.role || 
+    (typeof localStorage !== 'undefined' ? (
+      localStorage.getItem('deep_pos_auth_role') ||
+      localStorage.getItem('supabase_active_role') ||
+      localStorage.getItem('user_role') ||
+      localStorage.getItem('role') ||
+      ''
+    ) : '')
+  ).toString().toLowerCase().trim();
+
   const isSuperadminUser = 
     isSuperAdmin() || 
-    session?.role === 'superadmin' || 
-    currentUser?.role === 'superadmin' ||
-    (typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_auth_role') === 'superadmin');
+    session?.isSuperadmin === true ||
+    rawRole === 'superadmin';
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+H' },
@@ -59,7 +70,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ...(!isCashier && config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
     ...(!isCashier ? [{ id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R' }] : []),
     ...(!isCashier ? [{ id: 'settings', label: 'Settings', icon: Settings, shortcut: 'Alt+S' }] : []),
-    ...(isSuperadminUser ? [{ id: 'superadmin', label: 'Tenant Control Panel', icon: ShieldCheck, shortcut: 'Alt+0' }] : [])
+    ...(isSuperadminUser ? [{ id: 'superadmin', label: 'Superadmin Dashboard', icon: ShieldCheck, shortcut: 'Alt+0' }] : [])
   ];
 
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);

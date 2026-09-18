@@ -32,10 +32,15 @@ import {
   fetchUserCompanies, 
   fetchFinancialYears, 
   getActiveCompanyId, 
-  getActiveFYId,
-  SupabaseCompany,
+  getActiveFYId, 
+  SupabaseCompany, 
   SupabaseFinancialYear 
 } from './services/supabaseTenantService';
+import { 
+  isSuperAdmin, 
+  getCurrentTenantSession, 
+  subscribeTenantSession 
+} from './services/authTenantContext';
 
 interface DrillReturnContext {
   activeDrill: { type: 'group' | 'stock' | 'ledger' | 'voucher' | 'item-profit'; targetId: string; fromDate?: string; toDate?: string };
@@ -241,7 +246,27 @@ export default function App() {
   // Multi-Tenant & User Auth State
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showUserAuthModal, setShowUserAuthModal] = useState(false);
-  const [currentUser, setCurrentUser] = useState<AppUser>(getActiveUser());
+  const [currentUser, setCurrentUser] = useState<AppUser>(() => {
+    const rawLocalRole = (typeof localStorage !== 'undefined'
+      ? (localStorage.getItem('deep_pos_auth_role') ||
+         localStorage.getItem('supabase_active_role') ||
+         localStorage.getItem('user_role') ||
+         localStorage.getItem('role') ||
+         '')
+      : '').toLowerCase().trim();
+    const isSuper = rawLocalRole === 'superadmin' || isSuperAdmin();
+    const base = getActiveUser();
+    if (isSuper) {
+      return {
+        ...base,
+        id: 'usr_superadmin',
+        username: 'superadmin',
+        fullName: 'Superadmin',
+        role: 'superadmin' as any
+      };
+    }
+    return base;
+  });
   const [isTerminalLocked, setIsTerminalLocked] = useState<boolean>(() => {
     // Require explicit authentication by default: lock screen until a valid session is confirmed
     const sessionUnlocked = sessionStorage.getItem('bhutan_pos_session_unlocked');
@@ -296,9 +321,24 @@ export default function App() {
     };
     window.addEventListener('supabase:tenant_changed', handleTenantChange);
     window.addEventListener('supabase:fy_changed', handleTenantChange);
+
+    const unsubSession = subscribeTenantSession(session => {
+      if (session) {
+        const isSuper = session.isSuperadmin || (session.role && session.role.toLowerCase() === 'superadmin');
+        setCurrentUser(prev => ({
+          ...prev,
+          id: session.uid || prev.id,
+          username: isSuper ? 'superadmin' : (session.email?.split('@')[0] || prev.username),
+          fullName: session.fullName || (isSuper ? 'Superadmin' : prev.fullName),
+          role: session.role as any
+        }));
+      }
+    });
+
     return () => {
       window.removeEventListener('supabase:tenant_changed', handleTenantChange);
       window.removeEventListener('supabase:fy_changed', handleTenantChange);
+      unsubSession();
     };
   }, []);
 
@@ -572,6 +612,9 @@ export default function App() {
         } else if (key === 's' || e.code === 'KeyS' || key === 'ß') {
           e.preventDefault();
           navigateTo('settings');
+        } else if (key === '0' || e.code === 'Digit0' || e.code === 'Numpad0' || key === 'º' || key === '§') {
+          e.preventDefault();
+          navigateTo('superadmin');
         }
       }
     };

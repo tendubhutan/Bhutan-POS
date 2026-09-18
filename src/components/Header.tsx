@@ -2,7 +2,7 @@ import React from 'react';
 import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown, UserCircle, Lock, Shield } from 'lucide-react';
 import { Config, AppUser } from '../types';
 import { AIAssistant } from './AIAssistant';
-import { getCurrentTenantSession } from '../services/authTenantContext';
+import { getCurrentTenantSession, isSuperAdmin as checkIsSuperAdmin } from '../services/authTenantContext';
 
 interface HeaderProps {
   config: Config;
@@ -38,7 +38,28 @@ export const Header: React.FC<HeaderProps> = ({
   onLockTerminal
 }) => {
   const session = getCurrentTenantSession();
-  const isSuperAdmin = session?.role === 'superadmin';
+  const rawRole = (
+    session?.role || 
+    currentUser?.role || 
+    (typeof localStorage !== 'undefined' ? (
+      localStorage.getItem('deep_pos_auth_role') ||
+      localStorage.getItem('supabase_active_role') ||
+      localStorage.getItem('user_role') ||
+      localStorage.getItem('role') ||
+      ''
+    ) : '')
+  ).toString().toLowerCase().trim();
+
+  const isSuperAdmin = checkIsSuperAdmin() || session?.isSuperadmin === true || rawRole === 'superadmin';
+
+  // Compute clean display names to eliminate redundant titles like "System Administrator Administrator"
+  const displayName = isSuperAdmin 
+    ? (currentUser?.fullName && currentUser.fullName !== 'System Administrator' ? currentUser.fullName : 'Superadmin')
+    : (currentUser?.fullName || 'User');
+
+  const displayRole = isSuperAdmin
+    ? 'SUPERADMIN'
+    : (currentUser?.role === 'Administrator' ? 'ADMIN' : (currentUser?.role?.toUpperCase() || 'STAFF'));
 
   return (
     <header className={`bg-blue-700 text-white border-b border-blue-800 px-3 sm:px-4 ${isPosMode ? 'py-1.5' : 'py-2'} flex items-center justify-between shadow-md relative z-50`}>
@@ -160,10 +181,10 @@ export const Header: React.FC<HeaderProps> = ({
             <UserCircle className={`h-4 w-4 ${isSuperAdmin ? 'text-purple-300' : 'text-emerald-300'}`} />
             <div className="hidden sm:flex flex-col items-start leading-none text-left">
               <span className="font-bold text-[11px] text-white">
-                {currentUser?.fullName || (isSuperAdmin ? 'System Admin' : 'User')}
+                {displayName}
               </span>
               <span className={`text-[9px] font-mono ${isSuperAdmin ? 'text-purple-300' : 'text-emerald-300'}`}>
-                {isSuperAdmin ? 'SUPERADMIN' : (currentUser?.role || 'Staff')}
+                {displayRole}
               </span>
             </div>
           </button>
