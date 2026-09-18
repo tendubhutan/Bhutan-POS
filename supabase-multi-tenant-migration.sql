@@ -465,3 +465,29 @@ SELECT public.seed_auth_user(
   'cf58c9aa-28eb-4436-95a1-0da44af394ba'
 );
 
+-- 5. Reconcile & Seed Platform Owner Superadmin (tendubhutan@gmail.com)
+DELETE FROM public.company_users 
+WHERE LOWER(email) = 'tendubhutan@gmail.com'
+   OR user_id IN (SELECT id FROM auth.users WHERE LOWER(email) = 'tendubhutan@gmail.com');
+
+INSERT INTO public.company_users (user_id, company_id, role, full_name, email, is_active)
+SELECT 
+  u.id AS user_id,
+  c.id AS company_id,
+  'superadmin' AS role,
+  'Platform Superadmin (Tendu)' AS full_name,
+  'tendubhutan@gmail.com' AS email,
+  true AS is_active
+FROM (
+  SELECT id FROM auth.users WHERE LOWER(email) = 'tendubhutan@gmail.com' ORDER BY created_at DESC LIMIT 1
+) u
+CROSS JOIN (
+  SELECT id FROM public.companies ORDER BY created_at ASC LIMIT 1
+) c
+ON CONFLICT (user_id, company_id) DO UPDATE SET
+  role = 'superadmin',
+  full_name = 'Platform Superadmin (Tendu)',
+  email = 'tendubhutan@gmail.com',
+  is_active = true,
+  updated_at = now();
+

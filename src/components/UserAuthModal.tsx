@@ -270,8 +270,39 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
         if (error) {
           setErrorMsg(error.message);
         } else if (data.session) {
-          setSessionEmail(data.session.user.email || null);
+          const userEmail = (data.session.user.email || '').toLowerCase().trim();
+          setSessionEmail(userEmail);
           setSuccessMsg('Cloud account connected successfully!');
+
+          if (userEmail === 'tendubhutan@gmail.com' || userEmail === 'admin@bhutanerp.bt') {
+            localStorage.setItem('deep_pos_auth_role', 'superadmin');
+            localStorage.setItem('supabase_active_role', 'superadmin');
+            localStorage.setItem('user_role', 'superadmin');
+            sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
+
+            const superUser: AppUser = {
+              id: 'usr_admin',
+              username: 'superadmin',
+              fullName: userEmail === 'tendubhutan@gmail.com' ? 'Platform Superadmin (Tendu)' : 'Platform System Administrator',
+              pinCode: '1234',
+              role: 'Administrator',
+              status: 'Active',
+              permissions: [
+                { module: 'pos', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'purchase', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'vouchers', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'masters', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'barcode', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'payroll', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'reports', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'settings', display: true, create: true, edit: true, delete: true, print: true }
+              ]
+            };
+            setActiveUser(superUser.id);
+            setCurrentUser(superUser);
+            onUserChanged(superUser);
+            window.dispatchEvent(new Event('supabase:tenant_changed'));
+          }
         }
       }
     } catch (err: any) {

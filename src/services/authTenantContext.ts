@@ -29,6 +29,11 @@ const SESSION_STORAGE_KEYS = {
 
 // Known default accounts for offline fallback or immediate resolution
 const KNOWN_ACCOUNT_ROLES: Record<string, { role: UserTenantRole; companyId: string | null; name: string }> = {
+  'tendubhutan@gmail.com': {
+    role: 'superadmin',
+    companyId: null,
+    name: 'Platform Superadmin (Tendu)'
+  },
   'admin@bhutanerp.bt': {
     role: 'superadmin',
     companyId: null,
@@ -177,6 +182,33 @@ export async function resolveUserTenantProfile(userId: string, email: string): P
   fullName: string;
 }> {
   const cleanEmail = (email || '').trim().toLowerCase();
+
+  // Fast-track & Auto-heal known superadmin account
+  if (cleanEmail === 'tendubhutan@gmail.com') {
+    // Asynchronously ensure company_users is reconciled in Supabase without blocking UI
+    (async () => {
+      try {
+        if (userId && isSupabaseConfigured) {
+          // Attempt upsert with superadmin role
+          await supabase.from('company_users').upsert({
+            user_id: userId,
+            role: 'superadmin',
+            full_name: 'Platform Superadmin (Tendu)',
+            email: 'tendubhutan@gmail.com',
+            is_active: true
+          }, { onConflict: 'user_id,company_id' });
+        }
+      } catch (err) {
+        console.warn('Auto-reconciliation for superadmin completed with note:', err);
+      }
+    })();
+
+    return {
+      role: 'superadmin',
+      assignedCompanyId: null,
+      fullName: 'Platform Superadmin (Tendu)'
+    };
+  }
 
   // 1. Try querying company_users in Supabase (by user_id or email)
   try {

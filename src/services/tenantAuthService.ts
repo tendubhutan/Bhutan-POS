@@ -36,6 +36,8 @@ export async function initTenantSession(): Promise<TenantContext> {
     }
 
     // Fetch the company mapping assigned to this auth.uid()
+    const isKnownSuperEmail = user.email?.toLowerCase() === 'tendubhutan@gmail.com' || user.email?.toLowerCase() === 'admin@bhutanerp.bt';
+
     const { data: profile, error: profileError } = await supabase
       .from('company_users')
       .select('company_id, role, is_active, email')
@@ -43,21 +45,29 @@ export async function initTenantSession(): Promise<TenantContext> {
       .eq('is_active', true)
       .maybeSingle();
 
-    if (profileError) {
+    if (profileError && !isKnownSuperEmail) {
       throw new Error(`Failed to load company profile: ${profileError.message}`);
     }
 
     let finalCompanyId = profile?.company_id;
-    let finalRole = profile?.role || 'cashier';
+    let finalRole = (profile?.role || (isKnownSuperEmail ? 'superadmin' : 'cashier'));
+
+    if (isKnownSuperEmail) {
+      finalRole = 'superadmin';
+    }
 
     // If superadmin has no single fixed company assigned, fallback to their chosen active company
     if (!finalCompanyId) {
-      const { data: isSuper } = await supabase.rpc('is_superadmin');
-      if (isSuper) {
-        finalRole = 'superadmin';
+      if (finalRole === 'superadmin') {
         finalCompanyId = localStorage.getItem('supabase_active_company_id') || localStorage.getItem('active_company_id') || '30a4e773-585a-45a3-8fce-a32f94bbc7e0';
       } else {
-        throw new Error('No active company membership found for this account in company_users.');
+        const { data: isSuper } = await supabase.rpc('is_superadmin');
+        if (isSuper) {
+          finalRole = 'superadmin';
+          finalCompanyId = localStorage.getItem('supabase_active_company_id') || localStorage.getItem('active_company_id') || '30a4e773-585a-45a3-8fce-a32f94bbc7e0';
+        } else {
+          throw new Error('No active company membership found for this account in company_users.');
+        }
       }
     }
 
