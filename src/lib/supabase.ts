@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Primary Default Project Configuration for Bhutan POS Multi-Tenant
+// Note: Supabase Anon Public Key is designed for client-side use guarded by Row-Level Security (RLS) policies.
 export const DEFAULT_SUPABASE_URL = 'https://awtabqzljuhbjblrlcmv.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_BGkgQB1b_oPLEs_RlF4wag_FOvyXuGd';
 
 export function getStoredSupabaseUrl(): string {
   if (typeof window !== 'undefined') {
@@ -16,7 +18,7 @@ export function getStoredSupabaseAnonKey(): string {
     const custom = localStorage.getItem('supabase_anon_key') || localStorage.getItem('VITE_SUPABASE_ANON_KEY');
     if (custom && custom.trim().length > 10) return custom.trim();
   }
-  return (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
+  return (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || DEFAULT_SUPABASE_ANON_KEY;
 }
 
 export const supabaseUrl = getStoredSupabaseUrl();
@@ -45,10 +47,10 @@ export function clearSupabaseCredentials() {
   }
 }
 
-// Instantiate client with valid keys or safe non-crashing fallback
+// Instantiate client with live project credentials and automatic session persistence
 export const supabase = createClient(
-  supabaseUrl || DEFAULT_SUPABASE_URL,
-  supabaseAnonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder',
+  DEFAULT_SUPABASE_URL,
+  DEFAULT_SUPABASE_ANON_KEY,
   {
     auth: {
       persistSession: true,
