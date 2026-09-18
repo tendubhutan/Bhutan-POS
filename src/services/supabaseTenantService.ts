@@ -610,3 +610,59 @@ export function setActiveFYId(id: string): void {
   localStorage.setItem(STORAGE_KEYS.TENANT_FY_ID, id);
   window.dispatchEvent(new CustomEvent('supabase:fy_changed', { detail: { fyId: id } }));
 }
+
+/**
+ * Superadmin action: updates the active subscription status (is_active) of a company.
+ * When is_active is false, users belonging to this tenant will be locked out of the ERP.
+ */
+export async function updateCompanyStatus(
+  companyId: string, 
+  isActive: boolean
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // 1. Update in Supabase
+    if (isSupabaseConfigured) {
+      try {
+        const { error: sbErr } = await supabase
+          .from('companies')
+          .update({ is_active: isActive })
+          .eq('id', companyId);
+        if (sbErr) {
+          console.warn('Supabase update company status warning:', sbErr.message);
+        }
+      } catch (sbE: any) {
+        console.warn('Supabase exception on updateCompanyStatus:', sbE);
+      }
+    }
+
+    // 2. Update in Firestore
+    try {
+      const compRef = doc(db, 'companies', companyId);
+      await setDoc(compRef, { is_active: isActive }, { merge: true });
+    } catch (fsErr) {
+      console.warn('Firestore update company status warning:', fsErr);
+    }
+
+    // 3. Update in Local Storage Cache
+    if (typeof localStorage !== 'undefined') {
+      const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES);
+      if (cached) {
+        try {
+          const list: SupabaseCompany[] = JSON.parse(cached);
+          const updated = list.map(c => c.id === companyId ? { ...c, is_active: isActive } : c);
+          localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(updated));
+        } catch {}
+      }
+    }
+
+    // Notify listeners
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('supabase:tenant_status_changed', { detail: { companyId, isActive } }));
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to update company status' };
+  }
+}
+

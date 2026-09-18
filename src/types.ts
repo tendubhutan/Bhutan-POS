@@ -138,7 +138,7 @@ export interface AppUser {
   id: string;
   username: string;
   fullName: string;
-  role: 'Administrator' | 'Manager' | 'Cashier' | 'Accountant' | 'Custom';
+  role: 'superadmin' | 'Administrator' | 'admin' | 'Manager' | 'Cashier' | 'Accountant' | 'Custom';
   pinCode?: string;
   status: 'Active' | 'Inactive';
   permissions: UserPermission[];

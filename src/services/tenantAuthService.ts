@@ -97,12 +97,40 @@ export async function pushCollectionToSupabase<T extends Record<string, any>>(
   if (!records || records.length === 0) return { count: 0 };
 
   const companyId = getActiveTenantId();
-  const rows = records.map((record) => {
-    const recordId = getIdFn(record);
+  const rows = records.map((record, idx) => {
+    let recordId = '';
+    try {
+      recordId = getIdFn(record);
+    } catch {
+      recordId = '';
+    }
+    if (!recordId || String(recordId).trim() === '' || String(recordId).trim() === 'undefined' || String(recordId).trim() === 'null') {
+      recordId = `${tableName}_rec_${Date.now()}_${idx + 1}`;
+    }
+
+    // Defensive clone with guaranteed structural fields for tables having flat column mappings
+    const enrichedData: Record<string, any> = { ...record };
+    if (tableName === 'ledgers') {
+      const lName = enrichedData['Ledger Name'] || enrichedData.name || enrichedData.ledgerName || enrichedData.ledger_name || `Unnamed Ledger ${idx + 1}`;
+      enrichedData['Ledger Name'] = lName;
+      enrichedData.ledger_name = lName;
+      enrichedData.name = lName;
+      enrichedData.group = enrichedData.Group || enrichedData.group || 'Sundry Debtors';
+    } else if (tableName === 'items') {
+      const iCode = enrichedData['Item Code'] || enrichedData.code || enrichedData.itemCode || enrichedData.item_code || `ITEM-${idx + 1}`;
+      const iName = enrichedData['Item Name'] || enrichedData.name || enrichedData.itemName || enrichedData.item_name || iCode;
+      enrichedData['Item Code'] = iCode;
+      enrichedData['Item Name'] = iName;
+      enrichedData.item_code = iCode;
+      enrichedData.item_name = iName;
+    }
+
     return {
       company_id: companyId,
-      record_id: String(recordId),
-      data: record,
+      record_id: String(recordId).trim(),
+      ...(tableName === 'ledgers' ? { ledger_name: enrichedData['Ledger Name'], name: enrichedData['Ledger Name'], group: enrichedData.Group || 'Sundry Debtors' } : {}),
+      ...(tableName === 'items' ? { item_code: enrichedData['Item Code'], item_name: enrichedData['Item Name'] } : {}),
+      data: enrichedData,
       updated_at: new Date().toISOString()
     };
   });
@@ -115,8 +143,25 @@ export async function pushCollectionToSupabase<T extends Record<string, any>>(
       .upsert(chunk, { onConflict: 'company_id, record_id' });
 
     if (error) {
-      console.error(`[MultiTenant Sync Error] Table ${tableName} chunk ${i}:`, error.message);
-      throw new Error(`Failed syncing ${tableName}: ${error.message}`);
+      // If error is related to columns not existing in a purely JSONB document table, fallback without extra flat fields
+      if (error.message && (error.message.includes('column') || error.message.includes('schema'))) {
+        const cleanJsonbChunk = chunk.map(r => ({
+          company_id: r.company_id,
+          record_id: r.record_id,
+          data: r.data,
+          updated_at: r.updated_at
+        }));
+        const retryRes = await supabase
+          .from(tableName)
+          .upsert(cleanJsonbChunk, { onConflict: 'company_id, record_id' });
+        if (retryRes.error) {
+          console.error(`[MultiTenant Sync Error] Table ${tableName} chunk ${i}:`, retryRes.error.message);
+          throw new Error(`Failed syncing ${tableName}: ${retryRes.error.message}`);
+        }
+      } else {
+        console.error(`[MultiTenant Sync Error] Table ${tableName} chunk ${i}:`, error.message);
+        throw new Error(`Failed syncing ${tableName}: ${error.message}`);
+      }
     }
   }
 

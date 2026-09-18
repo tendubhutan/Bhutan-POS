@@ -13,9 +13,11 @@ import {
   Trash2,
   X,
   Landmark,
-  History
+  History,
+  ShieldCheck
 } from 'lucide-react';
 import { Config, AppUser } from "../types";
+import { isSuperAdmin, getCurrentTenantSession } from '../services/authTenantContext';
 
 interface SidebarProps {
   currentView: string;
@@ -37,6 +39,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser
 }) => {
   const isCashier = currentUser?.role === 'Cashier';
+  const session = getCurrentTenantSession();
+  const isSuperadminUser = 
+    isSuperAdmin() || 
+    session?.role === 'superadmin' || 
+    currentUser?.role === 'superadmin' ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_auth_role') === 'superadmin');
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+H' },
@@ -50,7 +58,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ...(!isCashier && config.EnableAssetManagement !== 'false' ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'Alt+E' }] : []),
     ...(!isCashier && config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
     ...(!isCashier ? [{ id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R' }] : []),
-    ...(!isCashier ? [{ id: 'settings', label: 'Settings', icon: Settings, shortcut: 'Alt+S' }] : [])
+    ...(!isCashier ? [{ id: 'settings', label: 'Settings', icon: Settings, shortcut: 'Alt+S' }] : []),
+    ...(isSuperadminUser ? [{ id: 'superadmin', label: 'Tenant Control Panel', icon: ShieldCheck, shortcut: 'Alt+0' }] : [])
   ];
 
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);

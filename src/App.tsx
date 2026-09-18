@@ -17,6 +17,7 @@ import { Payroll } from './components/Payroll';
 import { AssetManagementModule } from './components/assetManagement/AssetManagementModule';
 import { Reports, ReportTarget } from './components/Reports';
 import { SettingsView } from './components/SettingsView';
+import { SuperadminDashboard } from './components/SuperadminDashboard';
 import { BankReconciliation } from './components/BankReconciliation';
 import { DrillModal, TargetState } from './components/DrillModal';
 import { QuickLedgerSearchModal } from './components/QuickLedgerSearchModal';
@@ -784,6 +785,26 @@ export default function App() {
               ledgers={ledgers}
               onDataRefresh={refreshData}
               isActive={currentView === 'settings' && !isAnyModalOpen}
+            />
+          )}
+
+          {currentView === 'superadmin' && (
+            <SuperadminDashboard
+              currentUser={currentUser}
+              onNavigate={navigateTo}
+              onSwitchCompany={(c) => {
+                setActiveCompany(c);
+                setConfig(prev => ({
+                  ...prev,
+                  CompanyName: c.company_name,
+                  Address: c.address || prev.Address,
+                  CompanyTPNNo: c.tax_payer_id || prev.CompanyTPNNo,
+                  CompanyGSTNo: c.trade_license_no || prev.CompanyGSTNo,
+                  CompanyPhone: c.phone || prev.CompanyPhone,
+                  CurrencySymbol: c.currency_symbol || prev.CurrencySymbol
+                }));
+                refreshData();
+              }}
             />
           )}
           <QuickLedgerModal

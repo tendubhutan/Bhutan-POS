@@ -112,6 +112,12 @@ export const LoginGate: React.FC<LoginGateProps> = ({
         return;
       }
 
+      if (session.role !== 'superadmin' && activeCompany && activeCompany.is_active === false) {
+        setErrorMsg('Commercial Account Locked: This store subscription is currently inactive. Please contact your platform superadmin to renew access.');
+        setIsLoading(false);
+        return;
+      }
+
       setIsSuccess(true);
       setAuthenticatedRole(session.role);
 

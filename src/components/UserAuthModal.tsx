@@ -58,6 +58,8 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
   const [newPin, setNewPin] = useState('');
 
   // Supabase Auth form
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [authFullName, setAuthFullName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -210,27 +212,58 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
   };
 
   // Supabase Cloud Sign In / Sign Up
-  const handleSupabaseSignIn = async (e: React.FormEvent) => {
+  const handleSupabaseAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isSupabaseConfigured) {
-      setErrorMsg('Supabase Anon Key is not set yet in Settings.');
+      setErrorMsg('Supabase is not configured yet. Please check your Supabase credentials.');
       return;
     }
     setAuthLoading(true);
     setErrorMsg('');
+
+    const cleanEmail = authEmail.trim();
+    const cleanPassword = authPassword.trim();
+
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: authEmail,
-        password: authPassword
-      });
-      if (error) {
-        setErrorMsg(error.message);
-      } else if (data.session) {
-        setSessionEmail(data.session.user.email || null);
-        setSuccessMsg('Cloud account connected successfully!');
+      if (authMode === 'signup') {
+        const redirectUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
+        const { data, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: cleanPassword,
+          options: {
+            emailRedirectTo: redirectUrl,
+            data: {
+              full_name: authFullName.trim() || cleanEmail.split('@')[0],
+              role: 'admin'
+            }
+          }
+        });
+
+        if (error) {
+          setErrorMsg(error.message);
+        } else if (data.user) {
+          if (data.session) {
+            setSessionEmail(data.session.user.email || null);
+            setSuccessMsg('Account registered and signed in successfully!');
+          } else {
+            setSuccessMsg('Account created! If you see "localhost" when clicking the email link, see the fix below or sign in directly.');
+            setAuthMode('signin');
+          }
+        }
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: cleanPassword
+        });
+        if (error) {
+          setErrorMsg(error.message);
+        } else if (data.session) {
+          setSessionEmail(data.session.user.email || null);
+          setSuccessMsg('Cloud account connected successfully!');
+        }
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Login failed');
+      setErrorMsg(err.message || 'Authentication failed');
     } finally {
       setAuthLoading(false);
     }
@@ -664,15 +697,56 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
               )}
 
               {!sessionEmail && (
-                <form onSubmit={handleSupabaseSignIn} className="p-4 bg-slate-800/50 border border-slate-700 rounded-2xl space-y-3 max-w-md mx-auto">
+                <form onSubmit={handleSupabaseAuthSubmit} className="p-4 bg-slate-800/50 border border-slate-700 rounded-2xl space-y-3 max-w-md mx-auto">
+                  <div className="flex items-center justify-center p-1 bg-slate-900/80 rounded-xl border border-slate-700/60 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => { setAuthMode('signin'); setErrorMsg(''); }}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                        authMode === 'signin'
+                          ? 'bg-blue-600 text-white shadow'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Sign In
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setAuthMode('signup'); setErrorMsg(''); }}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
+                        authMode === 'signup'
+                          ? 'bg-blue-600 text-white shadow'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Register New Account
+                    </button>
+                  </div>
+
                   <h3 className="font-bold text-white text-xs sm:text-sm text-center">
-                    Sign in to Supabase Multi-Tenant Account
+                    {authMode === 'signup' ? 'Create Supabase Cloud Account' : 'Sign in to Supabase Multi-Tenant Account'}
                   </h3>
                   <p className="text-xs text-slate-400 text-center">
-                    Enter store owner credentials to connect remote database syncing.
+                    {authMode === 'signup' 
+                      ? 'Register your email as a store administrator to sync data.' 
+                      : 'Enter store owner credentials to connect remote database syncing.'}
                   </p>
 
                   <div className="space-y-2.5">
+                    {authMode === 'signup' && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-300 mb-1">Full Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={authFullName}
+                          onChange={e => setAuthFullName(e.target.value)}
+                          placeholder="Your Name / Store Name"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none"
+                        />
+                      </div>
+                    )}
+
                     <div>
                       <label className="block text-xs font-bold text-slate-300 mb-1">Email Address</label>
                       <input
@@ -686,11 +760,14 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-1">Password</label>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">
+                        Password {authMode === 'signup' && <span className="text-slate-500 font-normal">(min 6 chars)</span>}
+                      </label>
                       <div className="relative">
                         <input
                           type={showPassword ? 'text' : 'password'}
                           required
+                          minLength={6}
                           value={authPassword}
                           onChange={e => setAuthPassword(e.target.value)}
                           placeholder="••••••••"
@@ -712,8 +789,30 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                     disabled={authLoading}
                     className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition cursor-pointer shadow-md flex items-center justify-center gap-2 mt-2"
                   >
-                    {authLoading ? 'Signing in...' : 'Sign In with Supabase'}
+                    {authLoading 
+                      ? (authMode === 'signup' ? 'Creating Account...' : 'Signing in...') 
+                      : (authMode === 'signup' ? 'Create Cloud Account' : 'Sign In with Supabase')}
                   </button>
+
+                  <div className="text-center pt-1">
+                    {authMode === 'signin' ? (
+                      <button
+                        type="button"
+                        onClick={() => { setAuthMode('signup'); setErrorMsg(''); }}
+                        className="text-xs text-blue-400 hover:text-blue-300 font-medium cursor-pointer"
+                      >
+                        Need an account? Register as New Admin
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setAuthMode('signin'); setErrorMsg(''); }}
+                        className="text-xs text-blue-400 hover:text-blue-300 font-medium cursor-pointer"
+                      >
+                        Already have an account? Sign In
+                      </button>
+                    )}
+                  </div>
                 </form>
               )}
             </div>

@@ -33,6 +33,9 @@ export interface SupabaseCompany {
   address?: string;
   currency_symbol?: string;
   logo_url?: string;
+  is_active?: boolean;
+  subscription_plan?: string;
+  subscription_expires_at?: string;
   created_at?: string;
   admin_username?: string;
   admin_name?: string;
