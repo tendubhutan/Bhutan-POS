@@ -70,7 +70,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ...(!isCashier && config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
     ...(!isCashier ? [{ id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R' }] : []),
     ...(!isCashier ? [{ id: 'settings', label: 'Settings', icon: Settings, shortcut: 'Alt+S' }] : []),
-    ...(isSuperadminUser ? [{ id: 'superadmin', label: 'Superadmin Dashboard', icon: ShieldCheck, shortcut: 'Alt+0' }] : [])
+    ...(isSuperadminUser ? [{ 
+      id: 'superadmin', 
+      label: '🏢 Superadmin Portal', 
+      icon: ShieldCheck, 
+      shortcut: 'Alt+0',
+      isSuperBadge: true 
+    }] : [])
   ];
 
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -161,35 +167,57 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {navItems.map((item, idx) => {
             const Icon = item.icon;
             const isActive = currentView === item.id;
+            const isSuper = (item as any).isSuperBadge;
+
             return (
               <button
                 key={item.id}
+                id={`sidebar-nav-${item.id}`}
                 ref={el => (itemRefs.current[idx] = el)}
                 onClick={() => {
                   onNavigate(item.id);
                   onCloseMobile();
                 }}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg font-bold text-xs sm:text-sm transition group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
-                  isActive
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-slate-300 hover:bg-slate-800/90 hover:text-white hover:border-slate-700/80 border border-transparent'
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg font-bold text-xs sm:text-sm transition group cursor-pointer focus:outline-none focus-visible:ring-2 ${
+                  isSuper
+                    ? isActive
+                      ? 'bg-amber-600 text-white shadow-lg border border-amber-400 focus-visible:ring-amber-300'
+                      : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 hover:text-amber-100 border border-amber-500/30 focus-visible:ring-amber-400'
+                    : isActive
+                      ? 'bg-blue-600 text-white shadow-md focus-visible:ring-blue-400'
+                      : 'text-slate-300 hover:bg-slate-800/90 hover:text-white hover:border-slate-700/80 border border-transparent focus-visible:ring-blue-400'
                 }`}
               >
-                <div className="flex items-center gap-3 min-w-0 pr-1">
-                  <Icon className={`h-4 w-4 shrink-0 transition-colors ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-400'}`} />
+                <div className="flex items-center gap-2.5 min-w-0 pr-1">
+                  <Icon className={`h-4 w-4 shrink-0 transition-colors ${
+                    isSuper 
+                      ? 'text-amber-400 group-hover:text-amber-300' 
+                      : isActive 
+                        ? 'text-white' 
+                        : 'text-slate-400 group-hover:text-blue-400'
+                  }`} />
                   <span className="truncate whitespace-nowrap">{item.label}</span>
                 </div>
-                {item.shortcut && (
-                  <kbd
-                    className={`px-1.5 py-0.5 text-[10px] rounded font-mono whitespace-nowrap shrink-0 ml-2 transition ${
-                      isActive
-                        ? 'bg-blue-700 text-blue-100 border border-blue-500/50'
-                        : 'bg-slate-800 text-slate-400 border border-slate-700/80 group-hover:bg-slate-700 group-hover:text-slate-100 group-hover:border-slate-600'
-                    }`}
-                  >
-                    {item.shortcut}
-                  </kbd>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                  {isSuper && (
+                    <span className="px-1.5 py-0.5 text-[9px] uppercase font-black tracking-wider rounded bg-amber-500/25 text-amber-200 border border-amber-500/40">
+                      SUPER
+                    </span>
+                  )}
+                  {item.shortcut && (
+                    <kbd
+                      className={`px-1.5 py-0.5 text-[10px] rounded font-mono whitespace-nowrap transition ${
+                        isSuper
+                          ? 'bg-amber-950/70 text-amber-300 border border-amber-700/50'
+                          : isActive
+                            ? 'bg-blue-700 text-blue-100 border border-blue-500/50'
+                            : 'bg-slate-800 text-slate-400 border border-slate-700/80 group-hover:bg-slate-700 group-hover:text-slate-100 group-hover:border-slate-600'
+                      }`}
+                    >
+                      {item.shortcut}
+                    </kbd>
+                  )}
+                </div>
               </button>
             );
           })}
