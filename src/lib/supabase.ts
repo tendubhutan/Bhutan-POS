@@ -34,6 +34,9 @@ export interface SupabaseCompany {
   currency_symbol?: string;
   logo_url?: string;
   created_at?: string;
+  admin_username?: string;
+  admin_name?: string;
+  admin_pin?: string;
 }
 
 export interface SupabaseFinancialYear {

@@ -1,7 +1,8 @@
 import React from 'react';
-import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown, UserCircle, Lock } from 'lucide-react';
+import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown, UserCircle, Lock, Shield } from 'lucide-react';
 import { Config, AppUser } from '../types';
 import { AIAssistant } from './AIAssistant';
+import { getCurrentTenantSession } from '../services/authTenantContext';
 
 interface HeaderProps {
   config: Config;
@@ -36,6 +37,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenUserAuthModal,
   onLockTerminal
 }) => {
+  const session = getCurrentTenantSession();
+  const isSuperAdmin = session?.role === 'superadmin';
+
   return (
     <header className={`bg-blue-700 text-white border-b border-blue-800 px-3 sm:px-4 ${isPosMode ? 'py-1.5' : 'py-2'} flex items-center justify-between shadow-md relative z-50`}>
       <div className="flex items-center gap-2 sm:gap-3">
@@ -61,14 +65,14 @@ export const Header: React.FC<HeaderProps> = ({
         )}
 
         {/* Company & Financial Year Selector Pill */}
-        {onOpenCompanyManager ? (
+        {isSuperAdmin && onOpenCompanyManager ? (
           <button
             type="button"
             onClick={onOpenCompanyManager}
             className="flex items-center gap-2 px-2.5 py-1 bg-blue-800/80 hover:bg-blue-900 border border-blue-600 rounded-xl transition text-left cursor-pointer group shadow-xs"
-            title="Switch Company / Financial Year Tenant (Alt+C)"
+            title="System Administrator: Manage & Switch Companies (Alt+C)"
           >
-            <div className="h-7 w-7 rounded-lg bg-blue-600/40 border border-blue-400/40 flex items-center justify-center text-blue-200 group-hover:text-white transition">
+            <div className="h-7 w-7 rounded-lg bg-purple-600/40 border border-purple-400/40 flex items-center justify-center text-purple-200 group-hover:text-white transition">
               <Building2 className="h-4 w-4" />
             </div>
             <div className="flex flex-col">
@@ -76,24 +80,28 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="font-extrabold text-xs sm:text-sm text-white tracking-wide leading-tight">
                   {activeCompanyName || config.CompanyName || 'Deep POS'}
                 </span>
-                <ChevronDown className="h-3 w-3 text-blue-300 group-hover:text-white transition" />
+                <ChevronDown className="h-3 w-3 text-purple-300 group-hover:text-white transition" />
               </div>
               <span className="text-[10px] text-emerald-300 font-medium font-mono leading-tight">
-                {activeFYName || 'FY 2026'}
+                {activeFYName || 'FY 2026'} • <span className="text-purple-300 font-bold">SUPERADMIN</span>
               </span>
             </div>
           </button>
         ) : (
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-lg bg-blue-800 border border-blue-600 flex items-center justify-center text-white shadow-xs">
-              <Store className="h-4 w-4 text-blue-200" />
+          <div 
+            className="flex items-center gap-2 px-2.5 py-1 bg-blue-800/60 border border-blue-600/60 rounded-xl shadow-xs"
+            title={`Assigned Tenant Workspace: ${activeCompanyName || config.CompanyName}`}
+          >
+            <div className="h-7 w-7 rounded-lg bg-blue-900/60 border border-blue-500/40 flex items-center justify-center text-emerald-300">
+              <Building2 className="h-4 w-4" />
             </div>
-            <div>
-              <span className="font-extrabold text-sm sm:text-base text-white tracking-wide block leading-tight">
-                {config.CompanyName || 'Deep POS'}
+            <div className="flex flex-col">
+              <span className="font-extrabold text-xs sm:text-sm text-white tracking-wide block leading-tight">
+                {activeCompanyName || config.CompanyName || 'Deep POS'}
               </span>
-              <span className="text-[10px] text-blue-200 font-medium hidden sm:block">
-                {isPosMode ? '⚡ Full-Screen Workspace' : 'High Density POS System'}
+              <span className="text-[10px] text-emerald-300 font-medium font-mono leading-tight flex items-center gap-1">
+                <span>{activeFYName || 'FY 2026'}</span>
+                <span className="text-blue-300">• Tenant Isolated</span>
               </span>
             </div>
           </div>
@@ -147,15 +155,15 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             onClick={onOpenUserAuthModal}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-800 hover:bg-blue-900 border border-blue-600 text-xs font-bold text-white shadow-xs transition cursor-pointer"
-            title="Switch User / Counter Shift Profile"
+            title={isSuperAdmin ? "System Administrator Session" : "Tenant User & Session Profile"}
           >
-            <UserCircle className="h-4 w-4 text-emerald-300" />
+            <UserCircle className={`h-4 w-4 ${isSuperAdmin ? 'text-purple-300' : 'text-emerald-300'}`} />
             <div className="hidden sm:flex flex-col items-start leading-none text-left">
               <span className="font-bold text-[11px] text-white">
-                {currentUser?.fullName || 'Admin User'}
+                {currentUser?.fullName || (isSuperAdmin ? 'System Admin' : 'User')}
               </span>
-              <span className="text-[9px] text-emerald-300 font-mono">
-                {currentUser?.role || 'Staff'}
+              <span className={`text-[9px] font-mono ${isSuperAdmin ? 'text-purple-300' : 'text-emerald-300'}`}>
+                {isSuperAdmin ? 'SUPERADMIN' : (currentUser?.role || 'Staff')}
               </span>
             </div>
           </button>

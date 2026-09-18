@@ -80,9 +80,9 @@ export function getCompanyDedicatedUrl(companyId: string, forceCurrentOrigin: bo
   return `${PRODUCTION_BASE_URL}/?company=${companyId}`;
 }
 
-// Fallback / Initial Demo Company
+// Fallback / Initial Demo Company (Actual UUID from Supabase)
 export const DEFAULT_TENANT_COMPANY: SupabaseCompany = {
-  id: '00000000-0000-0000-0000-000000000001',
+  id: '30a4e773-585a-45a3-8fce-a32f94bbc7e0',
   company_name: 'Bhutan Retail Enterprise',
   trade_license_no: 'TRD-2024-8891',
   tax_payer_id: 'TPN-1029384',
@@ -93,8 +93,8 @@ export const DEFAULT_TENANT_COMPANY: SupabaseCompany = {
 };
 
 export const DEFAULT_TENANT_FY: SupabaseFinancialYear = {
-  id: '00000000-0000-0000-0000-000000000002',
-  company_id: '00000000-0000-0000-0000-000000000001',
+  id: '35b9e0fb-3e95-4571-9e4c-f263226c4ede',
+  company_id: '30a4e773-585a-45a3-8fce-a32f94bbc7e0',
   fy_name: 'FY 2026',
   start_date: '2026-01-01',
   end_date: '2026-12-31',
@@ -104,13 +104,24 @@ export const DEFAULT_TENANT_FY: SupabaseFinancialYear = {
 
 // Filter companies according to dedicated client URL or hide demo company preference
 function filterCompaniesForView(list: SupabaseCompany[]): SupabaseCompany[] {
-  // 1. If accessed via dedicated client URL parameter (?company=...), lock ONLY to this specific company!
-  // CRITICAL: Demo company MUST NEVER leak into a client link!
+  // Check if non-superadmin has an assigned company
+  const assignedCompanyId = typeof localStorage !== 'undefined' ? localStorage.getItem('deep_pos_auth_assigned_company') : null;
+  const role = typeof localStorage !== 'undefined' ? localStorage.getItem('deep_pos_auth_role') : null;
+  if (role && role !== 'superadmin' && assignedCompanyId) {
+    const matched = list.filter(c => c.id === assignedCompanyId);
+    if (matched.length > 0) return matched;
+    return [{
+      id: assignedCompanyId,
+      company_name: 'Client Workspace',
+      currency_symbol: 'Nu.'
+    }];
+  }
+
   const dedicatedId = getDedicatedCompanyIdFromUrl();
-  if (dedicatedId) {
+  const isExplicitClient = typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_is_client_mode') === 'true';
+  if (dedicatedId && isExplicitClient) {
     const matched = list.filter(c => c.id === dedicatedId);
     if (matched.length > 0) return matched;
-    // If not yet loaded from Firestore, return a clean client tenant placeholder so demo company is NEVER shown
     return [{
       id: dedicatedId,
       company_name: 'Client Workspace',
@@ -120,7 +131,6 @@ function filterCompaniesForView(list: SupabaseCompany[]): SupabaseCompany[] {
 
   if (!list || list.length === 0) return [DEFAULT_TENANT_COMPANY];
 
-  // 2. If client mode is active, or if user explicitly chose to hide demo company, and at least one real company exists
   const hideDemo = typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_hide_demo_company') === 'true';
   const isClient = typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_is_client_mode') === 'true';
   if ((hideDemo || isClient) && list.length > 1) {
@@ -131,13 +141,58 @@ function filterCompaniesForView(list: SupabaseCompany[]): SupabaseCompany[] {
   return list;
 }
 
-// Load companies from Firestore & local offline cache
-export async function fetchUserCompanies(): Promise<{ companies: SupabaseCompany[]; error?: string }> {
+// Load companies from Supabase, Firestore & local offline cache
+export async function fetchUserCompanies(includeAll: boolean = false): Promise<{ companies: SupabaseCompany[]; error?: string }> {
   try {
-    const dedicatedId = getDedicatedCompanyIdFromUrl();
     const mergedMap = new Map<string, SupabaseCompany>();
 
-    // Load locally cached companies first
+    // Check user authorization
+    const role = typeof localStorage !== 'undefined' ? localStorage.getItem('deep_pos_auth_role') : null;
+    const assignedCompanyId = typeof localStorage !== 'undefined' ? localStorage.getItem('deep_pos_auth_assigned_company') : null;
+    const isSuperadmin = role === 'superadmin';
+
+    // 1. Fetch from Supabase
+    if (isSupabaseConfigured) {
+      try {
+        let query = supabase.from('companies').select('*');
+        if (!isSuperadmin && assignedCompanyId) {
+          query = query.eq('id', assignedCompanyId);
+        }
+        const { data: sbCompanies, error: sbErr } = await query;
+        if (sbCompanies && sbCompanies.length > 0 && !sbErr) {
+          sbCompanies.forEach(c => {
+            if (c && c.id) mergedMap.set(c.id, c);
+          });
+        }
+      } catch (e) {
+        console.warn('Supabase companies fetch warning:', e);
+      }
+    }
+
+    // If client user, strictly return only assigned company
+    if (!isSuperadmin && assignedCompanyId) {
+      const clientComp = mergedMap.get(assignedCompanyId);
+      if (clientComp) {
+        return { companies: [clientComp] };
+      }
+      const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES) : null;
+      if (cached) {
+        try {
+          const list: SupabaseCompany[] = JSON.parse(cached);
+          const found = list.find(c => c.id === assignedCompanyId);
+          if (found) return { companies: [found] };
+        } catch {}
+      }
+      return { 
+        companies: [{
+          id: assignedCompanyId,
+          company_name: 'Client Workspace',
+          currency_symbol: 'Nu.'
+        }]
+      };
+    }
+
+    // Load locally cached companies
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES) : null;
     if (cached) {
       try {
@@ -148,26 +203,12 @@ export async function fetchUserCompanies(): Promise<{ companies: SupabaseCompany
       } catch {}
     }
 
-    // Always ensure default demo company is present in map unless in dedicated client mode
-    if (!dedicatedId) {
+    // For superadmin, ensure Demo Company is present
+    if (!mergedMap.has(DEFAULT_TENANT_COMPANY.id)) {
       mergedMap.set(DEFAULT_TENANT_COMPANY.id, DEFAULT_TENANT_COMPANY);
     }
 
-    // If dedicated client URL was provided, attempt to fetch that specific company from Firestore immediately
-    if (dedicatedId && !mergedMap.has(dedicatedId)) {
-      try {
-        const compDocRef = doc(db, 'companies', dedicatedId);
-        const compDocSnap = await getDoc(compDocRef);
-        if (compDocSnap.exists()) {
-          const compData = compDocSnap.data() as SupabaseCompany;
-          mergedMap.set(compData.id, compData);
-        }
-      } catch (e) {
-        console.warn('Could not fetch dedicated company directly from Firestore:', e);
-      }
-    }
-
-    // Fetch all registered companies from Cloud Firestore
+    // Also fetch from Cloud Firestore
     try {
       const companiesCollRef = collection(db, 'companies');
       const snap = await getDocs(companiesCollRef);
@@ -186,11 +227,14 @@ export async function fetchUserCompanies(): Promise<{ companies: SupabaseCompany
       localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(allList));
     }
 
+    if (includeAll || isSuperadmin) {
+      return { companies: allList };
+    }
     return { companies: filterCompaniesForView(allList) };
   } catch (err: any) {
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES) : null;
     const list: SupabaseCompany[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
-    return { companies: filterCompaniesForView(list), error: err?.message };
+    return { companies: includeAll ? list : filterCompaniesForView(list), error: err?.message };
   }
 }
 
@@ -198,9 +242,16 @@ export async function fetchUserCompanies(): Promise<{ companies: SupabaseCompany
 export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'created_at'>): Promise<{ company?: SupabaseCompany; error?: string }> {
   try {
     const newId = generateUUID();
+    const adminUsername = (companyData.admin_username || 'admin').trim().toLowerCase();
+    const adminFullName = (companyData.admin_name || `${companyData.company_name} Administrator`).trim();
+    const adminPin = (companyData.admin_pin || '1234').trim();
+
     const newComp: SupabaseCompany = {
       id: newId,
       ...companyData,
+      admin_username: adminUsername,
+      admin_name: adminFullName,
+      admin_pin: adminPin,
       created_at: new Date().toISOString()
     };
 
@@ -220,7 +271,40 @@ export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'c
       localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(list));
     }
 
-    // 3. Automatically create initial Financial Year for this new company (Jan 1 - Dec 31)
+    // 3. Initialize dedicated admin user for this company
+    const adminUser = {
+      id: `admin_${newId}`,
+      username: adminUsername,
+      fullName: adminFullName,
+      role: 'Administrator',
+      pinCode: adminPin,
+      permissions: [
+        'pos_billing',
+        'sales_entry',
+        'purchase_entry',
+        'vouchers',
+        'inventory_read',
+        'inventory_write',
+        'reports',
+        'settings',
+        'user_management'
+      ]
+    };
+
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(`deep_pos_users_${newId}`, JSON.stringify([adminUser]));
+      localStorage.setItem('deep_pos_active_user_id', adminUser.id);
+      sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
+    }
+
+    try {
+      const userRef = doc(db, 'tenants', newId, 'users', adminUser.id);
+      await setDoc(userRef, adminUser);
+    } catch (uErr) {
+      console.warn('Could not write admin user to Firestore:', uErr);
+    }
+
+    // 4. Automatically create initial Financial Year for this new company (Jan 1 - Dec 31)
     const currentYear = new Date().getFullYear();
     await createFinancialYear({
       company_id: newComp.id,
@@ -231,7 +315,7 @@ export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'c
       is_locked: false
     });
 
-    // 4. Initialize clean blank slate for new tenant (0 vouchers, 0 sales, reset counters)
+    // 5. Initialize clean blank slate for new tenant (0 vouchers, 0 sales, reset counters)
     initializeBlankTenantStorage(newComp.id);
 
     return { company: newComp };
@@ -286,7 +370,22 @@ export function initializeBlankTenantStorage(cId: string) {
 // Fetch financial years for a company
 export async function fetchFinancialYears(companyId: string): Promise<{ financialYears: SupabaseFinancialYear[]; error?: string }> {
   try {
-    // 1. Try fetching from Cloud Firestore
+    // 1. Try fetching from Supabase directly
+    if (isSupabaseConfigured) {
+      try {
+        const { data: sbFYs, error: sbErr } = await supabase
+          .from('financial_years')
+          .select('*')
+          .eq('company_id', companyId);
+        if (sbFYs && sbFYs.length > 0 && !sbErr) {
+          return { financialYears: sbFYs };
+        }
+      } catch (sbErr) {
+        console.warn('Supabase fetch financial years warning:', sbErr);
+      }
+    }
+
+    // 2. Try fetching from Cloud Firestore
     try {
       const fyCollRef = collection(db, 'financial_years');
       const q = query(fyCollRef, where('company_id', '==', companyId));
@@ -303,7 +402,7 @@ export async function fetchFinancialYears(companyId: string): Promise<{ financia
       console.warn('Firestore fetch financial years error:', fsErr);
     }
 
-    // 2. Fallback to local storage
+    // 3. Fallback to local storage
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_FYS) : null;
     let list: SupabaseFinancialYear[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_FY];
     
@@ -314,7 +413,7 @@ export async function fetchFinancialYears(companyId: string): Promise<{ financia
         modified = true;
         return {
           ...fy,
-          id: '00000000-0000-0000-0000-000000000002',
+          id: DEFAULT_TENANT_FY.id,
           fy_name: 'FY 2026',
           start_date: '2026-01-01',
           end_date: '2026-12-31'
@@ -441,19 +540,35 @@ export async function deleteCompany(companyId: string): Promise<{ success: boole
 
 // Get and Set Active Company and FY IDs
 export function getActiveCompanyId(): string {
+  // 1. If user is authenticated as non-superadmin, STRICTLY enforce their assigned company
+  if (typeof localStorage !== 'undefined') {
+    const role = localStorage.getItem('deep_pos_auth_role');
+    const assigned = localStorage.getItem('deep_pos_auth_assigned_company');
+    if (role && role !== 'superadmin' && assigned) {
+      return assigned;
+    }
+  }
+
+  // 2. If dedicated URL parameter is provided (e.g. ?company=...)
   const urlId = getDedicatedCompanyIdFromUrl();
   if (urlId) {
-    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.TENANT_COMPANY_ID) : null;
-    if (stored !== urlId && typeof localStorage !== 'undefined') {
-      localStorage.setItem(STORAGE_KEYS.TENANT_COMPANY_ID, urlId);
-    }
     return urlId;
   }
-  return (typeof localStorage !== 'undefined' && localStorage.getItem(STORAGE_KEYS.TENANT_COMPANY_ID)) || DEFAULT_TENANT_COMPANY.id;
+
+  // 3. Superadmin or default workspace
+  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.TENANT_COMPANY_ID) : null;
+  return stored || DEFAULT_TENANT_COMPANY.id;
 }
 
 export function setActiveCompanyId(id: string): void {
   if (typeof localStorage !== 'undefined') {
+    const role = localStorage.getItem('deep_pos_auth_role');
+    const assigned = localStorage.getItem('deep_pos_auth_assigned_company');
+    // Security check: non-superadmin cannot switch company
+    if (role && role !== 'superadmin' && assigned && id !== assigned) {
+      console.error('Unauthorized attempt by non-superadmin to switch active company to:', id);
+      return;
+    }
     localStorage.setItem(STORAGE_KEYS.TENANT_COMPANY_ID, id);
   }
 
@@ -465,6 +580,10 @@ export function setActiveCompanyId(id: string): void {
         url.searchParams.delete('company');
         url.searchParams.delete('cid');
         url.searchParams.delete('tenant');
+        if (url.hash && url.hash.includes('company=')) {
+          const parts = url.hash.split('?');
+          url.hash = parts[0] || '';
+        }
       } else {
         url.searchParams.set('company', id);
       }

@@ -10,8 +10,10 @@ import { GstConfigModal } from './GstConfigModal';
 import { 
   Save, CheckCircle2, Shield, FileText, Image as ImageIcon, PenTool, Plus, Lock, UserCheck, RefreshCw, 
   ShoppingCart, Zap, SlidersHorizontal, AlertTriangle, Keyboard, Percent, CreditCard, RotateCcw,
-  Building2, Hash, Layers, Store, Check, Sparkles, Sliders, ShieldCheck, Trash2, History, Eye, Settings as SettingsIcon
+  Building2, Hash, Layers, Store, Check, Sparkles, Sliders, ShieldCheck, Trash2, History, Eye, Settings as SettingsIcon,
+  Cloud, CloudUpload, Database
 } from 'lucide-react';
+import { handleMasterCloudSync, MasterSyncResult } from '../services/supabaseSyncService';
 
 interface SettingsViewProps {
   config: Config;
@@ -76,6 +78,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [activeUser, setSystemActiveUser] = useState<AppUser>(getActiveUser());
   const [showAuditModal, setShowAuditModal] = useState<boolean>(false);
+
+  // Supabase Multi-Tenant Cloud Sync State
+  const [cloudSyncLoading, setCloudSyncLoading] = useState(false);
+  const [cloudSyncProgress, setCloudSyncProgress] = useState<{ msg: string; pct: number } | null>(null);
+  const [cloudSyncResult, setCloudSyncResult] = useState<MasterSyncResult | null>(null);
+
+  const runMasterCloudSync = async () => {
+    setCloudSyncLoading(true);
+    setCloudSyncResult(null);
+    try {
+      const res = await handleMasterCloudSync((msg, pct) => {
+        setCloudSyncProgress({ msg, pct });
+      });
+      setCloudSyncResult(res);
+      if (res.success) {
+        playSaveSound();
+      }
+    } catch (err: any) {
+      setCloudSyncResult({
+        success: false,
+        companyId: 'unknown',
+        syncedCounts: { items: 0, ledgers: 0, salesInvoices: 0, purchaseInvoices: 0, vouchers: 0, config: 0 },
+        durationMs: 0,
+        error: err?.message || 'Sync failed'
+      });
+    } finally {
+      setCloudSyncLoading(false);
+      setCloudSyncProgress(null);
+    }
+  };
 
   // Signature Pad Canvas Ref
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1097,6 +1129,93 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </label>
               </div>
             )}
+
+            {/* Multi-Tenant Cloud Isolation Sync (Supabase) */}
+            <div className="p-4 bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl space-y-3 shadow-md border border-indigo-900/50">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shrink-0 mt-0.5">
+                    <CloudUpload className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-white text-xs flex items-center gap-2">
+                      <span>Multi-Tenant Cloud Sync (Supabase RLS)</span>
+                      <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-mono px-2 py-0.5 rounded-full uppercase font-bold">
+                        Isolated
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                      Push all local items, ledgers, vouchers, sales, and purchase documents into your locked Supabase company tenant. Prevents data leakage between store accounts.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={runMasterCloudSync}
+                  disabled={cloudSyncLoading}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 active:scale-98 disabled:opacity-50 text-white rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm transition cursor-pointer shrink-0"
+                >
+                  {cloudSyncLoading ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>{cloudSyncProgress ? `${cloudSyncProgress.pct}%` : 'Syncing...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Database className="h-3.5 w-3.5" />
+                      <span>Sync All to Supabase</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {cloudSyncProgress && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex justify-between text-[10px] text-indigo-200 font-medium">
+                    <span>{cloudSyncProgress.msg}</span>
+                    <span className="font-mono font-bold">{cloudSyncProgress.pct}%</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-blue-500 to-indigo-400 transition-all duration-300 rounded-full"
+                      style={{ width: `${cloudSyncProgress.pct}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {cloudSyncResult && (
+                <div className={`p-3 rounded-xl border text-xs ${
+                  cloudSyncResult.success 
+                    ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-200' 
+                    : 'bg-rose-950/50 border-rose-500/40 text-rose-200'
+                }`}>
+                  {cloudSyncResult.success ? (
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-white block">Synchronization Complete!</span>
+                        <span className="text-[11px] text-emerald-300 block">
+                          Company ID: <strong className="font-mono text-white">{cloudSyncResult.companyId}</strong> | 
+                          Items: {cloudSyncResult.syncedCounts.items}, Ledgers: {cloudSyncResult.syncedCounts.ledgers}, 
+                          Sales: {cloudSyncResult.syncedCounts.salesInvoices}, Purchases: {cloudSyncResult.syncedCounts.purchaseInvoices}, 
+                          Vouchers: {cloudSyncResult.syncedCounts.vouchers} ({cloudSyncResult.durationMs}ms)
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-white block">Sync Issue</span>
+                        <span className="text-[11px] text-rose-300 block">{cloudSyncResult.error}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Data Maintenance & Mass Reset Tools */}
             <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-3 shadow-xs">

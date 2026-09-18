@@ -891,7 +891,7 @@ export function getTenantStorageKey(key: string, customCompanyId?: string): stri
   // Global keys that span across companies
   if (
     key.startsWith('supabase_') || 
-    key === 'deep_pos_users' || 
+    key.startsWith('deep_pos_auth_') ||
     key === 'deep_pos_active_user_id' || 
     key === 'bhutan_pos_session_unlocked'
   ) {
@@ -899,20 +899,31 @@ export function getTenantStorageKey(key: string, customCompanyId?: string): stri
   }
   
   const cId = customCompanyId || getActiveCompanyId();
-  if (!cId || cId === DEFAULT_TENANT_COMPANY.id) {
-    return key; // Default primary demo company uses the standard un-prefixed keys
+  if (!cId) {
+    return `deep_pos_unassigned_${key}`;
   }
   return `${key}_${cId}`;
 }
 
-export function loadJson<T>(key: string, fallback: T): T {
+export function loadJson<T>(key: string, fallback: T, customCompanyId?: string): T {
   try {
-    const effectiveKey = getTenantStorageKey(key);
-    const raw = localStorage.getItem(effectiveKey);
+    const cId = customCompanyId || getActiveCompanyId();
+    const isDemo = cId === DEFAULT_TENANT_COMPANY.id;
+    const effectiveKey = getTenantStorageKey(key, customCompanyId);
+
+    // One-time legacy migration for Demo Company: if demo company key is empty but un-prefixed key exists, migrate it
+    if (isDemo && typeof localStorage !== 'undefined' && !localStorage.getItem(effectiveKey)) {
+      const legacyRaw = localStorage.getItem(key);
+      if (legacyRaw) {
+        localStorage.setItem(effectiveKey, legacyRaw);
+      }
+    }
+
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(effectiveKey) : null;
     if (raw) return JSON.parse(raw);
 
-    // If new company has no custom config/vouchers/items yet, provide clean defaults
-    if (effectiveKey !== key) {
+    // If new or non-demo company has no custom config/vouchers/items yet, provide clean defaults
+    if (!isDemo) {
       // Clean blank state for vouchers, invoices, and transactions in a brand new company
       if (
         key === STORAGE_KEYS.SALES_INVOICES ||
@@ -957,6 +968,15 @@ export function loadJson<T>(key: string, fallback: T): T {
         } as unknown) as T;
       }
 
+      // Clean Chart of Accounts with zero opening and current balances
+      if (key === STORAGE_KEYS.LEDGERS) {
+        return (DEFAULT_LEDGERS.map(l => ({
+          ...l,
+          'Opening Balance': 0,
+          'Current Balance': 0
+        })) as unknown) as T;
+      }
+
       // Company configuration: Do NOT inherit "Bhutan Retail Enterprise" demo profile!
       if (key === STORAGE_KEYS.CONFIG) {
         let compName = 'Client Enterprise';
@@ -965,9 +985,8 @@ export function loadJson<T>(key: string, fallback: T): T {
         let address = '';
         let currency = 'Nu.';
         try {
-          const cached = localStorage.getItem('supabase_cached_companies');
+          const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_cached_companies') : null;
           if (cached) {
-            const cId = getActiveCompanyId();
             const list = JSON.parse(cached);
             const found = list.find((x: any) => x.id === cId);
             if (found) {
@@ -979,29 +998,16 @@ export function loadJson<T>(key: string, fallback: T): T {
             }
           }
         } catch {}
-
-        const clientCfg = {
-          ...(fallback as any),
+        return ({
           CompanyName: compName,
-          CompanyTPNNo: tpn,
-          CompanyGSTNo: '',
-          CompanyPhone: phone,
-          CompanyAddress: address,
-          CurrencySymbol: currency,
-          ReceiptHeader: compName,
-          TaxRatePercent: 0
-        };
-        return (clientCfg as unknown) as T;
-      }
-
-      // For standard default ledgers in a new company, initialize standard chart of accounts with ZERO balances
-      if (key === STORAGE_KEYS.LEDGERS && Array.isArray(fallback)) {
-        const cleanLedgers = (fallback as unknown as Ledger[]).map(l => ({
-          ...l,
-          'Opening Balance': 0,
-          'Current Balance': 0
-        }));
-        return (cleanLedgers as unknown) as T;
+          TaxId: tpn,
+          Phone: phone,
+          Address: address,
+          Currency: currency,
+          ShowTax: true,
+          PaperSize: '3inch',
+          FooterMessage: 'Thank you for your business!'
+        } as unknown) as T;
       }
     }
 
@@ -1022,7 +1028,8 @@ export function loadJson<T>(key: string, fallback: T): T {
  * - Standard chart of accounts initialized with 0 opening and 0 current balances
  */
 export function resetCompanyToBlank(companyId: string): void {
-  if (!companyId) return;
+  // Demo company must NEVER be wiped to blank!
+  if (!companyId || companyId === DEFAULT_TENANT_COMPANY.id) return;
 
   const emptyArrayKeys = [
     STORAGE_KEYS.VOUCHERS,
@@ -1098,9 +1105,9 @@ export function migrateExistingItemsOpeningAmount() {
   }
 }
 
-export function saveJson<T>(key: string, val: T): void {
+export function saveJson<T>(key: string, val: T, targetCompanyId?: string): void {
   try {
-    const effectiveKey = getTenantStorageKey(key);
+    const effectiveKey = getTenantStorageKey(key, targetCompanyId);
     localStorage.setItem(effectiveKey, JSON.stringify(val));
   } catch (e) {
     console.error('Failed to save to localStorage:', key, e);
@@ -2775,8 +2782,9 @@ export function savePurchaseInvoice(payload: {
   return { ok: true, billNo: bNo, updatedItems, updatedLedgers };
 }
 
-export function getVouchers(): Voucher[] {
-  const list = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+export function getVouchers(customCompanyId?: string): Voucher[] {
+  const cId = customCompanyId || getActiveCompanyId();
+  const list = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, [], cId);
   // Deduplicate vouchers by voucherNo preserving the most recent record
   const map = new Map<string, Voucher>();
   list.forEach((v, idx) => {
@@ -7511,22 +7519,77 @@ export function postPayrollJournalVoucher(payrollId: string): { success: boolean
   return { success: true, voucherNo: vNo };
 }
 
-export function getUsers(): AppUser[] {
-  return loadJson<AppUser[]>(STORAGE_KEYS.USERS, DEFAULT_USERS);
+export function getUsers(targetCompanyId?: string): AppUser[] {
+  const cId = targetCompanyId || getActiveCompanyId();
+  const list = loadJson<AppUser[]>(STORAGE_KEYS.USERS, [], cId);
+  if (list && list.length > 0) return list;
+
+  // If client company has no users loaded in storage yet, check cached company data
+  if (cId !== DEFAULT_TENANT_COMPANY.id) {
+    const defaultAdminPerms: UserPermission[] = [
+      { module: 'pos', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'purchase', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'vouchers', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'masters', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'barcode', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'payroll', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'reports', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'settings', display: true, create: true, edit: true, delete: true, print: true }
+    ];
+
+    try {
+      const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_user_companies_cache') : null;
+      if (cached) {
+        const comps = JSON.parse(cached);
+        const comp = comps.find((c: any) => c.id === cId);
+        if (comp) {
+          const adminUser: AppUser = {
+            id: `admin_${cId}`,
+            username: (comp.admin_username || 'admin').trim().toLowerCase(),
+            fullName: (comp.admin_name || `${comp.company_name} Administrator`).trim(),
+            role: 'Administrator',
+            status: 'Active',
+            pinCode: (comp.admin_pin || '1234').trim(),
+            permissions: defaultAdminPerms
+          };
+          saveJson(STORAGE_KEYS.USERS, [adminUser], cId);
+          return [adminUser];
+        }
+      }
+    } catch {}
+
+    // Fallback client admin user
+    const clientAdmin: AppUser = {
+      id: `admin_${cId}`,
+      username: 'admin',
+      fullName: 'Administrator',
+      role: 'Administrator',
+      status: 'Active',
+      pinCode: '1234',
+      permissions: defaultAdminPerms
+    };
+    saveJson(STORAGE_KEYS.USERS, [clientAdmin], cId);
+    return [clientAdmin];
+  }
+
+  return DEFAULT_USERS;
 }
 
-export function saveUsers(users: AppUser[]): void {
-  saveJson(STORAGE_KEYS.USERS, users);
+export function saveUsers(users: AppUser[], targetCompanyId?: string): void {
+  const cId = targetCompanyId || getActiveCompanyId();
+  saveJson(STORAGE_KEYS.USERS, users, cId);
 }
 
-export function getActiveUser(): AppUser {
-  const users = getUsers();
-  const activeId = loadJson<string>('deep_pos_active_user_id', users[0]?.id || 'usr_admin');
+export function getActiveUser(targetCompanyId?: string): AppUser {
+  const cId = targetCompanyId || getActiveCompanyId();
+  const users = getUsers(cId);
+  const activeId = loadJson<string>('deep_pos_active_user_id', users[0]?.id || `admin_${cId}`, cId);
   return users.find(u => u.id === activeId) || users[0];
 }
 
-export function setActiveUser(userId: string): void {
-  saveJson('deep_pos_active_user_id', userId);
+export function setActiveUser(userId: string, targetCompanyId?: string): void {
+  const cId = targetCompanyId || getActiveCompanyId();
+  saveJson('deep_pos_active_user_id', userId, cId);
 }
 
 export function canUserViewAuditTrail(user?: AppUser): boolean {
@@ -7541,8 +7604,10 @@ export function canUserViewAuditTrail(user?: AppUser): boolean {
 }
 
 export function getAuditLogs(): AuditLogEntry[] {
+  const cId = getActiveCompanyId();
+  const isDemo = cId === DEFAULT_TENANT_COMPANY.id;
   const logs = loadJson<AuditLogEntry[]>(STORAGE_KEYS.AUDIT_LOG, []);
-  if (logs.length === 0) {
+  if (logs.length === 0 && isDemo) {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
     const initialLogs: AuditLogEntry[] = [

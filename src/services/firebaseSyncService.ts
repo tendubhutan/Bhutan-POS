@@ -16,7 +16,8 @@ import {
   Ledger, 
   SalesInvoice, 
   PurchaseInvoice, 
-  Voucher 
+  Voucher,
+  AppUser 
 } from '../types';
 import { STORAGE_KEYS, saveJson, loadJson, getInitialData } from './storageService';
 import { getActiveCompanyId, DEFAULT_TENANT_COMPANY } from './supabaseTenantService';
@@ -24,6 +25,8 @@ import { getActiveCompanyId, DEFAULT_TENANT_COMPANY } from './supabaseTenantServ
 // Firestore sync status indicator callback
 type StatusCallback = (status: 'connected' | 'syncing' | 'offline' | 'error', message?: string) => void;
 let statusListeners: StatusCallback[] = [];
+const activeSyncQueues = new Set<string>();
+let isSeedingInProgress = false;
 
 export function subscribeFirebaseStatus(cb: StatusCallback) {
   statusListeners.push(cb);
@@ -122,6 +125,90 @@ export async function syncItemsBatchToFirestore(items: Item[], customCId?: strin
   } catch (err: any) {
     console.warn('Firestore Bulk Item Sync Error:', err);
     notifyStatus('error', err?.message || 'Failed to sync items to cloud');
+  }
+}
+
+export async function syncLedgersBatchToFirestore(ledgers: Ledger[], customCId?: string) {
+  if (!ledgers || ledgers.length === 0) return;
+  try {
+    const chunkSize = 300;
+    for (let i = 0; i < ledgers.length; i += chunkSize) {
+      const chunk = ledgers.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      for (const ledger of chunk) {
+        const id = ledger['Ledger Name'];
+        if (!id) continue;
+        const safeId = id.replace(/\//g, '_');
+        const ref = getTenantDocRef('ledgers', safeId, customCId);
+        batch.set(ref, cleanObject(ledger), { merge: true });
+      }
+      await batch.commit();
+    }
+  } catch (err: any) {
+    console.warn('Firestore Bulk Ledger Sync Error:', err);
+  }
+}
+
+export async function syncSalesInvoicesBatchToFirestore(sales: SalesInvoice[], customCId?: string) {
+  if (!sales || sales.length === 0) return;
+  try {
+    const chunkSize = 300;
+    for (let i = 0; i < sales.length; i += chunkSize) {
+      const chunk = sales.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      for (const s of chunk) {
+        const id = s.invoiceNo;
+        if (!id) continue;
+        const safeId = id.replace(/\//g, '_');
+        const ref = getTenantDocRef('sales_invoices', safeId, customCId);
+        batch.set(ref, cleanObject(s), { merge: true });
+      }
+      await batch.commit();
+    }
+  } catch (err: any) {
+    console.warn('Firestore Bulk Sales Sync Error:', err);
+  }
+}
+
+export async function syncPurchaseInvoicesBatchToFirestore(purchases: PurchaseInvoice[], customCId?: string) {
+  if (!purchases || purchases.length === 0) return;
+  try {
+    const chunkSize = 300;
+    for (let i = 0; i < purchases.length; i += chunkSize) {
+      const chunk = purchases.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      for (const p of chunk) {
+        const id = p.billNo;
+        if (!id) continue;
+        const safeId = id.replace(/\//g, '_');
+        const ref = getTenantDocRef('purchase_invoices', safeId, customCId);
+        batch.set(ref, cleanObject(p), { merge: true });
+      }
+      await batch.commit();
+    }
+  } catch (err: any) {
+    console.warn('Firestore Bulk Purchase Sync Error:', err);
+  }
+}
+
+export async function syncVouchersBatchToFirestore(vouchers: Voucher[], customCId?: string) {
+  if (!vouchers || vouchers.length === 0) return;
+  try {
+    const chunkSize = 300;
+    for (let i = 0; i < vouchers.length; i += chunkSize) {
+      const chunk = vouchers.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      for (const v of chunk) {
+        const id = v.voucherNo;
+        if (!id) continue;
+        const safeId = id.replace(/\//g, '_');
+        const ref = getTenantDocRef('vouchers', safeId, customCId);
+        batch.set(ref, cleanObject(v), { merge: true });
+      }
+      await batch.commit();
+    }
+  } catch (err: any) {
+    console.warn('Firestore Bulk Voucher Sync Error:', err);
   }
 }
 
@@ -240,8 +327,8 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
     const unsubConfig = onSnapshot(configRef, (snapshot) => {
       if (snapshot.exists()) {
         const remoteConfig = snapshot.data() as Config;
-        const localConfig = loadJson<Config>(STORAGE_KEYS.CONFIG, {} as Config);
-        saveJson(STORAGE_KEYS.CONFIG, { ...localConfig, ...remoteConfig });
+        const localConfig = loadJson<Config>(STORAGE_KEYS.CONFIG, {} as Config, cId);
+        saveJson(STORAGE_KEYS.CONFIG, { ...localConfig, ...remoteConfig }, cId);
         if (onDataUpdated) onDataUpdated();
       }
       notifyStatus('connected', 'Cloud Firestore Active');
@@ -256,9 +343,9 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
     const unsubItems = onSnapshot(itemsRef, (snapshot) => {
       // If snapshot is empty for a non-demo company, enforce clean blank items list!
       if (snapshot.empty && !isDemo) {
-        const currentLocal = loadJson<Item[]>(STORAGE_KEYS.ITEMS, []);
+        const currentLocal = loadJson<Item[]>(STORAGE_KEYS.ITEMS, [], cId);
         if (currentLocal.length > 0) {
-          saveJson(STORAGE_KEYS.ITEMS, []);
+          saveJson(STORAGE_KEYS.ITEMS, [], cId);
           if (onDataUpdated) onDataUpdated();
         }
         return;
@@ -269,9 +356,9 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
         remoteItems.push(docSnap.data() as Item);
       });
 
-      const localItems = loadJson<Item[]>(STORAGE_KEYS.ITEMS, []);
+      const localItems = loadJson<Item[]>(STORAGE_KEYS.ITEMS, [], cId);
       const deletedItems = new Set(
-        loadJson<string[]>(STORAGE_KEYS.DELETED_ITEMS, []).map(c => (c || '').trim().toLowerCase())
+        loadJson<string[]>(STORAGE_KEYS.DELETED_ITEMS, [], cId).map(c => (c || '').trim().toLowerCase())
       );
 
       // Build map of remote items (excluding locally deleted items)
@@ -295,15 +382,21 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
 
       const mergedList = Array.from(mergedMap.values());
       if (mergedList.length > 0 || isDemo) {
-        saveJson(STORAGE_KEYS.ITEMS, mergedList);
+        saveJson(STORAGE_KEYS.ITEMS, mergedList, cId);
         if (onDataUpdated) onDataUpdated();
       }
 
-      // Automatically push any unsynced local items to Firestore
+      // Automatically push any unsynced local items to Firestore via debounced batch
       if (unsyncedItems.length > 0) {
-        syncItemsBatchToFirestore(unsyncedItems, cId).catch(e => {
-          console.warn('Auto-sync unsynced local items to cloud:', e);
-        });
+        const queueKey = `items_${cId}`;
+        if (!activeSyncQueues.has(queueKey)) {
+          activeSyncQueues.add(queueKey);
+          setTimeout(() => {
+            syncItemsBatchToFirestore(unsyncedItems, cId)
+              .catch(e => console.warn('Auto-sync unsynced local items to cloud error:', e))
+              .finally(() => activeSyncQueues.delete(queueKey));
+          }, 1000);
+        }
       }
     }, (err) => {
       console.warn('Firestore Listener Error (Items):', err);
@@ -322,9 +415,9 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
         remoteLedgers.push(docSnap.data() as Ledger);
       });
 
-      const localLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, []);
+      const localLedgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, [], cId);
       const deletedLedgers = new Set(
-        loadJson<string[]>(STORAGE_KEYS.DELETED_LEDGERS, []).map(d => (d || '').trim().toLowerCase())
+        loadJson<string[]>(STORAGE_KEYS.DELETED_LEDGERS, [], cId).map(d => (d || '').trim().toLowerCase())
       );
 
       const mergedMap = new Map<string, Ledger>();
@@ -346,13 +439,19 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
 
       const mergedList = Array.from(mergedMap.values());
       if (mergedList.length > 0) {
-        saveJson(STORAGE_KEYS.LEDGERS, mergedList);
+        saveJson(STORAGE_KEYS.LEDGERS, mergedList, cId);
         if (onDataUpdated) onDataUpdated();
       }
 
       if (unsyncedLedgers.length > 0) {
-        for (const l of unsyncedLedgers) {
-          syncLedgerToFirestore(l, cId).catch(() => {});
+        const queueKey = `ledgers_${cId}`;
+        if (!activeSyncQueues.has(queueKey)) {
+          activeSyncQueues.add(queueKey);
+          setTimeout(() => {
+            syncLedgersBatchToFirestore(unsyncedLedgers, cId)
+              .catch(e => console.warn('Auto-sync unsynced ledgers error:', e))
+              .finally(() => activeSyncQueues.delete(queueKey));
+          }, 1000);
         }
       }
     }, (err) => {
@@ -365,9 +464,9 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
     const unsubSales = onSnapshot(salesRef, (snapshot) => {
       if (snapshot.empty && !isDemo) {
         // Client company has 0 sales in Firestore. Enforce clean 0 sales!
-        const currentLocal = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+        const currentLocal = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, [], cId);
         if (currentLocal.length > 0) {
-          saveJson(STORAGE_KEYS.SALES_INVOICES, []);
+          saveJson(STORAGE_KEYS.SALES_INVOICES, [], cId);
           if (onDataUpdated) onDataUpdated();
         }
         return;
@@ -378,9 +477,9 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
         remoteSales.push(docSnap.data() as SalesInvoice);
       });
 
-      const localSales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+      const localSales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, [], cId);
       const deletedSales = new Set(
-        loadJson<string[]>(STORAGE_KEYS.DELETED_SALES_INVOICES, []).map(s => (s || '').trim().toLowerCase())
+        loadJson<string[]>(STORAGE_KEYS.DELETED_SALES_INVOICES, [], cId).map(s => (s || '').trim().toLowerCase())
       );
       const salesMap = new Map<string, SalesInvoice>();
       remoteSales.forEach(s => {
@@ -399,13 +498,19 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
 
       const mergedSales = Array.from(salesMap.values());
       if (mergedSales.length > 0 || isDemo) {
-        saveJson(STORAGE_KEYS.SALES_INVOICES, mergedSales);
+        saveJson(STORAGE_KEYS.SALES_INVOICES, mergedSales, cId);
         if (onDataUpdated) onDataUpdated();
       }
 
       if (unsyncedSales.length > 0) {
-        for (const s of unsyncedSales) {
-          syncSalesInvoiceToFirestore(s, cId).catch(() => {});
+        const queueKey = `sales_${cId}`;
+        if (!activeSyncQueues.has(queueKey)) {
+          activeSyncQueues.add(queueKey);
+          setTimeout(() => {
+            syncSalesInvoicesBatchToFirestore(unsyncedSales, cId)
+              .catch(e => console.warn('Auto-sync unsynced sales error:', e))
+              .finally(() => activeSyncQueues.delete(queueKey));
+          }, 1000);
         }
       }
     }, (err) => {
@@ -417,9 +522,9 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
     const purchaseRef = collection(db, 'tenants', cId, 'purchase_invoices');
     const unsubPurchase = onSnapshot(purchaseRef, (snapshot) => {
       if (snapshot.empty && !isDemo) {
-        const currentLocal = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+        const currentLocal = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, [], cId);
         if (currentLocal.length > 0) {
-          saveJson(STORAGE_KEYS.PURCHASE_INVOICES, []);
+          saveJson(STORAGE_KEYS.PURCHASE_INVOICES, [], cId);
           if (onDataUpdated) onDataUpdated();
         }
         return;
@@ -430,9 +535,9 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
         remotePurchases.push(docSnap.data() as PurchaseInvoice);
       });
 
-      const localPurchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+      const localPurchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, [], cId);
       const deletedPurchases = new Set(
-        loadJson<string[]>(STORAGE_KEYS.DELETED_PURCHASE_INVOICES, []).map(p => (p || '').trim().toLowerCase())
+        loadJson<string[]>(STORAGE_KEYS.DELETED_PURCHASE_INVOICES, [], cId).map(p => (p || '').trim().toLowerCase())
       );
       const purchaseMap = new Map<string, PurchaseInvoice>();
       remotePurchases.forEach(p => {
@@ -451,13 +556,19 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
 
       const mergedPurchases = Array.from(purchaseMap.values());
       if (mergedPurchases.length > 0 || isDemo) {
-        saveJson(STORAGE_KEYS.PURCHASE_INVOICES, mergedPurchases);
+        saveJson(STORAGE_KEYS.PURCHASE_INVOICES, mergedPurchases, cId);
         if (onDataUpdated) onDataUpdated();
       }
 
       if (unsyncedPurchases.length > 0) {
-        for (const p of unsyncedPurchases) {
-          syncPurchaseInvoiceToFirestore(p, cId).catch(() => {});
+        const queueKey = `purchases_${cId}`;
+        if (!activeSyncQueues.has(queueKey)) {
+          activeSyncQueues.add(queueKey);
+          setTimeout(() => {
+            syncPurchaseInvoicesBatchToFirestore(unsyncedPurchases, cId)
+              .catch(e => console.warn('Auto-sync unsynced purchases error:', e))
+              .finally(() => activeSyncQueues.delete(queueKey));
+          }, 1000);
         }
       }
     }, (err) => {
@@ -470,9 +581,9 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
     const unsubVouchers = onSnapshot(vouchersRef, (snapshot) => {
       if (snapshot.empty && !isDemo) {
         // Client company has 0 vouchers in Firestore. Enforce clean 0 vouchers!
-        const currentLocal = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+        const currentLocal = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, [], cId);
         if (currentLocal.length > 0) {
-          saveJson(STORAGE_KEYS.VOUCHERS, []);
+          saveJson(STORAGE_KEYS.VOUCHERS, [], cId);
           if (onDataUpdated) onDataUpdated();
         }
         return;
@@ -483,14 +594,17 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
         remoteVouchers.push(docSnap.data() as Voucher);
       });
 
-      const localVouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+      const localVouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, [], cId);
       const deletedVouchers = new Set(
-        loadJson<string[]>(STORAGE_KEYS.DELETED_VOUCHERS, []).map(v => (v || '').trim().toLowerCase())
+        loadJson<string[]>(STORAGE_KEYS.DELETED_VOUCHERS, [], cId).map(v => (v || '').trim().toLowerCase())
       );
       const voucherMap = new Map<string, Voucher>();
       remoteVouchers.forEach(v => {
         const id = (v.voucherNo || '').trim().toLowerCase();
-        if (id && !deletedVouchers.has(id)) voucherMap.set(id, v);
+        // For demo company, always keep remote vouchers intact
+        if (id && (!isDemo ? !deletedVouchers.has(id) : true)) {
+          voucherMap.set(id, v);
+        }
       });
 
       const unsyncedVouchers: Voucher[] = [];
@@ -503,20 +617,47 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
       });
 
       const mergedVouchers = Array.from(voucherMap.values());
-      if (mergedVouchers.length > 0) {
-        saveJson(STORAGE_KEYS.VOUCHERS, mergedVouchers);
-        if (onDataUpdated) onDataUpdated();
+      // Save directly with explicit cId
+      saveJson(STORAGE_KEYS.VOUCHERS, mergedVouchers, cId);
+      
+      if (onDataUpdated) onDataUpdated();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:vouchers_updated', { detail: { vouchers: mergedVouchers, companyId: cId } }));
       }
 
       if (unsyncedVouchers.length > 0) {
-        for (const v of unsyncedVouchers) {
-          syncVoucherToFirestore(v, cId).catch(() => {});
+        const queueKey = `vouchers_${cId}`;
+        if (!activeSyncQueues.has(queueKey)) {
+          activeSyncQueues.add(queueKey);
+          setTimeout(() => {
+            syncVouchersBatchToFirestore(unsyncedVouchers, cId)
+              .catch(e => console.warn('Auto-sync unsynced vouchers error:', e))
+              .finally(() => activeSyncQueues.delete(queueKey));
+          }, 1000);
         }
       }
     }, (err) => {
       console.warn('Firestore Listener Error (Vouchers):', err);
     });
     unsubscribes.push(unsubVouchers);
+
+    // 7. Users listener (Isolated by Tenant)
+    const usersRef = collection(db, 'tenants', cId, 'users');
+    const unsubUsers = onSnapshot(usersRef, (snapshot) => {
+      if (!snapshot.empty) {
+        const remoteUsers: AppUser[] = [];
+        snapshot.forEach(docSnap => {
+          remoteUsers.push(docSnap.data() as AppUser);
+        });
+        if (remoteUsers.length > 0) {
+          saveJson(STORAGE_KEYS.USERS, remoteUsers, cId);
+          if (onDataUpdated) onDataUpdated();
+        }
+      }
+    }, (err) => {
+      console.warn('Firestore Listener Error (Users):', err);
+    });
+    unsubscribes.push(unsubUsers);
 
   } catch (err: any) {
     console.error('Failed to initialize FirestoreListeners:', err);
@@ -534,6 +675,9 @@ export function initFirestoreSync(onDataUpdated?: () => void, targetCompanyId?: 
  * New client companies remain strictly clean and blank!
  */
 export async function seedInitialLocalDataToFirestore(targetCompanyId?: string) {
+  if (isSeedingInProgress) return;
+  isSeedingInProgress = true;
+
   try {
     const cId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
 
@@ -558,24 +702,22 @@ export async function seedInitialLocalDataToFirestore(targetCompanyId?: string) 
       }
 
       if (initial.ledgers && initial.ledgers.length > 0) {
-        for (const ledger of initial.ledgers) {
-          await syncLedgerToFirestore(ledger, cId);
-        }
+        await syncLedgersBatchToFirestore(initial.ledgers, cId);
       }
 
       const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
-      for (const s of sales) {
-        await syncSalesInvoiceToFirestore(s, cId);
+      if (sales && sales.length > 0) {
+        await syncSalesInvoicesBatchToFirestore(sales, cId);
       }
 
       const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
-      for (const p of purchases) {
-        await syncPurchaseInvoiceToFirestore(p, cId);
+      if (purchases && purchases.length > 0) {
+        await syncPurchaseInvoicesBatchToFirestore(purchases, cId);
       }
 
       const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
-      for (const v of vouchers) {
-        await syncVoucherToFirestore(v, cId);
+      if (vouchers && vouchers.length > 0) {
+        await syncVouchersBatchToFirestore(vouchers, cId);
       }
 
       notifyStatus('connected', 'Database synced to Cloud Firestore');
@@ -608,5 +750,7 @@ export async function seedInitialLocalDataToFirestore(targetCompanyId?: string) 
   } catch (err: any) {
     console.warn('Seed/Reconcile Error:', err);
     notifyStatus('error', 'Sync reconciliation issue');
+  } finally {
+    isSeedingInProgress = false;
   }
 }

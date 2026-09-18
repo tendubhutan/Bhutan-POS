@@ -15,8 +15,12 @@ import {
   Eye,
   EyeOff,
   UserCheck,
-  Building2
+  Building2,
+  CloudUpload,
+  RefreshCw,
+  Database
 } from 'lucide-react';
+import { handleMasterCloudSync, MasterSyncResult } from '../services/supabaseSyncService';
 import { AppUser, UserPermission, ModuleId } from '../types';
 import { 
   getUsers, 
@@ -60,6 +64,28 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
   const [authLoading, setAuthLoading] = useState(false);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [activeCompany, setActiveCompany] = useState<SupabaseCompany | null>(null);
+  const [cloudSyncLoading, setCloudSyncLoading] = useState(false);
+  const [cloudSyncMsg, setCloudSyncMsg] = useState<string | null>(null);
+
+  const handleRunCloudSync = async () => {
+    setCloudSyncLoading(true);
+    setCloudSyncMsg(null);
+    try {
+      const res = await handleMasterCloudSync((msg, pct) => {
+        setCloudSyncMsg(`${msg} (${pct}%)`);
+      });
+      if (res.success) {
+        setSuccessMsg(`Synced ${res.syncedCounts.items} items, ${res.syncedCounts.ledgers} ledgers, and ${res.syncedCounts.vouchers} vouchers to cloud.`);
+      } else {
+        setErrorMsg(`Cloud sync error: ${res.error}`);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Cloud sync error: ${err.message}`);
+    } finally {
+      setCloudSyncLoading(false);
+      setCloudSyncMsg(null);
+    }
+  };
 
   const loadData = async () => {
     const list = getUsers();
@@ -602,6 +628,40 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                   </span>
                 )}
               </div>
+
+              {sessionEmail && (
+                <div className="p-4 bg-indigo-950/40 border border-indigo-500/30 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0">
+                      <Database className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white text-xs">Supabase Multi-Tenant Sync</h4>
+                      <p className="text-[11px] text-slate-300">
+                        {cloudSyncMsg || 'Push all local business records to your isolated tenant.'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRunCloudSync}
+                    disabled={cloudSyncLoading}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 transition cursor-pointer shrink-0"
+                  >
+                    {cloudSyncLoading ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Syncing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CloudUpload className="h-3.5 w-3.5" />
+                        <span>Sync Now</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
 
               {!sessionEmail && (
                 <form onSubmit={handleSupabaseSignIn} className="p-4 bg-slate-800/50 border border-slate-700 rounded-2xl space-y-3 max-w-md mx-auto">

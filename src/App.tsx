@@ -242,7 +242,7 @@ export default function App() {
   const [showUserAuthModal, setShowUserAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<AppUser>(getActiveUser());
   const [isTerminalLocked, setIsTerminalLocked] = useState<boolean>(() => {
-    // Check if session has explicitly logged in or is locked
+    // Require explicit authentication by default: lock screen until a valid session is confirmed
     const sessionUnlocked = sessionStorage.getItem('bhutan_pos_session_unlocked');
     return sessionUnlocked !== 'true';
   });
@@ -620,6 +620,7 @@ export default function App() {
           currentUser={currentUser}
           onOpenUserAuthModal={() => setShowUserAuthModal(true)}
           onLockTerminal={() => {
+            sessionStorage.setItem('bhutan_pos_terminal_explicitly_locked', 'true');
             sessionStorage.removeItem('bhutan_pos_session_unlocked');
             setIsTerminalLocked(true);
           }}
@@ -931,9 +932,11 @@ export default function App() {
           activeCompany={activeCompany}
           activeFY={activeFY}
           onUnlock={(user) => {
+            sessionStorage.removeItem('bhutan_pos_terminal_explicitly_locked');
             sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
             setCurrentUser(user);
             setIsTerminalLocked(false);
+            loadTenantDetails();
             refreshData();
           }}
         />

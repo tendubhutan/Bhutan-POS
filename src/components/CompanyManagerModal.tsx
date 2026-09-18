@@ -40,6 +40,7 @@ import {
 import { resetCompanyToBlank } from '../services/storageService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { GlowButton } from './common/GlowButton';
+import { getCurrentTenantSession } from '../services/authTenantContext';
 
 interface CompanyManagerModalProps {
   isOpen: boolean;
@@ -52,6 +53,9 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
   onClose,
   onCompanySelected
 }) => {
+  const session = getCurrentTenantSession();
+  const isSuperAdmin = session?.role === 'superadmin';
+
   const [companies, setCompanies] = useState<SupabaseCompany[]>([]);
   const [activeCompanyId, setActiveCompId] = useState<string>(getActiveCompanyId());
   const [financialYears, setFinancialYears] = useState<SupabaseFinancialYear[]>([]);
@@ -83,6 +87,9 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
   const [newEmail, setNewEmail] = useState('');
   const [newAddress, setNewAddress] = useState('');
   const [newCurrency, setNewCurrency] = useState('Nu.');
+  const [newAdminUsername, setNewAdminUsername] = useState('admin');
+  const [newAdminName, setNewAdminName] = useState('Administrator');
+  const [newAdminPin, setNewAdminPin] = useState('1234');
   const [submitting, setSubmitting] = useState(false);
 
   // Form states for New FY (Bhutan standard: Jan 1 to Dec 31)
@@ -100,7 +107,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const { companies: comps, error: compErr } = await fetchUserCompanies();
+      const { companies: comps, error: compErr } = await fetchUserCompanies(true);
       if (compErr) setError(compErr);
       setCompanies(comps);
 
@@ -142,6 +149,12 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
   };
 
   const handleSelectCompany = async (company: SupabaseCompany) => {
+    // Strict multi-tenant security: non-superadmin cannot switch to other companies or demo
+    if (!isSuperAdmin && session?.assignedCompanyId && company.id !== session.assignedCompanyId) {
+      setError('Unauthorized: You are assigned exclusively to your organization and cannot switch companies.');
+      return;
+    }
+
     setActiveCompanyId(company.id);
     setActiveCompId(company.id);
     
@@ -179,7 +192,10 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         phone: newPhone.trim(),
         email: newEmail.trim(),
         address: newAddress.trim(),
-        currency_symbol: newCurrency.trim() || 'Nu.'
+        currency_symbol: newCurrency.trim() || 'Nu.',
+        admin_username: newAdminUsername.trim().toLowerCase() || 'admin',
+        admin_name: newAdminName.trim() || 'Administrator',
+        admin_pin: newAdminPin.trim() || '1234'
       });
 
       if (createErr || !company) {
@@ -199,6 +215,9 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
       setNewPhone('');
       setNewEmail('');
       setNewAddress('');
+      setNewAdminUsername('admin');
+      setNewAdminName('Administrator');
+      setNewAdminPin('1234');
       
       // Refresh list & select new company
       await loadData();
@@ -341,31 +360,35 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                       Registered Companies ({companies.length})
                     </span>
                     
-                    {/* Hide / Show Demo Company Toggle */}
-                    <button
-                      type="button"
-                      onClick={toggleHideDemo}
-                      className={`text-[11px] px-2.5 py-0.5 rounded-md border flex items-center gap-1 transition cursor-pointer ${
-                        hideDemoCompany 
-                          ? 'bg-blue-500/20 text-blue-300 border-blue-500/40 hover:bg-blue-500/30' 
-                          : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-                      }`}
-                      title="Hide or show the initial Demo Company (Bhutan Retail Enterprise)"
-                    >
-                      {hideDemoCompany ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                      <span>{hideDemoCompany ? 'Demo Hidden' : 'Demo Visible'}</span>
-                    </button>
+                    {/* Hide / Show Demo Company Toggle (Superadmin only) */}
+                    {isSuperAdmin && (
+                      <button
+                        type="button"
+                        onClick={toggleHideDemo}
+                        className={`text-[11px] px-2.5 py-0.5 rounded-md border flex items-center gap-1 transition cursor-pointer ${
+                          hideDemoCompany 
+                            ? 'bg-blue-500/20 text-blue-300 border-blue-500/40 hover:bg-blue-500/30' 
+                            : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                        }`}
+                        title="Hide or show the initial Demo Company (Bhutan Retail Enterprise)"
+                      >
+                        {hideDemoCompany ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                        <span>{hideDemoCompany ? 'Demo Hidden' : 'Demo Visible'}</span>
+                      </button>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setViewMode('create_company')}
-                      className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition shadow-xs cursor-pointer"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      <span>Create Company</span>
-                    </button>
-                  </div>
+                  {isSuperAdmin && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setViewMode('create_company')}
+                        className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition shadow-xs cursor-pointer"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Create Company</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {loading ? (
@@ -436,31 +459,35 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                             </button>
 
                             <div className="flex items-center gap-2">
-                              {/* Reset to Blank Slate Button */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setConfirmResetCompany(comp);
-                                }}
-                                className="text-slate-400 hover:text-amber-400 p-1 rounded hover:bg-slate-700/50 transition cursor-pointer"
-                                title="Reset this company to 0 vouchers, 0 sales, 0 items (clean slate)"
-                              >
-                                <RotateCcw className="h-3.5 w-3.5" />
-                              </button>
+                              {/* Reset to Blank Slate Button - NEVER allow for DEMO company, SuperAdmin only */}
+                              {isSuperAdmin && !isDemo && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmResetCompany(comp);
+                                  }}
+                                  className="text-slate-400 hover:text-amber-400 p-1 rounded hover:bg-slate-700/50 transition cursor-pointer"
+                                  title="Reset this company to 0 vouchers, 0 sales, 0 items (clean slate)"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" />
+                                </button>
+                              )}
 
-                              {/* Delete Company Button */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setConfirmDeleteCompany(comp);
-                                }}
-                                className="text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-slate-700/50 transition cursor-pointer"
-                                title="Permanently delete this company"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                              {/* Delete Company Button - NEVER allow for DEMO company, SuperAdmin only */}
+                              {isSuperAdmin && !isDemo && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmDeleteCompany(comp);
+                                  }}
+                                  className="text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-slate-700/50 transition cursor-pointer"
+                                  title="Permanently delete this company"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -611,6 +638,56 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                     onChange={(e) => setNewAddress(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
                   />
+                </div>
+
+                {/* Dedicated Admin Account Credentials */}
+                <div className="sm:col-span-2 p-3 bg-slate-950/70 rounded-xl border border-blue-500/30">
+                  <div className="text-xs font-bold text-blue-300 mb-2 flex items-center gap-1.5">
+                    <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                    Dedicated Admin Account for this Company
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Admin Full Name
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Administrator"
+                        value={newAdminName}
+                        onChange={(e) => setNewAdminName(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Admin Username
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="admin"
+                        value={newAdminUsername}
+                        onChange={(e) => setNewAdminUsername(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-hidden font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Security PIN Code (e.g. 1234)
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        placeholder="1234"
+                        value={newAdminPin}
+                        onChange={(e) => setNewAdminPin(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-emerald-400 font-bold text-xs focus:border-blue-500 focus:outline-hidden font-mono tracking-widest"
+                      />
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-2">
+                    The client will use this username and PIN to sign in to their dedicated company workspace.
+                  </div>
                 </div>
               </div>
 
@@ -802,6 +879,39 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                   </div>
                 </div>
               )}
+
+              {/* Dedicated Client Admin Credentials */}
+              <div className="bg-slate-950/80 border border-blue-500/40 rounded-xl p-3 text-xs space-y-2">
+                <div className="font-semibold text-blue-300 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                    <span>Client Admin Login Credentials</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">Share with client</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block font-medium">Username</span>
+                    <span className="text-white font-mono font-bold text-xs">{shareCompany.admin_username || 'admin'}</span>
+                  </div>
+                  <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block font-medium">PIN / Password</span>
+                    <span className="text-emerald-400 font-mono font-bold text-xs tracking-wider">{shareCompany.admin_pin || '1234'}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = `Company: ${shareCompany.company_name}\nDirect Link: https://bhutan-pos.web.app/?company=${shareCompany.id}\nAdmin Username: ${shareCompany.admin_username || 'admin'}\nPIN: ${shareCompany.admin_pin || '1234'}`;
+                    navigator.clipboard.writeText(text);
+                    showToast('Full access details (Link, Username & PIN) copied!');
+                  }}
+                  className="w-full py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 text-blue-300 hover:text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>Copy Complete Access Package (Link + Username + PIN)</span>
+                </button>
+              </div>
 
               <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 text-xs text-slate-400 space-y-1.5">
                 <div className="font-semibold text-slate-200 flex items-center gap-1.5">
