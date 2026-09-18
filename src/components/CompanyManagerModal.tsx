@@ -21,7 +21,11 @@ import {
   CheckCircle2,
   HelpCircle,
   Edit3,
-  Mail
+  Mail,
+  Sparkles,
+  Phone,
+  MapPin,
+  Coins
 } from 'lucide-react';
 import { 
   SupabaseCompany, 
@@ -361,9 +365,11 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
 
   if (!isOpen) return null;
 
+  const isFormMode = viewMode === 'create_company' || viewMode === 'edit_company';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-150">
+      <div className={`bg-slate-900 border border-slate-700 w-full ${isFormMode ? 'max-w-4xl xl:max-w-5xl' : 'max-w-2xl'} rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] transition-all duration-200`}>
         
         {/* Modal Header */}
         <div className="bg-slate-800/90 border-b border-slate-700/80 px-6 py-4 flex items-center justify-between">
@@ -641,446 +647,552 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
 
           {/* CREATE COMPANY VIEW */}
           {viewMode === 'create_company' && (
-            <form onSubmit={handleCreateCompanySubmit} className="space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <h3 className="font-bold text-sm text-white flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-blue-400" />
-                  Register New Client Company (Starts 100% Blank)
-                </h3>
+            <form onSubmit={handleCreateCompanySubmit} className="space-y-3.5">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                    <Building2 className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                      <span>Register New Client Company</span>
+                      <span className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-medium px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <Sparkles className="h-2.5 w-2.5" /> Clean Blank Slate
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Configure legal business details, cloud database login, and in-store counter credentials.
+                    </p>
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={() => setViewMode('list')}
-                  className="text-xs text-slate-400 hover:text-white"
+                  className="text-xs text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
                 >
-                  Back to List
+                  ← Back to List
                 </button>
               </div>
 
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-xs text-blue-300">
-                ✨ <strong>Guaranteed Clean Slate:</strong> The new company starts with 0 vouchers, 0 sales invoices, and 0 demo items.
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Company / Trade Name <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Druk Wangyel Supermarket"
-                    value={newCompanyName}
-                    onChange={(e) => setNewCompanyName(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    GST No / License No
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. GST-2026-9041"
-                    value={newTradeLicense}
-                    onChange={(e) => setNewTradeLicense(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Tax Payer Number (TPN)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. TPN-4050607"
-                    value={newTPN}
-                    onChange={(e) => setNewTPN(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Contact Phone</label>
-                  <input
-                    type="text"
-                    placeholder="+975 17 000 000"
-                    value={newPhone}
-                    onChange={(e) => setNewPhone(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Physical Address</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Changlam Square, Thimphu"
-                    value={newAddress}
-                    onChange={(e) => setNewAddress(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
-                {/* Section 1: Cloud & System Sign-In Credentials */}
-                <div className="sm:col-span-2 p-3.5 bg-slate-950/80 rounded-xl border border-blue-500/40 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
-                      <Lock className="h-4 w-4 text-blue-400" />
-                      <span>Cloud Sign-In Credentials (Main System Login)</span>
+              {/* 2-Column Responsive Grid: Company Profile (Left) & Access Credentials (Right) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 sm:gap-4 items-stretch">
+                {/* LEFT COLUMN: Business Profile */}
+                <div className="bg-slate-950/60 border border-slate-800/90 rounded-xl p-3.5 sm:p-4 flex flex-col justify-between space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-blue-400" />
+                      <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">Business Profile</span>
                     </div>
-                    <span className="text-[10px] text-blue-400/90 bg-blue-950/90 px-2 py-0.5 rounded-full border border-blue-800/60 font-mono">
-                      System Login Screen
-                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">Invoice & Tax Info</span>
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    The business owner uses this <span className="text-blue-300 font-semibold">Email</span> and <span className="text-amber-300 font-semibold">Password</span> to securely authenticate and access the cloud ERP database.
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                  <div className="space-y-2.5 flex-1">
+                    {/* Company / Trade Name */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Company / Trade Name <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Druk Wangyel Supermarket"
+                        value={newCompanyName}
+                        onChange={(e) => setNewCompanyName(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden font-medium"
+                      />
+                    </div>
+
+                    {/* GST No & TPN (2-column) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                          GST / License No
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. GST-2026-9041"
+                          value={newTradeLicense}
+                          onChange={(e) => setNewTradeLicense(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                          Tax Payer ID (TPN)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. TPN-4050607"
+                          value={newTPN}
+                          onChange={(e) => setNewTPN(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Phone & Currency (2-column) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                          <Phone className="h-3 w-3 text-slate-400" />
+                          <span>Contact Phone</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="+975 17 000 000"
+                          value={newPhone}
+                          onChange={(e) => setNewPhone(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                          <Coins className="h-3 w-3 text-amber-400" />
+                          <span>Currency Symbol</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Nu."
+                          value={newCurrency}
+                          onChange={(e) => setNewCurrency(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-amber-300 font-bold font-mono text-xs focus:border-blue-500 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Physical Address */}
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
-                        <Mail className="h-3 w-3 text-slate-400" />
-                        <span>Client Login Email</span>
+                        <MapPin className="h-3 w-3 text-slate-400" />
+                        <span>Physical Store / Office Address</span>
                       </label>
                       <input
-                        type="email"
-                        placeholder="client.name@store.bt"
-                        value={newEmail}
-                        onChange={(e) => setNewEmail(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                        type="text"
+                        placeholder="e.g. Changlam Square, Thimphu"
+                        value={newAddress}
+                        onChange={(e) => setNewAddress(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
                       />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">Official account login email</span>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
-                          <Lock className="h-3 w-3 text-slate-400" />
-                          <span>Client Cloud Password</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setShowAdminPassword(!showAdminPassword)}
-                          className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
-                        >
-                          {showAdminPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                          <span>{showAdminPassword ? 'Hide' : 'Show'}</span>
-                        </button>
-                      </div>
-                      <input
-                        type={showAdminPassword ? 'text' : 'password'}
-                        placeholder="e.g. ClientPass@123"
-                        value={newAdminPassword}
-                        onChange={(e) => setNewAdminPassword(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-amber-300 font-mono text-xs focus:border-blue-500 focus:outline-hidden font-semibold"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">Initial password for cloud account login</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Section 2: In-Store Counter & POS Identity */}
-                <div className="sm:col-span-2 p-3.5 bg-slate-950/60 rounded-xl border border-emerald-500/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                      <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                      <span>In-Store Counter & POS Identity</span>
+                {/* RIGHT COLUMN: Access & Security Credentials */}
+                <div className="space-y-3 flex flex-col justify-between">
+                  {/* Card 1: Cloud & System Sign-In Credentials */}
+                  <div className="bg-slate-950/70 rounded-xl border border-blue-500/35 p-3 sm:p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-blue-500/20">
+                      <div className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                        <Lock className="h-3.5 w-3.5 text-blue-400" />
+                        <span>Cloud Sign-In Credentials</span>
+                      </div>
+                      <span className="text-[10px] text-blue-400 bg-blue-950/90 px-2 py-0.5 rounded-full border border-blue-800/60 font-mono">
+                        Main System Login
+                      </span>
                     </div>
-                    <span className="text-[10px] text-emerald-400/90 bg-emerald-950/90 px-2 py-0.5 rounded-full border border-emerald-800/60 font-mono">
-                      Counter / POS Terminal
-                    </span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                          <Mail className="h-3 w-3 text-slate-400" />
+                          <span>Client Login Email</span>
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="client.name@store.bt"
+                          value={newEmail}
+                          onChange={(e) => setNewEmail(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
+                            <Lock className="h-3 w-3 text-slate-400" />
+                            <span>Client Cloud Password</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setShowAdminPassword(!showAdminPassword)}
+                            className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
+                          >
+                            {showAdminPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                            <span>{showAdminPassword ? 'Hide' : 'Show'}</span>
+                          </button>
+                        </div>
+                        <input
+                          type={showAdminPassword ? 'text' : 'password'}
+                          placeholder="e.g. ClientPass@123"
+                          value={newAdminPassword}
+                          onChange={(e) => setNewAdminPassword(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-amber-300 font-mono text-xs focus:border-blue-500 focus:outline-hidden font-semibold"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    Within the physical store, staff and cashiers use their <span className="text-slate-200 font-semibold">Full Name</span> on tax invoices, cashier <span className="text-slate-200 font-semibold">Username</span> for shifts, and fast <span className="text-slate-200 font-semibold">Security PIN</span> to quickly unlock the cash drawer without retyping their cloud password.
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                        Admin Full Name
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Tenzin Norbu"
-                        value={newAdminName}
-                        onChange={(e) => setNewAdminName(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">Appears on bills & reports</span>
+
+                  {/* Card 2: In-Store Counter & POS Identity */}
+                  <div className="bg-slate-950/70 rounded-xl border border-emerald-500/30 p-3 sm:p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-emerald-500/20">
+                      <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                        <span>In-Store Counter & POS Identity</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-full border border-emerald-800/60 font-mono">
+                        POS Terminal / Register
+                      </span>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                        Admin Username
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="admin"
-                        value={newAdminUsername}
-                        onChange={(e) => setNewAdminUsername(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-hidden font-mono"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">POS / drawer cashier ID</span>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                        Security PIN (e.g. 1234)
-                      </label>
-                      <input
-                        type="text"
-                        maxLength={6}
-                        placeholder="1234"
-                        value={newAdminPin}
-                        onChange={(e) => setNewAdminPin(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-emerald-400 font-bold text-xs focus:border-blue-500 focus:outline-hidden font-mono tracking-widest"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">Fast counter unlock PIN</span>
+
+                    <div className="space-y-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                          Admin Full Name (Printed on Bills & Reports)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Tenzin Norbu"
+                          value={newAdminName}
+                          onChange={(e) => setNewAdminName(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                            Cashier Username
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="admin"
+                            value={newAdminUsername}
+                            onChange={(e) => setNewAdminUsername(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                            Quick Security PIN
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={6}
+                            placeholder="1234"
+                            value={newAdminPin}
+                            onChange={(e) => setNewAdminPin(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-emerald-400 font-bold text-xs focus:border-blue-500 focus:outline-hidden font-mono tracking-widest"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-4 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('list')}
-                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 transition shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {submitting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                  <span>Save Clean Company</span>
-                </button>
+              {/* Footer Action Bar */}
+              <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-[11px] text-blue-300/80 flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                  <span>Starts 100% clean: 0 vouchers, 0 sales invoices, and 0 stock items.</span>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('list')}
+                    className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 transition shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {submitting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                    <span>Register Client Company</span>
+                  </button>
+                </div>
               </div>
             </form>
           )}
 
           {/* EDIT COMPANY VIEW */}
           {viewMode === 'edit_company' && editingCompany && (
-            <form onSubmit={handleUpdateCompanySubmit} className="space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <h3 className="font-bold text-sm text-white flex items-center gap-2">
-                  <Edit3 className="h-4 w-4 text-blue-400" />
-                  Edit Client Company & Login Info
-                </h3>
+            <form onSubmit={handleUpdateCompanySubmit} className="space-y-3.5">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                    <Edit3 className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                      <span>Edit Client Profile & Login</span>
+                      <span className="bg-blue-500/15 text-blue-400 border border-blue-500/30 text-[10px] font-medium px-2 py-0.5 rounded-full font-mono">
+                        {editingCompany.company_name}
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Update official company contact details, tax numbers, and login credentials.
+                    </p>
+                  </div>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
                     setViewMode('list');
                     setEditingCompany(null);
                   }}
-                  className="text-xs text-slate-400 hover:text-white cursor-pointer"
+                  className="text-xs text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
                 >
-                  Back to List
+                  ← Back to List
                 </button>
               </div>
 
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-xs text-blue-300">
-                💡 <strong>Client Login Setup:</strong> Set or update the <strong>Official Email</strong> or the <strong>Admin Username & PIN</strong> below. This allows the client to sign in to their dedicated company workspace.
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Company / Trade Name <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Druk Wangyel Supermarket"
-                    value={newCompanyName}
-                    onChange={(e) => setNewCompanyName(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Contact Phone</label>
-                  <input
-                    type="text"
-                    placeholder="+975 17 000 000"
-                    value={newPhone}
-                    onChange={(e) => setNewPhone(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    GST No / License No
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. GST-2026-9041"
-                    value={newTradeLicense}
-                    onChange={(e) => setNewTradeLicense(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Tax Payer Number (TPN)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. TPN-4050607"
-                    value={newTPN}
-                    onChange={(e) => setNewTPN(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Physical Address</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Changlam Square, Thimphu"
-                    value={newAddress}
-                    onChange={(e) => setNewAddress(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
-                {/* Section 1: Cloud & System Sign-In Credentials */}
-                <div className="sm:col-span-2 p-3.5 bg-slate-950/80 rounded-xl border border-blue-500/40 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
-                      <Lock className="h-4 w-4 text-blue-400" />
-                      <span>Cloud Sign-In Credentials (Main System Login)</span>
+              {/* 2-Column Responsive Grid: Company Profile (Left) & Access Credentials (Right) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 sm:gap-4 items-stretch">
+                {/* LEFT COLUMN: Business Profile */}
+                <div className="bg-slate-950/60 border border-slate-800/90 rounded-xl p-3.5 sm:p-4 flex flex-col justify-between space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-blue-400" />
+                      <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">Business Profile</span>
                     </div>
-                    <span className="text-[10px] text-blue-400/90 bg-blue-950/90 px-2 py-0.5 rounded-full border border-blue-800/60 font-mono">
-                      System Login Screen
-                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">Invoice & Tax Info</span>
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    The business owner uses this <span className="text-blue-300 font-semibold">Email</span> and <span className="text-amber-300 font-semibold">Password</span> to securely authenticate and access the cloud ERP database.
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                  <div className="space-y-2.5 flex-1">
+                    {/* Company / Trade Name */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Company / Trade Name <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Druk Wangyel Supermarket"
+                        value={newCompanyName}
+                        onChange={(e) => setNewCompanyName(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden font-medium"
+                      />
+                    </div>
+
+                    {/* GST No & TPN (2-column) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                          GST / License No
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. GST-2026-9041"
+                          value={newTradeLicense}
+                          onChange={(e) => setNewTradeLicense(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                          Tax Payer ID (TPN)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. TPN-4050607"
+                          value={newTPN}
+                          onChange={(e) => setNewTPN(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Phone & Currency (2-column) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                          <Phone className="h-3 w-3 text-slate-400" />
+                          <span>Contact Phone</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="+975 17 000 000"
+                          value={newPhone}
+                          onChange={(e) => setNewPhone(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                          <Coins className="h-3 w-3 text-amber-400" />
+                          <span>Currency Symbol</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Nu."
+                          value={newCurrency}
+                          onChange={(e) => setNewCurrency(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-amber-300 font-bold font-mono text-xs focus:border-blue-500 focus:outline-hidden"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Physical Address */}
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
-                        <Mail className="h-3 w-3 text-slate-400" />
-                        <span>Client Login Email</span>
+                        <MapPin className="h-3 w-3 text-slate-400" />
+                        <span>Physical Store / Office Address</span>
                       </label>
                       <input
-                        type="email"
-                        placeholder="client.name@company.bt"
-                        value={newEmail}
-                        onChange={(e) => setNewEmail(e.target.value)}
-                        className="w-full bg-slate-900 border border-blue-500/50 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                        type="text"
+                        placeholder="e.g. Changlam Square, Thimphu"
+                        value={newAddress}
+                        onChange={(e) => setNewAddress(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
                       />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">Official account login email</span>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
-                          <Lock className="h-3 w-3 text-slate-400" />
-                          <span>Client Cloud Password</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setShowAdminPassword(!showAdminPassword)}
-                          className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
-                        >
-                          {showAdminPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                          <span>{showAdminPassword ? 'Hide' : 'Show'}</span>
-                        </button>
-                      </div>
-                      <input
-                        type={showAdminPassword ? 'text' : 'password'}
-                        placeholder="e.g. ClientPass@123"
-                        value={newAdminPassword}
-                        onChange={(e) => setNewAdminPassword(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-amber-300 font-mono text-xs focus:border-blue-500 focus:outline-hidden font-semibold"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">Cloud account access password</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Section 2: In-Store Counter & POS Identity */}
-                <div className="sm:col-span-2 p-3.5 bg-slate-950/60 rounded-xl border border-emerald-500/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                      <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                      <span>In-Store Counter & POS Identity</span>
+                {/* RIGHT COLUMN: Access & Security Credentials */}
+                <div className="space-y-3 flex flex-col justify-between">
+                  {/* Card 1: Cloud & System Sign-In Credentials */}
+                  <div className="bg-slate-950/70 rounded-xl border border-blue-500/35 p-3 sm:p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-blue-500/20">
+                      <div className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                        <Lock className="h-3.5 w-3.5 text-blue-400" />
+                        <span>Cloud Sign-In Credentials</span>
+                      </div>
+                      <span className="text-[10px] text-blue-400 bg-blue-950/90 px-2 py-0.5 rounded-full border border-blue-800/60 font-mono">
+                        Main System Login
+                      </span>
                     </div>
-                    <span className="text-[10px] text-emerald-400/90 bg-emerald-950/90 px-2 py-0.5 rounded-full border border-emerald-800/60 font-mono">
-                      Counter / POS Terminal
-                    </span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                          <Mail className="h-3 w-3 text-slate-400" />
+                          <span>Client Login Email</span>
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="client.name@company.bt"
+                          value={newEmail}
+                          onChange={(e) => setNewEmail(e.target.value)}
+                          className="w-full bg-slate-900 border border-blue-500/50 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
+                            <Lock className="h-3 w-3 text-slate-400" />
+                            <span>Client Cloud Password</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setShowAdminPassword(!showAdminPassword)}
+                            className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
+                          >
+                            {showAdminPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                            <span>{showAdminPassword ? 'Hide' : 'Show'}</span>
+                          </button>
+                        </div>
+                        <input
+                          type={showAdminPassword ? 'text' : 'password'}
+                          placeholder="e.g. ClientPass@123"
+                          value={newAdminPassword}
+                          onChange={(e) => setNewAdminPassword(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-amber-300 font-mono text-xs focus:border-blue-500 focus:outline-hidden font-semibold"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    Within the physical store, staff and cashiers use their <span className="text-slate-200 font-semibold">Full Name</span> on tax invoices, cashier <span className="text-slate-200 font-semibold">Username</span> for shifts, and fast <span className="text-slate-200 font-semibold">Security PIN</span> to quickly unlock the cash drawer without retyping their cloud password.
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                        Admin Full Name
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Tenzin Norbu"
-                        value={newAdminName}
-                        onChange={(e) => setNewAdminName(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">Appears on bills & reports</span>
+
+                  {/* Card 2: In-Store Counter & POS Identity */}
+                  <div className="bg-slate-950/70 rounded-xl border border-emerald-500/30 p-3 sm:p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between pb-1.5 border-b border-emerald-500/20">
+                      <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                        <span>In-Store Counter & POS Identity</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-full border border-emerald-800/60 font-mono">
+                        POS Terminal / Register
+                      </span>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                        Admin Username
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="admin"
-                        value={newAdminUsername}
-                        onChange={(e) => setNewAdminUsername(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-hidden font-mono"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">POS / drawer cashier ID</span>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                        Security PIN (e.g. 1234)
-                      </label>
-                      <input
-                        type="text"
-                        maxLength={6}
-                        placeholder="1234"
-                        value={newAdminPin}
-                        onChange={(e) => setNewAdminPin(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-emerald-400 font-bold text-xs focus:border-blue-500 focus:outline-hidden font-mono tracking-widest"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">Fast counter unlock PIN</span>
+
+                    <div className="space-y-2.5">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                          Admin Full Name (Printed on Bills & Reports)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Tenzin Norbu"
+                          value={newAdminName}
+                          onChange={(e) => setNewAdminName(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                            Cashier Username
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="admin"
+                            value={newAdminUsername}
+                            onChange={(e) => setNewAdminUsername(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                            Quick Security PIN
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={6}
+                            placeholder="1234"
+                            value={newAdminPin}
+                            onChange={(e) => setNewAdminPin(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-emerald-400 font-bold text-xs focus:border-blue-500 focus:outline-hidden font-mono tracking-widest"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-4 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setViewMode('list');
-                    setEditingCompany(null);
-                  }}
-                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 transition shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {submitting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                  <span>Save Changes</span>
-                </button>
+              {/* Footer Action Bar */}
+              <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                  <span>Tenant ID: <code className="text-slate-300 font-mono bg-slate-800/80 px-1.5 py-0.5 rounded">{editingCompany.id.slice(0, 18)}...</code></span>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewMode('list');
+                      setEditingCompany(null);
+                    }}
+                    className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 transition shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {submitting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                    <span>Save Company Details</span>
+                  </button>
+                </div>
               </div>
             </form>
           )}
