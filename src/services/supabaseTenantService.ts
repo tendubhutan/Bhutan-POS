@@ -225,7 +225,28 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
     // Ensure Demo Company is first in the list so standard fallbacks resolve to Bhutan Retail Enterprise
     const demoCompany = mergedMap.get(DEFAULT_TENANT_COMPANY.id) || DEFAULT_TENANT_COMPANY;
     const others = Array.from(mergedMap.values()).filter(c => c.id !== DEFAULT_TENANT_COMPANY.id);
-    const allList = [demoCompany, ...others];
+    const rawList = [demoCompany, ...others];
+
+    // Deduplicate companies by normalized company name to prevent duplicate entries
+    // caused by different IDs generated across Supabase, Firestore or local cache
+    const seenNames = new Set<string>();
+    const seenIds = new Set<string>();
+    const allList: SupabaseCompany[] = [];
+
+    for (const comp of rawList) {
+      if (!comp || !comp.id) continue;
+      const normalizedName = (comp.company_name || '').trim().toLowerCase();
+      
+      // If we haven't seen this ID and haven't seen this company name yet, keep it
+      if (!seenIds.has(comp.id) && (!normalizedName || !seenNames.has(normalizedName))) {
+        seenIds.add(comp.id);
+        if (normalizedName) {
+          seenNames.add(normalizedName);
+        }
+        allList.push(comp);
+      }
+    }
+
     if (typeof localStorage !== 'undefined' && allList.length > 0) {
       localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(allList));
     }
@@ -248,6 +269,7 @@ export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'c
     const adminUsername = (companyData.admin_username || 'admin').trim().toLowerCase();
     const adminFullName = (companyData.admin_name || `${companyData.company_name} Administrator`).trim();
     const adminPin = (companyData.admin_pin || '1234').trim();
+    const adminPassword = (companyData.admin_password || companyData.admin_pin || 'ClientPass@123').trim();
 
     const newComp: SupabaseCompany = {
       id: newId,
@@ -255,8 +277,28 @@ export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'c
       admin_username: adminUsername,
       admin_name: adminFullName,
       admin_pin: adminPin,
+      admin_password: adminPassword,
       created_at: new Date().toISOString()
     };
+
+    // Attempt to register in Supabase Auth if configured
+    if (isSupabaseConfigured && companyData.email && adminPassword) {
+      try {
+        await supabase.auth.signUp({
+          email: companyData.email.trim().toLowerCase(),
+          password: adminPassword,
+          options: {
+            data: {
+              company_id: newId,
+              role: 'admin',
+              full_name: adminFullName
+            }
+          }
+        });
+      } catch (sbSignUpErr) {
+        console.warn('Supabase auth signUp background notice:', sbSignUpErr);
+      }
+    }
 
     // 1. Save to Cloud Firestore
     try {
@@ -692,4 +734,128 @@ export async function updateCompanyStatus(
     return { success: false, error: err?.message || 'Failed to update company status' };
   }
 }
+
+/**
+ * Updates full company profile and client admin credentials in Supabase, Firestore, and local cache.
+ */
+export async function updateCompany(
+  companyId: string,
+  updates: Partial<Omit<SupabaseCompany, 'id' | 'created_at'>>
+): Promise<{ company?: SupabaseCompany; error?: string }> {
+  try {
+    if (!companyId) {
+      return { error: 'Company ID is required for update.' };
+    }
+
+    // 1. Clean update payload
+    const cleanedUpdates: Partial<SupabaseCompany> = { ...updates };
+    if (cleanedUpdates.admin_username) {
+      cleanedUpdates.admin_username = cleanedUpdates.admin_username.trim().toLowerCase();
+    }
+    if (cleanedUpdates.admin_pin) {
+      cleanedUpdates.admin_pin = cleanedUpdates.admin_pin.trim();
+    }
+    if (cleanedUpdates.admin_password) {
+      cleanedUpdates.admin_password = cleanedUpdates.admin_password.trim();
+    }
+    if (cleanedUpdates.email) {
+      cleanedUpdates.email = cleanedUpdates.email.trim();
+    }
+    if (cleanedUpdates.company_name) {
+      cleanedUpdates.company_name = cleanedUpdates.company_name.trim();
+    }
+
+    // 2. Update in Supabase
+    if (isSupabaseConfigured) {
+      try {
+        const { error: sbErr } = await supabase
+          .from('companies')
+          .update(cleanedUpdates)
+          .eq('id', companyId);
+        if (sbErr) {
+          console.warn('Supabase update company warning:', sbErr.message);
+        }
+      } catch (sbE: any) {
+        console.warn('Supabase exception on updateCompany:', sbE);
+      }
+    }
+
+    // 3. Update in Firestore
+    try {
+      const compRef = doc(db, 'companies', companyId);
+      await setDoc(compRef, cleanedUpdates, { merge: true });
+    } catch (fsErr) {
+      console.warn('Firestore update company warning:', fsErr);
+    }
+
+    // 4. Update in Local Storage Cache
+    let updatedCompany: SupabaseCompany | undefined;
+    if (typeof localStorage !== 'undefined') {
+      const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES);
+      if (cached) {
+        try {
+          const list: SupabaseCompany[] = JSON.parse(cached);
+          const updated = list.map(c => {
+            if (c.id === companyId) {
+              updatedCompany = { ...c, ...cleanedUpdates };
+              return updatedCompany;
+            }
+            return c;
+          });
+          localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(updated));
+        } catch (cacheErr) {
+          console.warn('Failed to update company in local cache:', cacheErr);
+        }
+      }
+    }
+
+    // 5. Update dedicated client admin user in tenant storage if admin info was modified
+    if (cleanedUpdates.admin_username || cleanedUpdates.admin_pin || cleanedUpdates.admin_name) {
+      const adminUserId = `admin_${companyId}`;
+      const adminUsername = cleanedUpdates.admin_username || 'admin';
+      const adminName = cleanedUpdates.admin_name || `${cleanedUpdates.company_name || 'Store'} Administrator`;
+      const adminPin = cleanedUpdates.admin_pin || '1234';
+
+      const adminUser = {
+        id: adminUserId,
+        username: adminUsername,
+        fullName: adminName,
+        role: 'Administrator',
+        pinCode: adminPin,
+        permissions: [
+          'pos_billing',
+          'sales_entry',
+          'purchase_entry',
+          'vouchers',
+          'inventory_read',
+          'inventory_write',
+          'reports',
+          'settings',
+          'user_management'
+        ]
+      };
+
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(`deep_pos_users_${companyId}`, JSON.stringify([adminUser]));
+      }
+
+      try {
+        const userRef = doc(db, 'tenants', companyId, 'users', adminUserId);
+        await setDoc(userRef, adminUser, { merge: true });
+      } catch (uErr) {
+        console.warn('Could not update admin user in Firestore:', uErr);
+      }
+    }
+
+    // 6. Broadcast event
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('supabase:company_updated', { detail: { companyId, updates: cleanedUpdates } }));
+    }
+
+    return { company: updatedCompany };
+  } catch (err: any) {
+    return { error: err?.message || 'Failed to update company' };
+  }
+}
+
 

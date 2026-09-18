@@ -77,6 +77,7 @@ export interface SupabaseCompany {
   admin_username?: string;
   admin_name?: string;
   admin_pin?: string;
+  admin_password?: string;
 }
 
 export interface SupabaseFinancialYear {

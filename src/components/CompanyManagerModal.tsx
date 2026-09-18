@@ -19,13 +19,16 @@ import {
   Eye, 
   CheckCheck,
   CheckCircle2,
-  HelpCircle
+  HelpCircle,
+  Edit3,
+  Mail
 } from 'lucide-react';
 import { 
   SupabaseCompany, 
   SupabaseFinancialYear, 
   fetchUserCompanies, 
   createCompany, 
+  updateCompany,
   deleteCompany,
   fetchFinancialYears, 
   createFinancialYear, 
@@ -63,11 +66,14 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
   
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'create_company' | 'create_fy'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'create_company' | 'edit_company' | 'create_fy'>('list');
 
   // Dedicated URL Share Modal state
   const [shareCompany, setShareCompany] = useState<SupabaseCompany | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
+
+  // Edit Company state
+  const [editingCompany, setEditingCompany] = useState<SupabaseCompany | null>(null);
 
   // Reset & Delete confirmation states
   const [confirmResetCompany, setConfirmResetCompany] = useState<SupabaseCompany | null>(null);
@@ -79,7 +85,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
     return typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_hide_demo_company') === 'true';
   });
 
-  // Form states for New Company
+  // Form states for New / Edit Company
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newTradeLicense, setNewTradeLicense] = useState('');
   const [newTPN, setNewTPN] = useState('');
@@ -90,6 +96,8 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
   const [newAdminUsername, setNewAdminUsername] = useState('admin');
   const [newAdminName, setNewAdminName] = useState('Administrator');
   const [newAdminPin, setNewAdminPin] = useState('1234');
+  const [newAdminPassword, setNewAdminPassword] = useState('ClientPass@123');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Form states for New FY (Bhutan standard: Jan 1 to Dec 31)
@@ -195,7 +203,8 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         currency_symbol: newCurrency.trim() || 'Nu.',
         admin_username: newAdminUsername.trim().toLowerCase() || 'admin',
         admin_name: newAdminName.trim() || 'Administrator',
-        admin_pin: newAdminPin.trim() || '1234'
+        admin_pin: newAdminPin.trim() || '1234',
+        admin_password: newAdminPassword.trim() || newAdminPin.trim() || 'ClientPass@123'
       });
 
       if (createErr || !company) {
@@ -218,6 +227,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
       setNewAdminUsername('admin');
       setNewAdminName('Administrator');
       setNewAdminPin('1234');
+      setNewAdminPassword('ClientPass@123');
       
       // Refresh list & select new company
       await loadData();
@@ -226,6 +236,61 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
       showToast(`Company "${company.company_name}" created with a clean blank slate.`);
     } catch (err: any) {
       setError(err?.message || 'Unexpected error creating company');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleStartEditCompany = (comp: SupabaseCompany) => {
+    setEditingCompany(comp);
+    setNewCompanyName(comp.company_name || '');
+    setNewTradeLicense(comp.trade_license_no || '');
+    setNewTPN(comp.tax_payer_id || '');
+    setNewPhone(comp.phone || '');
+    setNewEmail(comp.email || '');
+    setNewAddress(comp.address || '');
+    setNewCurrency(comp.currency_symbol || 'Nu.');
+    setNewAdminUsername(comp.admin_username || 'admin');
+    setNewAdminName(comp.admin_name || 'Administrator');
+    setNewAdminPin(comp.admin_pin || '1234');
+    setNewAdminPassword(comp.admin_password || comp.admin_pin || 'ClientPass@123');
+    setError(null);
+    setViewMode('edit_company');
+  };
+
+  const handleUpdateCompanySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCompany || !newCompanyName.trim()) return;
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const { company, error: updateErr } = await updateCompany(editingCompany.id, {
+        company_name: newCompanyName.trim(),
+        trade_license_no: newTradeLicense.trim(),
+        tax_payer_id: newTPN.trim(),
+        phone: newPhone.trim(),
+        email: newEmail.trim(),
+        address: newAddress.trim(),
+        currency_symbol: newCurrency.trim() || 'Nu.',
+        admin_username: newAdminUsername.trim().toLowerCase() || 'admin',
+        admin_name: newAdminName.trim() || 'Administrator',
+        admin_pin: newAdminPin.trim() || '1234',
+        admin_password: newAdminPassword.trim() || newAdminPin.trim() || 'ClientPass@123'
+      });
+
+      if (updateErr) {
+        setError(updateErr);
+        setSubmitting(false);
+        return;
+      }
+
+      await loadData();
+      setViewMode('list');
+      setEditingCompany(null);
+      showToast(`Company "${newCompanyName.trim()}" login & details updated successfully.`);
+    } catch (err: any) {
+      setError(err?.message || 'Unexpected error updating company');
     } finally {
       setSubmitting(false);
     }
@@ -426,11 +491,24 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-xs text-slate-400 mt-0.5">
-                                  {comp.tax_payer_id ? `TPN: ${comp.tax_payer_id}` : 'Clean Client Workspace'}
-                                </p>
+                <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                  {comp.trade_license_no && <span>GST: {comp.trade_license_no}</span>}
+                  {comp.tax_payer_id && <span>TPN: {comp.tax_payer_id}</span>}
+                  {!comp.trade_license_no && !comp.tax_payer_id && <span>Clean Client Workspace</span>}
+                </p>
                                 {comp.address && (
                                   <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">{comp.address}</p>
+                                )}
+                                {comp.email ? (
+                                  <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 font-mono">
+                                    <Mail className="h-3 w-3 text-blue-400 shrink-0" />
+                                    <span className="truncate">{comp.email}</span>
+                                  </p>
+                                ) : (
+                                  <p className="text-[11px] text-amber-400/90 mt-1 flex items-center gap-1">
+                                    <AlertCircle className="h-3 w-3 shrink-0" />
+                                    <span>No email set (Click Edit to add)</span>
+                                  </p>
                                 )}
                               </div>
                               {isSelected ? (
@@ -459,6 +537,22 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                             </button>
 
                             <div className="flex items-center gap-2">
+                              {/* Edit Company & Login Info Button */}
+                              {isSuperAdmin && !isDemo && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartEditCompany(comp);
+                                  }}
+                                  className="text-slate-400 hover:text-blue-400 p-1 rounded hover:bg-slate-700/50 transition cursor-pointer flex items-center gap-1 text-[11px]"
+                                  title="Edit Company Profile & Login Credentials"
+                                >
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                  <span>Edit</span>
+                                </button>
+                              )}
+
                               {/* Reset to Blank Slate Button - NEVER allow for DEMO company, SuperAdmin only */}
                               {isSuperAdmin && !isDemo && (
                                 <button
@@ -583,11 +677,11 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Trade License Number
+                    GST No / License No
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. TRD-2026-9041"
+                    placeholder="e.g. GST-2026-9041"
                     value={newTradeLicense}
                     onChange={(e) => setNewTradeLicense(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
@@ -618,17 +712,6 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Official Email</label>
-                  <input
-                    type="email"
-                    placeholder="accounts@store.bt"
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
-                  />
-                </div>
-
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Physical Address</label>
                   <input
@@ -640,12 +723,77 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                   />
                 </div>
 
-                {/* Dedicated Admin Account Credentials */}
-                <div className="sm:col-span-2 p-3 bg-slate-950/70 rounded-xl border border-blue-500/30">
-                  <div className="text-xs font-bold text-blue-300 mb-2 flex items-center gap-1.5">
-                    <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                    Dedicated Admin Account for this Company
+                {/* Section 1: Cloud & System Sign-In Credentials */}
+                <div className="sm:col-span-2 p-3.5 bg-slate-950/80 rounded-xl border border-blue-500/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                      <Lock className="h-4 w-4 text-blue-400" />
+                      <span>Cloud Sign-In Credentials (Main System Login)</span>
+                    </div>
+                    <span className="text-[10px] text-blue-400/90 bg-blue-950/90 px-2 py-0.5 rounded-full border border-blue-800/60 font-mono">
+                      System Login Screen
+                    </span>
                   </div>
+                  <p className="text-[11px] text-slate-400">
+                    The business owner uses this <span className="text-blue-300 font-semibold">Email</span> and <span className="text-amber-300 font-semibold">Password</span> to securely authenticate and access the cloud ERP database.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                        <Mail className="h-3 w-3 text-slate-400" />
+                        <span>Client Login Email</span>
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="client.name@store.bt"
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">Official account login email</span>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
+                          <Lock className="h-3 w-3 text-slate-400" />
+                          <span>Client Cloud Password</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowAdminPassword(!showAdminPassword)}
+                          className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
+                        >
+                          {showAdminPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                          <span>{showAdminPassword ? 'Hide' : 'Show'}</span>
+                        </button>
+                      </div>
+                      <input
+                        type={showAdminPassword ? 'text' : 'password'}
+                        placeholder="e.g. ClientPass@123"
+                        value={newAdminPassword}
+                        onChange={(e) => setNewAdminPassword(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-amber-300 font-mono text-xs focus:border-blue-500 focus:outline-hidden font-semibold"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">Initial password for cloud account login</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: In-Store Counter & POS Identity */}
+                <div className="sm:col-span-2 p-3.5 bg-slate-950/60 rounded-xl border border-emerald-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                      <span>In-Store Counter & POS Identity</span>
+                    </div>
+                    <span className="text-[10px] text-emerald-400/90 bg-emerald-950/90 px-2 py-0.5 rounded-full border border-emerald-800/60 font-mono">
+                      Counter / POS Terminal
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Within the physical store, staff and cashiers use their <span className="text-slate-200 font-semibold">Full Name</span> on tax invoices, cashier <span className="text-slate-200 font-semibold">Username</span> for shifts, and fast <span className="text-slate-200 font-semibold">Security PIN</span> to quickly unlock the cash drawer without retyping their cloud password.
+                  </p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300 mb-1">
@@ -653,11 +801,12 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                       </label>
                       <input
                         type="text"
-                        placeholder="Administrator"
+                        placeholder="e.g. Tenzin Norbu"
                         value={newAdminName}
                         onChange={(e) => setNewAdminName(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-hidden"
                       />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">Appears on bills & reports</span>
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300 mb-1">
@@ -670,10 +819,11 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                         onChange={(e) => setNewAdminUsername(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-hidden font-mono"
                       />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">POS / drawer cashier ID</span>
                     </div>
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-                        Security PIN Code (e.g. 1234)
+                        Security PIN (e.g. 1234)
                       </label>
                       <input
                         type="text"
@@ -683,10 +833,8 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                         onChange={(e) => setNewAdminPin(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-emerald-400 font-bold text-xs focus:border-blue-500 focus:outline-hidden font-mono tracking-widest"
                       />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">Fast counter unlock PIN</span>
                     </div>
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-2">
-                    The client will use this username and PIN to sign in to their dedicated company workspace.
                   </div>
                 </div>
               </div>
@@ -706,6 +854,232 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                 >
                   {submitting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                   <span>Save Clean Company</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* EDIT COMPANY VIEW */}
+          {viewMode === 'edit_company' && editingCompany && (
+            <form onSubmit={handleUpdateCompanySubmit} className="space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                  <Edit3 className="h-4 w-4 text-blue-400" />
+                  Edit Client Company & Login Info
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode('list');
+                    setEditingCompany(null);
+                  }}
+                  className="text-xs text-slate-400 hover:text-white cursor-pointer"
+                >
+                  Back to List
+                </button>
+              </div>
+
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-xs text-blue-300">
+                💡 <strong>Client Login Setup:</strong> Set or update the <strong>Official Email</strong> or the <strong>Admin Username & PIN</strong> below. This allows the client to sign in to their dedicated company workspace.
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Company / Trade Name <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Druk Wangyel Supermarket"
+                    value={newCompanyName}
+                    onChange={(e) => setNewCompanyName(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Contact Phone</label>
+                  <input
+                    type="text"
+                    placeholder="+975 17 000 000"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    GST No / License No
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. GST-2026-9041"
+                    value={newTradeLicense}
+                    onChange={(e) => setNewTradeLicense(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Tax Payer Number (TPN)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. TPN-4050607"
+                    value={newTPN}
+                    onChange={(e) => setNewTPN(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Physical Address</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Changlam Square, Thimphu"
+                    value={newAddress}
+                    onChange={(e) => setNewAddress(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                  />
+                </div>
+
+                {/* Section 1: Cloud & System Sign-In Credentials */}
+                <div className="sm:col-span-2 p-3.5 bg-slate-950/80 rounded-xl border border-blue-500/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+                      <Lock className="h-4 w-4 text-blue-400" />
+                      <span>Cloud Sign-In Credentials (Main System Login)</span>
+                    </div>
+                    <span className="text-[10px] text-blue-400/90 bg-blue-950/90 px-2 py-0.5 rounded-full border border-blue-800/60 font-mono">
+                      System Login Screen
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    The business owner uses this <span className="text-blue-300 font-semibold">Email</span> and <span className="text-amber-300 font-semibold">Password</span> to securely authenticate and access the cloud ERP database.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1 flex items-center gap-1">
+                        <Mail className="h-3 w-3 text-slate-400" />
+                        <span>Client Login Email</span>
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="client.name@company.bt"
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        className="w-full bg-slate-900 border border-blue-500/50 rounded-lg px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">Official account login email</span>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
+                          <Lock className="h-3 w-3 text-slate-400" />
+                          <span>Client Cloud Password</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowAdminPassword(!showAdminPassword)}
+                          className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
+                        >
+                          {showAdminPassword ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                          <span>{showAdminPassword ? 'Hide' : 'Show'}</span>
+                        </button>
+                      </div>
+                      <input
+                        type={showAdminPassword ? 'text' : 'password'}
+                        placeholder="e.g. ClientPass@123"
+                        value={newAdminPassword}
+                        onChange={(e) => setNewAdminPassword(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-amber-300 font-mono text-xs focus:border-blue-500 focus:outline-hidden font-semibold"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">Cloud account access password</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: In-Store Counter & POS Identity */}
+                <div className="sm:col-span-2 p-3.5 bg-slate-950/60 rounded-xl border border-emerald-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                      <span>In-Store Counter & POS Identity</span>
+                    </div>
+                    <span className="text-[10px] text-emerald-400/90 bg-emerald-950/90 px-2 py-0.5 rounded-full border border-emerald-800/60 font-mono">
+                      Counter / POS Terminal
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Within the physical store, staff and cashiers use their <span className="text-slate-200 font-semibold">Full Name</span> on tax invoices, cashier <span className="text-slate-200 font-semibold">Username</span> for shifts, and fast <span className="text-slate-200 font-semibold">Security PIN</span> to quickly unlock the cash drawer without retyping their cloud password.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Admin Full Name
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Tenzin Norbu"
+                        value={newAdminName}
+                        onChange={(e) => setNewAdminName(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-hidden"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">Appears on bills & reports</span>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Admin Username
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="admin"
+                        value={newAdminUsername}
+                        onChange={(e) => setNewAdminUsername(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs focus:border-blue-500 focus:outline-hidden font-mono"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">POS / drawer cashier ID</span>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Security PIN (e.g. 1234)
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={6}
+                        placeholder="1234"
+                        value={newAdminPin}
+                        onChange={(e) => setNewAdminPin(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-emerald-400 font-bold text-xs focus:border-blue-500 focus:outline-hidden font-mono tracking-widest"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">Fast counter unlock PIN</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode('list');
+                    setEditingCompany(null);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 transition shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {submitting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  <span>Save Changes</span>
                 </button>
               </div>
             </form>
@@ -881,35 +1255,62 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
               )}
 
               {/* Dedicated Client Admin Credentials */}
-              <div className="bg-slate-950/80 border border-blue-500/40 rounded-xl p-3 text-xs space-y-2">
+              <div className="bg-slate-950/80 border border-blue-500/40 rounded-xl p-3 text-xs space-y-2.5">
                 <div className="font-semibold text-blue-300 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                    <span>Client Admin Login Credentials</span>
+                    <span>Client Credentials Package</span>
                   </div>
-                  <span className="text-[10px] text-slate-400">Share with client</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShareCompany(null);
+                      handleStartEditCompany(shareCompany);
+                    }}
+                    className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 cursor-pointer hover:underline"
+                  >
+                    <Edit3 className="h-3 w-3" />
+                    <span>Edit Credentials / Password</span>
+                  </button>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block font-medium">Username</span>
+                    <span className="text-[10px] text-slate-400 block font-medium">Cloud Login Email</span>
+                    <span className="text-blue-300 font-mono font-bold text-xs truncate block" title={shareCompany.email || 'Not configured'}>
+                      {shareCompany.email || <span className="text-amber-400 font-normal italic">Not set</span>}
+                    </span>
+                  </div>
+                  <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block font-medium">Cloud Password</span>
+                    <span className="text-amber-300 font-mono font-bold text-xs truncate block">
+                      {shareCompany.admin_password || shareCompany.admin_pin || 'ClientPass@123'}
+                    </span>
+                  </div>
+                  <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block font-medium">Cashier Username</span>
                     <span className="text-white font-mono font-bold text-xs">{shareCompany.admin_username || 'admin'}</span>
                   </div>
                   <div className="bg-slate-900/90 p-2 rounded-lg border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block font-medium">PIN / Password</span>
+                    <span className="text-[10px] text-slate-400 block font-medium">Quick POS PIN</span>
                     <span className="text-emerald-400 font-mono font-bold text-xs tracking-wider">{shareCompany.admin_pin || '1234'}</span>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
-                    const text = `Company: ${shareCompany.company_name}\nDirect Link: https://bhutan-pos.web.app/?company=${shareCompany.id}\nAdmin Username: ${shareCompany.admin_username || 'admin'}\nPIN: ${shareCompany.admin_pin || '1234'}`;
+                    const text = `Company: ${shareCompany.company_name}
+Direct URL: https://bhutan-pos.web.app/?company=${shareCompany.id}
+Client Login Email: ${shareCompany.email || 'N/A'}
+Cloud Login Password: ${shareCompany.admin_password || shareCompany.admin_pin || 'ClientPass@123'}
+POS Cashier Username: ${shareCompany.admin_username || 'admin'}
+POS Quick Unlock PIN: ${shareCompany.admin_pin || '1234'}`;
                     navigator.clipboard.writeText(text);
-                    showToast('Full access details (Link, Username & PIN) copied!');
+                    showToast('Full access details (Link, Email, Password, Username & PIN) copied!');
                   }}
-                  className="w-full py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 text-blue-300 hover:text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="w-full py-2 rounded-lg bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 text-blue-300 hover:text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer"
                 >
                   <Copy className="h-3.5 w-3.5" />
-                  <span>Copy Complete Access Package (Link + Username + PIN)</span>
+                  <span>Copy Complete Access Package (URL + Email + Password + Username + PIN)</span>
                 </button>
               </div>
 
