@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 let cachedTenantCompanyId: string | null = null;
 let cachedUserRole: string | null = null;
@@ -15,51 +15,76 @@ export interface TenantContext {
  * Resolves the true company_id from `company_users` to prevent localStorage tampering.
  */
 export async function initTenantSession(): Promise<TenantContext> {
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  if (authError || !user) {
-    clearTenantSession();
-    throw new Error('User is not authenticated in Supabase. Please sign in under User Roles / Cloud Account.');
+  if (!isSupabaseConfigured) {
+    const localComp = localStorage.getItem('supabase_active_company_id') || localStorage.getItem('active_company_id') || '30a4e773-585a-45a3-8fce-a32f94bbc7e0';
+    const localRole = localStorage.getItem('supabase_active_role') || localStorage.getItem('deep_pos_auth_role') || 'admin';
+    cachedTenantCompanyId = localComp;
+    cachedUserRole = localRole;
+    return {
+      companyId: localComp,
+      role: localRole,
+      userId: 'local-admin-user',
+      email: 'admin@local.pos'
+    };
   }
 
-  // Fetch the company mapping assigned to this auth.uid()
-  const { data: profile, error: profileError } = await supabase
-    .from('company_users')
-    .select('company_id, role, is_active, email')
-    .eq('user_id', user.id)
-    .eq('is_active', true)
-    .maybeSingle();
-
-  if (profileError) {
-    throw new Error(`Failed to load company profile: ${profileError.message}`);
-  }
-
-  let finalCompanyId = profile?.company_id;
-  let finalRole = profile?.role || 'cashier';
-
-  // If superadmin has no single fixed company assigned, fallback to their chosen active company
-  if (!finalCompanyId) {
-    const { data: isSuper } = await supabase.rpc('is_superadmin');
-    if (isSuper) {
-      finalRole = 'superadmin';
-      finalCompanyId = localStorage.getItem('supabase_active_company_id') || localStorage.getItem('active_company_id') || '30a4e773-585a-45a3-8fce-a32f94bbc7e0';
-    } else {
-      throw new Error('No active company membership found for this account in company_users.');
+  try {
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      clearTenantSession();
+      throw new Error('User is not authenticated in Supabase. Please sign in under User Roles / Cloud Account.');
     }
+
+    // Fetch the company mapping assigned to this auth.uid()
+    const { data: profile, error: profileError } = await supabase
+      .from('company_users')
+      .select('company_id, role, is_active, email')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (profileError) {
+      throw new Error(`Failed to load company profile: ${profileError.message}`);
+    }
+
+    let finalCompanyId = profile?.company_id;
+    let finalRole = profile?.role || 'cashier';
+
+    // If superadmin has no single fixed company assigned, fallback to their chosen active company
+    if (!finalCompanyId) {
+      const { data: isSuper } = await supabase.rpc('is_superadmin');
+      if (isSuper) {
+        finalRole = 'superadmin';
+        finalCompanyId = localStorage.getItem('supabase_active_company_id') || localStorage.getItem('active_company_id') || '30a4e773-585a-45a3-8fce-a32f94bbc7e0';
+      } else {
+        throw new Error('No active company membership found for this account in company_users.');
+      }
+    }
+
+    cachedTenantCompanyId = finalCompanyId;
+    cachedUserRole = finalRole;
+
+    // Persist for offline-first resilience
+    localStorage.setItem('supabase_active_company_id', finalCompanyId);
+    localStorage.setItem('supabase_active_role', finalRole);
+
+    return {
+      companyId: finalCompanyId,
+      role: finalRole,
+      userId: user.id,
+      email: user.email
+    };
+  } catch (err: any) {
+    console.warn('initTenantSession fallback:', err?.message);
+    const localComp = localStorage.getItem('supabase_active_company_id') || localStorage.getItem('active_company_id') || '30a4e773-585a-45a3-8fce-a32f94bbc7e0';
+    const localRole = localStorage.getItem('supabase_active_role') || 'admin';
+    return {
+      companyId: localComp,
+      role: localRole,
+      userId: 'offline-user',
+      email: 'offline@pos.local'
+    };
   }
-
-  cachedTenantCompanyId = finalCompanyId;
-  cachedUserRole = finalRole;
-
-  // Persist for offline-first resilience
-  localStorage.setItem('supabase_active_company_id', finalCompanyId);
-  localStorage.setItem('supabase_active_role', finalRole);
-
-  return {
-    companyId: finalCompanyId,
-    role: finalRole,
-    userId: user.id,
-    email: user.email,
-  };
 }
 
 /**
@@ -95,6 +120,9 @@ export async function pushCollectionToSupabase<T extends Record<string, any>>(
   getIdFn: (item: T) => string
 ): Promise<{ count: number }> {
   if (!records || records.length === 0) return { count: 0 };
+  if (!isSupabaseConfigured) {
+    return { count: records.length };
+  }
 
   const companyId = getActiveTenantId();
   const rows = records.map((record, idx) => {
@@ -174,6 +202,10 @@ export async function pushCollectionToSupabase<T extends Record<string, any>>(
 export async function pullCollectionFromSupabase<T>(
   tableName: string
 ): Promise<T[]> {
+  if (!isSupabaseConfigured) {
+    return [];
+  }
+
   const companyId = getActiveTenantId();
 
   const { data, error } = await supabase

@@ -28,7 +28,14 @@ import {
   getActiveUser, 
   setActiveUser 
 } from '../services/storageService';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { 
+  supabase, 
+  isSupabaseConfigured,
+  supabaseUrl,
+  supabaseAnonKey,
+  saveSupabaseCredentials,
+  clearSupabaseCredentials
+} from '../lib/supabase';
 import { getActiveCompanyId, fetchUserCompanies, SupabaseCompany } from '../services/supabaseTenantService';
 
 interface UserAuthModalProps {
@@ -68,6 +75,11 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
   const [activeCompany, setActiveCompany] = useState<SupabaseCompany | null>(null);
   const [cloudSyncLoading, setCloudSyncLoading] = useState(false);
   const [cloudSyncMsg, setCloudSyncMsg] = useState<string | null>(null);
+
+  // Supabase Connection Strings
+  const [showKeyConfig, setShowKeyConfig] = useState(false);
+  const [customUrl, setCustomUrl] = useState(supabaseUrl);
+  const [customAnonKey, setCustomAnonKey] = useState(supabaseAnonKey);
 
   const handleRunCloudSync = async () => {
     setCloudSyncLoading(true);
@@ -815,6 +827,108 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                   </div>
                 </form>
               )}
+
+              {/* Supabase Network Connection Config & Diagnostics */}
+              <div className="p-4 bg-slate-900/90 border border-slate-700/80 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Database className="h-4 w-4 text-indigo-400" />
+                    <span className="text-xs font-bold text-white">Supabase Connection Settings</span>
+                    {isSupabaseConfigured ? (
+                      <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30 font-bold">
+                        Connected
+                      </span>
+                    ) : (
+                      <span className="text-[9px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full border border-amber-500/30 font-bold">
+                        Anon Key Required
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowKeyConfig(!showKeyConfig)}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 font-bold underline cursor-pointer"
+                  >
+                    {showKeyConfig ? 'Hide Config' : 'View / Edit Strings'}
+                  </button>
+                </div>
+
+                <div className="text-[11px] text-slate-400 space-y-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span>Project URL:</span>
+                    <span className="font-mono text-slate-200 select-all bg-slate-800 px-2 py-0.5 rounded text-[10px]">
+                      {supabaseUrl || 'https://awtabqzljuhbjblrlcmv.supabase.co'}
+                    </span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span>Status:</span>
+                    <span className="text-slate-300">
+                      {isSupabaseConfigured 
+                        ? 'Project URL and Public Anon Key validated.' 
+                        : 'Running in offline/local tenant mode. Provide Public Anon Key to enable live cloud sync.'}
+                    </span>
+                  </div>
+                </div>
+
+                {showKeyConfig && (
+                  <div className="pt-3 border-t border-slate-700/60 space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        Supabase Project URL (HTTPS)
+                      </label>
+                      <input
+                        type="url"
+                        value={customUrl}
+                        onChange={e => setCustomUrl(e.target.value)}
+                        placeholder="https://awtabqzljuhbjblrlcmv.supabase.co"
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-white text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                        Supabase Anon Public API Key
+                      </label>
+                      <input
+                        type="password"
+                        value={customAnonKey}
+                        onChange={e => setCustomAnonKey(e.target.value)}
+                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-white text-xs font-mono focus:border-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearSupabaseCredentials();
+                          setCustomUrl(supabaseUrl);
+                          setCustomAnonKey('');
+                          setSuccessMsg('Reset connection credentials to default.');
+                          setTimeout(() => window.location.reload(), 500);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold"
+                      >
+                        Reset Defaults
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!customUrl.startsWith('https://')) {
+                            setErrorMsg('URL must start with https://');
+                            return;
+                          }
+                          saveSupabaseCredentials(customUrl, customAnonKey);
+                          setSuccessMsg('Supabase connection strings saved!');
+                          setTimeout(() => window.location.reload(), 600);
+                        }}
+                        className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow"
+                      >
+                        Save Connection Strings
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
