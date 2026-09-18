@@ -171,7 +171,21 @@ CREATE POLICY "Tenant isolation company_users mutate" ON public.company_users
     ))
   );
 
--- D) ITEMS TABLE RLS
+-- D) ITEMS TABLE (INVENTORY MASTERS)
+CREATE TABLE IF NOT EXISTS public.items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  record_id TEXT NOT NULL,
+  item_code TEXT,
+  item_name TEXT,
+  data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT unique_tenant_item UNIQUE (company_id, record_id)
+);
+CREATE INDEX IF NOT EXISTS idx_items_company_id ON public.items(company_id);
+CREATE INDEX IF NOT EXISTS idx_items_record_id ON public.items(record_id);
+
 ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Tenant isolation items select" ON public.items;
@@ -191,7 +205,21 @@ DROP POLICY IF EXISTS "Tenant isolation items delete" ON public.items;
 CREATE POLICY "Tenant isolation items delete" ON public.items
   FOR DELETE USING (public.has_company_access(company_id));
 
--- E) LEDGERS TABLE RLS
+-- E) LEDGERS TABLE (CHART OF ACCOUNTS)
+CREATE TABLE IF NOT EXISTS public.ledgers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  record_id TEXT NOT NULL,
+  ledger_name TEXT,
+  name TEXT,
+  group_name TEXT,
+  data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT unique_tenant_ledger UNIQUE (company_id, record_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ledgers_company_id ON public.ledgers(company_id);
+
 ALTER TABLE public.ledgers ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Tenant isolation ledgers select" ON public.ledgers;
@@ -211,7 +239,22 @@ DROP POLICY IF EXISTS "Tenant isolation ledgers delete" ON public.ledgers;
 CREATE POLICY "Tenant isolation ledgers delete" ON public.ledgers
   FOR DELETE USING (public.has_company_access(company_id));
 
--- F) VOUCHERS TABLE RLS
+-- F) VOUCHERS TABLE (FINANCIAL TRANSACTIONS)
+CREATE TABLE IF NOT EXISTS public.vouchers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  record_id TEXT NOT NULL,
+  voucher_no TEXT,
+  voucher_type TEXT,
+  date DATE,
+  amount NUMERIC(15,2) DEFAULT 0,
+  data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT unique_tenant_voucher UNIQUE (company_id, record_id)
+);
+CREATE INDEX IF NOT EXISTS idx_vouchers_company_id ON public.vouchers(company_id);
+
 ALTER TABLE public.vouchers ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Tenant isolation vouchers select" ON public.vouchers;
@@ -230,6 +273,24 @@ CREATE POLICY "Tenant isolation vouchers update" ON public.vouchers
 DROP POLICY IF EXISTS "Tenant isolation vouchers delete" ON public.vouchers;
 CREATE POLICY "Tenant isolation vouchers delete" ON public.vouchers
   FOR DELETE USING (public.has_company_access(company_id));
+
+-- TENANT SETTINGS TABLE
+CREATE TABLE IF NOT EXISTS public.tenant_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  record_id TEXT NOT NULL,
+  data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT unique_tenant_settings UNIQUE (company_id, record_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tenant_settings_company_id ON public.tenant_settings(company_id);
+
+ALTER TABLE public.tenant_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Tenant isolation tenant_settings" ON public.tenant_settings;
+CREATE POLICY "Tenant isolation tenant_settings" ON public.tenant_settings
+  FOR ALL USING (public.has_company_access(company_id))
+  WITH CHECK (public.has_company_access(company_id));
 
 -- G) APP USERS TABLE RLS (Legacy / Compatibility table)
 ALTER TABLE public.app_users ENABLE ROW LEVEL SECURITY;

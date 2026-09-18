@@ -1,17 +1,5 @@
 import { supabase, isSupabaseConfigured, SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser } from '../lib/supabase';
 import { Config, AppUser } from '../types';
-import { db } from '../lib/firebase';
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy
-} from 'firebase/firestore';
 
 export type { SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser };
 
@@ -208,20 +196,6 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
       mergedMap.set(DEFAULT_TENANT_COMPANY.id, DEFAULT_TENANT_COMPANY);
     }
 
-    // Also fetch from Cloud Firestore
-    try {
-      const companiesCollRef = collection(db, 'companies');
-      const snap = await getDocs(companiesCollRef);
-      snap.forEach(d => {
-        const data = d.data() as SupabaseCompany;
-        if (data && data.id) {
-          mergedMap.set(data.id, data);
-        }
-      });
-    } catch (fsErr) {
-      console.warn('Firestore fetch companies warning:', fsErr);
-    }
-
     // Ensure Demo Company is first in the list so standard fallbacks resolve to Bhutan Retail Enterprise
     const demoCompany = mergedMap.get(DEFAULT_TENANT_COMPANY.id) || DEFAULT_TENANT_COMPANY;
     const others = Array.from(mergedMap.values()).filter(c => c.id !== DEFAULT_TENANT_COMPANY.id);
@@ -300,14 +274,6 @@ export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'c
       }
     }
 
-    // 1. Save to Cloud Firestore
-    try {
-      const compRef = doc(db, 'companies', newId);
-      await setDoc(compRef, newComp);
-    } catch (fsErr) {
-      console.warn('Could not write company to Firestore, saving offline:', fsErr);
-    }
-
     // 2. Save in local cache
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES) : null;
     const list: SupabaseCompany[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_COMPANY];
@@ -340,13 +306,6 @@ export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'c
       localStorage.setItem(`deep_pos_users_${newId}`, JSON.stringify([adminUser]));
       localStorage.setItem('deep_pos_active_user_id', adminUser.id);
       sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
-    }
-
-    try {
-      const userRef = doc(db, 'tenants', newId, 'users', adminUser.id);
-      await setDoc(userRef, adminUser);
-    } catch (uErr) {
-      console.warn('Could not write admin user to Firestore:', uErr);
     }
 
     // 4. Automatically create initial Financial Year for this new company (Jan 1 - Dec 31)
@@ -430,24 +389,7 @@ export async function fetchFinancialYears(companyId: string): Promise<{ financia
       }
     }
 
-    // 2. Try fetching from Cloud Firestore
-    try {
-      const fyCollRef = collection(db, 'financial_years');
-      const q = query(fyCollRef, where('company_id', '==', companyId));
-      const snap = await getDocs(q);
-      const fsFYs: SupabaseFinancialYear[] = [];
-      snap.forEach(d => {
-        const data = d.data() as SupabaseFinancialYear;
-        if (data && data.id) fsFYs.push(data);
-      });
-      if (fsFYs.length > 0) {
-        return { financialYears: fsFYs };
-      }
-    } catch (fsErr) {
-      console.warn('Firestore fetch financial years error:', fsErr);
-    }
-
-    // 3. Fallback to local storage
+    // 2. Fallback to local storage
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_FYS) : null;
     let list: SupabaseFinancialYear[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_FY];
     
@@ -501,14 +443,6 @@ export async function createFinancialYear(fyData: Omit<SupabaseFinancialYear, 'i
       ...fyData
     };
 
-    // Save to Firestore
-    try {
-      const fyDocRef = doc(db, 'financial_years', newId);
-      await setDoc(fyDocRef, newFY);
-    } catch (fsErr) {
-      console.warn('Could not write financial year to Firestore, saving offline:', fsErr);
-    }
-
     // Save to local cache
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_FYS) : null;
     const list: SupabaseFinancialYear[] = cached ? JSON.parse(cached) : [DEFAULT_TENANT_FY];
@@ -537,13 +471,6 @@ export async function deleteCompany(companyId: string): Promise<{ success: boole
     list = list.filter(c => c.id !== companyId);
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(list));
-    }
-
-    // 1. Delete from Firestore
-    try {
-      await deleteDoc(doc(db, 'companies', companyId));
-    } catch (fsErr) {
-      console.warn('Firestore delete company error:', fsErr);
     }
 
     // Clear all tenant-scoped data keys for this company from localStorage
@@ -704,15 +631,7 @@ export async function updateCompanyStatus(
       }
     }
 
-    // 2. Update in Firestore
-    try {
-      const compRef = doc(db, 'companies', companyId);
-      await setDoc(compRef, { is_active: isActive }, { merge: true });
-    } catch (fsErr) {
-      console.warn('Firestore update company status warning:', fsErr);
-    }
-
-    // 3. Update in Local Storage Cache
+    // 2. Update in Local Storage Cache
     if (typeof localStorage !== 'undefined') {
       const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES);
       if (cached) {
@@ -780,15 +699,7 @@ export async function updateCompany(
       }
     }
 
-    // 3. Update in Firestore
-    try {
-      const compRef = doc(db, 'companies', companyId);
-      await setDoc(compRef, cleanedUpdates, { merge: true });
-    } catch (fsErr) {
-      console.warn('Firestore update company warning:', fsErr);
-    }
-
-    // 4. Update in Local Storage Cache
+    // 3. Update in Local Storage Cache
     let updatedCompany: SupabaseCompany | undefined;
     if (typeof localStorage !== 'undefined') {
       const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES);
@@ -837,13 +748,6 @@ export async function updateCompany(
 
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem(`deep_pos_users_${companyId}`, JSON.stringify([adminUser]));
-      }
-
-      try {
-        const userRef = doc(db, 'tenants', companyId, 'users', adminUserId);
-        await setDoc(userRef, adminUser, { merge: true });
-      } catch (uErr) {
-        console.warn('Could not update admin user in Firestore:', uErr);
       }
     }
 

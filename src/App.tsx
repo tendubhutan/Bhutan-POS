@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getInitialData, getVoucherTypes, saveLedger, getVoucherDetails, migrateExistingItemsOpeningAmount, saveConfig } from './services/storageService';
-import { initFirestoreSync, subscribeFirebaseStatus, seedInitialLocalDataToFirestore } from './services/firebaseSyncService';
+import { initSupabaseSync, subscribeSupabaseStatus, seedInitialLocalDataToSupabase } from './services/supabaseSyncService';
 import { Config, Item, Unit, UnitGroup, ItemGroup, Ledger, LedgerGroup, HeldBill, BarcodeQueueItem, VoucherType } from './types';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -305,17 +305,17 @@ export default function App() {
     }
   };
 
-  const firestoreUnsubRef = useRef<(() => void) | null>(null);
+  const supabaseUnsubRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     loadTenantDetails();
     const handleTenantChange = () => {
       loadTenantDetails();
       refreshData();
-      if (firestoreUnsubRef.current) {
-        firestoreUnsubRef.current();
+      if (supabaseUnsubRef.current) {
+        supabaseUnsubRef.current();
       }
-      firestoreUnsubRef.current = initFirestoreSync(() => {
+      supabaseUnsubRef.current = initSupabaseSync(() => {
         refreshData();
       });
     };
@@ -400,19 +400,19 @@ export default function App() {
 
     refreshData();
     
-    // Subscribe to Firestore sync status updates
-    const unsubStatus = subscribeFirebaseStatus((status, msg) => {
+    // Subscribe to Supabase sync status updates
+    const unsubStatus = subscribeSupabaseStatus((status, msg) => {
       setFirebaseStatus(status);
       if (msg) setFirebaseMessage(msg);
     });
 
-    // Initialize real-time Firestore synchronization
-    firestoreUnsubRef.current = initFirestoreSync(() => {
+    // Initialize real-time Supabase synchronization
+    supabaseUnsubRef.current = initSupabaseSync(() => {
       refreshData();
     });
 
-    // Seed local items & ledgers to Firestore on initial load
-    seedInitialLocalDataToFirestore().catch(() => {});
+    // Seed local items & ledgers to Supabase on initial load
+    seedInitialLocalDataToSupabase().catch(() => {});
 
     const handleAppNavigate = (e: any) => {
       if (e.detail?.view) {
@@ -466,7 +466,7 @@ export default function App() {
 
     return () => {
       unsubStatus();
-      if (firestoreUnsubRef.current) firestoreUnsubRef.current();
+      if (supabaseUnsubRef.current) supabaseUnsubRef.current();
       window.removeEventListener('app:navigate', handleAppNavigate);
       window.removeEventListener('app:navigate-back-direct', handleDirectBack);
       window.removeEventListener('app:openTrash', handleOpenTrash);

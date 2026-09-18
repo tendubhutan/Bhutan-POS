@@ -141,32 +141,32 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
         </div>
 
-        {/* Firebase Firestore Status Badge */}
+        {/* Cloud Sync Status Badge */}
         {firebaseStatus === 'syncing' ? (
           <div
             className="flex items-center gap-1.5 bg-amber-500/20 border border-amber-400/40 text-amber-200 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full"
-            title={firebaseMessage || 'Syncing with Firestore...'}
+            title={firebaseMessage || 'Syncing with Supabase...'}
           >
             <RefreshCw className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-amber-300 animate-spin" />
-            <span className="hidden xs:inline">Firestore Syncing...</span>
+            <span className="hidden xs:inline">Supabase Syncing...</span>
             <span className="xs:hidden">Syncing</span>
           </div>
         ) : firebaseStatus === 'error' ? (
           <div
             className="flex items-center gap-1.5 bg-rose-500/20 border border-rose-400/40 text-rose-200 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full"
-            title={firebaseMessage || 'Firestore sync error'}
+            title={firebaseMessage || 'Supabase sync error'}
           >
             <Database className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-rose-300" />
-            <span className="hidden xs:inline">Firestore Error</span>
+            <span className="hidden xs:inline">Supabase Error</span>
             <span className="xs:hidden">Error</span>
           </div>
         ) : (
           <div
             className="flex items-center gap-1.5 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full"
-            title="Cloud Firestore Real-time Persistence Active"
+            title="Cloud Supabase Real-time Persistence Active"
           >
             <Database className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-300 animate-pulse" />
-            <span>FIRESTORE ONLINE</span>
+            <span>SUPABASE ONLINE</span>
           </div>
         )}
 

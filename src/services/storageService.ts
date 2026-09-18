@@ -51,19 +51,19 @@ import {
   DEFAULT_ASSETS
 } from './assetManagementService';
 import {
-  syncConfigToFirestore,
-  syncItemToFirestore,
-  syncItemsBatchToFirestore,
-  deleteItemFromFirestore,
-  syncLedgerToFirestore,
-  deleteLedgerFromFirestore,
-  syncSalesInvoiceToFirestore,
-  deleteSalesInvoiceFromFirestore,
-  syncPurchaseInvoiceToFirestore,
-  deletePurchaseInvoiceFromFirestore,
-  syncVoucherToFirestore,
-  deleteVoucherFromFirestore
-} from './firebaseSyncService';
+  syncConfigToSupabase as syncConfigToFirestore,
+  syncItemToSupabase as syncItemToFirestore,
+  syncItemsBatchToSupabase as syncItemsBatchToFirestore,
+  deleteItemFromSupabase as deleteItemFromFirestore,
+  syncLedgerToSupabase as syncLedgerToFirestore,
+  deleteLedgerFromSupabase as deleteLedgerFromFirestore,
+  syncSalesInvoiceToSupabase as syncSalesInvoiceToFirestore,
+  deleteSalesInvoiceFromSupabase as deleteSalesInvoiceFromFirestore,
+  syncPurchaseInvoiceToSupabase as syncPurchaseInvoiceToFirestore,
+  deletePurchaseInvoiceFromSupabase as deletePurchaseInvoiceFromFirestore,
+  syncVoucherToSupabase as syncVoucherToFirestore,
+  deleteVoucherFromSupabase as deleteVoucherFromFirestore
+} from './supabaseSyncService';
 import { getActiveCompanyId, DEFAULT_TENANT_COMPANY } from './supabaseTenantService';
 
 
