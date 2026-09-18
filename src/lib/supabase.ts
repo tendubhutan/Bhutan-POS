@@ -49,8 +49,8 @@ export function clearSupabaseCredentials() {
 
 // Instantiate client with live project credentials and automatic session persistence
 export const supabase = createClient(
-  DEFAULT_SUPABASE_URL,
-  DEFAULT_SUPABASE_ANON_KEY,
+  supabaseUrl,
+  supabaseAnonKey,
   {
     auth: {
       persistSession: true,

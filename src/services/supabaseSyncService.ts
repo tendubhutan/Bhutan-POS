@@ -7,7 +7,7 @@ import {
 } from './tenantAuthService';
 import { STORAGE_KEYS } from './storageService';
 import { Item, Ledger, SalesInvoice, PurchaseInvoice, Voucher, Config } from '../types';
-import { getActiveCompanyId, DEFAULT_TENANT_COMPANY } from './supabaseTenantService';
+import { getActiveCompanyId, DEFAULT_TENANT_COMPANY, ensureCompanyExists } from './supabaseTenantService';
 
 // Cloud Sync Connection State
 export type SupabaseStatus = 'connected' | 'syncing' | 'offline' | 'error';
@@ -111,20 +111,27 @@ export async function syncItemToSupabase(item: Item, targetCompanyId?: string): 
   };
 
   try {
+    // Ensure parent company exists in companies table before inserting item
+    await ensureCompanyExists(companyId);
+
     let res = await supabase.from('items').upsert(payload, { onConflict: 'company_id, record_id' });
     if (res.error) {
+      console.warn('[Supabase Sync Item Notice]:', res.error.message);
       // If table is named 'Item' (singular/capitalized)
       if (res.error.message.includes('relation') && (res.error.message.includes('items') || res.error.message.includes('Item'))) {
         res = await supabase.from('Item').upsert(payload, { onConflict: 'company_id, record_id' });
       }
       // If column mismatch on flat fields, retry purely with JSONB data
       if (res.error && (res.error.message.includes('column') || res.error.message.includes('schema'))) {
-        await supabase.from('items').upsert({
+        res = await supabase.from('items').upsert({
           company_id: companyId,
           record_id: itemCode,
           data: safeData,
           updated_at: new Date().toISOString()
         }, { onConflict: 'company_id, record_id' });
+      }
+      if (res.error) {
+        console.error('[Supabase Item Sync Error]:', res.error.message, res.error.details);
       }
     }
   } catch (err: any) {

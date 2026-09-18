@@ -55,15 +55,18 @@ export function getDedicatedCompanyIdFromUrl(): string | null {
   }
 }
 
-export const PRODUCTION_BASE_URL = 'https://bhutan-pos.web.app';
+export const PRODUCTION_BASE_URL = 'https://bhutan-pos.tendubhutan.workers.dev';
 
 /**
  * Generates the full dedicated client portal URL for a specific company.
- * Defaults to the production domain: https://bhutan-pos.web.app/?company=...
+ * Automatically uses the active browser origin (e.g. Cloudflare domain) or defaults to production URL.
  */
 export function getCompanyDedicatedUrl(companyId: string, forceCurrentOrigin: boolean = false): string {
-  if (forceCurrentOrigin && typeof window !== 'undefined') {
-    return `${window.location.origin}${window.location.pathname}?company=${companyId}`;
+  if (typeof window !== 'undefined' && window.location.origin) {
+    if (forceCurrentOrigin || (!window.location.origin.includes('localhost') && !window.location.origin.includes('127.0.0.1') && !window.location.origin.includes('ais-dev-'))) {
+      const cleanPath = window.location.pathname.replace(/\/+$/, '');
+      return `${window.location.origin}${cleanPath}/?company=${companyId}`;
+    }
   }
   return `${PRODUCTION_BASE_URL}/?company=${companyId}`;
 }
@@ -236,7 +239,41 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
   }
 }
 
-// Create new company in Firestore and local storage
+// Helper to ensure a company record exists in the public.companies table in Supabase
+export async function ensureCompanyExists(companyId: string): Promise<void> {
+  if (!isSupabaseConfigured || !companyId) return;
+  try {
+    const { data } = await supabase.from('companies').select('id').eq('id', companyId).maybeSingle();
+    if (!data) {
+      // Find company details from local cache or fallback to default
+      let compInfo: SupabaseCompany = DEFAULT_TENANT_COMPANY;
+      const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES) : null;
+      if (cached) {
+        try {
+          const list: SupabaseCompany[] = JSON.parse(cached);
+          const found = list.find(c => c.id === companyId);
+          if (found) compInfo = found;
+        } catch {}
+      }
+      await supabase.from('companies').upsert({
+        id: companyId,
+        company_name: compInfo.company_name || 'Business Workspace',
+        trade_license_no: compInfo.trade_license_no || '',
+        tax_payer_id: compInfo.tax_payer_id || '',
+        phone: compInfo.phone || '',
+        email: compInfo.email || '',
+        address: compInfo.address || '',
+        currency_symbol: compInfo.currency_symbol || 'Nu.',
+        is_active: true,
+        created_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+    }
+  } catch (err) {
+    console.warn('[Supabase ensureCompanyExists warning]:', err);
+  }
+}
+
+// Create new company in Supabase and local storage
 export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'created_at'>): Promise<{ company?: SupabaseCompany; error?: string }> {
   try {
     const newId = generateUUID();
@@ -254,6 +291,26 @@ export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'c
       admin_password: adminPassword,
       created_at: new Date().toISOString()
     };
+
+    // 1. Insert into Supabase companies table
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('companies').upsert({
+          id: newId,
+          company_name: newComp.company_name,
+          trade_license_no: newComp.trade_license_no || '',
+          tax_payer_id: newComp.tax_payer_id || '',
+          phone: newComp.phone || '',
+          email: newComp.email || '',
+          address: newComp.address || '',
+          currency_symbol: newComp.currency_symbol || 'Nu.',
+          is_active: true,
+          created_at: newComp.created_at
+        }, { onConflict: 'id' });
+      } catch (sbCompErr) {
+        console.warn('Supabase company table insert warning:', sbCompErr);
+      }
+    }
 
     // Attempt to register in Supabase Auth if configured
     if (isSupabaseConfigured && companyData.email && adminPassword) {
@@ -528,7 +585,7 @@ export function getActiveCompanyId(): string {
   }
 
   // 3. Clean Root URL (no dedicated company in URL):
-  // When accessing the base URL (e.g. https://bhutan-pos.web.app) without query parameters,
+  // When accessing the base URL (e.g. https://bhutan-pos.tendubhutan.workers.dev) without query parameters,
   // we must open the primary platform default workspace (Bhutan Retail Enterprise)
   // and NOT hijack the session with a previously visited client dedicated link.
   if (typeof sessionStorage !== 'undefined') {
@@ -562,7 +619,7 @@ export function setActiveCompanyId(id: string): void {
 
   // URL handling:
   // If the current URL has a dedicated query parameter (e.g., ?company=...), keep it in sync.
-  // If switching back to default company, strip the query parameter so URL becomes clean: https://bhutan-pos.web.app
+  // If switching back to default company, strip the query parameter so URL becomes clean
   // CRITICAL: NEVER inject ?company=... onto a clean root URL!
   if (typeof window !== 'undefined' && window.history && window.location) {
     try {
