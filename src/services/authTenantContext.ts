@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured, SupabaseCompany, SupabaseFinancialYear } from '../lib/supabase';
 import { AppUser } from '../types';
+import { getDedicatedCompanyIdFromUrl } from './supabaseTenantService';
 
 export type UserTenantRole = 'superadmin' | 'admin' | 'manager' | 'cashier' | 'accountant' | 'auditor';
 
@@ -337,9 +338,13 @@ export async function getActiveTenantSession(): Promise<TenantAuthSession | null
     // For client users, active company is STRICTLY their assigned company
     let activeCompanyId = profile.assignedCompanyId;
     if (isSuperadmin) {
-      // Superadmin can use stored active company or default to Demo Company
-      const stored = localStorage.getItem(SESSION_STORAGE_KEYS.ACTIVE_COMPANY_ID);
-      activeCompanyId = stored || DEMO_COMPANY_UUID;
+      const dedicatedUrlId = getDedicatedCompanyIdFromUrl();
+      if (dedicatedUrlId) {
+        activeCompanyId = dedicatedUrlId;
+      } else {
+        const sessionStored = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('supabase_active_session_company') : null;
+        activeCompanyId = sessionStored || DEMO_COMPANY_UUID;
+      }
     } else {
       // For client users, OVERRIDE any stored active company with their assigned company
       activeCompanyId = profile.assignedCompanyId || DEMO_COMPANY_UUID;
@@ -466,8 +471,13 @@ export async function loginWithSupabaseAuth(email: string, password: string): Pr
 
     let activeCompanyId = profile.assignedCompanyId;
     if (isSuperadmin) {
-      const stored = localStorage.getItem(SESSION_STORAGE_KEYS.ACTIVE_COMPANY_ID);
-      activeCompanyId = stored || DEMO_COMPANY_UUID;
+      const dedicatedUrlId = getDedicatedCompanyIdFromUrl();
+      if (dedicatedUrlId) {
+        activeCompanyId = dedicatedUrlId;
+      } else {
+        const sessionStored = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('supabase_active_session_company') : null;
+        activeCompanyId = sessionStored || DEMO_COMPANY_UUID;
+      }
     } else {
       activeCompanyId = profile.assignedCompanyId || DEMO_COMPANY_UUID;
       localStorage.setItem(SESSION_STORAGE_KEYS.ACTIVE_COMPANY_ID, activeCompanyId);

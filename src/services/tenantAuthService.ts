@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getDedicatedCompanyIdFromUrl } from './supabaseTenantService';
 
 let cachedTenantCompanyId: string | null = null;
 let cachedUserRole: string | null = null;
@@ -16,7 +17,8 @@ export interface TenantContext {
  */
 export async function initTenantSession(): Promise<TenantContext> {
   if (!isSupabaseConfigured) {
-    const localComp = localStorage.getItem('supabase_active_company_id') || localStorage.getItem('active_company_id') || '30a4e773-585a-45a3-8fce-a32f94bbc7e0';
+    const dedicatedUrlId = getDedicatedCompanyIdFromUrl();
+    const localComp = dedicatedUrlId || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('supabase_active_session_company') : null) || '30a4e773-585a-45a3-8fce-a32f94bbc7e0';
     const localRole = localStorage.getItem('supabase_active_role') || localStorage.getItem('deep_pos_auth_role') || 'admin';
     cachedTenantCompanyId = localComp;
     cachedUserRole = localRole;
@@ -58,13 +60,17 @@ export async function initTenantSession(): Promise<TenantContext> {
 
     // If superadmin has no single fixed company assigned, fallback to their chosen active company
     if (!finalCompanyId) {
-      if (finalRole === 'superadmin') {
-        finalCompanyId = localStorage.getItem('supabase_active_company_id') || localStorage.getItem('active_company_id') || '30a4e773-585a-45a3-8fce-a32f94bbc7e0';
+      const dedicatedUrlId = getDedicatedCompanyIdFromUrl();
+      if (dedicatedUrlId) {
+        finalCompanyId = dedicatedUrlId;
+      } else if (finalRole === 'superadmin') {
+        const sessionCompany = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('supabase_active_session_company') : null;
+        finalCompanyId = sessionCompany || '30a4e773-585a-45a3-8fce-a32f94bbc7e0';
       } else {
         const { data: isSuper } = await supabase.rpc('is_superadmin');
         if (isSuper) {
           finalRole = 'superadmin';
-          finalCompanyId = localStorage.getItem('supabase_active_company_id') || localStorage.getItem('active_company_id') || '30a4e773-585a-45a3-8fce-a32f94bbc7e0';
+          finalCompanyId = '30a4e773-585a-45a3-8fce-a32f94bbc7e0';
         } else {
           throw new Error('No active company membership found for this account in company_users.');
         }

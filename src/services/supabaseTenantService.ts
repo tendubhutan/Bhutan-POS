@@ -117,9 +117,9 @@ function filterCompaniesForView(list: SupabaseCompany[]): SupabaseCompany[] {
     }];
   }
 
+  // If a dedicated client link parameter is present in the URL (e.g. ?company=...)
   const dedicatedId = getDedicatedCompanyIdFromUrl();
-  const isExplicitClient = typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_is_client_mode') === 'true';
-  if (dedicatedId && isExplicitClient) {
+  if (dedicatedId) {
     const matched = list.filter(c => c.id === dedicatedId);
     if (matched.length > 0) return matched;
     return [{
@@ -133,7 +133,7 @@ function filterCompaniesForView(list: SupabaseCompany[]): SupabaseCompany[] {
 
   const hideDemo = typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_hide_demo_company') === 'true';
   const isClient = typeof localStorage !== 'undefined' && localStorage.getItem('deep_pos_is_client_mode') === 'true';
-  if ((hideDemo || isClient) && list.length > 1) {
+  if ((hideDemo || isClient) && list.length > 1 && !list.every(c => c.id === DEFAULT_TENANT_COMPANY.id)) {
     const withoutDemo = list.filter(c => c.id !== DEFAULT_TENANT_COMPANY.id);
     if (withoutDemo.length > 0) return withoutDemo;
   }
@@ -222,7 +222,10 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
       console.warn('Firestore fetch companies warning:', fsErr);
     }
 
-    const allList = Array.from(mergedMap.values());
+    // Ensure Demo Company is first in the list so standard fallbacks resolve to Bhutan Retail Enterprise
+    const demoCompany = mergedMap.get(DEFAULT_TENANT_COMPANY.id) || DEFAULT_TENANT_COMPANY;
+    const others = Array.from(mergedMap.values()).filter(c => c.id !== DEFAULT_TENANT_COMPANY.id);
+    const allList = [demoCompany, ...others];
     if (typeof localStorage !== 'undefined' && allList.length > 0) {
       localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(allList));
     }
@@ -549,15 +552,24 @@ export function getActiveCompanyId(): string {
     }
   }
 
-  // 2. If dedicated URL parameter is provided (e.g. ?company=...)
+  // 2. If dedicated URL parameter is provided (e.g. ?company=... or ?cid=... or ?tenant=...)
   const urlId = getDedicatedCompanyIdFromUrl();
   if (urlId) {
     return urlId;
   }
 
-  // 3. Superadmin or default workspace
-  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.TENANT_COMPANY_ID) : null;
-  return stored || DEFAULT_TENANT_COMPANY.id;
+  // 3. Clean Root URL (no dedicated company in URL):
+  // When accessing the base URL (e.g. https://bhutan-pos.web.app) without query parameters,
+  // we must open the primary platform default workspace (Bhutan Retail Enterprise)
+  // and NOT hijack the session with a previously visited client dedicated link.
+  if (typeof sessionStorage !== 'undefined') {
+    const sessionCompany = sessionStorage.getItem('supabase_active_session_company');
+    if (sessionCompany) {
+      return sessionCompany;
+    }
+  }
+
+  return DEFAULT_TENANT_COMPANY.id;
 }
 
 export function setActiveCompanyId(id: string): void {
@@ -570,24 +582,39 @@ export function setActiveCompanyId(id: string): void {
       return;
     }
     localStorage.setItem(STORAGE_KEYS.TENANT_COMPANY_ID, id);
+    if (typeof sessionStorage !== 'undefined') {
+      if (id === DEFAULT_TENANT_COMPANY.id) {
+        sessionStorage.removeItem('supabase_active_session_company');
+      } else {
+        sessionStorage.setItem('supabase_active_session_company', id);
+      }
+    }
   }
 
-  // Update browser URL seamlessly so refresh or copying URL retains the chosen company
+  // URL handling:
+  // If the current URL has a dedicated query parameter (e.g., ?company=...), keep it in sync.
+  // If switching back to default company, strip the query parameter so URL becomes clean: https://bhutan-pos.web.app
+  // CRITICAL: NEVER inject ?company=... onto a clean root URL!
   if (typeof window !== 'undefined' && window.history && window.location) {
     try {
       const url = new URL(window.location.href);
+      const hasDedicatedParam = url.searchParams.has('company') || url.searchParams.has('cid') || url.searchParams.has('tenant');
+
       if (id === DEFAULT_TENANT_COMPANY.id) {
-        url.searchParams.delete('company');
-        url.searchParams.delete('cid');
-        url.searchParams.delete('tenant');
-        if (url.hash && url.hash.includes('company=')) {
-          const parts = url.hash.split('?');
-          url.hash = parts[0] || '';
+        if (hasDedicatedParam) {
+          url.searchParams.delete('company');
+          url.searchParams.delete('cid');
+          url.searchParams.delete('tenant');
+          if (url.hash && url.hash.includes('company=')) {
+            const parts = url.hash.split('?');
+            url.hash = parts[0] || '';
+          }
+          window.history.replaceState({}, '', url.toString());
         }
-      } else {
+      } else if (hasDedicatedParam) {
         url.searchParams.set('company', id);
+        window.history.replaceState({}, '', url.toString());
       }
-      window.history.replaceState({}, '', url.toString());
     } catch (e) {
       console.warn('Could not update URL parameter on company switch:', e);
     }
