@@ -219,6 +219,11 @@ const StickerPreviewCard: React.FC<{
           className="font-bold text-slate-900 text-center w-full break-words overflow-hidden line-clamp-2 mb-0.5"
         >
           {sample.itemName}
+          {(sample.size || sample.color) && (
+            <span className="block font-semibold text-slate-700 text-[80%]">
+              {[sample.size ? `Size: ${sample.size}` : '', sample.color ? `Col: ${sample.color}` : ''].filter(Boolean).join(' | ')}
+            </span>
+          )}
         </div>
       )}
       <div className="flex items-center justify-center w-full overflow-hidden leading-none">
@@ -316,11 +321,34 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
     else if (up === 4) { setWidthMm(25); setHeightMm(15); setGapMm(1.5); setBarcodeHeightMm(5); }
   };
 
+  const expandedItems = React.useMemo(() => {
+    const result: Item[] = [];
+    for (const item of items) {
+      if (item.variants && item.variants.length > 0) {
+        for (const v of item.variants) {
+          result.push({
+            ...item,
+            size: v.size || item.size,
+            color: v.color || item.color,
+            Barcode: v.barcode || item.Barcode,
+            'Purchase Rate': (v.purchaseRate !== undefined && v.purchaseRate > 0) ? v.purchaseRate : item['Purchase Rate'],
+            'Sale Rate': (v.saleRate !== undefined && v.saleRate > 0) ? v.saleRate : item['Sale Rate'],
+            'Wholesale Rate': (v.wholesaleRate !== undefined && v.wholesaleRate > 0) ? v.wholesaleRate : ((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate']),
+            MRP: (v.mrp !== undefined && v.mrp > 0) ? v.mrp : item.MRP,
+          });
+        }
+      } else {
+        result.push(item);
+      }
+    }
+    return result;
+  }, [items]);
+
   const addItemToQueue = (item: Item) => {
-    const existing = queue.find(q => q.itemCode === item['Item Code']);
+    const existing = queue.find(q => q.itemCode === item['Item Code'] && (q.size || '') === (item.size || '') && (q.color || '') === (item.color || '') && (q.barcode || '') === (item.Barcode || ''));
     const wholesaleVal = Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate'] || (item as any)['wholesalePrice'] || 0);
     if (existing) {
-      setQueue(queue.map(q => q.itemCode === item['Item Code'] ? { ...q, qty: q.qty + 1 } : q));
+      setQueue(queue.map(q => (q.itemCode === item['Item Code'] && (q.size || '') === (item.size || '') && (q.color || '') === (item.color || '') && (q.barcode || '') === (item.Barcode || '')) ? { ...q, qty: q.qty + 1 } : q));
     } else {
       setQueue([
         ...queue,
@@ -332,7 +360,9 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
           wholesaleRate: wholesaleVal,
           mrp: item.MRP || item['Sale Rate'] || 0,
           gstPct: item['GST %'] || 0,
-          qty: 1
+          qty: 1,
+          size: item.size,
+          color: item.color
         }
       ]);
     }
@@ -340,7 +370,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
   };
 
   const addAllItemsToQueue = () => {
-    const newItems: BarcodeQueueItem[] = items.map(item => ({
+    const newItems: BarcodeQueueItem[] = expandedItems.map(item => ({
       itemCode: item['Item Code'],
       itemName: item['Item Name'],
       barcode: item.Barcode || '100001',
@@ -348,7 +378,9 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
       wholesaleRate: Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate'] || (item as any)['wholesalePrice'] || 0),
       mrp: item.MRP || item['Sale Rate'] || 0,
       gstPct: item['GST %'] || 0,
-      qty: 1
+      qty: 1,
+      size: item.size,
+      color: item.color
     }));
     setQueue(newItems);
   };
@@ -588,7 +620,8 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
         }
         if (showName) {
           const itemFontSize = getItemNameFontSize(x.itemName, fontNm, widthMm);
-          html += `<div class="item-title" style="font-size: ${itemFontSize}px; max-height: ${itemFontSize * 2.1}px;">${x.itemName}</div>`;
+          const varTxt = [x.size ? `Size: ${x.size}` : '', x.color ? `Col: ${x.color}` : ''].filter(Boolean).join(' | ');
+          html += `<div class="item-title" style="font-size: ${itemFontSize}px; max-height: ${itemFontSize * 2.1}px;">${x.itemName}${varTxt ? `<span style="display:block; font-size:80%; font-weight:600;">${varTxt}</span>` : ''}</div>`;
         }
         html += `<div class="barcode-wrapper">`;
         html += `<svg id="bc_${x.barcode}_${randId}" style="max-width: 98%; height: ${barcodeH}px; display: block; margin: 0 auto;"></svg>`;
@@ -747,16 +780,20 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
 
               {search.trim() && (
                 <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
-                  {items
-                    .filter(i => (i['Item Name'] || '').toLowerCase().includes(search.toLowerCase()) || (i.Barcode || '').includes(search))
-                    .map(item => (
+                  {expandedItems
+                    .filter(i => (i['Item Name'] || '').toLowerCase().includes(search.toLowerCase()) || (i.Barcode || '').includes(search) || (i.size || '').toLowerCase().includes(search.toLowerCase()) || (i.color || '').toLowerCase().includes(search.toLowerCase()))
+                    .map((item, idx) => (
                       <div
-                        key={item['Item Code']}
+                        key={`${item['Item Code']}_${item.size}_${item.color}_${idx}`}
                         onClick={() => addItemToQueue(item)}
                         className="p-2.5 text-xs hover:bg-indigo-50 cursor-pointer border-b border-slate-100 flex justify-between items-center"
                       >
                         <div>
-                          <div className="font-bold text-slate-800">{item['Item Name']}</div>
+                          <div className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                            <span>{item['Item Name']}</span>
+                            {item.size && <span className="px-1 py-0.2 text-[9px] bg-purple-100 text-purple-900 font-bold rounded">Size: {item.size}</span>}
+                            {item.color && <span className="px-1 py-0.2 text-[9px] bg-pink-100 text-pink-900 font-bold rounded">Color: {item.color}</span>}
+                          </div>
                           <div className="text-[10px] text-slate-500">
                             Sale Rate: {currSym} {item['Sale Rate']} | GST: {item['GST %'] || 0}%
                           </div>
@@ -796,9 +833,15 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                       const printedPrice = getPrintedPrice(q);
                       const printedWholesale = getPrintedWholesalePrice(q);
                       return (
-                        <tr key={q.itemCode} className="hover:bg-slate-50">
+                        <tr key={`${q.itemCode}_${q.size || ''}_${q.color || ''}_${q.barcode || ''}`} className="hover:bg-slate-50">
                           <td className="py-2.5 px-3 font-semibold text-slate-800">
                             {q.itemName}
+                            {(q.size || q.color) && (
+                              <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] font-bold">
+                                {q.size && <span className="bg-purple-100 text-purple-900 border border-purple-200 px-1 py-0.2 rounded">Size: {q.size}</span>}
+                                {q.color && <span className="bg-pink-100 text-pink-900 border border-pink-200 px-1 py-0.2 rounded">Color: {q.color}</span>}
+                              </span>
+                            )}
                             {q.gstPct > 0 && (
                               <span className="ml-1.5 text-[10px] text-slate-500 font-normal">
                                 ({q.gstPct}% GST)

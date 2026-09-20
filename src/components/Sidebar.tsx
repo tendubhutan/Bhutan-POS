@@ -14,10 +14,12 @@ import {
   X,
   Landmark,
   History,
-  ShieldCheck
+  ShieldCheck,
+  Tags
 } from 'lucide-react';
 import { Config, AppUser } from "../types";
 import { isSuperAdmin, getCurrentTenantSession } from '../services/authTenantContext';
+import { isFeatureAllowed } from '../services/tenantFeatureService';
 
 interface SidebarProps {
   currentView: string;
@@ -59,15 +61,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+H' },
-    ...(config.EnablePOS !== 'false' ? [{ id: 'pos', label: 'POS Billing', icon: ShoppingCart, shortcut: 'Alt+P' }] : []),
-    ...(config.EnableNormalSale !== 'false' ? [{ id: 'normalsale', label: 'Sales Invoice', icon: ShoppingBag, shortcut: 'Alt+N' }] : []),
-    ...(!isCashier ? [{ id: 'purchase', label: 'Purchase Entry', icon: ShoppingBag, shortcut: 'Alt+U' }] : []),
-    ...(!isCashier ? [{ id: 'vouchers', label: 'Vouchers', icon: BookOpen, shortcut: 'Alt+V' }] : []),
+    ...(isFeatureAllowed(config, 'EnablePOS', isSuperadminUser) && config.EnablePOS !== 'false' ? [{ id: 'pos', label: 'POS Billing', icon: ShoppingCart, shortcut: 'Alt+P' }] : []),
+    ...(isFeatureAllowed(config, 'EnableNormalSale', isSuperadminUser) && config.EnableNormalSale !== 'false' ? [{ id: 'normalsale', label: 'Sales Invoice', icon: ShoppingBag, shortcut: 'Alt+N' }] : []),
+    ...(!isCashier && isFeatureAllowed(config, 'EnablePurchase', isSuperadminUser) && config.EnablePurchase !== 'false' ? [{ id: 'purchase', label: 'Purchase Entry', icon: ShoppingBag, shortcut: 'Alt+U' }] : []),
+    ...(!isCashier && isFeatureAllowed(config, 'EnableVouchers', isSuperadminUser) && config.EnableVouchers !== 'false' ? [{ id: 'vouchers', label: 'Vouchers', icon: BookOpen, shortcut: 'Alt+V' }] : []),
     { id: 'masters', label: 'Masters', icon: FolderKanban, shortcut: 'Alt+M' },
-    { id: 'barcode', label: 'Barcode Print', icon: Barcode, shortcut: 'Alt+K' },
-    ...(!isCashier && config.EnablePayroll !== 'false' ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users, shortcut: 'Alt+Y' }] : []),
-    ...(!isCashier && config.EnableAssetManagement !== 'false' ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'Alt+E' }] : []),
-    ...(!isCashier && config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
+    ...(isFeatureAllowed(config, 'EnableSchemes', isSuperadminUser) && config.EnableSchemes !== 'false' ? [{ id: 'schemes', label: 'Schemes & Offers', icon: Tags, shortcut: 'Alt+O' }] : []),
+    ...(isFeatureAllowed(config, 'EnableBarcodePrinting', isSuperadminUser) && config.EnableBarcodePrinting !== 'false' ? [{ id: 'barcode', label: 'Barcode Print', icon: Barcode, shortcut: 'Alt+K' }] : []),
+    ...(!isCashier && isFeatureAllowed(config, 'EnablePayroll', isSuperadminUser) && config.EnablePayroll !== 'false' ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users, shortcut: 'Alt+Y' }] : []),
+    ...(!isCashier && isFeatureAllowed(config, 'EnableAssetManagement', isSuperadminUser) && config.EnableAssetManagement !== 'false' ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'Alt+E' }] : []),
+    ...(!isCashier && isFeatureAllowed(config, 'EnableBankReconciliation', isSuperadminUser) && config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
     ...(!isCashier ? [{ id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R' }] : []),
     ...(!isCashier ? [{ id: 'settings', label: 'Settings', icon: Settings, shortcut: 'Alt+S' }] : []),
     ...(isSuperadminUser ? [{ 

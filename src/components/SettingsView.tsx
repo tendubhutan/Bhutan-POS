@@ -7,13 +7,17 @@ import { AcceptModal } from './AcceptModal';
 import { GlowButton } from './common/GlowButton';
 import { AuditLogView } from './AuditLogView';
 import { GstConfigModal } from './GstConfigModal';
+import { SparePartsConfigModal } from './SparePartsConfigModal';
+import { GarmentsConfigModal } from './GarmentsConfigModal';
 import { 
   Save, CheckCircle2, Shield, FileText, Image as ImageIcon, PenTool, Plus, Lock, UserCheck, RefreshCw, 
   ShoppingCart, Zap, SlidersHorizontal, AlertTriangle, Keyboard, Percent, CreditCard, RotateCcw,
   Building2, Hash, Layers, Store, Check, Sparkles, Sliders, ShieldCheck, Trash2, History, Eye, Settings as SettingsIcon,
-  Cloud, CloudUpload, Database
+  Cloud, CloudUpload, Database, Wrench, Shirt
 } from 'lucide-react';
 import { handleMasterCloudSync, MasterSyncResult } from '../services/supabaseSyncService';
+import { isFeatureAllowed } from '../services/tenantFeatureService';
+import { getCurrentTenantSession, isSuperAdmin as checkIsSuperAdmin } from '../services/authTenantContext';
 
 interface SettingsViewProps {
   config: Config;
@@ -42,6 +46,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [form, setForm] = useState<Config>({ ...config });
   const [showGstConfigModal, setShowGstConfigModal] = useState(false);
+  const [showSparePartsModal, setShowSparePartsModal] = useState(false);
+  const [showGarmentsModal, setShowGarmentsModal] = useState(false);
 
   useEffect(() => {
     setForm({ ...config });
@@ -114,11 +120,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [newTermInput, setNewTermInput] = useState('');
 
+  // Superadmin privileges check
+  const tenantSession = getCurrentTenantSession();
+  const rawRole = (
+    tenantSession?.role || 
+    activeUser?.role || 
+    (typeof localStorage !== 'undefined' ? (
+      localStorage.getItem('deep_pos_auth_role') ||
+      localStorage.getItem('supabase_active_role') ||
+      localStorage.getItem('user_role') ||
+      localStorage.getItem('role') ||
+      ''
+    ) : '')
+  ).toString().toLowerCase().trim();
+
+  const isSuperadminUser = 
+    checkIsSuperAdmin() || 
+    tenantSession?.isSuperadmin === true || 
+    rawRole === 'superadmin';
+
+  const isPosPermitted = isFeatureAllowed(form, 'EnablePOS', isSuperadminUser);
+
   const tabs = [
     { id: 'company', label: 'Company Profile', icon: Building2, desc: 'Identity & Tax' },
     { id: 'features', label: 'General Settings', icon: Sliders, desc: 'Banking, Modules & Resets' },
     { id: 'vouchers', label: 'Voucher Numbering', icon: Hash, desc: 'Prefixes & Numbers' },
-    { id: 'pos', label: 'POS Settings', icon: ShoppingCart, desc: 'Billing & Shortcuts' },
+    ...(isPosPermitted ? [{ id: 'pos', label: 'POS Settings', icon: ShoppingCart, desc: 'Billing & Shortcuts' } as const] : []),
     { id: 'inventory', label: 'Inventory Rules', icon: Layers, desc: 'Units, Serials & Stock' },
     { id: 'invoice', label: 'Invoice & Print', icon: PenTool, desc: 'Logo, Signature & Terms' },
     { id: 'security', label: 'User Roles', icon: ShieldCheck, desc: 'Permissions & Security' }
@@ -201,6 +228,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         e.preventDefault();
         return;
       }
+      if (showSparePartsModal) {
+        setShowSparePartsModal(false);
+        e.preventDefault();
+        return;
+      }
       if (showAcceptModal) {
         setShowAcceptModal(false);
         e.preventDefault();
@@ -216,7 +248,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       window.removeEventListener('app:save' as any, handleSaveEvent);
       window.removeEventListener('app:back' as any, handleBackEvent);
     };
-  }, [isActive, activeTab, usersList, posSettings, form, showAuditModal, showGstConfigModal, showAcceptModal]);
+  }, [isActive, activeTab, usersList, posSettings, form, showAuditModal, showGstConfigModal, showSparePartsModal, showAcceptModal]);
 
   useEffect(() => {
     const loaded = getUsers();
@@ -737,99 +769,238 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {/* Alternative Unit & Price */}
-              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-                <div className="pt-0.5">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    checked={form.EnableAltUnitPrice !== 'false'}
-                    onChange={e => setForm({ ...form, EnableAltUnitPrice: e.target.checked ? 'true' : 'false' })}
-                  />
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-900 text-xs">Alternative Unit & Price</span>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Allow multiple units of measurement, conversion factors, and unit-wise pricing for stock items.</p>
-                </div>
-              </label>
-
-              {/* Wholesale Price Feature */}
-              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-                <div className="pt-0.5">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    checked={form.EnableWholesalePrice !== 'false'}
-                    onChange={e => setForm({ ...form, EnableWholesalePrice: e.target.checked ? 'true' : 'false' })}
-                  />
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-900 text-xs">Enable Wholesale Price</span>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Allow defining wholesale price per item and toggle Retail/Wholesale pricing in POS Billing & Sales Invoices.</p>
-                </div>
-              </label>
-
-              {/* Serial Numbers Module */}
-              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-                <div className="pt-0.5">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    checked={form.EnableSerials === 'true'}
-                    onChange={e => setForm({ ...form, EnableSerials: e.target.checked ? 'true' : 'false' })}
-                  />
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-900 text-xs">Enable Serial Numbers (Inventory)</span>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Track individual stock items by unique IMEI or Serial No.</p>
-                </div>
-              </label>
-
-              {/* Item Categories */}
-              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-                <div className="pt-0.5">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    checked={form.EnableCategory === 'true'}
-                    onChange={e => setForm({ ...form, EnableCategory: e.target.checked ? 'true' : 'false' })}
-                  />
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-900 text-xs">Enable Item Categories</span>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Group items into hierarchical categories for better reporting.</p>
-                </div>
-              </label>
-
-              {/* Item-wise Discount */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-3 transition">
-                <label className="flex items-start gap-3.5 cursor-pointer">
+              {isFeatureAllowed(form, 'EnableAltUnitPrice', isSuperadminUser) && (
+                <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
                   <div className="pt-0.5">
                     <input
                       type="checkbox"
                       className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                      checked={form.EnableItemDiscount === "true"}
-                      onChange={e => setForm({ ...form, EnableItemDiscount: e.target.checked ? "true" : "false" })}
+                      checked={form.EnableAltUnitPrice !== 'false'}
+                      onChange={e => setForm({ ...form, EnableAltUnitPrice: e.target.checked ? 'true' : 'false' })}
                     />
                   </div>
                   <div>
-                    <span className="font-extrabold text-slate-900 text-xs">Enable Item-wise Discount</span>
-                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Allow discounts per individual item in invoices.</p>
+                    <span className="font-extrabold text-slate-900 text-xs">Alternative Unit & Price</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Allow multiple units of measurement, conversion factors, and unit-wise pricing for stock items.</p>
                   </div>
                 </label>
-                {form.EnableItemDiscount === "true" && (
-                  <div className="ml-7 flex items-center gap-3 bg-white p-2.5 border border-slate-200 rounded-xl shadow-sm">
-                    <span className="text-xs font-bold text-slate-700">Type:</span>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" name="ItemDiscountType" value="flat" checked={form.ItemDiscountType !== "percent"} onChange={() => setForm({...form, ItemDiscountType: 'flat'})} className="text-blue-600 focus:ring-blue-500 cursor-pointer" />
-                      <span className="text-xs font-semibold text-slate-600">Flat Amount (#)</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" name="ItemDiscountType" value="percent" checked={form.ItemDiscountType === "percent"} onChange={() => setForm({...form, ItemDiscountType: 'percent'})} className="text-blue-600 focus:ring-blue-500 cursor-pointer" />
-                      <span className="text-xs font-semibold text-slate-600">Percentage (%)</span>
-                    </label>
+              )}
+
+              {/* Wholesale Price Feature */}
+              {isFeatureAllowed(form, 'EnableWholesalePrice', isSuperadminUser) && (
+                <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      checked={form.EnableWholesalePrice !== 'false'}
+                      onChange={e => setForm({ ...form, EnableWholesalePrice: e.target.checked ? 'true' : 'false' })}
+                    />
                   </div>
-                )}
-              </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Wholesale Price</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Allow defining wholesale price per item and toggle Retail/Wholesale pricing in POS Billing & Sales Invoices.</p>
+                  </div>
+                </label>
+              )}
+
+              {/* Serial Numbers Module */}
+              {isFeatureAllowed(form, 'EnableSerials', isSuperadminUser) && (
+                <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      checked={form.EnableSerials === 'true'}
+                      onChange={e => setForm({ ...form, EnableSerials: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Serial Numbers (Inventory)</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Track individual stock items by unique IMEI or Serial No.</p>
+                  </div>
+                </label>
+              )}
+
+              {/* Pharmacy Batch & Expiry Date */}
+              {isFeatureAllowed(form, 'EnablePharmacyBatch', isSuperadminUser) && (
+                <label className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-emerald-100/50 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                      checked={form.EnablePharmacyBatch === 'true' || form.EnablePharmacyBatch !== 'false'}
+                      onChange={e => setForm({ ...form, EnablePharmacyBatch: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-slate-900 text-xs">Enable Pharmacy Batch &amp; Expiry Date</span>
+                      {(form.EnablePharmacyBatch === 'true' || form.EnablePharmacyBatch !== 'false') && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                      Allow tracking batch numbers, expiry dates, and FEFO stock management for medicines and pharmacy items.
+                    </p>
+                  </div>
+                </label>
+              )}
+
+              {/* Spare Parts Management */}
+              {isFeatureAllowed(form, 'EnableSpareParts', isSuperadminUser) && (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start justify-between gap-3 hover:bg-slate-100/70 transition">
+                  <label className="flex items-start gap-3.5 cursor-pointer flex-1">
+                    <div className="pt-0.5">
+                      <input
+                        id="cfg-enable-spare-parts"
+                        type="checkbox"
+                        className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                        checked={form.EnableSpareParts === 'true'}
+                        onChange={e => {
+                          const isChecked = e.target.checked;
+                          setForm(prev => ({ ...prev, EnableSpareParts: isChecked ? 'true' : 'false' }));
+                          if (isChecked) {
+                            setShowSparePartsModal(true);
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-slate-900 text-xs">Enable Spare Parts Management</span>
+                        {form.EnableSpareParts === 'true' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                        Manage Part Number / OEM No., physical Rack &amp; Bin location, vehicle compatibility, and print settings.
+                      </p>
+                    </div>
+                  </label>
+                  {form.EnableSpareParts === 'true' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowSparePartsModal(true);
+                      }}
+                      title="Configure Spare Parts Options (Rack, Bin, Compatibility, Printing)"
+                      className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-300 hover:border-blue-500 hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                    >
+                      <SettingsIcon className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Options</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Garments & Footwear Management (Size & Color) */}
+              {isFeatureAllowed(form, 'EnableGarmentsAndFootwear', isSuperadminUser) && (
+                <div className="p-4 bg-purple-50/50 border border-purple-200/80 rounded-2xl flex items-start justify-between gap-3 hover:bg-purple-100/40 transition">
+                  <label className="flex items-start gap-3.5 cursor-pointer flex-1">
+                    <div className="pt-0.5">
+                      <input
+                        id="cfg-enable-garments"
+                        type="checkbox"
+                        className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer"
+                        checked={form.EnableGarmentsAndFootwear === 'true'}
+                        onChange={e => {
+                          const isChecked = e.target.checked;
+                          setForm(prev => ({ ...prev, EnableGarmentsAndFootwear: isChecked ? 'true' : 'false' }));
+                          if (isChecked) {
+                            setShowGarmentsModal(true);
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-slate-900 text-xs">Enable Garments &amp; Footwear Variants (Size &amp; Color)</span>
+                        {form.EnableGarmentsAndFootwear === 'true' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                        Track item Sizes (S, M, 42) and Colors (Black, Navy), set variant print rules, and manage master lists.
+                      </p>
+                    </div>
+                  </label>
+                  {form.EnableGarmentsAndFootwear === 'true' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setShowGarmentsModal(true);
+                      }}
+                      title="Configure Garments & Footwear Options (Sizes, Colors, Printing)"
+                      className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-purple-300 hover:border-purple-500 hover:bg-purple-50 text-purple-700 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                    >
+                      <SettingsIcon className="w-3.5 h-3.5 text-purple-600" />
+                      <span>Options</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Item Categories */}
+              {isFeatureAllowed(form, 'EnableCategory', isSuperadminUser) && (
+                <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      checked={form.EnableCategory === 'true'}
+                      onChange={e => setForm({ ...form, EnableCategory: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Item Categories</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Group items into hierarchical categories for better reporting.</p>
+                  </div>
+                </label>
+              )}
+
+              {/* Item-wise Discount */}
+              {isFeatureAllowed(form, 'EnableItemDiscount', isSuperadminUser) && (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-3 transition">
+                  <label className="flex items-start gap-3.5 cursor-pointer">
+                    <div className="pt-0.5">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                        checked={form.EnableItemDiscount === "true"}
+                        onChange={e => setForm({ ...form, EnableItemDiscount: e.target.checked ? "true" : "false" })}
+                      />
+                    </div>
+                    <div>
+                      <span className="font-extrabold text-slate-900 text-xs">Enable Item-wise Discount</span>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Allow discounts per individual item in invoices.</p>
+                    </div>
+                  </label>
+                  {form.EnableItemDiscount === "true" && (
+                    <div className="ml-7 flex items-center gap-3 bg-white p-2.5 border border-slate-200 rounded-xl shadow-sm">
+                      <span className="text-xs font-bold text-slate-700">Type:</span>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="ItemDiscountType" value="flat" checked={form.ItemDiscountType !== "percent"} onChange={() => setForm({...form, ItemDiscountType: 'flat'})} className="text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                        <span className="text-xs font-semibold text-slate-600">Flat Amount (#)</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="ItemDiscountType" value="percent" checked={form.ItemDiscountType === "percent"} onChange={() => setForm({...form, ItemDiscountType: 'percent'})} className="text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                        <span className="text-xs font-semibold text-slate-600">Percentage (%)</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {renderSaveButton('inventory', 'Inventory Settings', true, 'lg')}
@@ -852,140 +1023,156 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             {/* Banking Features Section */}
-            <div className="p-4 bg-emerald-50/60 border border-emerald-200/80 rounded-2xl space-y-3">
-              <div className="flex items-center gap-2 text-emerald-950 font-extrabold text-xs">
-                <CreditCard className="h-4 w-4 text-emerald-600" />
-                <span>Banking Controls & Transaction IDs</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {/* Bank Reconciliation Toggle */}
-                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition">
-                  <div className="pt-0.5">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
-                      checked={form.EnableBankReconciliation !== 'false'}
-                      onChange={e => setForm({ ...form, EnableBankReconciliation: e.target.checked ? 'true' : 'false' })}
-                    />
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-slate-900 text-xs">Enable Bank Reconciliation</span>
-                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Track bank statement clearing dates, uncleared cheques, and reconciled balances.</p>
-                  </div>
-                </label>
+            {(isFeatureAllowed(form, 'EnableBankReconciliation', isSuperadminUser) || isFeatureAllowed(form, 'EnableBankTxnId', isSuperadminUser)) && (
+              <div className="p-4 bg-emerald-50/60 border border-emerald-200/80 rounded-2xl space-y-3">
+                <div className="flex items-center gap-2 text-emerald-950 font-extrabold text-xs">
+                  <CreditCard className="h-4 w-4 text-emerald-600" />
+                  <span>Banking Controls & Transaction IDs</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {/* Bank Reconciliation Toggle */}
+                  {isFeatureAllowed(form, 'EnableBankReconciliation', isSuperadminUser) && (
+                    <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition">
+                      <div className="pt-0.5">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                          checked={form.EnableBankReconciliation !== 'false'}
+                          onChange={e => setForm({ ...form, EnableBankReconciliation: e.target.checked ? 'true' : 'false' })}
+                        />
+                      </div>
+                      <div>
+                        <span className="font-extrabold text-slate-900 text-xs">Enable Bank Reconciliation</span>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Track bank statement clearing dates, uncleared cheques, and reconciled balances.</p>
+                      </div>
+                    </label>
+                  )}
 
-                {/* Bank Transaction ID Toggle */}
-                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition">
-                  <div className="pt-0.5">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
-                      checked={form.EnableBankTxnId !== 'false'}
-                      onChange={e => setForm({ ...form, EnableBankTxnId: e.target.checked ? 'true' : 'false' })}
-                    />
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-slate-900 text-xs">Bank Transaction ID / UTR Prompt</span>
-                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Prompt for bank reference / UTR transaction ID when selecting bank ledgers in vouchers & POS.</p>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            <div className="p-4 bg-indigo-50/60 border border-indigo-200/80 rounded-2xl space-y-3">
-              <div className="flex items-center gap-2 text-indigo-950 font-extrabold text-xs">
-                <FileText className="h-4 w-4 text-indigo-600" />
-                <span>Financial Statements & Accounting Integration</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {/* Integrate Accounts with Inventory */}
-                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition">
-                  <div className="pt-0.5">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                      checked={form.IntegrateAccountsWithInventory !== 'false'}
-                      onChange={e => setForm({ ...form, IntegrateAccountsWithInventory: e.target.checked ? 'true' : 'false' })}
-                    />
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-slate-900 text-xs">Integrate Accounts with Inventory</span>
-                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Automatically calculate and display Opening Stock & Closing Stock in Profit & Loss and Balance Sheet statements.</p>
-                  </div>
-                </label>
-
-                {/* Maintain Bill-wise Details for Debtors & Creditors */}
-                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition col-span-1 sm:col-span-2">
-                  <div className="pt-0.5">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                      checked={form.EnableBillWiseDetails !== 'false'}
-                      onChange={e => setForm({ ...form, EnableBillWiseDetails: e.target.checked ? 'true' : 'false' })}
-                    />
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-slate-900 text-xs">Maintain Bill-wise Details for Debtors & Creditors</span>
-                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Show outstanding bills list to select and settle invoices against payments to creditors and receipts from debtors.</p>
-                  </div>
-                </label>
-
-                {/* Advanced Gemini AI Assistant */}
-                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition col-span-1 sm:col-span-2">
-                  <div className="pt-0.5">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                      checked={form.EnableAdvancedAI === 'true'}
-                      onChange={e => setForm({ ...form, EnableAdvancedAI: e.target.checked ? 'true' : 'false' })}
-                    />
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-slate-900 text-xs">Enable Advanced AI Assistant (Gemini)</span>
-                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Empowers the AI Assistant button with conversational reporting, predictive inventory, and data insights using Google Gemini. When disabled, the AI button functions as a normal local search.</p>
-                  </div>
-                </label>
-
-                {/* Report Expansion Detail Level */}
-                <div className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-1.5">
-                  <label className="font-extrabold text-slate-900 text-xs block">
-                    Financial Statement Detail Level
-                  </label>
-                  <p className="text-[10px] text-slate-500 leading-snug">
-                    Controls default expansion depth across Trial Balance, Profit & Loss, and Balance Sheet:
-                  </p>
-                  <select
-                    value={form.ReportDetailDepth || 'detailed'}
-                    onChange={e => setForm({ ...form, ReportDetailDepth: e.target.value as any })}
-                    className="w-full h-8 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-slate-800 bg-white outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
-                  >
-                    <option value="summary">Summary (Primary Groups Only)</option>
-                    <option value="detailed">Detailed (Sub-Groups & Totals)</option>
-                    <option value="super_detailed">Super Detailed (All Master Ledgers)</option>
-                  </select>
+                  {/* Bank Transaction ID Toggle */}
+                  {isFeatureAllowed(form, 'EnableBankTxnId', isSuperadminUser) && (
+                    <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition">
+                      <div className="pt-0.5">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                          checked={form.EnableBankTxnId !== 'false'}
+                          onChange={e => setForm({ ...form, EnableBankTxnId: e.target.checked ? 'true' : 'false' })}
+                        />
+                      </div>
+                      <div>
+                        <span className="font-extrabold text-slate-900 text-xs">Bank Transaction ID / UTR Prompt</span>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Prompt for bank reference / UTR transaction ID when selecting bank ledgers in vouchers & POS.</p>
+                      </div>
+                    </label>
+                  )}
                 </div>
               </div>
-            </div>
+            )}
+
+            {(isFeatureAllowed(form, 'IntegrateAccountsWithInventory', isSuperadminUser) || isFeatureAllowed(form, 'EnableBillWiseDetails', isSuperadminUser) || isFeatureAllowed(form, 'EnableAdvancedAI', isSuperadminUser)) && (
+              <div className="p-4 bg-indigo-50/60 border border-indigo-200/80 rounded-2xl space-y-3">
+                <div className="flex items-center gap-2 text-indigo-950 font-extrabold text-xs">
+                  <FileText className="h-4 w-4 text-indigo-600" />
+                  <span>Financial Statements & Accounting Integration</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {/* Integrate Accounts with Inventory */}
+                  {isFeatureAllowed(form, 'IntegrateAccountsWithInventory', isSuperadminUser) && (
+                    <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition">
+                      <div className="pt-0.5">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                          checked={form.IntegrateAccountsWithInventory !== 'false'}
+                          onChange={e => setForm({ ...form, IntegrateAccountsWithInventory: e.target.checked ? 'true' : 'false' })}
+                        />
+                      </div>
+                      <div>
+                        <span className="font-extrabold text-slate-900 text-xs">Integrate Accounts with Inventory</span>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Automatically calculate and display Opening Stock & Closing Stock in Profit & Loss and Balance Sheet statements.</p>
+                      </div>
+                    </label>
+                  )}
+
+                  {/* Maintain Bill-wise Details for Debtors & Creditors */}
+                  {isFeatureAllowed(form, 'EnableBillWiseDetails', isSuperadminUser) && (
+                    <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition col-span-1 sm:col-span-2">
+                      <div className="pt-0.5">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                          checked={form.EnableBillWiseDetails !== 'false'}
+                          onChange={e => setForm({ ...form, EnableBillWiseDetails: e.target.checked ? 'true' : 'false' })}
+                        />
+                      </div>
+                      <div>
+                        <span className="font-extrabold text-slate-900 text-xs">Maintain Bill-wise Details for Debtors & Creditors</span>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Show outstanding bills list to select and settle invoices against payments to creditors and receipts from debtors.</p>
+                      </div>
+                    </label>
+                  )}
+
+                  {/* Advanced Gemini AI Assistant */}
+                  {isFeatureAllowed(form, 'EnableAdvancedAI', isSuperadminUser) && (
+                    <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50 transition col-span-1 sm:col-span-2">
+                      <div className="pt-0.5">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                          checked={form.EnableAdvancedAI === 'true'}
+                          onChange={e => setForm({ ...form, EnableAdvancedAI: e.target.checked ? 'true' : 'false' })}
+                        />
+                      </div>
+                      <div>
+                        <span className="font-extrabold text-slate-900 text-xs">Enable Advanced AI Assistant (Gemini)</span>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Empowers the AI Assistant button with conversational reporting, predictive inventory, and data insights using Google Gemini. When disabled, the AI button functions as a normal local search.</p>
+                      </div>
+                    </label>
+                  )}
+
+                  {/* Report Expansion Detail Level */}
+                  <div className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-1.5">
+                    <label className="font-extrabold text-slate-900 text-xs block">
+                      Financial Statement Detail Level
+                    </label>
+                    <p className="text-[10px] text-slate-500 leading-snug">
+                      Controls default expansion depth across Trial Balance, Profit & Loss, and Balance Sheet:
+                    </p>
+                    <select
+                      value={form.ReportDetailDepth || 'detailed'}
+                      onChange={e => setForm({ ...form, ReportDetailDepth: e.target.value as any })}
+                      className="w-full h-8 rounded-lg border border-slate-300 px-2.5 text-xs font-semibold text-slate-800 bg-white outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
+                    >
+                      <option value="summary">Summary (Primary Groups Only)</option>
+                      <option value="detailed">Detailed (Sub-Groups & Totals)</option>
+                      <option value="super_detailed">Super Detailed (All Master Ledgers)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {/* GST / Taxation Module */}
-              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-                <div className="pt-0.5">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    checked={form.EnableGST === 'true'}
-                    onChange={e => setForm({ ...form, EnableGST: e.target.checked ? 'true' : 'false' })}
-                  />
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-900 text-xs">Enable GST (Taxation Module)</span>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Calculates and tracks GST on purchases and sales. Requires GST No.</p>
-                </div>
-              </label>
+              {isFeatureAllowed(form, 'EnableGST', isSuperadminUser) && (
+                <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      checked={form.EnableGST === 'true'}
+                      onChange={e => setForm({ ...form, EnableGST: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable GST (Taxation Module)</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Calculates and tracks GST on purchases and sales. Requires GST No.</p>
+                  </div>
+                </label>
+              )}
 
               {/* GST Input Tracking */}
-              {form.EnableGST === 'true' && (
+              {form.EnableGST === 'true' && isFeatureAllowed(form, 'EnableGSTInputTax', isSuperadminUser) && (
                 <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center justify-between gap-3 hover:bg-indigo-100/70 transition">
                   <label className="flex items-start gap-3.5 cursor-pointer flex-1">
                     <div className="pt-0.5">
@@ -1015,102 +1202,112 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               )}
 
               {/* Normal Sale Module */}
-              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-                <div className="pt-0.5">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    checked={form.EnableNormalSale !== 'false'}
-                    onChange={e => setForm({ ...form, EnableNormalSale: e.target.checked ? 'true' : 'false' })}
-                  />
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-900 text-xs">Enable Normal Sale (B2B)</span>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Traditional sales entry with Order No, Delivery Note, and custom Terms.</p>
-                </div>
-              </label>
-
-              {/* POS Sale Module */}
-              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-                <div className="pt-0.5">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    checked={form.EnablePOS !== 'false'}
-                    onChange={e => setForm({ ...form, EnablePOS: e.target.checked ? 'true' : 'false' })}
-                  />
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-900 text-xs">Enable POS Billing (Retail)</span>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Fast point-of-sale interface for retail billing.</p>
-                </div>
-              </label>
-
-              {/* Payroll Module */}
-              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-                <div className="pt-0.5">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    checked={form.EnablePayroll !== "false"}
-                    onChange={e => setForm({ ...form, EnablePayroll: e.target.checked ? "true" : "false" })}
-                  />
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-900 text-xs">Enable Payroll & HR Module</span>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Process salaries, manage employees, and handle provident funds.</p>
-                </div>
-              </label>
-
-              {/* Bill Lumpsum Discount Module */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-3 transition">
-                <label className="flex items-start gap-3.5 cursor-pointer">
+              {isFeatureAllowed(form, 'EnableNormalSale', isSuperadminUser) && (
+                <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
                   <div className="pt-0.5">
                     <input
                       type="checkbox"
                       className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                      checked={form.EnableBillDiscount === "true"}
-                      onChange={e => setForm({ ...form, EnableBillDiscount: e.target.checked ? "true" : "false" })}
+                      checked={form.EnableNormalSale !== 'false'}
+                      onChange={e => setForm({ ...form, EnableNormalSale: e.target.checked ? 'true' : 'false' })}
                     />
                   </div>
                   <div>
-                    <span className="font-extrabold text-slate-900 text-xs">Enable Bill Lumpsum Discount</span>
-                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Allow a single flat or percentage discount on the entire bill.</p>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Normal Sale (B2B)</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Traditional sales entry with Order No, Delivery Note, and custom Terms.</p>
                   </div>
                 </label>
-                {form.EnableBillDiscount === "true" && (
-                  <div className="ml-7 flex items-center gap-3 bg-white p-2.5 border border-slate-200 rounded-xl shadow-sm">
-                    <span className="text-xs font-bold text-slate-700">Type:</span>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" name="BillDiscountType" value="flat" checked={form.BillDiscountType !== "percent"} onChange={() => setForm({...form, BillDiscountType: 'flat'})} className="text-blue-600 focus:ring-blue-500 cursor-pointer" />
-                      <span className="text-xs font-semibold text-slate-600">Flat Amount (#)</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input type="radio" name="BillDiscountType" value="percent" checked={form.BillDiscountType === "percent"} onChange={() => setForm({...form, BillDiscountType: 'percent'})} className="text-blue-600 focus:ring-blue-500 cursor-pointer" />
-                      <span className="text-xs font-semibold text-slate-600">Percentage (%)</span>
-                    </label>
+              )}
+
+              {/* POS Sale Module */}
+              {isFeatureAllowed(form, 'EnablePOS', isSuperadminUser) && (
+                <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      checked={form.EnablePOS !== 'false'}
+                      onChange={e => setForm({ ...form, EnablePOS: e.target.checked ? 'true' : 'false' })}
+                    />
                   </div>
-                )}
-              </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable POS Billing (Retail)</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Fast point-of-sale interface for retail billing.</p>
+                  </div>
+                </label>
+              )}
+
+              {/* Payroll Module */}
+              {isFeatureAllowed(form, 'EnablePayroll', isSuperadminUser) && (
+                <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      checked={form.EnablePayroll !== "false"}
+                      onChange={e => setForm({ ...form, EnablePayroll: e.target.checked ? "true" : "false" })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Payroll & HR Module</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Process salaries, manage employees, and handle provident funds.</p>
+                  </div>
+                </label>
+              )}
+
+              {/* Bill Lumpsum Discount Module */}
+              {isFeatureAllowed(form, 'EnableBillDiscount', isSuperadminUser) && (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-3 transition">
+                  <label className="flex items-start gap-3.5 cursor-pointer">
+                    <div className="pt-0.5">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                        checked={form.EnableBillDiscount === "true"}
+                        onChange={e => setForm({ ...form, EnableBillDiscount: e.target.checked ? "true" : "false" })}
+                      />
+                    </div>
+                    <div>
+                      <span className="font-extrabold text-slate-900 text-xs">Enable Bill Lumpsum Discount</span>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Allow a single flat or percentage discount on the entire bill.</p>
+                    </div>
+                  </label>
+                  {form.EnableBillDiscount === "true" && (
+                    <div className="ml-7 flex items-center gap-3 bg-white p-2.5 border border-slate-200 rounded-xl shadow-sm">
+                      <span className="text-xs font-bold text-slate-700">Type:</span>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="BillDiscountType" value="flat" checked={form.BillDiscountType !== "percent"} onChange={() => setForm({...form, BillDiscountType: 'flat'})} className="text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                        <span className="text-xs font-semibold text-slate-600">Flat Amount (#)</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="radio" name="BillDiscountType" value="percent" checked={form.BillDiscountType === "percent"} onChange={() => setForm({...form, BillDiscountType: 'percent'})} className="text-blue-600 focus:ring-blue-500 cursor-pointer" />
+                        <span className="text-xs font-semibold text-slate-600">Percentage (%)</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Asset Management Module */}
-              <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
-                <div className="pt-0.5">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    checked={form.EnableAssetManagement !== "false"}
-                    onChange={e => setForm({ ...form, EnableAssetManagement: e.target.checked ? "true" : "false" })}
-                  />
-                </div>
-                <div>
-                  <span className="font-extrabold text-slate-900 text-xs">Enable Asset Management</span>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Track fixed assets, depreciation, and calculate net book values.</p>
-                </div>
-              </label>
+              {isFeatureAllowed(form, 'EnableAssetManagement', isSuperadminUser) && (
+                <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      checked={form.EnableAssetManagement !== "false"}
+                      onChange={e => setForm({ ...form, EnableAssetManagement: e.target.checked ? "true" : "false" })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Asset Management</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Track fixed assets, depreciation, and calculate net book values.</p>
+                  </div>
+                </label>
+              )}
             </div>
 
-            {form.EnablePayroll !== "false" && (
+            {form.EnablePayroll !== "false" && isFeatureAllowed(form, 'EnableEmployeeAdvances', isSuperadminUser) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mt-3.5">
                 {/* Employee Advances & Loans */}
                 <label className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-indigo-50 transition">
@@ -1954,70 +2151,72 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
 
             {/* Audit Trail & System Compliance Policy */}
-            <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-200/70">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
-                    <History className="h-4 w-4" />
+            {isFeatureAllowed(form, 'EnableAuditTrail', isSuperadminUser) && (
+              <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-200/70">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+                      <History className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-sm text-slate-900">Audit Trail & Activity Log Policy</h3>
+                      <p className="text-[11px] text-slate-500">
+                        Record user footprints for entered, altered, cancelled, and deleted transactions. (Admin & Manager accessible)
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-extrabold text-sm text-slate-900">Audit Trail & Activity Log Policy</h3>
-                    <p className="text-[11px] text-slate-500">
-                      Record user footprints for entered, altered, cancelled, and deleted transactions. (Admin & Manager accessible)
-                    </p>
-                  </div>
+
+                  {canUserViewAuditTrail(activeUser) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAuditModal(true)}
+                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      <span>View Audit Log History</span>
+                    </button>
+                  )}
                 </div>
 
-                {canUserViewAuditTrail(activeUser) && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAuditModal(true)}
-                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition shadow-xs cursor-pointer"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    <span>View Audit Log History</span>
-                  </button>
-                )}
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {/* Toggle 1: Enable Audit Trail */}
+                  <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50/80 transition">
+                    <div className="pt-0.5">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                        checked={form.EnableAuditTrail !== 'false'}
+                        onChange={e => setForm({ ...form, EnableAuditTrail: e.target.checked ? 'true' : 'false' })}
+                      />
+                    </div>
+                    <div>
+                      <span className="font-extrabold text-slate-900 text-xs">Enable Audit Trail Logging</span>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                        Logs every invoice, voucher, item, and ledger creation, modification, cancellation, and deletion with user footprint and timestamps.
+                      </p>
+                    </div>
+                  </label>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {/* Toggle 1: Enable Audit Trail */}
-                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50/80 transition">
-                  <div className="pt-0.5">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                      checked={form.EnableAuditTrail !== 'false'}
-                      onChange={e => setForm({ ...form, EnableAuditTrail: e.target.checked ? 'true' : 'false' })}
-                    />
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-slate-900 text-xs">Enable Audit Trail Logging</span>
-                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
-                      Logs every invoice, voucher, item, and ledger creation, modification, cancellation, and deletion with user footprint and timestamps.
-                    </p>
-                  </div>
-                </label>
-
-                {/* Toggle 2: Print Audit Stamp on Invoices */}
-                <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50/80 transition">
-                  <div className="pt-0.5">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
-                      checked={form.PrintAuditStamp === 'true'}
-                      onChange={e => setForm({ ...form, PrintAuditStamp: e.target.checked ? 'true' : 'false' })}
-                    />
-                  </div>
-                  <div>
-                    <span className="font-extrabold text-slate-900 text-xs">Print Audit Stamp on Invoices</span>
-                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
-                      Show "Entered by" / "Altered by" footnote on printed customer invoices and receipts. (Default: Off)
-                    </p>
-                  </div>
-                </label>
+                  {/* Toggle 2: Print Audit Stamp on Invoices */}
+                  <label className="p-3.5 bg-white border border-slate-200 rounded-xl flex items-start gap-3 cursor-pointer hover:bg-slate-50/80 transition">
+                    <div className="pt-0.5">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                        checked={form.PrintAuditStamp === 'true'}
+                        onChange={e => setForm({ ...form, PrintAuditStamp: e.target.checked ? 'true' : 'false' })}
+                      />
+                    </div>
+                    <div>
+                      <span className="font-extrabold text-slate-900 text-xs">Print Audit Stamp on Invoices</span>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                        Show "Entered by" / "Altered by" footnote on printed customer invoices and receipts. (Default: Off)
+                      </p>
+                    </div>
+                  </label>
+                </div>
               </div>
-            </div>
+            )}
 
             {renderSaveButton('security', 'User Security Permissions', true, 'lg')}
           </div>
@@ -2421,6 +2620,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           setForm(updatedForm);
           saveConfig(updatedForm);
           playSaveSound();
+          onDataRefresh();
+        }}
+      />
+
+      {/* Spare Parts Configuration Floating Window */}
+      <SparePartsConfigModal
+        isOpen={showSparePartsModal}
+        onClose={() => setShowSparePartsModal(false)}
+        config={form}
+        onUpdateConfig={(updated) => {
+          const updatedForm = { ...form, ...updated };
+          setForm(updatedForm);
+          saveConfig(updatedForm);
+          onDataRefresh();
+        }}
+      />
+
+      {/* Garments & Footwear Configuration Floating Window */}
+      <GarmentsConfigModal
+        isOpen={showGarmentsModal}
+        onClose={() => setShowGarmentsModal(false)}
+        config={form}
+        onUpdateConfig={(updated) => {
+          const updatedForm = { ...form, ...updated };
+          setForm(updatedForm);
+          saveConfig(updatedForm);
           onDataRefresh();
         }}
       />

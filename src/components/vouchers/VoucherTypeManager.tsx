@@ -274,17 +274,17 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
       </div>
 
       {/* Voucher Types Grid / Table */}
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+      <div className="rounded-2xl border border-slate-200 bg-white overflow-auto max-h-[calc(100vh-280px)] shadow-2xs">
         <table className="w-full text-xs text-left border-collapse">
-          <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 text-slate-600 uppercase text-[10px] font-extrabold tracking-wider">
+          <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 uppercase text-[10px] font-extrabold tracking-wider shadow-2xs">
             <tr>
-              <th className="py-2.5 px-3">Voucher Type Name</th>
-              <th className="py-2.5 px-3">Parent Group</th>
-              <th className="py-2.5 px-3">Prefix / Sample</th>
-              <th className="py-2.5 px-3">Numbering</th>
-              <th className="py-2.5 px-3">Description</th>
-              <th className="py-2.5 px-3 text-center">Default</th>
-              <th className="py-2.5 px-3 text-right">Actions</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 whitespace-nowrap">Voucher Type Name</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 whitespace-nowrap">Parent Group</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 whitespace-nowrap">Prefix / Sample</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 whitespace-nowrap">Numbering</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 whitespace-nowrap">Description</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-center whitespace-nowrap">Default</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-right whitespace-nowrap">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">

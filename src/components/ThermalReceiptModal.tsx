@@ -4,6 +4,7 @@ import { X, Printer, Share2, Mail, MessageCircle, FileText, Check, Copy, FileDow
 import { generateInvoicePDF, shareOrDownloadPDF, resolveBankDetailsForPrint } from '../utils/pdfExport';
 import { formatDateDMY, formatDateTimeDMY } from '../utils/dateUtils';
 import { GlowButton } from './common/GlowButton';
+import { getItemDiscountDetails, calculateInvoiceSavings } from '../utils/discountUtils';
 
 interface ThermalReceiptModalProps {
   isOpen: boolean;
@@ -83,6 +84,20 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   };
 
   const showGst = String(config.EnableGST) !== 'false';
+  const hasGstOnBill = showGst && (
+    Number(invoice.gstAmt || 0) > 0.001 ||
+    (Array.isArray(invoice.items) && invoice.items.some((it: any) =>
+      Number(it['GST Amount'] ?? it.gstAmount ?? 0) > 0.001 ||
+      (Number(it['GST %'] ?? it.gstPct ?? 0) > 0 && it['Zero Rated (Y/N)'] !== 'Y' && !it.zeroRated)
+    ))
+  );
+
+  const hasDiscountOnBill = Array.isArray(invoice.items) && invoice.items.some((it: any) => {
+    const disc = getItemDiscountDetails(it, config);
+    const discAmt = disc.hasDiscount ? Number(disc.discountAmt || 0) : Number(it.Discount ?? (it as any).discount ?? 0);
+    return discAmt > 0.001;
+  });
+
   const currency = config.CurrencySymbol || 'Nu.';
 
   const effectiveBankDetails = resolveBankDetailsForPrint(config);
@@ -100,6 +115,35 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   };
 
   const resolvedTerms = getResolvedTerms();
+  const invoiceSavings = calculateInvoiceSavings(invoice, config);
+
+  const safeItems = Array.isArray(invoice.items) ? invoice.items : [];
+  let undiscountedTaxable = 0;
+  let undiscountedZeroRated = 0;
+  let undiscountedGst = 0;
+
+  safeItems.forEach((item: any) => {
+    const qty = Number(item.Qty ?? item.qty ?? 1);
+    const rate = Number(item.originalRate !== undefined ? item.originalRate : (item.Rate ?? item.rate ?? 0));
+    const gross = qty * rate;
+    const isZero = (item['Zero Rated (Y/N)'] === 'Y' || item.zeroRated === 'Y' || item.zeroRated === true);
+    const gstPct = Number(item['GST %'] ?? item.gstPct ?? 0);
+
+    if (isZero) {
+      undiscountedZeroRated += gross;
+    } else {
+      undiscountedTaxable += gross;
+      undiscountedGst += (gross * gstPct) / 100;
+    }
+  });
+
+  const addlExpensesTotal = (invoice.additionalExpenses && invoice.additionalExpenses.length > 0)
+    ? invoice.additionalExpenses.reduce((sum: number, exp: any) => sum + (Number(exp.amount) || 0), 0)
+    : 0;
+
+  const undiscountedBillIncGst = Math.round((undiscountedTaxable + undiscountedZeroRated + undiscountedGst + addlExpensesTotal) * 100) / 100;
+  const netAmountPaid = Number(invoice.total || 0);
+  const totalSavingsIncGst = Math.max(0, Math.round((undiscountedBillIncGst - netAmountPaid) * 100) / 100);
 
   const generateInvoiceText = () => {
     if (!invoice) return '';
@@ -133,17 +177,22 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
             ? item['Taxable Value']
             : (itemQty * itemRate - itemDisc)
         ).toFixed(2);
-        const gstInfo = showGst ? ` | GST: ${itemGstPct}% (${currency} ${itemGstAmt.toFixed(2)})` : '';
-        return `• *${itemName}* (${itemQty} ${itemUnit} @ ${currency} ${itemRate.toFixed(2)}) | Sale Amt: ${currency} ${saleAmt}${gstInfo} | Total: ${currency} ${itemLineTotal.toFixed(2)}`;
+        const discInfo = getItemDiscountDetails(item, config);
+        const discText = (hasDiscountOnBill && discInfo.hasDiscount) ? ` | ${discInfo.displayText}` : '';
+        const gstInfo = hasGstOnBill ? ` | GST: ${itemGstPct}% (${currency} ${itemGstAmt.toFixed(2)})` : '';
+        const returnPrefix = itemQty < 0 ? '[RETURN] ' : '';
+        return `• *${returnPrefix}${itemName}* (${itemQty} ${itemUnit} @ ${currency} ${itemRate.toFixed(2)}${discText}) | Sale Amt: ${currency} ${saleAmt}${gstInfo} | Total: ${currency} ${itemLineTotal.toFixed(2)}`;
       }),
       '--------------------------------',
-      showGst ? `Taxable Sale: ${currency} ${Number(invoice.taxable || 0).toFixed(2)}` : '',
-      showGst ? `Exempted Sale: ${currency} ${Number(invoice.zeroRated || 0).toFixed(2)}` : '',
-      showGst ? `GST Amount: ${currency} ${Number(invoice.gstAmt || 0).toFixed(2)}` : '',
+      hasGstOnBill ? `Taxable Sale: ${currency} ${Number(invoice.taxable || 0).toFixed(2)}` : '',
+      (hasGstOnBill && Number(invoice.zeroRated || 0) > 0) ? `Exempted Sale: ${currency} ${Number(invoice.zeroRated || 0).toFixed(2)}` : '',
+      hasGstOnBill ? `GST Amount: ${currency} ${Number(invoice.gstAmt || 0).toFixed(2)}` : '',
       ...(Array.isArray(invoice.additionalExpenses) && invoice.additionalExpenses.length > 0 ? invoice.additionalExpenses.map((exp: any) => `Addl Charge (${exp.ledger || 'Exp'}): ${currency} ${Number(exp.amount || 0).toFixed(2)}`) : []),
       (Number(invoice.discount || 0) > 0) ? `Subtotal: ${currency} ${Number(invoice.subtotal || (Number(invoice.total || 0) + Number(invoice.discount || 0))).toFixed(2)}` : '',
+      (invoiceSavings.itemDiscountsTotal > 0) ? `Item Discounts: -${currency} ${invoiceSavings.itemDiscountsTotal.toFixed(2)}` : '',
       (Number(invoice.discount || 0) > 0) ? `Bill Discount: -${currency} ${Number(invoice.discount || 0).toFixed(2)}` : '',
       `*GRAND TOTAL: ${currency} ${Number(invoice.total || 0).toFixed(2)}*`,
+      (invoiceSavings.totalSavings > 0) ? `*TOTAL SAVINGS: ${currency} ${invoiceSavings.totalSavings.toFixed(2)}*` : '',
       '--------------------------------',
       `Paid: Cash ${currency} ${Number(invoice.cash || 0).toFixed(2)} | Bank ${currency} ${(Number(invoice.bank1 || 0) + Number(invoice.bank2 || 0)).toFixed(2)}`,
       Number(invoice.credit || 0) > 0 ? `⚠️ *Credit Balance Due: ${currency} ${Number(invoice.credit || 0).toFixed(2)}*` : '✅ *Status: Fully Paid*',
@@ -299,6 +348,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
         </head>
         <body>
           <div class="text-center">
+            <div style="font-size: 13px; font-weight: bold; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 3px;">TAX INVOICE</div>
             ${config.ReceiptHeaderImage ? `<div style="margin-bottom: 6px;"><img src="${config.ReceiptHeaderImage}" style="max-width: 100%; max-height: 50px; object-fit: contain;" /></div>` : ''}
             <div style="font-size: 14px; font-weight: bold; text-transform: uppercase;">${config.CompanyName || 'My Retail Store'}</div>
             <div>${config.Address || ''}</div>
@@ -322,40 +372,56 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
 
           <table>
             <colgroup>
-              <col style="width: 38%;">
-              <col style="width: 12%;">
-              <col style="width: 20%;">
-              ${showGst ? '<col style="width: 12%;">' : ''}
-              <col style="width: ${showGst ? '18%' : '30%'};">
+              <col style="width: ${!hasDiscountOnBill && !hasGstOnBill ? '50%' : (!hasDiscountOnBill ? '40%' : (!hasGstOnBill ? '36%' : '28%'))};">
+              <col style="width: ${!hasDiscountOnBill && !hasGstOnBill ? '12%' : '10%'};">
+              <col style="width: ${!hasDiscountOnBill && !hasGstOnBill ? '18%' : '18%'};">
+              ${hasDiscountOnBill ? '<col style="width: 14%;">' : ''}
+              ${hasGstOnBill ? '<col style="width: 12%;">' : ''}
+              <col style="width: ${!hasDiscountOnBill && !hasGstOnBill ? '20%' : '18%'};">
             </colgroup>
             <thead>
               <tr>
                 <th class="text-left">Item</th>
                 <th class="text-center">Qty</th>
                 <th class="text-right">Rate</th>
-                ${showGst ? '<th class="text-right">GST%</th>' : ''}
+                ${hasDiscountOnBill ? '<th class="text-right">Disc</th>' : ''}
+                ${hasGstOnBill ? '<th class="text-right">GST%</th>' : ''}
                 <th class="text-right">Amt</th>
               </tr>
             </thead>
             <tbody>
-              ${(Array.isArray(invoice.items) ? invoice.items : []).map(item => `
+              ${(Array.isArray(invoice.items) ? invoice.items : []).map(item => {
+                const itemQty = Number(item.Qty ?? (item as any).qty ?? 1);
+                const pNo = (item as any).partNumber;
+                const compat = (item as any).compatibility;
+                const discInfo = getItemDiscountDetails(item, config);
+                const discStr = discInfo.hasDiscount
+                  ? (discInfo.discountPct > 0
+                      ? `${discInfo.discountPct % 1 === 0 ? discInfo.discountPct : discInfo.discountPct.toFixed(1)}%`
+                      : Number(discInfo.discountAmt).toFixed(2))
+                  : '-';
+                return `
                 <tr>
                   <td class="text-left">
-                    ${item['Item Name'] || (item as any).itemName || (item as any).name || 'Item'}
+                    <b>${item['Item Name'] || (item as any).itemName || (item as any).name || 'Item'}</b>
+                    ${config.PrintPartNumber !== 'false' && pNo ? `<br><span style="font-size: 8px; font-family: monospace;">Part No: ${pNo}</span>` : ''}
+                    ${config.PrintCompatibility === 'true' && compat ? `<br><span style="font-size: 8px; color: #555;">Fits: ${compat}</span>` : ''}
                     ${item['Serial Numbers'] ? `<br><span style="font-size: 8px;">SN: ${item['Serial Numbers']}</span>` : ''}
                   </td>
                   <td class="text-center">${item.Qty ?? (item as any).qty ?? 1}</td>
                   <td class="text-right">${Number(item.Rate ?? (item as any).rate ?? 0).toFixed(2)}</td>
-                  ${showGst ? `<td class="text-right">${item['GST %'] ?? (item as any).gstPct ?? 0}%</td>` : ''}
+                  ${hasDiscountOnBill ? `<td class="text-right">${discStr}</td>` : ''}
+                  ${hasGstOnBill ? `<td class="text-right">${item['GST %'] ?? (item as any).gstPct ?? 0}%</td>` : ''}
                   <td class="text-right">${Number(item['Line Total'] ?? (item as any).lineTotal ?? (item as any).amount ?? 0).toFixed(2)}</td>
                 </tr>
-              `).join('')}
+              `;
+              }).join('')}
             </tbody>
           </table>
 
           <div class="dashed-line"></div>
 
-          ${showGst ? `
+          ${hasGstOnBill ? `
             <div class="summary-row">
               <span>Taxable Sale:</span>
               <span>${invoice.taxable.toFixed(2)}</span>
@@ -382,16 +448,36 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               <span>Subtotal:</span>
               <span>${(invoice.subtotal || (invoice.total + invoice.discount)).toFixed(2)}</span>
             </div>
-            <div class="summary-row" style="font-weight: bold;">
+            <div class="summary-row" style="font-weight: bold; color: #166534;">
               <span>Bill Discount:</span>
               <span>-${invoice.discount.toFixed(2)}</span>
             </div>
           ` : ''}
 
           <div class="total-row">
-            <span>TOTAL:</span>
+            <span>Total Invoice Amount:</span>
             <span>${currency} ${invoice.total.toFixed(2)}</span>
           </div>
+
+          ${(totalSavingsIncGst > 0.005 || invoiceSavings.totalSavings > 0) ? `
+            <div style="margin: 6px 0 4px 0; padding: 5px 4px; border: 1px dashed #000; font-size: 10px; line-height: 1.45;">
+              <div style="background-color: #166534; color: #ffffff; font-weight: bold; font-size: 9.5px; padding: 2px 5px; border-radius: 3px; text-align: left; margin-bottom: 3px; letter-spacing: 0.2px;">
+                Your Savings on this bill
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span>Total Bill Amount (Inc GST):</span>
+                <span>${currency} ${undiscountedBillIncGst.toFixed(2)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-weight: bold; color: #166534;">
+                <span>less Discount (Total Savings):</span>
+                <span>-${currency} ${totalSavingsIncGst.toFixed(2)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-weight: bold; border-top: 1px dashed #000; margin-top: 3px; padding-top: 3px;">
+                <span>Net Amount Paid:</span>
+                <span>${currency} ${invoice.total.toFixed(2)}</span>
+              </div>
+            </div>
+          ` : ''}
 
           <div class="dashed-line"></div>
 
@@ -531,7 +617,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               display: flex;
               justify-content: space-between;
               margin-top: 16px;
-              gap: 20px;
+              gap: 16px;
             }
             .bank-info {
               flex: 1;
@@ -542,7 +628,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               font-size: 10.5px;
             }
             .calc-box {
-              width: 300px;
+              width: 275px;
             }
             .calc-row {
               display: flex;
@@ -628,43 +714,52 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
             <thead>
               <tr>
                 <th style="width: 4%;" class="text-center">#</th>
-                <th style="width: 28%;">Item</th>
-                <th style="width: 8%;" class="text-center">Qty</th>
-                <th style="width: 8%;" class="text-center">Unit</th>
-                <th style="width: 12%;" class="text-right">Rate</th>
-                <th style="width: 13%;" class="text-right">Sale Amt</th>
-                ${showGst ? '<th style="width: 13%;" class="text-right">GST</th>' : ''}
-                <th style="width: 14%;" class="text-right">Total Amt</th>
+                <th style="width: ${!hasDiscountOnBill && !hasGstOnBill ? '54%' : (!hasDiscountOnBill ? '36%' : (!hasGstOnBill ? '44%' : '25%'))};">Item</th>
+                <th style="width: 6%;" class="text-center">Qty</th>
+                <th style="width: 6%;" class="text-center">Unit</th>
+                <th style="width: 10%;" class="text-right">Rate</th>
+                ${hasDiscountOnBill ? '<th style="width: 10%;" class="text-right">Disc Amt</th>' : ''}
+                ${hasGstOnBill ? '<th style="width: 12%;" class="text-right">Sale Amt</th>' : ''}
+                ${hasGstOnBill ? '<th style="width: 12%;" class="text-right">GST (5%)</th>' : ''}
+                <th style="width: ${!hasDiscountOnBill && !hasGstOnBill ? '20%' : '15%'};" class="text-right">Total Amt</th>
               </tr>
             </thead>
             <tbody>
               ${(Array.isArray(invoice.items) ? invoice.items : []).map((item, i) => {
                 const itemQty = Number(item.Qty ?? (item as any).qty ?? 1);
                 const itemRate = Number(item.Rate ?? (item as any).rate ?? 0);
-                const itemDisc = Number(item.Discount ?? (item as any).discount ?? 0);
+                const discInfo = getItemDiscountDetails(item, config);
+                const discAmt = discInfo.hasDiscount ? Number(discInfo.discountAmt || 0) : Number(item.Discount ?? (item as any).discount ?? 0);
+                const discStr = discAmt > 0 ? discAmt.toFixed(2) : '-';
                 const saleAmt = Number(
                   item['Taxable Value'] !== undefined
                     ? item['Taxable Value']
-                    : (itemQty * itemRate - itemDisc)
+                    : (itemQty * itemRate - discAmt)
                 ).toFixed(2);
+                const isZero = (item['Zero Rated (Y/N)'] === 'Y' || (item as any).zeroRated === 'Y' || (item as any).zeroRated === true);
                 const gstAmt = Number(
                   item['GST Amount'] !== undefined
                     ? item['GST Amount']
-                    : (item['Zero Rated (Y/N)'] === 'Y' ? 0 : (((itemQty * itemRate - itemDisc) * Number(item['GST %'] ?? (item as any).gstPct ?? 0)) / 100))
+                    : (isZero ? 0 : (((itemQty * itemRate - discAmt) * Number(item['GST %'] ?? (item as any).gstPct ?? 5)) / 100))
                 ).toFixed(2);
+                const pNo = (item as any).partNumber;
+                const compat = (item as any).compatibility;
                 return `
                 <tr>
                   <td class="text-center">${i + 1}</td>
                   <td>
                     <b>${item['Item Name'] || (item as any).itemName || (item as any).name || 'Item'}</b>
+                    ${config.PrintPartNumber !== 'false' && pNo ? `<br><small style="font-family: monospace; color: #1e3a8a; font-weight: 600;">Part No: ${pNo}</small>` : ''}
+                    ${config.PrintCompatibility === 'true' && compat ? `<br><small style="color: #475569;">Fits: ${compat}</small>` : ''}
                     ${(item.description || (item as any).Description || item["Item Description"]) ? `<br><small style="color: #475569; font-style: italic;">Desc: ${item.description || (item as any).Description || item["Item Description"]}</small>` : ''}
                     ${item['Serial Numbers'] ? `<br><small style="color: #64748b;">Serial/IMEI: ${item['Serial Numbers']}</small>` : ''}
                   </td>
                   <td class="text-center">${itemQty}</td>
                   <td class="text-center">${item.Unit || (item as any).unit || 'Pcs'}</td>
                   <td class="text-right">${itemRate.toFixed(2)}</td>
-                  <td class="text-right">${saleAmt}</td>
-                  ${showGst ? `<td class="text-right">${gstAmt}</td>` : ''}
+                  ${hasDiscountOnBill ? `<td class="text-right">${discStr}</td>` : ''}
+                  ${hasGstOnBill ? `<td class="text-right">${saleAmt}</td>` : ''}
+                  ${hasGstOnBill ? `<td class="text-right">${gstAmt}</td>` : ''}
                   <td class="text-right" style="font-weight: bold;">${Number(item['Line Total'] ?? (item as any).lineTotal ?? (item as any).amount ?? 0).toFixed(2)}</td>
                 </tr>
               `;
@@ -675,11 +770,11 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
           <div class="totals-container">
             <div class="bank-info">
               ${effectiveBankDetails ? `<b>Bank Transfer Details:</b><br><span style="white-space: pre-wrap;">${effectiveBankDetails}</span><br><br>` : ''}
-              ${resolvedTerms ? `<div style="margin-top: 10px;"><b>Terms & Conditions / Remarks:</b><br><span style="white-space: pre-wrap; font-size: 10px; color: #334155;">${resolvedTerms}</span></div>` : ''}
+              ${resolvedTerms ? `<div style="margin-top: 8px;"><b>Terms & Conditions:</b><br><span style="white-space: pre-wrap; font-size: 10px; color: #334155;">${resolvedTerms}</span></div>` : ''}
             </div>
 
             <div class="calc-box">
-              ${showGst ? `
+              ${hasGstOnBill ? `
                 <div class="calc-row"><span>Taxable Amount:</span><span>${currency} ${invoice.taxable.toFixed(2)}</span></div>
                 <div class="calc-row"><span>Zero-Rated / Exempt:</span><span>${currency} ${invoice.zeroRated.toFixed(2)}</span></div>
                 <div class="calc-row"><span>Total GST:</span><span>${currency} ${invoice.gstAmt.toFixed(2)}</span></div>
@@ -698,9 +793,28 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                 </div>
               ` : ''}
               <div class="grand-total-row">
-                <span>TOTAL INVOICE VALUE:</span>
+                <span>Total Invoice Amount:</span>
                 <span>${currency} ${invoice.total.toFixed(2)}</span>
               </div>
+              ${(totalSavingsIncGst > 0.005 || invoiceSavings.totalSavings > 0) ? `
+                <div style="margin-top: 6px; padding: 6px 8px; border: 1.5px dashed #16a34a; background-color: #f0fdf4; border-radius: 6px; font-size: 10px; line-height: 1.5;">
+                  <div style="background-color: #15803d; color: #ffffff; font-weight: bold; font-size: 10px; padding: 3px 6px; border-radius: 4px; text-align: left; margin-bottom: 4px; letter-spacing: 0.2px;">
+                    Your Savings on this bill
+                  </div>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span>Total Bill Amount (Inc GST):</span>
+                    <span>${currency} ${undiscountedBillIncGst.toFixed(2)}</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-weight: bold; color: #15803d;">
+                    <span>less Discount (Total Savings):</span>
+                    <span>-${currency} ${totalSavingsIncGst.toFixed(2)}</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-weight: bold; border-top: 1px dashed #16a34a; margin-top: 3px; padding-top: 3px;">
+                    <span>Net Amount Paid:</span>
+                    <span>${currency} ${invoice.total.toFixed(2)}</span>
+                  </div>
+                </div>
+              ` : ''}
               <div class="calc-row" style="margin-top: 6px; font-size: 10.5px; color: #334155;">
                 <span>Paid (Cash + Bank):</span>
                 <span>${currency} ${(invoice.cash + invoice.bank1 + invoice.bank2).toFixed(2)}</span>
@@ -871,6 +985,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
             /* 3-Inch Thermal Slip On-Screen Preview */
             <div className="mx-auto w-[280px] bg-white p-4 shadow-md rounded border border-slate-200 text-slate-900 leading-snug font-mono text-[10px]">
               <div className="text-center">
+                <div className="font-extrabold text-xs uppercase tracking-widest text-slate-900 border-b border-dashed border-slate-300 pb-1 mb-1.5">TAX INVOICE</div>
                 <div className="font-bold text-sm uppercase tracking-wide">{config.CompanyName || 'My Retail Store'}</div>
                 <div className="text-[10px] text-slate-600">{config.Address || ''}</div>
                 {showGst && <div className="text-[10px] text-slate-600">GSTIN: {config.CompanyGSTNo || '-'}</div>}
@@ -891,42 +1006,53 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
 
               <table className="w-full border-collapse text-[10px] table-fixed">
                 <colgroup>
-                  <col style={{ width: '38%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '20%' }} />
-                  {showGst && <col style={{ width: '12%' }} />}
-                  <col style={{ width: showGst ? '18%' : '30%' }} />
+                  <col style={{ width: !hasDiscountOnBill && !hasGstOnBill ? '50%' : (!hasDiscountOnBill ? '40%' : (!hasGstOnBill ? '36%' : '28%')) }} />
+                  <col style={{ width: !hasDiscountOnBill && !hasGstOnBill ? '12%' : '10%' }} />
+                  <col style={{ width: !hasDiscountOnBill && !hasGstOnBill ? '18%' : '18%' }} />
+                  {hasDiscountOnBill && <col style={{ width: '14%' }} />}
+                  {hasGstOnBill && <col style={{ width: '12%' }} />}
+                  <col style={{ width: !hasDiscountOnBill && !hasGstOnBill ? '20%' : '18%' }} />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-dashed border-slate-800">
                     <th className="text-left py-1 pr-1 font-bold">Item</th>
                     <th className="text-center py-1 font-bold">Qty</th>
                     <th className="text-right py-1 pr-1 font-bold">Rate</th>
-                    {showGst && <th className="text-right py-1 pr-1 font-bold">GST%</th>}
+                    {hasDiscountOnBill && <th className="text-right py-1 pr-1 font-bold">Disc</th>}
+                    {hasGstOnBill && <th className="text-right py-1 pr-1 font-bold">GST%</th>}
                     <th className="text-right font-bold">Amt</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-dotted divide-slate-200">
-                  {invoice.items.map((item, idx) => (
-                    <tr key={idx}>
-                      <td className="text-left py-1 pr-1 break-words">
-                        <div>{item['Item Name']}</div>
-                        {item['Serial Numbers'] && (
-                          <div className="text-[8px] text-slate-500">SN: {item['Serial Numbers']}</div>
-                        )}
-                      </td>
-                      <td className="text-center py-1 align-top">{item.Qty}</td>
-                      <td className="text-right py-1 pr-1 align-top whitespace-nowrap">{Number(item.Rate).toFixed(2)}</td>
-                      {showGst && <td className="text-right py-1 pr-1 align-top whitespace-nowrap">{item['GST %'] || 0}%</td>}
-                      <td className="text-right py-1 align-top whitespace-nowrap">{Number(item['Line Total']).toFixed(2)}</td>
-                    </tr>
-                  ))}
+                  {invoice.items.map((item, idx) => {
+                    const discInfo = getItemDiscountDetails(item, config);
+                    const discStr = discInfo.hasDiscount
+                      ? (discInfo.discountPct > 0
+                          ? `${discInfo.discountPct % 1 === 0 ? discInfo.discountPct : discInfo.discountPct.toFixed(1)}%`
+                          : Number(discInfo.discountAmt).toFixed(2))
+                      : '-';
+                    return (
+                      <tr key={idx}>
+                        <td className="text-left py-1 pr-1 break-words">
+                          <div>{item['Item Name']}</div>
+                          {item['Serial Numbers'] && (
+                            <div className="text-[8px] text-slate-500">SN: {item['Serial Numbers']}</div>
+                          )}
+                        </td>
+                        <td className="text-center py-1 align-top">{item.Qty}</td>
+                        <td className="text-right py-1 pr-1 align-top whitespace-nowrap">{Number(item.Rate).toFixed(2)}</td>
+                        {hasDiscountOnBill && <td className="text-right py-1 pr-1 align-top whitespace-nowrap">{discStr}</td>}
+                        {hasGstOnBill && <td className="text-right py-1 pr-1 align-top whitespace-nowrap">{item['GST %'] || 0}%</td>}
+                        <td className="text-right py-1 align-top whitespace-nowrap">{Number(item['Line Total']).toFixed(2)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
               <div className="my-2 border-b border-dashed border-slate-800" />
 
-              {showGst && (
+              {hasGstOnBill && (
                 <div className="space-y-0.5">
                   <div className="flex justify-between">
                     <span>Taxable Sale:</span>
@@ -968,9 +1094,29 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               ) : null}
 
               <div className="mt-2 pt-1 border-t border-slate-900 flex justify-between font-bold text-xs">
-                <span>TOTAL:</span>
+                <span>Total Invoice Amount:</span>
                 <span>{currency} {invoice.total.toFixed(2)}</span>
               </div>
+
+              {(totalSavingsIncGst > 0.005 || invoiceSavings.totalSavings > 0) && (
+                <div className="my-2 py-1.5 px-2 border border-dashed border-slate-800 rounded text-[10px] space-y-0.5">
+                  <div className="bg-slate-800 text-white font-bold text-[9.5px] px-2 py-0.5 rounded text-left mb-1 inline-block">
+                    Your Savings on this bill
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Bill Amount (Inc GST):</span>
+                    <span>{currency} {undiscountedBillIncGst.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-700 font-bold">
+                    <span>less Discount (Total Savings):</span>
+                    <span>-{currency} {totalSavingsIncGst.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold border-t border-dashed border-slate-400 pt-0.5 mt-0.5">
+                    <span>Net Amount Paid:</span>
+                    <span>{currency} {invoice.total.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             /* A4 On-Screen Preview */
@@ -999,32 +1145,41 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               </div>
 
               <div className="border border-slate-200 rounded-lg overflow-x-auto">
-                <table className="w-full text-left text-[11px] min-w-[500px]">
+                <table className="w-full text-left text-[11px] min-w-[550px]">
                   <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                     <tr>
+                      <th className="p-2 text-center w-8">#</th>
                       <th className="p-2">Item</th>
                       <th className="p-2 text-center">Qty</th>
                       <th className="p-2 text-center">Unit</th>
                       <th className="p-2 text-right">Rate</th>
-                      <th className="p-2 text-right">Sale Amt</th>
-                      {showGst && <th className="p-2 text-right">GST</th>}
+                      {hasDiscountOnBill && <th className="p-2 text-right">Disc Amt</th>}
+                      {hasGstOnBill && <th className="p-2 text-right">Sale Amt</th>}
+                      {hasGstOnBill && <th className="p-2 text-right">GST (5%)</th>}
                       <th className="p-2 text-right">Total Amt</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {invoice.items.map((item, idx) => {
+                      const itemQty = Number(item.Qty ?? (item as any).qty ?? 1);
+                      const itemRate = Number(item.Rate ?? (item as any).rate ?? 0);
+                      const discInfo = getItemDiscountDetails(item, config);
+                      const discAmt = discInfo.hasDiscount ? Number(discInfo.discountAmt || 0) : Number(item.Discount ?? (item as any).discount ?? 0);
+                      const discStr = discAmt > 0 ? discAmt.toFixed(2) : '-';
                       const saleAmt = Number(
                         item['Taxable Value'] !== undefined
                           ? item['Taxable Value']
-                          : (Number(item.Qty) || 0) * (Number(item.Rate) || 0) - (Number(item.Discount) || 0)
+                          : itemQty * itemRate - discAmt
                       ).toFixed(2);
+                      const isZero = (item['Zero Rated (Y/N)'] === 'Y' || (item as any).zeroRated === 'Y' || (item as any).zeroRated === true);
                       const gstAmt = Number(
                         item['GST Amount'] !== undefined
                           ? item['GST Amount']
-                          : (item['Zero Rated (Y/N)'] === 'Y' ? 0 : ((Number(item['Taxable Value'] || 0) * (Number(item['GST %']) || 0)) / 100))
+                          : (isZero ? 0 : ((Number(saleAmt) * Number(item['GST %'] ?? (item as any).gstPct ?? 5)) / 100))
                       ).toFixed(2);
                       return (
                         <tr key={idx}>
+                          <td className="p-2 text-center text-slate-400">{idx + 1}</td>
                           <td className="p-2 font-medium">
                             <div>{item['Item Name']}</div>
                             {(item.description || (item as any).Description || item['Item Description'] || item.lineDescription) && (
@@ -1036,9 +1191,10 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                           </td>
                           <td className="p-2 text-center">{item.Qty}</td>
                           <td className="p-2 text-center text-slate-600">{item.Unit || 'Pcs'}</td>
-                          <td className="p-2 text-right">{Number(item.Rate).toFixed(2)}</td>
-                          <td className="p-2 text-right">{saleAmt}</td>
-                          {showGst && <td className="p-2 text-right font-medium text-slate-700">{gstAmt}</td>}
+                          <td className="p-2 text-right">{itemRate.toFixed(2)}</td>
+                          {hasDiscountOnBill && <td className="p-2 text-right text-slate-700">{discStr}</td>}
+                          {hasGstOnBill && <td className="p-2 text-right">{saleAmt}</td>}
+                          {hasGstOnBill && <td className="p-2 text-right font-medium text-slate-700">{gstAmt}</td>}
                           <td className="p-2 text-right font-bold text-slate-900">{Number(item['Line Total']).toFixed(2)}</td>
                         </tr>
                       );
@@ -1047,7 +1203,7 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                 </table>
               </div>
 
-              {showGst && (
+              {hasGstOnBill && (
                 <div className="space-y-1 text-slate-600 text-[11px] pt-1">
                   <div className="flex justify-between">
                     <span>Taxable Amount:</span>
@@ -1089,9 +1245,29 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               ) : null}
 
               <div className="flex justify-between items-center pt-2 border-t border-slate-200 font-bold">
-                <span className="text-slate-700">Grand Total:</span>
+                <span className="text-slate-700">Total Invoice Amount:</span>
                 <span className="text-sm text-indigo-700 font-extrabold">{currency} {invoice.total.toFixed(2)}</span>
               </div>
+
+              {(totalSavingsIncGst > 0.005 || invoiceSavings.totalSavings > 0) && (
+                <div className="mt-2 py-2 px-3 border border-dashed border-emerald-600 bg-emerald-50 rounded-lg text-[11px] space-y-1">
+                  <div className="bg-emerald-700 text-white font-bold text-[10.5px] px-2 py-0.5 rounded text-left mb-1 inline-block">
+                    Your Savings on this bill
+                  </div>
+                  <div className="flex justify-between text-slate-700">
+                    <span>Total Bill Amount (Inc GST):</span>
+                    <span className="font-semibold">{currency} {undiscountedBillIncGst.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-800 font-bold">
+                    <span>less Discount (Total Savings):</span>
+                    <span>-{currency} {totalSavingsIncGst.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-slate-900 border-t border-dashed border-emerald-300 pt-1 mt-1">
+                    <span>Net Amount Paid:</span>
+                    <span>{currency} {invoice.total.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
 
               {effectiveBankDetails && (
                 <div className="mt-3 p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-[10px] text-slate-700">

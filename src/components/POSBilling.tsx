@@ -3,7 +3,7 @@ import { ItemNoteButton, ItemNoteInput } from './vouchers/ItemNoteField';
 import { GlowButton } from './common/GlowButton';
 import { Unit } from '../types';
 import { loadJson, saveJson, STORAGE_KEYS, DEFAULT_UNITS } from '../services/storageService';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Config,
   Item,
@@ -13,7 +13,8 @@ import {
   CustomerDetails,
   PaymentDetails,
   SalesInvoice,
-  VoucherType
+  VoucherType,
+  ItemBatch
 } from '../types';
 import {
   loadPOSSettings,
@@ -35,6 +36,12 @@ import {
   peekNextInvoiceNumber
 } from '../services/storageService';
 import {
+  findBestItemScheme,
+  findBestBillScheme,
+  getAllActiveSchemes,
+  getSchemes
+} from '../services/schemeService';
+import {
   playScanBeep,
   playSuccessChime,
   playWarningTone
@@ -42,6 +49,9 @@ import {
 import {
   Plus,
   Trash2,
+  Tag,
+  Tags,
+  Gift,
   Pause,
   RotateCcw,
   UserPlus,
@@ -70,13 +80,15 @@ import {
   FileDown,
   Share2,
   FileText,
-  Calendar
+  Calendar,
+  Info
 } from 'lucide-react';
 import { SerialModal } from './SerialModal';
 import { ThermalReceiptModal } from './ThermalReceiptModal';
 import { SearchableLedgerSelect } from './SearchableLedgerSelect';
 import { POSSettingsModal } from './pos/POSSettingsModal';
 import { POSShortcutsModal } from './pos/POSShortcutsModal';
+import { ItemInfoModal } from './ItemInfoModal';
 import { generateInvoicePDF, shareOrDownloadPDF } from '../utils/pdfExport';
 
 interface POSBillingProps {
@@ -87,7 +99,7 @@ interface POSBillingProps {
   selectedVoucherType?: VoucherType | null;
   onOpenVoucherTypeModal?: () => void;
   onDataRefresh: () => void;
-  onOpenNewItemModal: (onSelect?: (item: Item) => void) => void;
+  onOpenNewItemModal: (onSelect?: (item: Item) => void, itemToEdit?: Item | null) => void;
   onOpenNewLedgerModal: (group?: string, onSelect?: (name: string) => void) => void;
   onEditLedger: (name: string) => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
@@ -115,6 +127,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   const units = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const [selectedItemForInfo, setSelectedItemForInfo] = useState<Item | null>(null);
+
+  const getItemPartNumber = (item: Item) => item.partNumber || (item as any)['Part Number'] || (item as any)['Part No'] || (item as any)['part_number'] || '';
+  const getItemRackLocation = (item: Item) => item.rackLocation || (item as any)['Rack Location'] || (item as any)['Rack / Bin Location'] || (item as any)['Rack'] || (item as any)['Bin'] || '';
+  const getItemCompatibility = (item: Item) => item.compatibility || (item as any)['Compatibility'] || (item as any)['Vehicle / Machine Compatibility'] || '';
 
   const handleSaveSettings = (newSettings: POSSettings) => {
     setPosSettings(newSettings);
@@ -170,6 +187,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   
   const [editingInvoiceNo, setEditingInvoiceNo] = useState<string | null>(null);
   const [editingInvoiceDate, setEditingInvoiceDate] = useState<string | null>(null);
+  const [editingBillSchemeName, setEditingBillSchemeName] = useState<string | undefined>(undefined);
   const loadedTargetKeyRef = useRef<string | null>(null);
   const [posBillNo, setPosBillNo] = useState<string>(() => {
     try {
@@ -180,6 +198,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   });
   const [posBillDate, setPosBillDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [activeNoteIdx, setActiveNoteIdx] = useState<number | null>(null);
+  const [batchSelectModalIdx, setBatchSelectModalIdx] = useState<number | null>(null);
 
   // Keep posBillNo and posBillDate synchronized with editing state and active voucher series
   useEffect(() => {
@@ -212,12 +231,49 @@ export const POSBilling: React.FC<POSBillingProps> = ({
             if (inv && (inv.isPOS === false || inv.voucherTypeId === 'VT-SALE-NORMAL')) {
               return;
             }
+            const schemeEvalDate = inv.date ? new Date(inv.date) : new Date();
+            const allSchemes = getSchemes();
             const newCart: CartLine[] = (inv.items || []).map((it: any) => {
               const itemMatch = items.find(i => i['Item Code'] === (it['Item Code'] || it.itemCode));
               const isZeroRated = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
-              const rawRate = Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0));
+              let rawRate = Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0));
               const rawQty = Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : 1));
               const rawDisc = Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0));
+
+              let appliedSchemeId = it.appliedSchemeId;
+              let appliedSchemeName = it.appliedSchemeName;
+              let originalRate = it.originalRate !== undefined ? Number(it.originalRate) : undefined;
+              let discount = rawDisc;
+
+              const matchedScheme = appliedSchemeId ? allSchemes.find(s => s.id === appliedSchemeId) : null;
+              let discountType: 'flat' | 'percent' = it.discountType 
+                || (matchedScheme?.schemeType === 'percent_discount' ? 'percent' : undefined)
+                || ((it['Discount %'] && Number(it['Discount %']) > 0) ? 'percent' : (config.ItemDiscountType === 'percent' ? 'percent' : 'flat'));
+
+              // If scheme was not explicitly recorded, check if an active scheme applies for POS
+              if (!appliedSchemeName && itemMatch && rawQty > 0) {
+                const bestScheme = findBestItemScheme(itemMatch, rawQty, 'pos', schemeEvalDate) 
+                  || findBestItemScheme(itemMatch, rawQty, 'pos', new Date());
+                if (bestScheme) {
+                  if (rawDisc === 0 || rawDisc === bestScheme.discountPct || rawDisc === bestScheme.discountAmt) {
+                    appliedSchemeId = bestScheme.scheme.id;
+                    appliedSchemeName = bestScheme.badgeText;
+                    if (bestScheme.scheme.schemeType === 'percent_discount') {
+                      discount = bestScheme.discountPct;
+                      discountType = 'percent';
+                    } else if (bestScheme.scheme.schemeType === 'flat_discount') {
+                      discount = bestScheme.discountAmt;
+                      discountType = 'flat';
+                    } else if (bestScheme.scheme.schemeType === 'special_rate' && bestScheme.specialRate) {
+                      if (rawRate >= bestScheme.specialRate) {
+                        originalRate = rawRate;
+                        rawRate = bestScheme.specialRate;
+                      }
+                    }
+                  }
+                }
+              }
+
               return {
                 itemCode: it['Item Code'] || it.itemCode || '',
                 itemName: it['Item Name'] || it.itemName || '',
@@ -225,8 +281,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 lineDescription: it.lineDescription || '',
                 qty: rawQty,
                 rate: rawRate,
-                discount: rawDisc,
-                discountType: (it['Discount %'] && Number(it['Discount %']) > 0) ? ('percent' as const) : ('flat' as const),
+                discount,
+                discountType,
+                appliedSchemeId,
+                appliedSchemeName,
+                originalRate,
                 unit: it.Unit || it.unit || itemMatch?.Unit || 'Pcs',
                 gstPct: Number(it['GST %'] !== undefined ? it['GST %'] : (it.gstPct !== undefined ? it.gstPct : (itemMatch?.['GST %'] || 0))),
                 gstAmt: Number(it['GST Amount'] !== undefined ? it['GST Amount'] : (it.gstAmt !== undefined ? it.gstAmt : 0)),
@@ -235,7 +294,10 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 isSerialized: (it.isSerialized || itemMatch?.['Is Serialized'] || 'N') as 'Y' | 'N',
                 serials: typeof it['Serial Numbers'] === 'string'
                   ? it['Serial Numbers'].split(',').map((s: string) => s.trim()).filter(Boolean) 
-                  : (Array.isArray(it.serials) ? it.serials : [])
+                  : (Array.isArray(it.serials) ? it.serials : []),
+                selectedBatchNo: it['Batch No'] || it.selectedBatchNo || it.batchNo || '',
+                selectedBatchExp: it['Expiry Date'] || it.selectedBatchExp || it.expiryDate || '',
+                selectedBatchId: it.batchId || it.selectedBatchId || ''
               };
             });
             setCart(newCart);
@@ -262,7 +324,20 @@ export const POSBilling: React.FC<POSBillingProps> = ({
             setBank2TxnNo(inv.bank2TxnNo || inv.payment?.bank2TxnNo || '');
 
             const discVal = inv.discount ?? inv.billDiscount ?? inv.payment?.discount ?? '';
-            setBillDiscount(discVal !== '' ? Number(discVal) : '');
+            if (inv.appliedBillSchemeName) {
+              setEditingBillSchemeName(inv.appliedBillSchemeName);
+              setBillDiscount('');
+            } else {
+              const bestBill = findBestBillScheme(Number(inv.subtotal || inv.total), 'pos', inv.date ? new Date(inv.date) : new Date())
+                || findBestBillScheme(Number(inv.subtotal || inv.total), 'pos', new Date());
+              if (bestBill && (Number(discVal) === 0 || round2(bestBill.discountAmt) === round2(Number(discVal)))) {
+                setEditingBillSchemeName(bestBill.badgeText);
+                setBillDiscount('');
+              } else {
+                setEditingBillSchemeName(undefined);
+                setBillDiscount(discVal !== '' ? Number(discVal) : '');
+              }
+            }
             
             setEditingInvoiceNo(inv.invoiceNo || inv.billNo);
             if (inv.date) {
@@ -276,6 +351,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         loadedTargetKeyRef.current = null;
         setEditingInvoiceNo(null);
         setEditingInvoiceDate(null);
+        setEditingBillSchemeName(undefined);
         setCart([]);
         setCustomerName('');
         setWalkInDetails(null);
@@ -333,12 +409,14 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   // Grid Entry State
   const [entrySearch, setEntrySearch] = useState('');
   const [entryCode, setEntryCode] = useState('');
-  const [entryQty, setEntryQty] = useState<number | ''>(1);
+  const [entryQty, setEntryQty] = useState<number | string>(1);
   const [entryRate, setEntryRate] = useState<number | ''>('');
   const [entryDisc, setEntryDisc] = useState<number | ''>('');
+  const [cartQtyText, setCartQtyText] = useState<{ [idx: number]: string }>({});
   const [searchResults, setSearchResults] = useState<Item[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [selectedItemObj, setSelectedItemObj] = useState<Item | null>(null);
 
   // Customer Modal State (Create & Edit Ledger)
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -372,6 +450,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   const [billDiscountType, setBillDiscountType] = useState<'flat' | 'percent'>(config.BillDiscountType || 'flat');
   
   // Modals & Mobile Tabs
+  const [showOffersModal, setShowOffersModal] = useState(false);
   const [serialModalOpen, setSerialModalOpen] = useState(false);
   const [activeSerialIndex, setActiveSerialIndex] = useState<number>(-1);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
@@ -738,10 +817,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   const calculateTotals = () => {
     let taxable = 0, zeroRated = 0, gstAmt = 0, rawTotal = 0, itemDiscountTotal = 0;
     cart.forEach(l => {
-            let lineDisc = 0;
-      if (showItemDiscount) {
+      let lineDisc = 0;
+      if (showItemDiscount || l.appliedSchemeName || Number(l.discount) > 0) {
         const rawDisc = Number(l.discount) || 0;
-        lineDisc = config.ItemDiscountType === 'percent' ? ((l.qty * l.rate) * rawDisc / 100) : rawDisc;
+        const isPct = l.discountType === 'percent' || config.ItemDiscountType === 'percent';
+        lineDisc = isPct ? ((l.qty * l.rate) * rawDisc / 100) : rawDisc;
       }
       itemDiscountTotal += lineDisc;
       const gross = (Number(l.qty) || 0) * (Number(l.rate) || 0) - lineDisc;
@@ -761,13 +841,26 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         discountAmt = round2(Number(billDiscount));
       }
     }
-    discountAmt = Math.min(subtotal, Math.max(0, discountAmt));
-    const total = Math.max(0, round2(subtotal - discountAmt));
+
+    let billSchemeDiscount = 0;
+    let appliedBillSchemeName: string | undefined = editingBillSchemeName;
+    if ((!showBillDiscount || billDiscount === '' || Number(billDiscount) === 0) && subtotal > 0) {
+      const bestBill = findBestBillScheme(subtotal, 'pos', editingInvoiceDate ? new Date(editingInvoiceDate) : new Date())
+        || findBestBillScheme(subtotal, 'pos', new Date());
+      if (bestBill) {
+        billSchemeDiscount = round2(bestBill.discountAmt);
+        appliedBillSchemeName = bestBill.badgeText;
+      }
+    }
+
+    const effectiveBillDiscount = Math.min(subtotal, Math.max(0, Math.max(discountAmt, billSchemeDiscount)));
+    const total = Math.max(0, round2(subtotal - effectiveBillDiscount));
 
     return {
       subtotal,
-      discount: discountAmt,
-      discountValue: (showBillDiscount && billDiscount !== '') ? Number(billDiscount) : 0,
+      discount: effectiveBillDiscount,
+      appliedBillSchemeName,
+      discountValue: (showBillDiscount && billDiscount !== '') ? Number(billDiscount) : (appliedBillSchemeName ? billSchemeDiscount : 0),
       taxable: round2(taxable),
       zeroRated: round2(zeroRated),
       gstAmt: round2(gstAmt),
@@ -846,6 +939,30 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     prevTotalRef.current = totals.total;
   }, [customerName, totals.total, cart.length, cash, bank1, bank2, editingInvoiceNo]);
 
+  const expandedItems = useMemo(() => {
+    const result: Item[] = [];
+    for (const item of items) {
+      if (item.variants && item.variants.length > 0) {
+        for (const v of item.variants) {
+          result.push({
+            ...item,
+            size: v.size || item.size,
+            color: v.color || item.color,
+            Barcode: v.barcode || item.Barcode,
+            'Purchase Rate': (v.purchaseRate !== undefined && v.purchaseRate > 0) ? v.purchaseRate : item['Purchase Rate'],
+            'Sale Rate': (v.saleRate !== undefined && v.saleRate > 0) ? v.saleRate : item['Sale Rate'],
+            'Wholesale Rate': (v.wholesaleRate !== undefined && v.wholesaleRate > 0) ? v.wholesaleRate : ((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate']),
+            MRP: (v.mrp !== undefined && v.mrp > 0) ? v.mrp : item.MRP,
+            'Current Stock': v.currentStock !== undefined ? v.currentStock : item['Current Stock'],
+          });
+        }
+      } else {
+        result.push(item);
+      }
+    }
+    return result;
+  }, [items]);
+
   // Item Search Handler (Aligned with B2B Sales logic)
   const handleSearchChange = (q: string) => {
     setEntrySearch(q);
@@ -856,7 +973,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       setShowDropdown(false);
       return;
     }
-    const searchLower = q.toLowerCase();
+    const searchLower = q.toLowerCase().trim();
+    const searchTokens = searchLower.split(/\s+/).filter(Boolean);
 
     // Look up serial numbers in stock matching query
     let serialMatches: { itemCode: string; serialNo: string }[] = [];
@@ -870,92 +988,155 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     const serialItemCodes = new Set(serialMatches.map(s => s.itemCode));
     const exactSerialMatch = serialMatches.find(s => s.serialNo.toLowerCase() === searchLower);
 
-    const matched = items
-      .filter(item => {
-        const name = (item['Item Name'] || '').toLowerCase();
-        const code = (item['Item Code'] || '').toLowerCase();
-        const barcode = (item['Barcode'] || '').toString().toLowerCase();
-        const alias = (item['Alias'] || '').toLowerCase();
-        const hasSerial = serialItemCodes.has(item['Item Code']);
+    const getItemScore = (item: Item) => {
+      const name = (item['Item Name'] || '').toLowerCase();
+      const code = (item['Item Code'] || '').toLowerCase();
+      const barcode = (item['Barcode'] || '').toString().toLowerCase();
+      const alias = (item['Alias'] || '').toLowerCase();
+      const partNo = getItemPartNumber(item).toLowerCase();
+      const rack = getItemRackLocation(item).toLowerCase();
+      const compat = getItemCompatibility(item).toLowerCase();
+      const cat = (item.Category || '').toLowerCase();
+      const grp = (item.Group || '').toLowerCase();
+      const sz = (item.size || '').toLowerCase();
+      const col = (item.color || '').toLowerCase();
+      const hasSerial = serialItemCodes.has(item['Item Code']);
 
-        return (
-          name.includes(searchLower) ||
-          code.includes(searchLower) ||
-          barcode.includes(searchLower) ||
-          alias.includes(searchLower) ||
-          hasSerial
-        );
-      })
+      let score = 0;
+
+      // Exact Matches
+      if (exactSerialMatch && exactSerialMatch.itemCode === item['Item Code']) score += 3000;
+      if (barcode === searchLower) score += 2500;
+      if (code === searchLower) score += 2400;
+      if (partNo && partNo === searchLower) score += 2300;
+      if (name === searchLower) score += 2200;
+      if (rack && rack === searchLower) score += 2100;
+
+      // Starts With Matches
+      if (partNo && partNo.startsWith(searchLower)) score += 1500;
+      if (name.startsWith(searchLower)) score += 1400;
+      if (code.startsWith(searchLower)) score += 1300;
+      if (rack && rack.startsWith(searchLower)) score += 1200;
+      if (compat && compat.startsWith(searchLower)) score += 1100;
+      if (sz && sz.startsWith(searchLower)) score += 1100;
+      if (col && col.startsWith(searchLower)) score += 1100;
+
+      // Token Matches
+      let allTokensFound = true;
+      for (const token of searchTokens) {
+        let tokenMatch = false;
+        if (partNo.includes(token)) { score += 250; tokenMatch = true; }
+        if (rack.includes(token)) { score += 220; tokenMatch = true; }
+        if (compat.includes(token)) { score += 200; tokenMatch = true; }
+        if (sz.includes(token)) { score += 220; tokenMatch = true; }
+        if (col.includes(token)) { score += 220; tokenMatch = true; }
+        if (name.includes(token)) { score += 180; tokenMatch = true; }
+        if (code.includes(token)) { score += 150; tokenMatch = true; }
+        if (barcode.includes(token)) { score += 150; tokenMatch = true; }
+        if (alias.includes(token)) { score += 120; tokenMatch = true; }
+        if (cat.includes(token)) { score += 80; tokenMatch = true; }
+        if (grp.includes(token)) { score += 60; tokenMatch = true; }
+        if (hasSerial) { score += 300; tokenMatch = true; }
+
+        if (!tokenMatch) allTokensFound = false;
+      }
+
+      if (allTokensFound) score += 500;
+
+      return score;
+    };
+
+    const matched = expandedItems
       .map(item => {
         const sm = serialMatches.find(s => s.itemCode === item['Item Code']);
         return {
-          ...item,
-          matchedSerial: sm ? sm.serialNo : undefined
+          item: {
+            ...item,
+            matchedSerial: sm ? sm.serialNo : undefined
+          },
+          score: getItemScore(item)
         };
       })
-      .sort((a, b) => {
-        // Exact serial number match first!
-        const aExactSerial = exactSerialMatch && exactSerialMatch.itemCode === a['Item Code'];
-        const bExactSerial = exactSerialMatch && exactSerialMatch.itemCode === b['Item Code'];
-        if (aExactSerial && !bExactSerial) return -1;
-        if (!aExactSerial && bExactSerial) return 1;
-
-        const aBarcode = (a['Barcode'] || '').toString().toLowerCase();
-        const bBarcode = (b['Barcode'] || '').toString().toLowerCase();
-
-        // Exact barcode match first
-        if (aBarcode === searchLower && bBarcode !== searchLower) return -1;
-        if (bBarcode === searchLower && aBarcode !== searchLower) return 1;
-
-        // Exact code match second
-        const aCode = (a['Item Code'] || '').toLowerCase();
-        const bCode = (b['Item Code'] || '').toLowerCase();
-        if (aCode === searchLower && bCode !== searchLower) return -1;
-        if (bCode === searchLower && aCode !== searchLower) return 1;
-
-        // Serial substring match
-        const aHasSerial = serialItemCodes.has(a['Item Code']);
-        const bHasSerial = serialItemCodes.has(b['Item Code']);
-        if (aHasSerial && !bHasSerial) return -1;
-        if (!aHasSerial && bHasSerial) return 1;
-
-        // Exact name match third
-        const aName = (a['Item Name'] || '').toLowerCase();
-        const bName = (b['Item Name'] || '').toLowerCase();
-        if (aName === searchLower && bName !== searchLower) return -1;
-        if (bName === searchLower && aName !== searchLower) return 1;
-
-        // Exact alias match fourth
-        const aAlias = (a['Alias'] || '').toLowerCase();
-        const bAlias = (b['Alias'] || '').toLowerCase();
-        if (aAlias === searchLower && bAlias !== searchLower) return -1;
-        if (bAlias === searchLower && aAlias !== searchLower) return 1;
-
-        // Starts with name
-        const aStartsName = aName.startsWith(searchLower);
-        const bStartsName = bName.startsWith(searchLower);
-        if (aStartsName && !bStartsName) return -1;
-        if (!aStartsName && bStartsName) return 1;
-
-        return 0;
-      })
-      .slice(0, 10);
+      .filter(entry => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(entry => entry.item)
+      .slice(0, 15);
 
     setSearchResults(matched as any);
     setShowDropdown(matched.length > 0);
   };
 
   // Add Item to Cart (Direct or Step-by-Step, matching B2B rate & GST logic)
-  const addItemDirectlyToCart = (item: Item, customQty = 1, customRate?: number, customDisc = 0, preSelectedSerial?: string) => {
-    const qty = customQty > 0 ? customQty : 1;
-    const rate = customRate !== undefined ? customRate : getItemRate(item);
-    const discount = showItemDiscount ? customDisc : 0;
+  const addItemDirectlyToCart = (
+    item: Item, 
+    customQty = 1, 
+    customRate?: number, 
+    customDisc = 0, 
+    preSelectedSerial?: string,
+    preSelectedBatch?: ItemBatch
+  ) => {
+    const qty = (typeof customQty === 'number' && !isNaN(customQty) && customQty !== 0) ? customQty : 1;
+    let discount = showItemDiscount ? customDisc : 0;
+    let discountType: 'flat' | 'percent' = config.ItemDiscountType === 'percent' ? 'percent' : 'flat';
+    let appliedSchemeId: string | undefined;
+    let appliedSchemeName: string | undefined;
+    let originalRate: number | undefined;
+
+    // FEFO Batch Auto-Selection for Pharmacy / Batch-managed items
+    let selectedBatch: ItemBatch | undefined = preSelectedBatch;
+    if (!selectedBatch && (item.isPharmacy === 'Y' || item.maintainBatch === 'Y' || (item.batches && item.batches.length > 0))) {
+      const availableBatches = (item.batches || []).filter(b => (Number(b.currentStock) || 0) > 0);
+      const batchListToUse = availableBatches.length > 0 ? availableBatches : (item.batches || []);
+      if (batchListToUse.length > 0) {
+        const sorted = [...batchListToUse].sort((a, b) => (a.expDate || '').localeCompare(b.expDate || ''));
+        selectedBatch = sorted[0];
+      }
+    }
+
+    let rate = customRate;
+    if (rate === undefined) {
+      if (selectedBatch) {
+        if (pricingMode === 'wholesale' && config.EnableWholesalePrice !== 'false' && (Number(selectedBatch.wholesaleRate) || 0) > 0) {
+          rate = Number(selectedBatch.wholesaleRate);
+        } else {
+          rate = Number(selectedBatch.saleRate) || getItemRate(item);
+        }
+      } else {
+        rate = getItemRate(item);
+      }
+    }
+
+    // Evaluate Schemes if no manual discount was explicitly supplied
+    if (customDisc === 0 && qty > 0) {
+      const bestScheme = findBestItemScheme(item, qty, 'pos');
+      if (bestScheme) {
+        appliedSchemeId = bestScheme.scheme.id;
+        appliedSchemeName = bestScheme.badgeText;
+        if (bestScheme.scheme.schemeType === 'percent_discount') {
+          discount = bestScheme.discountPct;
+          discountType = 'percent';
+        } else if (bestScheme.scheme.schemeType === 'flat_discount') {
+          discount = bestScheme.discountAmt;
+          discountType = 'flat';
+        } else if (bestScheme.scheme.schemeType === 'special_rate' && bestScheme.specialRate) {
+          originalRate = rate;
+          rate = bestScheme.specialRate;
+        }
+      }
+    }
 
     const isZ = isCustomerGstExempted || String(item['Zero Rated (Y/N)']).toUpperCase() === 'Y';
-    const lineDisc = config.ItemDiscountType === 'percent' ? ((qty * rate) * discount / 100) : discount;
+    const isPct = discountType === 'percent' || config.ItemDiscountType === 'percent';
+    const lineDisc = isPct ? ((qty * rate) * discount / 100) : discount;
     const computedGstAmt = isZ ? 0 : round2(((qty * rate - lineDisc) * (Number(item['GST %']) || 0)) / 100);
 
-    const existingIdx = cart.findIndex(l => l.itemCode === item['Item Code']);
+    const existingIdx = cart.findIndex(l => 
+      l.itemCode === item['Item Code'] && 
+      (l.selectedSize || '') === (item.size || '') && 
+      (l.selectedColor || '') === (item.color || '') &&
+      (l.selectedBatchNo || '') === (selectedBatch?.batchNo || '') &&
+      ((l.qty > 0 && qty > 0) || (l.qty < 0 && qty < 0))
+    );
     let updatedCart = [...cart];
     let targetIndex = existingIdx;
 
@@ -968,10 +1149,30 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       }
 
       const newQty = updatedCart[existingIdx].qty + qty;
-      const newRate = customRate !== undefined ? rate : updatedCart[existingIdx].rate;
-      const newDisc = customDisc > 0 ? updatedCart[existingIdx].discount + discount : updatedCart[existingIdx].discount;
+      let newRate = customRate !== undefined ? rate : updatedCart[existingIdx].rate;
+      let newDisc = customDisc > 0 ? updatedCart[existingIdx].discount + discount : updatedCart[existingIdx].discount;
+      let newSchemeId = updatedCart[existingIdx].appliedSchemeId;
+      let newSchemeName = updatedCart[existingIdx].appliedSchemeName;
+
+      // Re-evaluate scheme for new cumulative quantity
+      if (customDisc === 0 && newQty > 0) {
+        const bestScheme = findBestItemScheme(item, newQty, 'pos');
+        if (bestScheme) {
+          newSchemeId = bestScheme.scheme.id;
+          newSchemeName = bestScheme.badgeText;
+          if (bestScheme.scheme.schemeType === 'percent_discount') {
+            newDisc = bestScheme.discountPct;
+          } else if (bestScheme.scheme.schemeType === 'flat_discount') {
+            newDisc = bestScheme.discountAmt;
+          } else if (bestScheme.scheme.schemeType === 'special_rate' && bestScheme.specialRate) {
+            newRate = bestScheme.specialRate;
+          }
+        }
+      }
+
       const newIsZ = isCustomerGstExempted || String(updatedCart[existingIdx].zeroRated).toUpperCase() === 'Y';
-      const newGrossDisc = config.ItemDiscountType === 'percent' ? ((newQty * newRate) * newDisc / 100) : newDisc;
+      const newIsPct = (updatedCart[existingIdx].discountType || discountType) === 'percent';
+      const newGrossDisc = newIsPct ? ((newQty * newRate) * newDisc / 100) : newDisc;
       const newGstAmt = newIsZ ? 0 : round2(((newQty * newRate - newGrossDisc) * (Number(updatedCart[existingIdx].gstPct) || 0)) / 100);
       const newSerials = preSelectedSerial ? [...existingSerials, preSelectedSerial] : existingSerials;
 
@@ -980,8 +1181,13 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         qty: newQty,
         rate: newRate,
         discount: newDisc,
+        appliedSchemeId: newSchemeId,
+        appliedSchemeName: newSchemeName,
         gstAmt: newGstAmt,
-        serials: newSerials
+        serials: newSerials,
+        selectedBatchNo: selectedBatch?.batchNo || updatedCart[existingIdx].selectedBatchNo,
+        selectedBatchExp: selectedBatch?.expDate || updatedCart[existingIdx].selectedBatchExp,
+        selectedBatchId: selectedBatch?.id || updatedCart[existingIdx].selectedBatchId
       };
     } else {
       const newLine: CartLine = {
@@ -991,12 +1197,22 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         qty,
         rate,
         discount,
+        discountType,
+        appliedSchemeId,
+        appliedSchemeName,
+        originalRate,
         gstPct: Number(item['GST %']) || 0,
         zeroRated: item['Zero Rated (Y/N)'] || 'N',
-        purchaseRate: Number(item['Purchase Rate']) || 0,
+        purchaseRate: selectedBatch ? (Number(selectedBatch.purchaseRate) || Number(item['Purchase Rate']) || 0) : (Number(item['Purchase Rate']) || 0),
         isSerialized: item['Is Serialized'],
         serials: preSelectedSerial ? [preSelectedSerial] : [],
-        gstAmt: computedGstAmt
+        gstAmt: computedGstAmt,
+        selectedSize: item.size || '',
+        selectedColor: item.color || '',
+        barcode: selectedBatch?.barcode || item.Barcode || '',
+        selectedBatchNo: selectedBatch?.batchNo || '',
+        selectedBatchExp: selectedBatch?.expDate || '',
+        selectedBatchId: selectedBatch?.id || ''
       };
       updatedCart.push(newLine);
       targetIndex = updatedCart.length - 1;
@@ -1009,8 +1225,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       playScanBeep();
     }
 
-    // Stock Warning Tone if item <= 0 stock
-    if (posSettings.warnLowStock && item['Maintain Stock'] !== 'N' && (Number(item['Current Stock']) <= 0)) {
+    // Stock Warning Tone if item <= 0 stock (only for sales, not returns)
+    if (posSettings.warnLowStock && item['Maintain Stock'] !== 'N' && (Number(item['Current Stock']) <= 0) && qty > 0) {
       playWarningTone();
     }
 
@@ -1021,6 +1237,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     setEntryRate('');
     setEntryDisc('');
     setShowDropdown(false);
+    setSelectedItemObj(null);
 
     // If serialized item and NO preSelectedSerial provided, prompt serials modal
     if (item['Is Serialized'] === 'Y' && showSerials && !preSelectedSerial) {
@@ -1034,11 +1251,24 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   };
 
   // Selecting an Item
-  const selectItem = (item: Item, preSelectedSerial?: string) => {
-    const selectedRate = getItemRate(item);
-    if (posSettings.itemAddMode === 'direct' || preSelectedSerial) {
-      // ⚡ Direct Quick-Add Mode: Instantly add to cart with preSelectedSerial and keep focus on search
-      addItemDirectlyToCart(item, 1, selectedRate, 0, preSelectedSerial);
+  const selectItem = (item: Item, preSelectedSerial?: string, preSelectedBatch?: ItemBatch) => {
+    setSelectedItemObj(item);
+    
+    let selectedRate: number;
+    if (preSelectedBatch) {
+      if (pricingMode === 'wholesale' && config.EnableWholesalePrice !== 'false' && (Number(preSelectedBatch.wholesaleRate) || 0) > 0) {
+        selectedRate = Number(preSelectedBatch.wholesaleRate);
+      } else {
+        selectedRate = Number(preSelectedBatch.saleRate) || getItemRate(item);
+      }
+    } else {
+      selectedRate = getItemRate(item);
+    }
+
+    if (posSettings.itemAddMode === 'direct' || preSelectedSerial || preSelectedBatch) {
+      // ⚡ Direct Quick-Add Mode: Instantly add to cart with preSelectedSerial/Batch and keep focus on search
+      addItemDirectlyToCart(item, 1, selectedRate, 0, preSelectedSerial, preSelectedBatch);
+      setSelectedItemObj(null);
     } else {
       // 🎯 Step-by-Step Prompt Mode: Focus Qty -> Rate -> Disc -> Enter to add
       setEntrySearch(item['Item Name']);
@@ -1137,7 +1367,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         const serialReport = getSerialNumbersStockReport();
         const matchedSerial = serialReport.find(s => s.serialNo.toLowerCase() === searchLower && s.status === 'In Stock');
         if (matchedSerial) {
-          const item = items.find(i => i['Item Code'] === matchedSerial.itemCode);
+          const item = expandedItems.find(i => i['Item Code'] === matchedSerial.itemCode);
           if (item) {
             selectItem(item, matchedSerial.serialNo);
             setEntrySearch('');
@@ -1149,21 +1379,41 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         console.error('Error scanning serial number in POS:', err);
       }
 
-      // Check Exact Barcode, Item Code, or Alias match
-      const matchedExact = items.filter(i => 
-        String(i.Barcode).toLowerCase() === searchLower || 
-        String(i['Item Code']).toLowerCase() === searchLower ||
-        (i['Alias'] && String(i['Alias']).toLowerCase() === searchLower)
-      );
-      if (matchedExact.length >= 1) {
-        selectItem(matchedExact[0]);
+      // Check Exact Barcode, Item Code, Alias, or Batch Barcode/Batch No match
+      let matchedExactItem: Item | undefined;
+      let matchedExactBatch: ItemBatch | undefined;
+
+      for (const i of expandedItems) {
+        if (
+          String(i.Barcode).toLowerCase() === searchLower || 
+          String(i['Item Code']).toLowerCase() === searchLower ||
+          (i['Alias'] && String(i['Alias']).toLowerCase() === searchLower)
+        ) {
+          matchedExactItem = i;
+          break;
+        }
+        if (i.batches && i.batches.length > 0) {
+          const bMatch = i.batches.find(b => 
+            (b.barcode && b.barcode.toLowerCase() === searchLower) ||
+            (b.batchNo && b.batchNo.toLowerCase() === searchLower)
+          );
+          if (bMatch) {
+            matchedExactItem = i;
+            matchedExactBatch = bMatch;
+            break;
+          }
+        }
+      }
+
+      if (matchedExactItem) {
+        selectItem(matchedExactItem, undefined, matchedExactBatch);
         setEntrySearch('');
         setShowDropdown(false);
         return;
       }
 
       // Synchronous live search for q to avoid stale async searchResults during rapid scanner typing
-      const freshMatches = items.filter(item => {
+      const freshMatches = expandedItems.filter(item => {
         const name = (item['Item Name'] || '').toLowerCase();
         const code = (item['Item Code'] || '').toLowerCase();
         const barcode = (item['Barcode'] || '').toString().toLowerCase();
@@ -1233,20 +1483,26 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   // Add Item to Cart from Footer Form (Prompt Mode)
   const addEntryToCart = () => {
-    const item = entryCode
-      ? items.find(i => i['Item Code'] === entryCode)
-      : items.find(i => i['Item Name'].toLowerCase() === entrySearch.trim().toLowerCase());
+    const item = selectedItemObj ||
+      (entryCode
+        ? expandedItems.find(i => i['Item Code'] === entryCode)
+        : expandedItems.find(i => i['Item Name'].toLowerCase() === entrySearch.trim().toLowerCase()));
 
     if (!item) {
       if (posSettings.enableSoundFeedback) playWarningTone();
       return;
     }
 
-    const qty = Number(entryQty) || 1;
+    const qty = (typeof entryQty === 'number' && entryQty !== 0)
+      ? entryQty
+      : (entryQty !== '' && entryQty !== '-' && !isNaN(Number(entryQty)) && Number(entryQty) !== 0)
+        ? Number(entryQty)
+        : 1;
     const rate = Number(entryRate) || 0;
     const discount = showItemDiscount ? (Number(entryDisc) || 0) : 0;
 
     addItemDirectlyToCart(item, qty, rate, discount);
+    setSelectedItemObj(null);
   };
 
   // In-line Cart Table Keyboard Navigation & Manipulation
@@ -1276,14 +1532,34 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       itemInputRef.current?.focus();
     } else if (e.key === '+' || e.key === '=') {
       e.preventDefault();
-      updateCartLine(idx, 'qty', cart[idx].qty + 1);
+      const current = Number(cart[idx].qty) || 0;
+      const next = current === -1 ? 1 : (current === 0 ? 1 : current + 1);
+      setCartQtyText(prev => {
+        const copy = { ...prev };
+        delete copy[idx];
+        return copy;
+      });
+      updateCartLine(idx, 'qty', next);
       if (posSettings.enableSoundFeedback) playScanBeep();
     } else if (e.key === '-') {
-      e.preventDefault();
-      if (cart[idx].qty > 1) {
-        updateCartLine(idx, 'qty', cart[idx].qty - 1);
-        if (posSettings.enableSoundFeedback) playScanBeep();
+      const inputEl = cartQtyRefs.current[idx];
+      const isAllSelected = inputEl && inputEl.selectionStart === 0 && inputEl.selectionEnd === inputEl.value.length;
+      if (isAllSelected) {
+        return;
       }
+      if (inputEl && inputEl.selectionStart === 0 && !inputEl.value.includes('-')) {
+        return;
+      }
+      e.preventDefault();
+      const current = Number(cart[idx].qty) || 0;
+      const next = current === 1 ? -1 : current - 1;
+      setCartQtyText(prev => {
+        const copy = { ...prev };
+        delete copy[idx];
+        return copy;
+      });
+      updateCartLine(idx, 'qty', next);
+      if (posSettings.enableSoundFeedback) playScanBeep();
     } else if (e.key === 'Delete') {
       e.preventDefault();
       removeCartLine(idx);
@@ -1363,16 +1639,66 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   const updateCartLine = (index: number, field: 'qty' | 'rate' | 'discount', val: number) => {
     const updated = [...cart];
     updated[index][field] = val;
+
+    if (field === 'qty') {
+      const matchingItem = items.find(i => i['Item Code'] === updated[index].itemCode);
+      if (matchingItem && val > 0) {
+        const schemeDate = editingInvoiceDate ? new Date(editingInvoiceDate) : new Date();
+        const bestScheme = findBestItemScheme(matchingItem, val, 'pos', schemeDate)
+          || findBestItemScheme(matchingItem, val, 'pos', new Date());
+        if (bestScheme) {
+          updated[index].appliedSchemeId = bestScheme.scheme.id;
+          updated[index].appliedSchemeName = bestScheme.badgeText;
+          if (bestScheme.scheme.schemeType === 'percent_discount') {
+            updated[index].discount = bestScheme.discountPct;
+            updated[index].discountType = 'percent';
+          } else if (bestScheme.scheme.schemeType === 'flat_discount') {
+            updated[index].discount = bestScheme.discountAmt;
+            updated[index].discountType = 'flat';
+          } else if (bestScheme.scheme.schemeType === 'special_rate' && bestScheme.specialRate) {
+            if (!updated[index].originalRate) {
+              updated[index].originalRate = updated[index].rate;
+            }
+            updated[index].rate = bestScheme.specialRate;
+          }
+        } else if (updated[index].appliedSchemeId) {
+          updated[index].appliedSchemeId = undefined;
+          updated[index].appliedSchemeName = undefined;
+          updated[index].discount = 0;
+          if (updated[index].originalRate) {
+            updated[index].rate = updated[index].originalRate!;
+            updated[index].originalRate = undefined;
+          }
+        }
+      }
+    } else if (field === 'discount') {
+      updated[index].appliedSchemeId = undefined;
+      updated[index].appliedSchemeName = undefined;
+    }
+
     setCart(updated);
-    if (field === 'qty' && updated[index].isSerialized === 'Y' && showSerials) {
+    if (field === 'qty' && updated[index].isSerialized === 'Y' && showSerials && val > 0) {
       setActiveSerialIndex(index);
       setSerialModalOpen(true);
     }
   };
 
+  const removeSchemeFromLine = (index: number) => {
+    const updated = [...cart];
+    updated[index].appliedSchemeId = undefined;
+    updated[index].appliedSchemeName = undefined;
+    updated[index].discount = 0;
+    if (updated[index].originalRate) {
+      updated[index].rate = updated[index].originalRate!;
+      updated[index].originalRate = undefined;
+    }
+    setCart(updated);
+  };
+
   const removeCartLine = (index: number) => {
     const updated = cart.filter((_, i) => i !== index);
     setCart(updated);
+    setCartQtyText({});
     if (updated.length > 0) {
       const nextIdx = Math.min(index, updated.length - 1);
       setTimeout(() => {
@@ -1561,6 +1887,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       customer,
       billDiscount: totals.discount,
       billDiscountValue: totals.discountValue,
+      appliedBillSchemeName: totals.appliedBillSchemeName,
       voucherTypeId: activeVoucherType?.id,
       voucherTypeName: activeVoucherType?.name,
       originalInvoiceNo: editingInvoiceNo || undefined,
@@ -1820,6 +2147,19 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               </button>
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => setShowOffersModal(true)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-xl bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 transition shadow-2xs cursor-pointer"
+            title="View Active Schemes & Offers (Alt+O)"
+          >
+            <Tags className="h-3.5 w-3.5 text-amber-600" />
+            <span>Offers</span>
+            <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
+              {getAllActiveSchemes('pos').length}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -1890,6 +2230,20 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                     className="w-full h-9 pl-8 pr-14 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none shadow-2xs"
                   />
                   <div className="absolute right-1.5 flex items-center gap-1">
+                    {selectedItemObj && (selectedItemObj.size || selectedItemObj.color) && (
+                      <div className="flex items-center gap-1 mr-1">
+                        {selectedItemObj.size && (
+                          <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-100 text-purple-900 border border-purple-200 shrink-0">
+                            Size: {selectedItemObj.size}
+                          </span>
+                        )}
+                        {selectedItemObj.color && (
+                          <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-pink-100 text-pink-900 border border-pink-200 shrink-0">
+                            Color: {selectedItemObj.color}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <kbd className="hidden md:inline-block bg-slate-100 border border-slate-200 text-slate-400 rounded px-1.5 py-0.5 text-[9px] font-mono font-bold">F3</kbd>
                     <button
                       type="button"
@@ -1957,6 +2311,10 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                       {searchResults.map((item, idx) => {
                         const isZeroStk = item['Maintain Stock'] !== 'N' && Number(item['Current Stock']) <= 0;
                         const matchedSn = (item as any).matchedSerial;
+                        const partNo = getItemPartNumber(item);
+                        const rackLoc = getItemRackLocation(item);
+                        const compat = getItemCompatibility(item);
+
                         return (
                           <div
                             key={item['Item Code']}
@@ -1965,28 +2323,45 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                               idx === selectedIndex ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-50 text-slate-800'
                             }`}
                           >
-                          <div className="min-w-0 flex-1 flex items-center gap-1.5 pr-2">
-                            <span className="font-bold truncate">{item['Item Name']}</span>
-                            {matchedSn && (
-                              <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold shrink-0 ${
-                                idx === selectedIndex ? 'bg-indigo-800 text-indigo-100' : 'bg-amber-100 text-amber-800 border border-amber-200'
-                              }`}>
-                                SN: {matchedSn}
-                              </span>
-                            )}
-                            {item.Unit && (
-                              <span className={`text-[10px] font-normal shrink-0 ${idx === selectedIndex ? 'text-indigo-200' : 'text-slate-400'}`}>
-                                ({item.Unit})
-                              </span>
-                            )}
-                            {isZeroStk && (
-                              <span className={`text-[9px] px-1 py-0.2 rounded font-semibold shrink-0 ${
-                                idx === selectedIndex ? 'bg-rose-800 text-rose-100' : 'bg-rose-100 text-rose-700'
-                              }`}>
-                                Low
-                              </span>
-                            )}
+                          <div className="min-w-0 flex-1 flex flex-col justify-center py-0.5 pr-2">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="font-bold truncate">{item['Item Name']}</span>
+                              {item.size && (
+                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold shrink-0 ${
+                                  idx === selectedIndex ? 'bg-purple-800 text-purple-100' : 'bg-purple-100 text-purple-800 border border-purple-200'
+                                }`}>
+                                  Size: {item.size}
+                                </span>
+                              )}
+                              {item.color && (
+                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold shrink-0 ${
+                                  idx === selectedIndex ? 'bg-pink-800 text-pink-100' : 'bg-pink-100 text-pink-800 border border-pink-200'
+                                }`}>
+                                  Color: {item.color}
+                                </span>
+                              )}
+                              {matchedSn && (
+                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold shrink-0 ${
+                                  idx === selectedIndex ? 'bg-indigo-800 text-indigo-100' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                }`}>
+                                  SN: {matchedSn}
+                                </span>
+                              )}
+                              {item.Unit && (
+                                <span className={`text-[10px] font-normal shrink-0 ${idx === selectedIndex ? 'text-indigo-200' : 'text-slate-400'}`}>
+                                  ({item.Unit})
+                                </span>
+                              )}
+                              {isZeroStk && (
+                                <span className={`text-[9px] px-1 py-0.2 rounded font-semibold shrink-0 ${
+                                  idx === selectedIndex ? 'bg-rose-800 text-rose-100' : 'bg-rose-100 text-rose-700'
+                                }`}>
+                                  Low
+                                </span>
+                              )}
+                            </div>
                           </div>
+
                           <div className="text-right shrink-0 flex items-center gap-1.5">
                             {showPurchasePrice && (
                               <span className={`text-[10px] font-mono font-extrabold px-1.5 py-0.2 rounded border ${
@@ -2007,6 +2382,23 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                             <span className="font-extrabold whitespace-nowrap text-xs">
                               {config.CurrencySymbol || 'Nu.'} {Number(item['Sale Rate'] || 0).toFixed(2)}
                             </span>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedItemForInfo(item);
+                              }}
+                              className={`p-1 rounded transition cursor-pointer flex items-center gap-0.5 text-[10px] font-bold ml-1 ${
+                                idx === selectedIndex
+                                  ? 'bg-white/20 text-white hover:bg-white/30'
+                                  : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
+                              }`}
+                              title="View Full Item Details, Prices & Bin/Rack Info"
+                            >
+                              <Info className="h-3.5 w-3.5" />
+                              <span className="hidden sm:inline">Info</span>
+                            </button>
                           </div>
                         </div>
                       );
@@ -2022,17 +2414,30 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 <div className="w-16">
                   <input
                     ref={qtyInputRef}
-                    type="number"
-                    min="0.01"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     placeholder="Qty"
                     value={entryQty === 0 ? '' : entryQty}
-                    onChange={e => setEntryQty(e.target.value === '' ? '' : Number(e.target.value) === 0 ? '' : Number(e.target.value))}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val === '' || val === '-' || /^-?\d*\.?\d*$/.test(val)) {
+                        setEntryQty(val);
+                      }
+                    }}
                     onFocus={e => e.target.select()}
-                    onBlur={handleFieldBlurReturnToSearch}
+                    onBlur={() => {
+                      handleFieldBlurReturnToSearch();
+                      if (entryQty === '' || entryQty === '-' || isNaN(Number(entryQty))) {
+                        setEntryQty(1);
+                      }
+                    }}
                     onKeyDown={handleQtyKeyDown}
-                    title="Quantity (Enter to advance)"
-                    className="w-full text-center h-9 rounded-xl border border-slate-300 bg-white px-1 text-xs font-bold text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none shadow-2xs"
+                    title="Quantity (type '-' for return item, Enter to advance)"
+                    className={`w-full text-center h-9 rounded-xl border px-1 text-xs font-bold outline-none shadow-2xs transition ${
+                      Number(entryQty) < 0
+                        ? 'border-rose-400 bg-rose-50 text-rose-700 focus:border-rose-500 focus:ring-2 focus:ring-rose-200'
+                        : 'border-slate-300 bg-white text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100'
+                    }`}
                   />
                 </div>
 
@@ -2189,9 +2594,82 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                             <div className="flex items-center justify-between gap-1 flex-wrap">
                               <div className="flex items-center gap-1 flex-wrap">
                                 <span className="font-bold text-slate-900 text-xs">{line.itemName}</span>
+                                {line.qty < 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const posQty = Math.abs(line.qty) || 1;
+                                      updateCartLine(idx, 'qty', posQty);
+                                      setCartQtyText(prev => {
+                                        const c = { ...prev };
+                                        delete c[idx];
+                                        return c;
+                                      });
+                                    }}
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[9px] font-extrabold rounded bg-rose-100 text-rose-700 border border-rose-300 hover:bg-rose-200 transition cursor-pointer"
+                                    title="Returned Item (Click to toggle back to Sale)"
+                                  >
+                                    ↩ RETURN
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const negQty = -Math.abs(line.qty) || -1;
+                                      updateCartLine(idx, 'qty', negQty);
+                                      setCartQtyText(prev => {
+                                        const c = { ...prev };
+                                        delete c[idx];
+                                        return c;
+                                      });
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 text-[9px] font-semibold text-rose-600 hover:bg-rose-50 px-1 py-0.2 rounded border border-rose-200 transition cursor-pointer"
+                                    title="Click to mark as Customer Return (- Qty)"
+                                  >
+                                    Mark Return
+                                  </button>
+                                )}
+                                {line.selectedSize && (
+                                  <span className="inline-flex items-center gap-0.5 px-1 py-0.2 text-[9px] font-bold rounded bg-purple-100 text-purple-900 border border-purple-200">
+                                    Size: {line.selectedSize}
+                                  </span>
+                                )}
+                                {line.selectedColor && (
+                                  <span className="inline-flex items-center gap-0.5 px-1 py-0.2 text-[9px] font-bold rounded bg-pink-100 text-pink-900 border border-pink-200">
+                                    Color: {line.selectedColor}
+                                  </span>
+                                )}
+                                {(line.selectedBatchNo || (itemData && (itemData.isPharmacy === 'Y' || itemData.maintainBatch === 'Y' || (itemData.batches && itemData.batches.length > 0)))) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setBatchSelectModalIdx(idx)}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.2 text-[9px] font-bold rounded bg-emerald-100 text-emerald-900 border border-emerald-300 hover:bg-emerald-200 transition cursor-pointer"
+                                    title="Click to Switch Batch"
+                                  >
+                                    💊 {line.selectedBatchNo ? `Batch: ${line.selectedBatchNo}` : 'Select Batch'}
+                                    {line.selectedBatchExp && <span className="font-mono text-emerald-800">| Exp: {line.selectedBatchExp}</span>}
+                                  </button>
+                                )}
                                 {posSettings.showPurchasePrice && (
                                   <span className="inline-flex items-center gap-0.5 px-1 py-0 text-[8px] font-bold rounded bg-emerald-50 text-emerald-800 border border-emerald-200" title="Latest Purchase Price">
                                     Cost: {config.CurrencySymbol || 'Nu.'} {Number(line.purchaseRate || 0).toFixed(2)}
+                                  </span>
+                                )}
+                                {line.appliedSchemeName && (
+                                  <span 
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.2 text-[9px] font-extrabold rounded-md bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs" 
+                                    title={`Applied Promotion: ${line.appliedSchemeName}`}
+                                  >
+                                    <Tag className="h-2.5 w-2.5 text-amber-700" />
+                                    <span>{line.appliedSchemeName}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeSchemeFromLine(idx)}
+                                      className="text-amber-700 hover:text-rose-600 font-bold ml-0.5 cursor-pointer"
+                                      title="Remove offer from this line"
+                                    >
+                                      ✕
+                                    </button>
                                   </span>
                                 )}
                               </div>
@@ -2217,45 +2695,88 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                           <td className="py-0.5 px-1 align-middle text-center">
                             <input
                               ref={el => { cartQtyRefs.current[idx] = el; }}
-                              type="number"
-                              min="0.01"
-                              step="any"
-                              value={line.qty === 0 ? '' : line.qty}
-                              onChange={e => updateCartLine(idx, 'qty', e.target.value === '' ? 0 : Number(e.target.value))}
+                              type="text"
+                              inputMode="decimal"
+                              value={cartQtyText[idx] !== undefined ? cartQtyText[idx] : (line.qty === 0 ? '' : String(line.qty))}
+                              onChange={e => {
+                                const raw = e.target.value;
+                                if (raw === '' || raw === '-') {
+                                  setCartQtyText(prev => ({ ...prev, [idx]: raw }));
+                                  if (raw === '') updateCartLine(idx, 'qty', 0);
+                                  return;
+                                }
+                                if (/^-?\d*\.?\d*$/.test(raw)) {
+                                  setCartQtyText(prev => ({ ...prev, [idx]: raw }));
+                                  const num = Number(raw);
+                                  if (!isNaN(num)) {
+                                    updateCartLine(idx, 'qty', num);
+                                  }
+                                }
+                              }}
                               onFocus={e => e.target.select()}
-                              onBlur={handleFieldBlurReturnToSearch}
+                              onBlur={() => {
+                                handleFieldBlurReturnToSearch();
+                                setCartQtyText(prev => {
+                                  const copy = { ...prev };
+                                  delete copy[idx];
+                                  return copy;
+                                });
+                                if (cart[idx] && (cart[idx].qty === 0 || isNaN(cart[idx].qty))) {
+                                  updateCartLine(idx, 'qty', 1);
+                                }
+                              }}
                               onKeyDown={e => handleCartQtyKeyDown(e, idx)}
-                              title="Edit quantity (+/- keys increment/decrement, Del to delete, Enter to save)"
-                              className="w-full text-center h-6 rounded-md border border-slate-300 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
+                              title="Edit quantity (type '-' for return, +/- to increment/decrement, Del to delete)"
+                              className={`w-full text-center h-6 rounded-md border text-xs font-bold focus:ring-1 outline-none py-0 transition ${
+                                line.qty < 0
+                                  ? 'border-rose-400 bg-rose-50 text-rose-700 font-extrabold focus:border-rose-500 focus:ring-rose-200'
+                                  : 'border-slate-300 bg-white text-slate-800 focus:border-indigo-500 focus:ring-indigo-100 hover:border-slate-400'
+                              }`}
                             />
                           </td>
                           {/* UNIT */}
                           <td className="py-0.5 px-1 align-middle text-center">
-                            <select
-                              value={line.unit || 'Pcs'}
-                              onChange={e => {
-                                const val = e.target.value;
-                                const updated = [...cart];
-                                updated[idx].unit = val;
-                                const item = items.find(i => (i['Item Code'] && i['Item Code'] === updated[idx].itemCode) || i['Item Name'] === updated[idx].itemName);
-                                if (item) {
-                                  if (val === item.Unit) {
-                                    updated[idx].rate = item['Sale Rate'] || 0;
-                                  } else if (item.multiUnits) {
-                                    const mu = item.multiUnits.find(m => m.unit === val);
-                                    if (mu && mu.saleRate) {
-                                      updated[idx].rate = mu.saleRate;
+                            {(() => {
+                              const lineItem = items.find(i => (i['Item Code'] && i['Item Code'] === line.itemCode) || i['Item Name'] === line.itemName);
+                              const primaryUnit = lineItem?.Unit || line.unit || 'Pcs';
+                              const altUnits = (lineItem?.multiUnits || []).map(m => m.unit).filter(Boolean);
+                              const allowedUnits = Array.from(new Set([primaryUnit, ...altUnits]));
+
+                              if (allowedUnits.length <= 1) {
+                                return (
+                                  <span className="text-xs font-bold text-slate-700 px-1">
+                                    {allowedUnits[0] || line.unit || 'Pcs'}
+                                  </span>
+                                );
+                              }
+
+                              return (
+                                <select
+                                  value={line.unit || allowedUnits[0]}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    const updated = [...cart];
+                                    updated[idx].unit = val;
+                                    if (lineItem) {
+                                      if (val === lineItem.Unit) {
+                                        updated[idx].rate = lineItem['Sale Rate'] || 0;
+                                      } else if (lineItem.multiUnits) {
+                                        const mu = lineItem.multiUnits.find(m => m.unit === val);
+                                        if (mu && mu.saleRate) {
+                                          updated[idx].rate = mu.saleRate;
+                                        }
+                                      }
                                     }
-                                  }
-                                }
-                                setCart(updated);
-                              }}
-                              className="w-full text-center h-6 rounded-md border border-slate-300 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
-                            >
-                              {units.map(u => (
-                                <option key={u['Unit Name']} value={u['Unit Name']}>{u.Symbol || u['Unit Name']}</option>
-                              ))}
-                            </select>
+                                    setCart(updated);
+                                  }}
+                                  className="w-full text-center h-6 rounded-md border border-slate-300 text-xs font-bold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100 outline-none bg-white hover:border-slate-400 py-0"
+                                >
+                                  {allowedUnits.map(u => (
+                                    <option key={u} value={u}>{u}</option>
+                                  ))}
+                                </select>
+                              );
+                            })()}
                           </td>
 
                           {/* Rate */}
@@ -2296,7 +2817,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                           </td>
 
                           {/* Amount */}
-                          <td className="py-0.5 px-2.5 align-middle text-right font-black text-slate-900 font-mono text-xs">
+                          <td className={`py-0.5 px-2.5 align-middle text-right font-black font-mono text-xs ${line.qty < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
                             {lineTotal.toFixed(2)}
                           </td>
 
@@ -2355,6 +2876,14 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 <span>Items: <strong className="text-slate-800 font-bold">{cart.length}</strong></span>
                 <span>•</span>
                 <span>Qty: <strong className="text-slate-800 font-bold">{cart.reduce((acc, c) => acc + (Number(c.qty) || 0), 0)}</strong></span>
+                {cart.some(c => c.qty < 0) && (
+                  <>
+                    <span>•</span>
+                    <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                      Returns: {cart.filter(c => c.qty < 0).length} items ({cart.filter(c => c.qty < 0).reduce((acc, c) => acc + Math.abs(c.qty), 0)} pcs)
+                    </span>
+                  </>
+                )}
                 <span>•</span>
                 <span><kbd className="bg-white border border-slate-300 rounded px-1 text-[10px] font-mono">F3</kbd> Scan | <kbd className="bg-white border border-slate-300 rounded px-1 text-[10px] font-mono">F4</kbd> Cust | <kbd className="bg-white border border-slate-300 rounded px-1 text-[10px] font-mono">F2</kbd> Pay</span>
               </div>
@@ -2545,6 +3074,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               <span>Items: <strong className="text-white font-bold">{cart.length}</strong></span>
               <span className="text-slate-600">•</span>
               <span>Qty: <strong className="text-white font-bold">{cart.reduce((acc, c) => acc + (Number(c.qty) || 0), 0)}</strong></span>
+              {cart.some(c => c.qty < 0) && (
+                <span className="text-[10px] text-rose-400 font-bold bg-rose-950/80 px-1 py-0.2 rounded border border-rose-800">
+                  (-{cart.filter(c => c.qty < 0).reduce((acc, c) => acc + Math.abs(c.qty), 0)} ret)
+                </span>
+              )}
             </div>
           </div>
 
@@ -2595,8 +3129,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 </div>
                 <div className="flex items-center justify-between text-rose-400 font-bold">
                   <span className="flex items-center gap-1">
-                    <span>Lumpsum Discount</span>
-                    {billDiscountType === 'percent' && (
+                    <span>{totals.appliedBillSchemeName ? `Offer: ${totals.appliedBillSchemeName}` : 'Lumpsum Discount'}</span>
+                    {billDiscountType === 'percent' && !totals.appliedBillSchemeName && (
                       <span className="text-[10px] bg-rose-950/80 text-rose-300 px-1 rounded border border-rose-800 font-mono">
                         {totals.discountValue}%
                       </span>
@@ -3219,6 +3753,228 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         }}
         onCancel={() => setShowQuitModal(false)}
       />
+
+      <ItemInfoModal
+        isOpen={!!selectedItemForInfo}
+        onClose={() => setSelectedItemForInfo(null)}
+        item={selectedItemForInfo}
+        customerPartyName={customerName}
+        onEditInMaster={(itemToEdit) => {
+          if (onOpenNewItemModal) {
+            onOpenNewItemModal(newItem => {
+              selectItem(newItem);
+            }, itemToEdit);
+          }
+        }}
+        currencySymbol={config.CurrencySymbol || 'Nu.'}
+      />
+
+      {/* Batch Switcher Modal */}
+      {batchSelectModalIdx !== null && cart[batchSelectModalIdx] && (() => {
+        const line = cart[batchSelectModalIdx];
+        const itemObj = items.find(i => i['Item Code'] === line.itemCode);
+        const itemBatches = itemObj?.batches || [];
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-4 overflow-hidden flex flex-col max-h-[85vh]">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <span className="text-base">💊</span> Switch Batch for "{line.itemName}"
+                  </h3>
+                  <p className="text-[11px] text-slate-500">Select a specific physical batch to override auto-selected FEFO batch</p>
+                </div>
+                <button
+                  onClick={() => setBatchSelectModalIdx(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto py-3 space-y-2">
+                {itemBatches.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 text-xs">
+                    No batches recorded for this item. You can add batches in Item Master.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-emerald-50 text-emerald-950 font-bold border-b border-emerald-100 text-[11px]">
+                          <th className="p-2 text-left">Batch No</th>
+                          <th className="p-2 text-left">Expiry Date</th>
+                          <th className="p-2 text-center">In Stock</th>
+                          <th className="p-2 text-right">Sale Rate</th>
+                          {config.EnableWholesalePrice !== 'false' && <th className="p-2 text-right">Wholesale Rate</th>}
+                          <th className="p-2 text-right">MRP</th>
+                          <th className="p-2 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {itemBatches.map(b => {
+                          const isSelected = line.selectedBatchNo === b.batchNo || line.selectedBatchId === b.id;
+                          const expTime = b.expDate ? new Date(b.expDate).getTime() : 0;
+                          const daysToExp = expTime ? Math.ceil((expTime - Date.now()) / (1000 * 60 * 60 * 24)) : 999;
+                          const isExpired = daysToExp <= 0;
+                          const isNearExp = daysToExp > 0 && daysToExp <= 60;
+
+                          return (
+                            <tr key={b.id} className={`hover:bg-emerald-50/50 transition ${isSelected ? 'bg-emerald-50 font-bold' : ''}`}>
+                              <td className="p-2 font-mono font-bold text-slate-900">
+                                {b.batchNo}
+                                {isSelected && <span className="ml-1 text-[10px] text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded font-bold">Selected</span>}
+                              </td>
+                              <td className="p-2 font-mono">
+                                {b.expDate || '-'}
+                                {isExpired && <span className="ml-1 text-[9px] bg-rose-100 text-rose-800 px-1 py-0.2 rounded font-bold">Expired</span>}
+                                {isNearExp && <span className="ml-1 text-[9px] bg-amber-100 text-amber-800 px-1 py-0.2 rounded font-bold">Expiring Soon ({daysToExp}d)</span>}
+                              </td>
+                              <td className="p-2 text-center font-bold text-slate-800">
+                                {b.currentStock ?? b.openingStock ?? 0}
+                              </td>
+                              <td className="p-2 text-right font-mono font-bold text-indigo-900">
+                                {config.CurrencySymbol || 'Nu.'} {Number(b.saleRate || 0).toFixed(2)}
+                              </td>
+                              {config.EnableWholesalePrice !== 'false' && (
+                                <td className="p-2 text-right font-mono text-emerald-800">
+                                  {config.CurrencySymbol || 'Nu.'} {Number(b.wholesaleRate || 0).toFixed(2)}
+                                </td>
+                              )}
+                              <td className="p-2 text-right font-mono text-slate-600">
+                                {config.CurrencySymbol || 'Nu.'} {Number(b.mrp || 0).toFixed(2)}
+                              </td>
+                              <td className="p-2 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    let newRate = line.rate;
+                                    if (pricingMode === 'wholesale' && config.EnableWholesalePrice !== 'false' && (Number(b.wholesaleRate) || 0) > 0) {
+                                      newRate = Number(b.wholesaleRate);
+                                    } else if ((Number(b.saleRate) || 0) > 0) {
+                                      newRate = Number(b.saleRate);
+                                    }
+
+                                    const updatedCart = [...cart];
+                                    updatedCart[batchSelectModalIdx] = {
+                                      ...line,
+                                      selectedBatchNo: b.batchNo,
+                                      selectedBatchExp: b.expDate,
+                                      selectedBatchId: b.id,
+                                      rate: newRate,
+                                      purchaseRate: Number(b.purchaseRate) || line.purchaseRate,
+                                      barcode: b.barcode || line.barcode
+                                    };
+                                    setCart(updatedCart);
+                                    setBatchSelectModalIdx(null);
+                                  }}
+                                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer shadow-2xs ${
+                                    isSelected 
+                                      ? 'bg-emerald-700 text-white hover:bg-emerald-800' 
+                                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                  }`}
+                                >
+                                  {isSelected ? 'Active' : 'Select This Batch'}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex justify-end">
+                <button
+                  onClick={() => setBatchSelectModalIdx(null)}
+                  className="px-4 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Active Offers / Schemes Quick View Modal */}
+      {showOffersModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full p-5 overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
+                  <Tags className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Active Promotions & Offers</h3>
+                  <p className="text-[11px] text-slate-500">Running promotional schemes applicable to POS</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOffersModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto py-3 space-y-2.5">
+              {getAllActiveSchemes('pos').length === 0 ? (
+                <div className="py-8 text-center text-slate-400">
+                  <Tags className="h-8 w-8 mx-auto mb-2 text-slate-300 stroke-1" />
+                  <p className="text-xs font-semibold">No promotional schemes are currently running for POS sales.</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Configure discounts, BOGO, or happy hours under Schemes & Offers (Alt+O).</p>
+                </div>
+              ) : (
+                getAllActiveSchemes('pos').map(sch => (
+                  <div key={sch.id} className="p-3 rounded-xl border border-amber-200 bg-amber-50/50 flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-slate-900 text-xs">{sch.name}</span>
+                        <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-amber-200 text-amber-900">
+                          {sch.schemeType.replace('_', ' ')}
+                        </span>
+                        <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700">
+                          Applies: {sch.targetType.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-1">
+                        {sch.schemeType === 'percent_discount' && `Get ${sch.discountValue}% discount`}
+                        {sch.schemeType === 'flat_discount' && `Get ${config.CurrencySymbol || 'Nu.'} ${sch.discountValue} off per unit`}
+                        {sch.schemeType === 'special_rate' && `Special Promo Price: ${config.CurrencySymbol || 'Nu.'} ${sch.specialRate}`}
+                        {sch.schemeType === 'bogo' && `Buy ${sch.buyQty}, Get ${sch.freeQty} Free`}
+                        {sch.minQty && sch.minQty > 1 ? ` (Min Qty: ${sch.minQty})` : ''}
+                        {sch.schemeType === 'bill_discount' && sch.minBillAmount ? ` on orders above ${config.CurrencySymbol || 'Nu.'} ${sch.minBillAmount}` : ''}
+                      </p>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
+                        <span>Valid: {sch.startDate || 'Anytime'} to {sch.endDate || 'Ongoing'}</span>
+                        {sch.startTime && sch.endTime && (
+                          <span>• Happy Hours: {sch.startTime} - {sch.endTime}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowOffersModal(false)}
+                className="px-4 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

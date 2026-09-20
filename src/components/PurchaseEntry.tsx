@@ -5,7 +5,7 @@ import { focusNextOutsideGrid } from '../utils/domUtils';
 import { Config, Item, Ledger, CartLine, Unit, BarcodeQueueItem, ReceiptNote, PurchaseOrder } from '../types';
 import { BankTransactionIdModal } from './BankTransactionIdModal';
 import { isBankLedger } from '../utils/ledgerUtils';
-import { savePurchaseInvoice, deletePurchaseInvoice, getVoucherDetails, saveLedger, loadJson, STORAGE_KEYS, DEFAULT_UNITS, peekNextVoucherNo } from '../services/storageService';
+import { savePurchaseInvoice, deletePurchaseInvoice, getVoucherDetails, saveLedger, loadJson, STORAGE_KEYS, DEFAULT_UNITS, peekNextVoucherNo, getSizes, getColors } from '../services/storageService';
 import { Plus, Trash2, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckCircle2, UserPlus, ShoppingBag, Tag, Printer, AlertCircle, ArrowDownToLine, Receipt, Calendar } from 'lucide-react';
 import { playSaveSound, playWarningTone } from '../utils/audio';
 import { SerialModal } from './SerialModal';
@@ -24,7 +24,7 @@ interface PurchaseEntryProps {
   items: Item[];
   ledgers: Ledger[];
   onDataRefresh: () => void;
-  onOpenNewItemModal: (onSelect?: (item: Item) => void) => void;
+  onOpenNewItemModal: (onSelect?: (item: Item) => void, itemToEdit?: Item | null) => void;
   onOpenNewLedgerModal: (group?: string, onSelect?: (name: string) => void) => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onPrintPurchaseBarcodes?: (queue: BarcodeQueueItem[]) => void;
@@ -91,7 +91,9 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
               isSerialized: (it.isSerialized || itemMatch?.['Is Serialized'] || 'N') as 'Y' | 'N',
               serials: typeof it['Serial Numbers'] === 'string'
                 ? it['Serial Numbers'].split(',').map((s: string) => s.trim()).filter(Boolean) 
-                : (Array.isArray(it.serials) ? it.serials : [])
+                : (Array.isArray(it.serials) ? it.serials : []),
+              selectedSize: it.selectedSize || it.Size || '',
+              selectedColor: it.selectedColor || it.Color || ''
             };
           });
           setCart(newCart);
@@ -495,7 +497,9 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     const isZ = !isGstMode || isSupplierGstExempted || String(item['Zero Rated (Y/N)']).toUpperCase() === 'Y';
     const computedGstAmt = isZ ? 0 : round2((qty * rate) * (Number(item['GST %']) || 0) / 100);
 
-    const existingIdx = cart.findIndex(l => l.itemCode === item['Item Code']);
+    const selSize = item.size ? item.size.split(/[,/;|]+/)[0]?.trim() || '' : '';
+    const selColor = item.color ? item.color.split(/[,/;|]+/)[0]?.trim() || '' : '';
+    const existingIdx = cart.findIndex(l => l.itemCode === item['Item Code'] && (l.selectedSize || '') === selSize && (l.selectedColor || '') === selColor);
     let updatedCart = [...cart];
     let targetIndex = existingIdx;
 
@@ -517,7 +521,10 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         purchaseRate: rate,
         isSerialized: item['Is Serialized'],
         serials: [],
-        gstAmt: computedGstAmt
+        gstAmt: computedGstAmt,
+        selectedSize: selSize,
+        selectedColor: selColor,
+        barcode: item.Barcode || ''
       };
       updatedCart.push(newLine);
       targetIndex = updatedCart.length - 1;
@@ -567,7 +574,9 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         wholesaleRate: Number(matchedItem?.['Wholesale Rate'] || (matchedItem as any)?.wholesaleRate || (matchedItem as any)?.wholesalePrice || 0),
         mrp: matchedItem?.MRP || matchedItem?.['Sale Rate'] || line.rate,
         gstPct: isGstMode ? (line.gstPct || Number(matchedItem?.['GST %']) || 0) : 0,
-        qty: line.qty
+        qty: line.qty,
+        size: line.selectedSize || matchedItem?.size,
+        color: line.selectedColor || matchedItem?.color
       };
     });
   };
@@ -993,6 +1002,10 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                               const isZero = !isGstMode || isSupplierGstExempted || String(item['Zero Rated (Y/N)']).toUpperCase() === 'Y';
                               const computedGstAmt = isZero ? 0 : round2((qty * rate) * (Number(item['GST %']) || 0) / 100);
 
+                              const isPharm = item.isPharmacy === 'Y' || item.maintainBatch === 'Y';
+                              const defBatchNo = isPharm ? (line.selectedBatchNo || `B-${Math.floor(100 + Math.random() * 900)}`) : '';
+                              const defBatchExp = isPharm ? (line.selectedBatchExp || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]) : '';
+
                               const updated = [...cart];
                               updated[idx] = {
                                 ...updated[idx],
@@ -1003,7 +1016,11 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                                 gstPct: Number(item['GST %']) || 0,
                                 zeroRated: item['Zero Rated (Y/N)'] || 'N',
                                 isSerialized: item['Is Serialized'],
-                                gstAmt: computedGstAmt
+                                gstAmt: computedGstAmt,
+                                selectedSize: item.size ? item.size.split(/[,/;|]+/)[0]?.trim() || '' : '',
+                                selectedColor: item.color ? item.color.split(/[,/;|]+/)[0]?.trim() || '' : '',
+                                selectedBatchNo: defBatchNo,
+                                selectedBatchExp: defBatchExp
                               };
                               setCart(updated);
                               setTimeout(() => {
@@ -1045,6 +1062,98 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                           accentColor="amber"
                         />
                       )}
+
+                      {/* Size & Color Selection during Purchase (Only for items that have size/color in item master) */}
+                      {config.EnableGarmentsAndFootwear === 'true' && (() => {
+                        const matchedItem = items.find(i => i['Item Code'] === line.itemCode);
+                        const hasSize = config.EnableSize !== 'false' && Boolean(matchedItem?.size?.trim());
+                        const hasColor = config.EnableColor !== 'false' && Boolean(matchedItem?.color?.trim());
+                        if (!hasSize && !hasColor) return null;
+
+                        const sizeOptions = matchedItem?.size ? matchedItem.size.split(/[,/;|]+/).map(s => s.trim()).filter(Boolean) : [];
+                        const colorOptions = matchedItem?.color ? matchedItem.color.split(/[,/;|]+/).map(c => c.trim()).filter(Boolean) : [];
+
+                        return (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px]">
+                            {hasSize && (
+                              <div className="flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                                <span className="font-bold text-purple-900 text-[10px]">Size:</span>
+                                <select
+                                  value={line.selectedSize || ''}
+                                  onChange={e => {
+                                    const updated = [...cart];
+                                    updated[idx] = { ...updated[idx], selectedSize: e.target.value };
+                                    setCart(updated);
+                                  }}
+                                  className="bg-white text-purple-900 font-bold border border-purple-300 rounded px-1 py-0.5 text-[10px] focus:outline-none cursor-pointer"
+                                >
+                                  <option value="">-- Select Size --</option>
+                                  {(sizeOptions.length > 0 ? sizeOptions : getSizes()).map((sz, sIdx) => (
+                                    <option key={sIdx} value={sz}>{sz}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                            {hasColor && (
+                              <div className="flex items-center gap-1 bg-pink-50 px-1.5 py-0.5 rounded border border-pink-200">
+                                <span className="font-bold text-pink-900 text-[10px]">Color:</span>
+                                <select
+                                  value={line.selectedColor || ''}
+                                  onChange={e => {
+                                    const updated = [...cart];
+                                    updated[idx] = { ...updated[idx], selectedColor: e.target.value };
+                                    setCart(updated);
+                                  }}
+                                  className="bg-white text-pink-900 font-bold border border-pink-300 rounded px-1 py-0.5 text-[10px] focus:outline-none cursor-pointer"
+                                >
+                                  <option value="">-- Select Color --</option>
+                                  {(colorOptions.length > 0 ? colorOptions : getColors()).map((col, cIdx) => (
+                                    <option key={cIdx} value={col}>{col}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Batch No & Expiry Date Inputs for Pharmacy Purchases */}
+                      {(() => {
+                        const matchedItem = items.find(i => i['Item Code'] === line.itemCode);
+                        if (!matchedItem || (matchedItem.isPharmacy !== 'Y' && matchedItem.maintainBatch !== 'Y')) return null;
+
+                        return (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px]">
+                            <div className="flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                              <span className="font-bold text-emerald-950 text-[10px]">Batch No:</span>
+                              <input
+                                type="text"
+                                value={line.selectedBatchNo || ''}
+                                onChange={e => {
+                                  const updated = [...cart];
+                                  updated[idx] = { ...updated[idx], selectedBatchNo: e.target.value };
+                                  setCart(updated);
+                                }}
+                                placeholder="e.g. B-101"
+                                className="w-20 bg-white text-emerald-950 font-bold border border-emerald-300 rounded px-1 py-0.5 text-[10px] outline-none focus:border-emerald-500 font-mono"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                              <span className="font-bold text-emerald-950 text-[10px]">Expiry:</span>
+                              <input
+                                type="date"
+                                value={line.selectedBatchExp || ''}
+                                onChange={e => {
+                                  const updated = [...cart];
+                                  updated[idx] = { ...updated[idx], selectedBatchExp: e.target.value };
+                                  setCart(updated);
+                                }}
+                                className="bg-white text-emerald-950 font-bold border border-emerald-300 rounded px-1 py-0.5 text-[10px] outline-none focus:border-emerald-500 font-mono"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="py-1 px-1 align-middle text-center">
                       <input
@@ -1071,31 +1180,47 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                       />
                     </td>
                     <td className="py-1 px-1 align-middle text-center">
-                      <select
-                        value={line.unit || 'Pcs'}
-                        onChange={e => {
-                          const val = e.target.value;
-                          const updated = [...cart];
-                          updated[idx].unit = val;
-                          const item = items.find(i => (i['Item Code'] && i['Item Code'] === updated[idx].itemCode) || i['Item Name'] === updated[idx].itemName);
-                          if (item) {
-                            if (val === item.Unit) {
-                              updated[idx].rate = item['Purchase Rate'] || 0;
-                            } else if (item.multiUnits) {
-                              const mu = item.multiUnits.find(m => m.unit === val);
-                              if (mu && mu.purchaseRate) {
-                                updated[idx].rate = mu.purchaseRate;
+                      {(() => {
+                        const lineItem = items.find(i => (i['Item Code'] && i['Item Code'] === line.itemCode) || i['Item Name'] === line.itemName);
+                        const primaryUnit = lineItem?.Unit || line.unit || 'Pcs';
+                        const altUnits = (lineItem?.multiUnits || []).map(m => m.unit).filter(Boolean);
+                        const allowedUnits = Array.from(new Set([primaryUnit, ...altUnits]));
+
+                        if (allowedUnits.length <= 1) {
+                          return (
+                            <span className="text-xs font-semibold text-slate-700 px-1">
+                              {allowedUnits[0] || line.unit || 'Pcs'}
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <select
+                            value={line.unit || allowedUnits[0]}
+                            onChange={e => {
+                              const val = e.target.value;
+                              const updated = [...cart];
+                              updated[idx].unit = val;
+                              if (lineItem) {
+                                if (val === lineItem.Unit) {
+                                  updated[idx].rate = lineItem['Purchase Rate'] || 0;
+                                } else if (lineItem.multiUnits) {
+                                  const mu = lineItem.multiUnits.find(m => m.unit === val);
+                                  if (mu && mu.purchaseRate) {
+                                    updated[idx].rate = mu.purchaseRate;
+                                  }
+                                }
                               }
-                            }
-                          }
-                          setCart(updated);
-                        }}
-                        className="w-full text-center h-7.5 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
-                      >
-                        {units.map(u => (
-                          <option key={u['Unit Name']} value={u['Unit Name']}>{u.Symbol || u['Unit Name']}</option>
-                        ))}
-                      </select>
+                              setCart(updated);
+                            }}
+                            className="w-full text-center h-7.5 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
+                          >
+                            {allowedUnits.map(u => (
+                              <option key={u} value={u}>{u}</option>
+                            ))}
+                          </select>
+                        );
+                      })()}
                     </td>
                     <td className="py-1 px-1 align-middle text-right">
                       <input

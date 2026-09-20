@@ -102,8 +102,67 @@ export const STORAGE_KEYS = {
   DELETED_SALES_INVOICES: 'deep_pos_deleted_sales_invoices',
   DELETED_PURCHASE_INVOICES: 'deep_pos_deleted_purchase_invoices',
   DELETED_VOUCHERS: 'deep_pos_deleted_vouchers',
-  AUDIT_LOG: 'deep_pos_audit_log'
+  AUDIT_LOG: 'deep_pos_audit_log',
+  RACKS: 'deep_pos_racks',
+  COMPATIBILITIES: 'deep_pos_compatibilities',
+  SIZES: 'deep_pos_sizes',
+  COLORS: 'deep_pos_colors',
+  SCHEMES: 'deep_pos_schemes'
 };
+
+export const DEFAULT_SIZES = [
+  'XS',
+  'S',
+  'M',
+  'L',
+  'XL',
+  'XXL',
+  '38',
+  '39',
+  '40',
+  '41',
+  '42',
+  '43',
+  '44',
+  '45',
+  'Free Size'
+];
+
+export const DEFAULT_COLORS = [
+  'Black',
+  'White',
+  'Red',
+  'Blue',
+  'Navy Blue',
+  'Grey',
+  'Green',
+  'Yellow',
+  'Brown',
+  'Beige',
+  'Pink'
+];
+
+export const DEFAULT_RACKS = [
+  'Rack A-01',
+  'Rack A-02',
+  'Rack B-01',
+  'Rack B-02',
+  'Rack C-01',
+  'Bin 01',
+  'Bin 02',
+  'Warehouse Floor'
+];
+
+export const DEFAULT_COMPATIBILITIES = [
+  'Toyota Hilux 2.8',
+  'Mahindra Bolero',
+  'Maruti Alto 800',
+  'Hyundai Creta 1.6',
+  'JCB 3DX Backhoe',
+  'Tata Ace',
+  'Ford Ranger',
+  'Universal / Multi-Fit'
+];
 
 export const DEFAULT_CONFIG: Config = {
   CompanyName: 'My Retail Store',
@@ -119,6 +178,7 @@ export const DEFAULT_CONFIG: Config = {
   PrintBankDetailsOnInvoice: 'true',
   EnableGST: 'true',
   EnableSerials: 'true',
+  EnablePharmacyBatch: 'true',
   EnableItemDiscount: 'true',
   EnableCategory: 'true',
   EnableAssetManagement: 'true',
@@ -159,7 +219,17 @@ export const DEFAULT_CONFIG: Config = {
   EnableAltUnitPrice: 'true',
   EnableBankTxnId: 'true',
   EnableWholesalePrice: 'true',
-  EnableBillWiseDetails: 'true'
+  EnableBillWiseDetails: 'true',
+  EnableSpareParts: 'false',
+  EnableRackBin: 'true',
+  EnableCompatibility: 'true',
+  PrintPartNumber: 'true',
+  PrintCompatibility: 'false',
+  EnableGarmentsAndFootwear: 'false',
+  EnableSize: 'true',
+  EnableColor: 'true',
+  PrintSize: 'true',
+  PrintColor: 'true'
 };
 
 export const DEFAULT_VOUCHER_TYPES: VoucherType[] = [
@@ -1530,6 +1600,98 @@ export function saveItemCategory(catName: string) {
   return { ok: true, categories: list };
 }
 
+export function getRacks(): string[] {
+  return loadJson<string[]>(STORAGE_KEYS.RACKS, DEFAULT_RACKS);
+}
+
+export function saveRack(rackName: string) {
+  const trimmed = rackName.trim();
+  if (!trimmed) return { ok: false, error: 'Rack/Bin Name is required.', racks: getRacks() };
+  const list = getRacks();
+  if (list.some(r => r.trim().toLowerCase() === trimmed.toLowerCase())) {
+    return { ok: false, error: `Duplicate Rack/Bin: "${trimmed}" already exists.`, racks: list };
+  }
+  list.push(trimmed);
+  saveJson(STORAGE_KEYS.RACKS, list);
+  return { ok: true, racks: list };
+}
+
+export function deleteRack(rackName: string) {
+  const list = getRacks();
+  const filtered = list.filter(r => r !== rackName);
+  saveJson(STORAGE_KEYS.RACKS, filtered);
+  return { ok: true, racks: filtered };
+}
+
+export function getCompatibilities(): string[] {
+  return loadJson<string[]>(STORAGE_KEYS.COMPATIBILITIES, DEFAULT_COMPATIBILITIES);
+}
+
+export function saveCompatibility(compatName: string) {
+  const trimmed = compatName.trim();
+  if (!trimmed) return { ok: false, error: 'Compatibility Name is required.', compatibilities: getCompatibilities() };
+  const list = getCompatibilities();
+  if (list.some(c => c.trim().toLowerCase() === trimmed.toLowerCase())) {
+    return { ok: false, error: `Duplicate Compatibility: "${trimmed}" already exists.`, compatibilities: list };
+  }
+  list.push(trimmed);
+  saveJson(STORAGE_KEYS.COMPATIBILITIES, list);
+  return { ok: true, compatibilities: list };
+}
+
+export function deleteCompatibility(compatName: string) {
+  const list = getCompatibilities();
+  const filtered = list.filter(c => c !== compatName);
+  saveJson(STORAGE_KEYS.COMPATIBILITIES, filtered);
+  return { ok: true, compatibilities: filtered };
+}
+
+export function getSizes(): string[] {
+  return loadJson<string[]>(STORAGE_KEYS.SIZES, DEFAULT_SIZES);
+}
+
+export function saveSize(sizeName: string) {
+  const trimmed = sizeName.trim();
+  if (!trimmed) return { ok: false, error: 'Size is required.', sizes: getSizes() };
+  const list = getSizes();
+  if (list.some(s => s.trim().toLowerCase() === trimmed.toLowerCase())) {
+    return { ok: false, error: `Duplicate Size: "${trimmed}" already exists.`, sizes: list };
+  }
+  list.push(trimmed);
+  saveJson(STORAGE_KEYS.SIZES, list);
+  return { ok: true, sizes: list };
+}
+
+export function deleteSize(sizeName: string) {
+  const list = getSizes();
+  const filtered = list.filter(s => s !== sizeName);
+  saveJson(STORAGE_KEYS.SIZES, filtered);
+  return { ok: true, sizes: filtered };
+}
+
+export function getColors(): string[] {
+  return loadJson<string[]>(STORAGE_KEYS.COLORS, DEFAULT_COLORS);
+}
+
+export function saveColor(colorName: string) {
+  const trimmed = colorName.trim();
+  if (!trimmed) return { ok: false, error: 'Color is required.', colors: getColors() };
+  const list = getColors();
+  if (list.some(c => c.trim().toLowerCase() === trimmed.toLowerCase())) {
+    return { ok: false, error: `Duplicate Color: "${trimmed}" already exists.`, colors: list };
+  }
+  list.push(trimmed);
+  saveJson(STORAGE_KEYS.COLORS, list);
+  return { ok: true, colors: list };
+}
+
+export function deleteColor(colorName: string) {
+  const list = getColors();
+  const filtered = list.filter(c => c !== colorName);
+  saveJson(STORAGE_KEYS.COLORS, filtered);
+  return { ok: true, colors: filtered };
+}
+
 export function generateBarcode(): string {
   const num = nextCounter('InternalBarcode');
   // Auto generate 6 to 7 digit numeric barcode starting from 100001
@@ -2137,6 +2299,21 @@ function updateItemStock(itemCode: string, qtyDelta: number, unitName?: string):
   return newQty;
 }
 
+export function updateItemBatchStock(itemCode: string, batchNoOrId: string, qtyDelta: number, unitName?: string): void {
+  qtyDelta = getBaseQty(itemCode, unitName, qtyDelta);
+  const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+  const idx = items.findIndex(i => i['Item Code'] === itemCode);
+  if (idx === -1) return;
+  if (!items[idx].batches || items[idx].batches!.length === 0) return;
+  const bIdx = items[idx].batches!.findIndex(b => b.id === batchNoOrId || b.batchNo === batchNoOrId);
+  if (bIdx !== -1) {
+    const curBStock = Number(items[idx].batches![bIdx].currentStock) || 0;
+    items[idx].batches![bIdx].currentStock = curBStock + qtyDelta;
+    saveJson(STORAGE_KEYS.ITEMS, items);
+    syncItemToFirestore(items[idx]).catch(() => {});
+  }
+}
+
 export function saveSalesInvoice(payload: {
   orderNo?: string;
   orderDate?: string;
@@ -2152,6 +2329,8 @@ export function saveSalesInvoice(payload: {
   termsAndConditions?: string;
   invoiceNo?: string;
   originalInvoiceNo?: string;
+  appliedBillSchemeName?: string;
+  appliedBillSchemeId?: string;
   date?: string;
   isEdit?: boolean;
   voucherTypeId?: string;
@@ -2161,7 +2340,7 @@ export function saveSalesInvoice(payload: {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const itemsList = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const ledgersList = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
-  const { cart, payment, customer, billDiscount = 0, billDiscountType = 'flat', billDiscountValue, additionalExpenses = [], termsAndConditions, orderNo, orderDate, deliveryNoteNo, voucherTypeId, voucherTypeName, invoiceNo, originalInvoiceNo, isPOS, notes } = payload;
+  const { cart, payment, customer, billDiscount = 0, billDiscountType = 'flat', billDiscountValue, additionalExpenses = [], termsAndConditions, orderNo, orderDate, deliveryNoteNo, voucherTypeId, voucherTypeName, invoiceNo, originalInvoiceNo, isPOS, notes, appliedBillSchemeName, appliedBillSchemeId } = payload;
   
   // Duplicate Serial Number Check (Must exist and not be sold)
   const serialStock = getSerialNumbersStockReport();
@@ -2194,7 +2373,7 @@ export function saveSalesInvoice(payload: {
       if (!oldWasAgainstDN) {
         (oldInv.items || []).forEach((item: any) => {
           const qty = Number(item.Qty) || 0;
-          if (qty > 0) {
+          if (qty !== 0) {
             updateItemStock(item['Item Code'], qty, item.Unit || item.unit);
           }
         });
@@ -2252,12 +2431,20 @@ export function saveSalesInvoice(payload: {
       Qty: l.qty,
       Rate: l.rate,
       Discount: l.discount,
+      discountType: l.discountType || (cfg.ItemDiscountType === 'percent' ? 'percent' : 'flat'),
+      discountAmt: round2(lineDisc),
+      originalRate: l.originalRate,
+      appliedSchemeId: l.appliedSchemeId,
+      appliedSchemeName: l.appliedSchemeName,
       'Taxable Value': round2(gr),
       'GST %': isZ ? 0 : l.gstPct,
       'GST Amount': lGst,
       'Zero Rated (Y/N)': isZ ? 'Y' : 'N',
       'Line Total': round2(gr + lGst),
-      'Serial Numbers': serialStr
+      'Serial Numbers': serialStr,
+      'Batch No': l.selectedBatchNo || '',
+      'Expiry Date': l.selectedBatchExp || '',
+      batchId: l.selectedBatchId || ''
     });
   });
 
@@ -2358,6 +2545,8 @@ export function saveSalesInvoice(payload: {
     voucherTypeName: matchedVt?.name || voucherTypeName,
     config: cfg,
     narration: notes,
+    appliedBillSchemeName: appliedBillSchemeName || undefined,
+    appliedBillSchemeId: appliedBillSchemeId || undefined,
     bankTxnNo: payment.bankTxnNo || '',
     bank2TxnNo: payment.bank2TxnNo || '',
     isPOS: isPOS,
@@ -2419,8 +2608,16 @@ export function saveSalesInvoice(payload: {
   );
   if (!isAgainstDeliveryNote) {
     cart.forEach(l => {
-      const nq = updateItemStock(l.itemCode, -Number(l.qty), l.unit);
-      logStock(l.itemCode, l.itemName, 'Sale', 0, Number(l.qty), nq, iNo, l.unit);
+      const q = Number(l.qty);
+      const nq = updateItemStock(l.itemCode, -q, l.unit);
+      if (l.selectedBatchId || l.selectedBatchNo) {
+        updateItemBatchStock(l.itemCode, l.selectedBatchId || l.selectedBatchNo, -q, l.unit);
+      }
+      if (q < 0) {
+        logStock(l.itemCode, l.itemName, 'Sale Return', Math.abs(q), 0, nq, iNo, l.unit);
+      } else {
+        logStock(l.itemCode, l.itemName, 'Sale', 0, q, nq, iNo, l.unit);
+      }
     });
   }
 
@@ -2646,7 +2843,11 @@ export function savePurchaseInvoice(payload: {
       'GST Amount': lGst,
       'Zero Rated (Y/N)': isZ ? 'Y' : 'N',
       'Line Total': round2(gr + lGst),
-      'Serial Numbers': serialStr
+      'Serial Numbers': serialStr,
+      selectedSize: l.selectedSize,
+      selectedColor: l.selectedColor,
+      Size: l.selectedSize,
+      Color: l.selectedColor
     });
   });
   
@@ -2745,6 +2946,9 @@ export function savePurchaseInvoice(payload: {
   if (!isAgainstReceiptNote) {
     cart.forEach(l => {
       const nq = updateItemStock(l.itemCode, Number(l.qty), l.unit);
+      if (l.selectedBatchId || l.selectedBatchNo) {
+        updateItemBatchStock(l.itemCode, l.selectedBatchId || l.selectedBatchNo, Number(l.qty), l.unit);
+      }
       logStock(l.itemCode, l.itemName, 'Purchase', Number(l.qty), 0, nq, bNo, l.unit);
     });
   }
@@ -3290,9 +3494,13 @@ export function cancelSalesInvoice(invoiceNo: string, reason?: string) {
   if (!wasAgainstDN) {
     (target.items || []).forEach((item: any) => {
       const qty = Number(item.Qty) || 0;
-      if (qty > 0) {
+      if (qty !== 0) {
         const newQty = updateItemStock(item['Item Code'], qty, item.Unit || item.unit);
-        logStock(item['Item Code'], item['Item Name'], 'Sale Cancelled', qty, 0, newQty, invoiceNo, item.Unit || item.unit);
+        if (qty > 0) {
+          logStock(item['Item Code'], item['Item Name'], 'Sale Cancelled', qty, 0, newQty, invoiceNo, item.Unit || item.unit);
+        } else {
+          logStock(item['Item Code'], item['Item Name'], 'Sale Return Cancelled', 0, Math.abs(qty), newQty, invoiceNo, item.Unit || item.unit);
+        }
       }
     });
   }
@@ -5732,8 +5940,201 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
         rawItem: i
       }));
   }
+
+  if (type === 'variant_summary') {
+    const salesInvoices = loadJson<any[]>(STORAGE_KEYS.SALES_INVOICES, []);
+    const purchaseInvoices = loadJson<any[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+
+    const variantRows: any[] = [];
+
+    items.filter(i => i['Maintain Stock'] !== 'N').forEach(i => {
+      if (i.variants && i.variants.length > 0) {
+        i.variants.forEach(v => {
+          const vSize = (v.size || '').trim();
+          const vColor = (v.color || '').trim();
+
+          let totalSold = 0;
+          salesInvoices.forEach(s => {
+            if (s.status !== 'Cancelled' && Array.isArray(s.items)) {
+              s.items.forEach((line: any) => {
+                if (line.itemCode === i['Item Code']) {
+                  const lineSize = (line.selectedSize || line.Size || '').trim();
+                  const lineColor = (line.selectedColor || line.Color || '').trim();
+                  if ((!vSize || lineSize === vSize) && (!vColor || lineColor === vColor)) {
+                    totalSold += Number(line.qty) || 0;
+                  }
+                }
+              });
+            }
+          });
+
+          let totalPurchased = 0;
+          purchaseInvoices.forEach(p => {
+            if (p.status !== 'Cancelled' && Array.isArray(p.items)) {
+              p.items.forEach((line: any) => {
+                if (line.itemCode === i['Item Code']) {
+                  const lineSize = (line.selectedSize || line.Size || '').trim();
+                  const lineColor = (line.selectedColor || line.Color || '').trim();
+                  if ((!vSize || lineSize === vSize) && (!vColor || lineColor === vColor)) {
+                    totalPurchased += Number(line.qty) || 0;
+                  }
+                }
+              });
+            }
+          });
+
+          const opStock = Number(v.openingStock) || 0;
+          const currentStock = opStock + totalPurchased - totalSold;
+          const purRate = Number(v.purchaseRate) || Number(i['Purchase Rate']) || 0;
+          const sRate = Number(v.saleRate) || Number(i['Sale Rate']) || 0;
+
+          variantRows.push({
+            itemCode: i['Item Code'],
+            itemName: i['Item Name'],
+            variantId: v.id,
+            color: v.color || '-',
+            size: v.size || '-',
+            barcode: v.barcode || i.Barcode || '-',
+            group: i.Group || '-',
+            category: i.Category || '-',
+            unit: i.Unit || 'Pcs',
+            openingStock: opStock,
+            inwardQty: totalPurchased,
+            outwardQty: totalSold,
+            currentStock: currentStock,
+            purchaseRate: purRate,
+            saleRate: sRate,
+            wholesaleRate: Number(v.wholesaleRate) || Number(i['Wholesale Rate']) || 0,
+            mrp: Number(v.mrp) || Number(i.MRP) || 0,
+            stockValuation: currentStock * purRate,
+            isVariant: true
+          });
+        });
+      } else {
+        const opStock = Number(i['Opening Stock']) || 0;
+        const currentStock = Number(i['Current Stock']) || 0;
+        const purRate = Number(i['Purchase Rate']) || 0;
+        const sRate = Number(i['Sale Rate']) || 0;
+
+        variantRows.push({
+          itemCode: i['Item Code'],
+          itemName: i['Item Name'],
+          variantId: '',
+          color: '-',
+          size: '-',
+          barcode: i.Barcode || '-',
+          group: i.Group || '-',
+          category: i.Category || '-',
+          unit: i.Unit || 'Pcs',
+          openingStock: opStock,
+          inwardQty: 0,
+          outwardQty: 0,
+          currentStock: currentStock,
+          purchaseRate: purRate,
+          saleRate: sRate,
+          wholesaleRate: Number(i['Wholesale Rate']) || 0,
+          mrp: Number(i.MRP) || 0,
+          stockValuation: currentStock * purRate,
+          isVariant: false
+        });
+      }
+    });
+
+    return variantRows;
+  }
+
+  if (type === 'part_summary') {
+    return items
+      .filter(i => i['Maintain Stock'] !== 'N')
+      .map(i => {
+        const pNo = (i.partNumber || i['Alias'] || i['HSN/SAC'] || '-').trim();
+        const purRate = Number(i['Purchase Rate']) || 0;
+        const currentStock = Number(i['Current Stock']) || 0;
+        return {
+          itemCode: i['Item Code'],
+          itemName: i['Item Name'],
+          partNumber: pNo,
+          alias: i['Alias'] || '-',
+          hsnSac: i['HSN/SAC'] || '-',
+          barcode: i.Barcode || '-',
+          group: i.Group || '-',
+          category: i.Category || '-',
+          unit: i.Unit || 'Pcs',
+          openingStock: Number(i['Opening Stock']) || 0,
+          currentStock: currentStock,
+          purchaseRate: purRate,
+          saleRate: Number(i['Sale Rate']) || 0,
+          wholesaleRate: Number(i['Wholesale Rate']) || 0,
+          mrp: Number(i.MRP) || 0,
+          stockValuation: currentStock * purRate
+        };
+      });
+  }
   if (type === 'serials') {
     return getSerialNumbersStockReport();
+  }
+
+  if (type === 'batch_summary') {
+    const batchRows: any[] = [];
+    const todayStr = new Date().toISOString().split('T')[0];
+    const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    items.filter(i => i['Maintain Stock'] !== 'N').forEach(i => {
+      if (i.batches && i.batches.length > 0) {
+        i.batches.forEach(b => {
+          const purRate = Number(b.purchaseRate) || Number(i['Purchase Rate']) || 0;
+          const currStock = Number(b.currentStock) ?? Number(b.openingStock) ?? Number(i['Current Stock']) ?? 0;
+          let expiryStatus = 'Valid';
+          if (b.expDate && b.expDate !== '-') {
+            if (b.expDate < todayStr) {
+              expiryStatus = 'Expired';
+            } else if (b.expDate <= thirtyDaysFromNow) {
+              expiryStatus = 'Nearing Expiry';
+            }
+          }
+          batchRows.push({
+            itemCode: i['Item Code'],
+            itemName: i['Item Name'],
+            batchNo: b.batchNo || '-',
+            expDate: b.expDate || '-',
+            expiryStatus,
+            barcode: b.barcode || i.Barcode || '-',
+            group: i.Group || '-',
+            category: i.Category || '-',
+            unit: i.Unit || 'Pcs',
+            openingStock: Number(b.openingStock) || 0,
+            currentStock: currStock,
+            purchaseRate: purRate,
+            saleRate: Number(b.saleRate) || Number(i['Sale Rate']) || 0,
+            wholesaleRate: Number(b.wholesaleRate) || Number(i['Wholesale Rate']) || 0,
+            mrp: Number(b.mrp) || Number(i.MRP) || 0,
+            stockValuation: currStock * purRate
+          });
+        });
+      } else if (i.isPharmacy === 'Y' || i.maintainBatch === 'Y') {
+        const purRate = Number(i['Purchase Rate']) || 0;
+        const currStock = Number(i['Current Stock']) || 0;
+        batchRows.push({
+          itemCode: i['Item Code'],
+          itemName: i['Item Name'],
+          batchNo: 'Default',
+          expDate: '-',
+          expiryStatus: 'Valid',
+          barcode: i.Barcode || '-',
+          group: i.Group || '-',
+          category: i.Category || '-',
+          unit: i.Unit || 'Pcs',
+          openingStock: Number(i['Opening Stock']) || 0,
+          currentStock: currStock,
+          purchaseRate: purRate,
+          saleRate: Number(i['Sale Rate']) || 0,
+          wholesaleRate: Number(i['Wholesale Rate']) || 0,
+          mrp: Number(i.MRP) || 0,
+          stockValuation: currStock * purRate
+        });
+      }
+    });
+    return batchRows;
   }
 
   if (type === 'vouchers') {
@@ -8425,3 +8826,184 @@ export function getGSTSummaryReport(from: string, to: string) {
     }
   };
 }
+  
+export interface ItemPriceHistoryInfo {
+  lastPurchaseRate?: number;
+  lastPurchaseDate?: string;
+  lastPurchaseSupplier?: string;
+  lastPurchaseInvoiceNo?: string;
+  
+  lastSaleRate?: number;
+  lastSaleDate?: string;
+  lastSaleCustomer?: string;
+  lastSaleInvoiceNo?: string;
+  
+  customerLastSaleRate?: number;
+  customerLastSaleDate?: string;
+  customerLastSaleInvoiceNo?: string;
+}
+
+export function getItemPriceHistory(itemCode: string, itemName?: string, customerPartyName?: string): ItemPriceHistoryInfo {
+  const result: ItemPriceHistoryInfo = {};
+  if (!itemCode && !itemName) return result;
+
+  const targetCode = (itemCode || '').trim().toLowerCase();
+  const targetName = (itemName || '').trim().toLowerCase();
+
+  const isMatch = (i: any) => {
+    const c = (i['Item Code'] || i.itemCode || '').trim().toLowerCase();
+    const n = (i['Item Name'] || i.itemName || '').trim().toLowerCase();
+    return (targetCode && c === targetCode) || (targetName && n === targetName);
+  };
+
+  try {
+    // 1. Check Purchase Invoices (most recent first)
+    const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+    const sortedPurchases = [...purchases].sort((a, b) => new Date(b.date || (b as any).billDate || 0).getTime() - new Date(a.date || (a as any).billDate || 0).getTime());
+    for (const p of sortedPurchases) {
+      const match = (p.items || []).find(isMatch);
+      if (match) {
+        const mAny = match as any;
+        result.lastPurchaseRate = Number(mAny.Rate ?? mAny.rate ?? mAny['Purchase Rate'] ?? mAny.price ?? 0);
+        result.lastPurchaseDate = p.date || (p as any).billDate;
+        result.lastPurchaseSupplier = (p as any).supplierName || (p as any).partyName || (p as any)['Supplier Name'] || 'Supplier';
+        result.lastPurchaseInvoiceNo = p.invoiceNo || (p as any).billNo || (p as any).refNo;
+        break;
+      }
+    }
+
+    // 2. Check Sales Invoices (most recent first)
+    const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+    const sortedSales = [...sales].sort((a, b) => new Date(b.date || (b as any).billDate || 0).getTime() - new Date(a.date || (a as any).billDate || 0).getTime());
+    
+    const targetParty = (customerPartyName || '').trim().toLowerCase();
+
+    for (const s of sortedSales) {
+      const match = (s.items || []).find(isMatch);
+      if (match) {
+        const mAny = match as any;
+        const sAny = s as any;
+        const custName = sAny.customerName || sAny.partyName || sAny['Customer Name'] || sAny['Party Name'] || 'Cash Customer';
+
+        // Overall last sale
+        if (!result.lastSaleRate) {
+          result.lastSaleRate = Number(mAny.Rate ?? mAny.rate ?? mAny['Sale Rate'] ?? mAny.price ?? 0);
+          result.lastSaleDate = s.date || sAny.billDate;
+          result.lastSaleCustomer = custName;
+          result.lastSaleInvoiceNo = s.invoiceNo || sAny.billNo || sAny.refNo;
+        }
+        
+        // Customer specific last sale
+        if (targetParty && !result.customerLastSaleRate) {
+          const party = custName.trim().toLowerCase();
+          if (party === targetParty) {
+            result.customerLastSaleRate = Number(mAny.Rate ?? mAny.rate ?? mAny['Sale Rate'] ?? mAny.price ?? 0);
+            result.customerLastSaleDate = s.date || sAny.billDate;
+            result.customerLastSaleInvoiceNo = s.invoiceNo || sAny.billNo || sAny.refNo;
+          }
+        }
+
+        if (result.lastSaleRate && (!targetParty || result.customerLastSaleRate)) break;
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching item price history:', err);
+  }
+
+  return result;
+}
+
+export interface ItemTransactionRecord {
+  type: 'purchase' | 'sale';
+  date: string;
+  voucherNo: string;
+  partyName: string;
+  qty: number;
+  unit?: string;
+  rate: number;
+  amount: number;
+  batchNo?: string;
+}
+
+export function getItemTransactionHistory(itemCode: string, itemName?: string): {
+  purchases: ItemTransactionRecord[];
+  sales: ItemTransactionRecord[];
+} {
+  const result: { purchases: ItemTransactionRecord[]; sales: ItemTransactionRecord[] } = {
+    purchases: [],
+    sales: []
+  };
+  if (!itemCode && !itemName) return result;
+
+  const targetCode = (itemCode || '').trim().toLowerCase();
+  const targetName = (itemName || '').trim().toLowerCase();
+
+  const isMatch = (i: any) => {
+    const c = (i['Item Code'] || i.itemCode || i.code || '').trim().toLowerCase();
+    const n = (i['Item Name'] || i.itemName || i.name || '').trim().toLowerCase();
+    return (targetCode && c === targetCode) || (targetName && n === targetName);
+  };
+
+  try {
+    const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+    purchases.forEach(p => {
+      const date = p.date || (p as any).billDate || '';
+      const voucherNo = p.invoiceNo || (p as any).billNo || (p as any).refNo || 'PUR-VOUCHER';
+      const partyName = (p as any).supplierName || (p as any).partyName || (p as any)['Supplier Name'] || 'Supplier';
+
+      (p.items || []).forEach((match: any) => {
+        if (isMatch(match)) {
+          const qty = Number(match.qty || match.Qty || match.quantity || 1);
+          const rate = Number(match.rate || match.Rate || match.price || match['Purchase Rate'] || 0);
+          const amount = qty * rate;
+          result.purchases.push({
+            type: 'purchase',
+            date,
+            voucherNo,
+            partyName,
+            qty,
+            unit: match.unit || match.Unit || 'Pcs',
+            rate,
+            amount,
+            batchNo: match.batchNo || match.batch || '-'
+          });
+        }
+      });
+    });
+
+    const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+    sales.forEach(s => {
+      const sAny = s as any;
+      const date = s.date || sAny.billDate || '';
+      const voucherNo = s.invoiceNo || sAny.billNo || sAny.refNo || 'SALE-VOUCHER';
+      const partyName = sAny.customerName || sAny.partyName || sAny['Customer Name'] || sAny['Party Name'] || 'Cash Customer';
+
+      (s.items || []).forEach((match: any) => {
+        if (isMatch(match)) {
+          const qty = Number(match.qty || match.Qty || match.quantity || 1);
+          const rate = Number(match.rate || match.Rate || match.price || match['Sale Rate'] || 0);
+          const amount = qty * rate;
+          result.sales.push({
+            type: 'sale',
+            date,
+            voucherNo,
+            partyName,
+            qty,
+            unit: match.unit || match.Unit || 'Pcs',
+            rate,
+            amount,
+            batchNo: match.selectedBatchNo || match.batchNo || '-'
+          });
+        }
+      });
+    });
+
+    result.purchases.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+    result.sales.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+  } catch (err) {
+    console.error('Error fetching item transaction history:', err);
+  }
+
+  return result;
+}
+

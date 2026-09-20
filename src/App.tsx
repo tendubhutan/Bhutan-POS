@@ -17,6 +17,7 @@ import { Payroll } from './components/Payroll';
 import { AssetManagementModule } from './components/assetManagement/AssetManagementModule';
 import { Reports, ReportTarget } from './components/Reports';
 import { SettingsView } from './components/SettingsView';
+import { SchemeManagement } from './components/SchemeManagement';
 import { SuperadminDashboard } from './components/SuperadminDashboard';
 import { BankReconciliation } from './components/BankReconciliation';
 import { DrillModal, TargetState } from './components/DrillModal';
@@ -211,6 +212,12 @@ export default function App() {
     CompanyBankDetails: '',
     EnableGST: 'true',
     EnableSerials: 'true',
+    EnablePharmacyBatch: 'true',
+    EnableSpareParts: 'false',
+    EnableRackBin: 'true',
+    EnableCompatibility: 'true',
+    PrintPartNumber: 'true',
+    PrintCompatibility: 'false',
     BarcodePrefix: '20',
     ReceiptHeaderImage: '',
     ReceiptSignatureImage: ''
@@ -241,7 +248,7 @@ export default function App() {
   // Barcode Printing Queue State
   const [barcodeQueueInitial, setBarcodeQueueInitial] = useState<BarcodeQueueItem[]>([]);
   const [quickLedgerModalProps, setQuickLedgerModalProps] = useState<{isOpen: boolean, group: string, onSelect?: (name: string) => void}>({isOpen: false, group: 'Sundry Debtors'});
-  const [quickItemModalProps, setQuickItemModalProps] = useState<{isOpen: boolean, onSelect?: (item: Item) => void}>({isOpen: false});
+  const [quickItemModalProps, setQuickItemModalProps] = useState<{isOpen: boolean, itemToEdit?: Item | null, onSelect?: (item: Item) => void}>({isOpen: false});
 
   // Multi-Tenant & User Auth State
   const [showCompanyModal, setShowCompanyModal] = useState(false);
@@ -596,6 +603,9 @@ export default function App() {
         } else if (key === 'm' || e.code === 'KeyM' || key === 'µ') {
           e.preventDefault();
           navigateTo('masters');
+        } else if (key === 'o' || e.code === 'KeyO' || key === 'ø') {
+          e.preventDefault();
+          navigateTo('schemes');
         } else if (key === 'k' || e.code === 'KeyK' || key === '') {
           e.preventDefault();
           navigateTo('barcode');
@@ -625,7 +635,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [drillModal.type, currentView, viewHistory]);
 
-  const isHighDensityView = currentView === 'pos' || currentView === 'purchase' || currentView === 'normalsale' || currentView === 'vouchers';
+  const isHighDensityView = currentView === 'pos' || currentView === 'purchase' || currentView === 'normalsale' || currentView === 'vouchers' || currentView === 'schemes';
 
   const isAnyModalOpen = Boolean(
     drillModal.type ||
@@ -706,8 +716,8 @@ export default function App() {
               onDataRefresh={refreshData}
               initialVoucherTarget={voucherTarget}
               onBack={navigateBack}
-              onOpenNewItemModal={(onSelect) => {
-                setQuickItemModalProps({isOpen: true, onSelect});
+              onOpenNewItemModal={(onSelect, itemToEdit) => {
+                setQuickItemModalProps({isOpen: true, itemToEdit, onSelect});
               }}
               onOpenNewLedgerModal={(group, onSelect) => setQuickLedgerModalProps({isOpen: true, group: group || 'Sundry Debtors', onSelect})}
               onEditLedger={name => {
@@ -728,7 +738,7 @@ export default function App() {
                 onDataRefresh={refreshData}
                 initialVoucherTarget={voucherTarget}
                 onBack={navigateBack}
-                onOpenNewItemModal={(onSelect) => setQuickItemModalProps({isOpen: true, onSelect})}
+                onOpenNewItemModal={(onSelect, itemToEdit) => setQuickItemModalProps({isOpen: true, itemToEdit, onSelect})}
                 onOpenNewLedgerModal={(group, onSelect) => setQuickLedgerModalProps({isOpen: true, group: group || 'Sundry Debtors', onSelect})}
                 isActive={currentView === 'normalsale' && !isAnyModalOpen}
               />
@@ -743,7 +753,7 @@ export default function App() {
               onDataRefresh={refreshData}
               initialVoucherTarget={voucherTarget}
               onBack={navigateBack}
-              onOpenNewItemModal={(onSelect) => setQuickItemModalProps({isOpen: true, onSelect})}
+              onOpenNewItemModal={(onSelect, itemToEdit) => setQuickItemModalProps({isOpen: true, itemToEdit, onSelect})}
               onOpenNewLedgerModal={(group, onSelect) => setQuickLedgerModalProps({isOpen: true, group: group || 'Sundry Creditors', onSelect})}
               onPrintPurchaseBarcodes={queue => {
                 setBarcodeQueueInitial(queue);
@@ -762,7 +772,7 @@ export default function App() {
               onDataRefresh={refreshData}
               onNavigateTo={navigateTo}
               onBack={navigateBack}
-              onOpenNewItemModal={(onSelect) => setQuickItemModalProps({isOpen: true, onSelect})}
+              onOpenNewItemModal={(onSelect, itemToEdit) => setQuickItemModalProps({isOpen: true, itemToEdit, onSelect})}
               onOpenNewLedgerModal={(group, onSelect) => setQuickLedgerModalProps({isOpen: true, group: group || 'Sundry Creditors', onSelect})}
               initialVoucherTarget={voucherTarget}
               isActive={currentView === 'vouchers' && !isAnyModalOpen}
@@ -784,6 +794,14 @@ export default function App() {
               openItemModalCode={openItemModalCode}
               openLedgerModalGroup={openLedgerModalGroup}
               isActive={currentView === 'masters' && !isAnyModalOpen}
+            />
+          )}
+
+          {currentView === 'schemes' && (
+            <SchemeManagement
+              key={activeCompany?.id || 'default_schemes'}
+              currency={config.CurrencySymbol || 'Nu.'}
+              onClose={() => navigateTo('dashboard')}
             />
           )}
 
@@ -872,11 +890,12 @@ export default function App() {
         />
         <QuickItemModal
           isOpen={quickItemModalProps.isOpen}
+          itemToEdit={quickItemModalProps.itemToEdit}
           config={config}
-          onClose={() => setQuickItemModalProps(prev => ({...prev, isOpen: false}))}
+          onClose={() => setQuickItemModalProps(prev => ({...prev, isOpen: false, itemToEdit: null}))}
           onSave={(item) => {
             refreshData();
-            setQuickItemModalProps(prev => ({...prev, isOpen: false}));
+            setQuickItemModalProps(prev => ({...prev, isOpen: false, itemToEdit: null}));
             if (quickItemModalProps.onSelect) {
               quickItemModalProps.onSelect(item);
             }

@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured, SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser } from '../lib/supabase';
 import { Config, AppUser } from '../types';
+import { saveCompanyFeatures } from './tenantFeatureService';
 
 export type { SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser };
 
@@ -274,7 +275,12 @@ export async function ensureCompanyExists(companyId: string): Promise<void> {
 }
 
 // Create new company in Supabase and local storage
-export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'created_at'>): Promise<{ company?: SupabaseCompany; error?: string }> {
+export async function createCompany(
+  companyData: Omit<SupabaseCompany, 'id' | 'created_at'> & {
+    initialFeatures?: Record<string, boolean>;
+    initialConfig?: Partial<Config>;
+  }
+): Promise<{ company?: SupabaseCompany; error?: string }> {
   try {
     const newId = generateUUID();
     const adminUsername = (companyData.admin_username || 'admin').trim().toLowerCase();
@@ -378,6 +384,11 @@ export async function createCompany(companyData: Omit<SupabaseCompany, 'id' | 'c
 
     // 5. Initialize clean blank slate for new tenant (0 vouchers, 0 sales, reset counters)
     initializeBlankTenantStorage(newComp.id);
+
+    // 6. Apply Superadmin-configured features for this tenant
+    if (companyData.initialFeatures) {
+      saveCompanyFeatures(newComp.id, companyData.initialFeatures);
+    }
 
     return { company: newComp };
   } catch (err: any) {

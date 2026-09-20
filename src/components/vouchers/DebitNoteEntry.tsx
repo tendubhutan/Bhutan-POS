@@ -21,7 +21,7 @@ interface DebitNoteEntryProps {
   onDataRefresh: () => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onOpenQuickLedger: (group: string) => void;
-  onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
+  onOpenNewItemModal?: (onSelect?: (item: Item) => void, itemToEdit?: Item | null) => void;
   onPrintVoucher?: (refNo: string) => void;
   onNavigateBack?: () => void;
   voucherTypeSelector?: React.ReactNode;

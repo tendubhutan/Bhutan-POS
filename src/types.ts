@@ -32,6 +32,7 @@ export interface Config {
   EnableGSTInputTax?: string; // "true" | "false"
   gstInputConfigs?: string; // JSON encoded GstInputTypeConfig[]
   EnableSerials: string; // "true" | "false"
+  EnablePharmacyBatch?: string; // "true" | "false"
   EnableItemDiscount?: string; // "true" | "false"
   ItemDiscountType?: "flat" | "percent";
   BillDiscountType?: "flat" | "percent";
@@ -85,6 +86,21 @@ export interface Config {
   EnableAdvancedAI?: string; // "true" | "false"
   EnableAuditTrail?: string; // "true" | "false"
   PrintAuditStamp?: string; // "true" | "false"
+  EnableSpareParts?: string; // "true" | "false"
+  EnableRackBin?: string; // "true" | "false"
+  EnableCompatibility?: string; // "true" | "false"
+  PrintPartNumber?: string; // "true" | "false"
+  PrintCompatibility?: string; // "true" | "false"
+  EnableGarmentsAndFootwear?: string; // "true" | "false"
+  EnableSize?: string; // "true" | "false"
+  EnableColor?: string; // "true" | "false"
+  PrintSize?: string; // "true" | "false"
+  PrintColor?: string; // "true" | "false"
+  EnablePurchase?: string; // "true" | "false"
+  EnableVouchers?: string; // "true" | "false"
+  EnableSchemes?: string; // "true" | "false"
+  EnableBarcodePrinting?: string; // "true" | "false"
+  superadminFeatures?: Record<string, boolean>;
 }
 
 export type AuditActionType = 'ENTERED' | 'ALTERED' | 'CANCELLED' | 'DELETED';
@@ -144,6 +160,35 @@ export interface AppUser {
   permissions: UserPermission[];
 }
 
+export interface ItemVariant {
+  id: string;
+  size: string;
+  color: string;
+  barcode: string;
+  openingStock: number;
+  openingAmount?: number;
+  purchaseRate?: number;
+  saleRate?: number;
+  wholesaleRate?: number;
+  mrp?: number;
+  currentStock?: number;
+}
+
+export interface ItemBatch {
+  id: string;
+  batchNo: string;
+  mfgDate?: string;
+  expDate: string; // YYYY-MM-DD or MM/YYYY
+  barcode?: string;
+  openingStock?: number;
+  currentStock: number;
+  purchaseRate: number;
+  saleRate: number;
+  wholesaleRate?: number;
+  mrp?: number;
+  manufacturer?: string;
+}
+
 export interface Item {
   'Item Code': string;
   Barcode: string;
@@ -166,6 +211,17 @@ export interface Item {
   'Current Stock': number;
   'Reorder Level': number;
   'Opening Serials'?: string;
+  partNumber?: string; // Part Number / OEM No. for spare parts
+  rackLocation?: string; // Rack / Bin / Shelf location
+  compatibility?: string; // Vehicle / Machine compatibility models
+  size?: string; // Footwear / Garment size(s) e.g. "M", "42", "S, M, L"
+  color?: string; // Garment / Footwear color(s) e.g. "Black", "Red", "Blue"
+  brand?: string;
+  Brand?: string;
+  isPharmacy?: 'Y' | 'N';
+  maintainBatch?: 'Y' | 'N';
+  batches?: ItemBatch[];
+  variants?: ItemVariant[];
   multiUnits?: { unit: string; conversionFactor: number; purchaseRate: number; saleRate: number; wholesaleRate?: number; mrp: number; }[];
   oldCode?: string;
 }
@@ -234,6 +290,68 @@ export interface CartLine {
   gstAmt?: number;
   description?: string;
   lineDescription?: string;
+  selectedSize?: string;
+  selectedColor?: string;
+  selectedBatchNo?: string;
+  selectedBatchExp?: string;
+  selectedBatchId?: string;
+  variantId?: string;
+  barcode?: string;
+  appliedSchemeId?: string;
+  appliedSchemeName?: string;
+  originalRate?: number;
+  isFreeItem?: boolean;
+  schemeDiscount?: number;
+}
+
+export type SchemeTargetType = 'all_items' | 'item' | 'item_group' | 'item_category' | 'brand';
+export type SchemeType = 'percent_discount' | 'flat_discount' | 'special_rate' | 'bogo' | 'bill_discount';
+export type SchemeSaleChannel = 'all' | 'pos_only' | 'b2b_only';
+
+export interface Scheme {
+  id: string;
+  name: string;
+  code?: string;
+  description?: string;
+  status: 'active' | 'inactive';
+  appliesToSaleType: SchemeSaleChannel; // 'all' | 'pos_only' | 'b2b_only'
+  
+  // Date range (YYYY-MM-DD)
+  startDate?: string;
+  endDate?: string;
+  
+  // Recurring days of week: 0 = Sun, 1 = Mon, 2 = Tue, 3 = Wed, 4 = Thu, 5 = Fri, 6 = Sat
+  daysOfWeek?: number[];
+  
+  // Time limits (e.g. Happy Hour)
+  hasTimeLimit?: boolean;
+  startTime?: string; // "HH:MM" e.g. "14:00"
+  endTime?: string;   // "HH:MM" e.g. "18:00"
+  
+  // Target scope
+  targetType: SchemeTargetType;
+  targetValues: string[]; // List of Item Codes, Group Names, Category Names, or Brands
+  
+  // Benefit
+  schemeType: SchemeType;
+  discountValue?: number; // % or Nu. flat per unit
+  specialRate?: number;   // Promotional fixed rate per unit
+  minQty?: number;        // Minimum purchase quantity required
+  maxQty?: number;        // Optional max quantity cap
+  
+  // Buy X Get Y Free (BOGO)
+  buyQty?: number;
+  freeQty?: number;
+  freeItemCode?: string;
+  
+  // Bill-Level Scheme (Spend X Get Y)
+  minBillAmount?: number;
+  billDiscountType?: 'percent' | 'flat';
+  billDiscountValue?: number;
+  
+  priority?: number;      // Higher priority wins if multiple schemes match
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CustomerDetails {
@@ -285,6 +403,8 @@ export interface SalesInvoice {
   additionalExpenses?: { ledger: string; amount: number }[];
   termsAndConditions?: string;
   narration?: string;
+  appliedBillSchemeName?: string;
+  appliedBillSchemeId?: string;
   voucherTypeId?: string;
   voucherTypeName?: string;
   config: Config;
@@ -296,17 +416,25 @@ export interface SalesInvoice {
     'Item Name': string;
     'Item Description'?: string;
     description?: string;
-  lineDescription?: string;
+    lineDescription?: string;
     Unit?: string;
     Qty: number;
     Rate: number;
     Discount: number;
+    discountType?: 'flat' | 'percent';
+    discountAmt?: number;
+    originalRate?: number;
+    appliedSchemeId?: string;
+    appliedSchemeName?: string;
     'Taxable Value': number;
     'GST %': number;
     'GST Amount': number;
     'Zero Rated (Y/N)': 'Y' | 'N';
     'Line Total': number;
     'Serial Numbers': string;
+    'Batch No'?: string;
+    'Expiry Date'?: string;
+    batchId?: string;
   }>;
 }
 
@@ -349,7 +477,7 @@ export interface PurchaseInvoice {
     'Item Name': string;
     'Item Description'?: string;
     description?: string;
-  lineDescription?: string;
+    lineDescription?: string;
     Unit?: string;
     Qty: number;
     Rate: number;
@@ -360,6 +488,10 @@ export interface PurchaseInvoice {
     'Zero Rated (Y/N)': 'Y' | 'N';
     'Line Total': number;
     'Serial Numbers': string;
+    selectedSize?: string;
+    selectedColor?: string;
+    Size?: string;
+    Color?: string;
   }>;
 }
 
@@ -598,6 +730,8 @@ export interface BarcodeQueueItem {
   mrp: number;
   gstPct: number;
   qty: number;
+  size?: string;
+  color?: string;
 }
 
 export interface PayHead {

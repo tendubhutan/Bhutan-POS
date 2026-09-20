@@ -19,7 +19,7 @@ interface PhysicalStockEntryProps {
   items: Item[];
   onDataRefresh: () => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
-  onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
+  onOpenNewItemModal?: (onSelect?: (item: Item) => void, itemToEdit?: Item | null) => void;
   onNavigateBack?: () => void;
   voucherTypeSelector?: React.ReactNode;
 }

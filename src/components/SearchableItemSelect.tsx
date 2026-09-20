@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Item } from '../types';
-import { Search, Check, ChevronDown, X, Package, Plus, Hash } from 'lucide-react';
+import { Search, Check, ChevronDown, X, Package, Plus, Hash, ExternalLink, Info } from 'lucide-react';
 import { getActiveUser, getSerialNumbersStockReport } from '../services/storageService';
+import { ItemInfoModal } from './ItemInfoModal';
 
 interface SearchableItemSelectProps {
   id?: string;
@@ -21,7 +22,7 @@ interface SearchableItemSelectProps {
   showStockBadge?: boolean;
   showPrice?: boolean;
   priceType?: 'sale' | 'purchase' | 'mrp';
-  onCreateNew?: (onSelect?: (item: Item) => void) => void;
+  onCreateNew?: (onSelect?: (item: Item) => void, itemToEdit?: Item | null) => void;
   onAddNew?: () => void;
   onEditItem?: (item: Item) => void;
   onShowInfo?: (item: Item) => void;
@@ -78,6 +79,11 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [showCostPrice, setShowCostPrice] = useState(false);
   const [securityDenied, setSecurityDenied] = useState(false);
+  const [infoModalItem, setInfoModalItem] = useState<Item | null>(null);
+
+  const getItemPartNumber = (item: Item) => item.partNumber || (item as any)['Part Number'] || (item as any)['Part No'] || (item as any)['part_number'] || '';
+  const getItemRackLocation = (item: Item) => item.rackLocation || (item as any)['Rack Location'] || (item as any)['Rack / Bin Location'] || (item as any)['Rack'] || (item as any)['Bin'] || '';
+  const getItemCompatibility = (item: Item) => item.compatibility || (item as any)['Compatibility'] || (item as any)['Vehicle / Machine Compatibility'] || '';
   
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -188,70 +194,100 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
     return inStockSerials.find(s => s.serialNo.toLowerCase() === term);
   }, [inStockSerials, searchTerm]);
 
+  const expandedItems = useMemo(() => {
+    const result: Item[] = [];
+    for (const item of items) {
+      if (item.variants && item.variants.length > 0) {
+        for (const v of item.variants) {
+          result.push({
+            ...item,
+            size: v.size || item.size,
+            color: v.color || item.color,
+            Barcode: v.barcode || item.Barcode,
+            'Purchase Rate': (v.purchaseRate !== undefined && v.purchaseRate > 0) ? v.purchaseRate : item['Purchase Rate'],
+            'Sale Rate': (v.saleRate !== undefined && v.saleRate > 0) ? v.saleRate : item['Sale Rate'],
+            'Wholesale Rate': (v.wholesaleRate !== undefined && v.wholesaleRate > 0) ? v.wholesaleRate : ((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate']),
+            MRP: (v.mrp !== undefined && v.mrp > 0) ? v.mrp : item.MRP,
+            'Current Stock': v.currentStock !== undefined ? v.currentStock : item['Current Stock'],
+          });
+        }
+      } else {
+        result.push(item);
+      }
+    }
+    return result;
+  }, [items]);
+
   const filteredItems = useMemo(() => {
-    if (!searchTerm) return items.slice(0, 100);
-    const searchLower = searchTerm.toLowerCase();
+    if (!searchTerm) return expandedItems.slice(0, 100);
+    const searchLower = searchTerm.toLowerCase().trim();
+    const searchTokens = searchLower.split(/\s+/).filter(Boolean);
     
-    return items
-      .filter(item => {
-        const name = (item['Item Name'] || '').toLowerCase();
-        const code = (item['Item Code'] || '').toLowerCase();
-        const barcode = (item['Barcode'] || '').toLowerCase();
-        const alias = (item['Alias'] || '').toLowerCase();
-        const hasSerial = matchedSerialMap.has(item['Item Code']);
-        
-        return (
-          name.includes(searchLower) ||
-          code.includes(searchLower) ||
-          barcode === searchLower ||
-          alias.includes(searchLower) ||
-          hasSerial
-        );
-      })
-      .sort((a, b) => {
-        const aCode = (a['Item Code'] || '').toLowerCase();
-        const bCode = (b['Item Code'] || '').toLowerCase();
-        
-        // Exact serial number match gets top priority
-        const aExactSerial = exactSerialMatch && exactSerialMatch.itemCode === a['Item Code'];
-        const bExactSerial = exactSerialMatch && exactSerialMatch.itemCode === b['Item Code'];
-        if (aExactSerial && !bExactSerial) return -1;
-        if (!aExactSerial && bExactSerial) return 1;
+    const getItemScore = (item: Item) => {
+      const name = (item['Item Name'] || '').toLowerCase();
+      const code = (item['Item Code'] || '').toLowerCase();
+      const barcode = (item['Barcode'] || '').toString().toLowerCase();
+      const alias = (item['Alias'] || '').toLowerCase();
+      const partNo = getItemPartNumber(item).toLowerCase();
+      const rack = getItemRackLocation(item).toLowerCase();
+      const compat = getItemCompatibility(item).toLowerCase();
+      const sz = (item.size || '').toLowerCase();
+      const col = (item.color || '').toLowerCase();
+      const cat = (item.Category || '').toLowerCase();
+      const grp = (item.Group || '').toLowerCase();
+      const hasSerial = matchedSerialMap.has(item['Item Code']);
 
-        const aBarcode = (a['Barcode'] || '').toLowerCase();
-        const bBarcode = (b['Barcode'] || '').toLowerCase();
+      let score = 0;
 
-        // Exact barcode match first
-        if (aBarcode === searchLower && bBarcode !== searchLower) return -1;
-        if (bBarcode === searchLower && aBarcode !== searchLower) return 1;
+      // Exact Matches (Highest Priority)
+      if (exactSerialMatch && exactSerialMatch.itemCode === item['Item Code']) score += 3000;
+      if (barcode === searchLower) score += 2500;
+      if (code === searchLower) score += 2400;
+      if (partNo && partNo === searchLower) score += 2300;
+      if (name === searchLower) score += 2200;
+      if (rack && rack === searchLower) score += 2100;
 
-        // Exact code match second
-        if (aCode === searchLower && bCode !== searchLower) return -1;
-        if (bCode === searchLower && aCode !== searchLower) return 1;
+      // Starts With Matches
+      if (partNo && partNo.startsWith(searchLower)) score += 1500;
+      if (name.startsWith(searchLower)) score += 1400;
+      if (code.startsWith(searchLower)) score += 1300;
+      if (rack && rack.startsWith(searchLower)) score += 1200;
+      if (compat && compat.startsWith(searchLower)) score += 1100;
+      if (sz && sz.startsWith(searchLower)) score += 1100;
+      if (col && col.startsWith(searchLower)) score += 1100;
 
-        // Serial substring match
-        const aHasSerial = matchedSerialMap.has(a['Item Code']);
-        const bHasSerial = matchedSerialMap.has(b['Item Code']);
-        if (aHasSerial && !bHasSerial) return -1;
-        if (!aHasSerial && bHasSerial) return 1;
+      // Token Scoring
+      let allTokensFound = true;
+      for (const token of searchTokens) {
+        let tokenMatch = false;
+        if (partNo.includes(token)) { score += 250; tokenMatch = true; }
+        if (rack.includes(token)) { score += 220; tokenMatch = true; }
+        if (compat.includes(token)) { score += 200; tokenMatch = true; }
+        if (sz.includes(token)) { score += 220; tokenMatch = true; }
+        if (col.includes(token)) { score += 220; tokenMatch = true; }
+        if (name.includes(token)) { score += 180; tokenMatch = true; }
+        if (code.includes(token)) { score += 150; tokenMatch = true; }
+        if (barcode.includes(token)) { score += 150; tokenMatch = true; }
+        if (alias.includes(token)) { score += 120; tokenMatch = true; }
+        if (cat.includes(token)) { score += 80; tokenMatch = true; }
+        if (grp.includes(token)) { score += 60; tokenMatch = true; }
+        if (hasSerial) { score += 300; tokenMatch = true; }
 
-        const aName = (a['Item Name'] || '').toLowerCase();
-        const bName = (b['Item Name'] || '').toLowerCase();
+        if (!tokenMatch) allTokensFound = false;
+      }
 
-        // Exact name match third
-        if (aName === searchLower && bName !== searchLower) return -1;
-        if (bName === searchLower && aName !== searchLower) return 1;
+      if (allTokensFound) score += 500;
 
-        // Starts with name
-        const aStartsName = aName.startsWith(searchLower);
-        const bStartsName = bName.startsWith(searchLower);
-        if (aStartsName && !bStartsName) return -1;
-        if (!aStartsName && bStartsName) return 1;
-        
-        return 0;
-      })
-      .slice(0, 100); // Increased slightly for portal
-  }, [items, searchTerm, matchedSerialMap, exactSerialMatch]);
+      return score;
+    };
+
+    return expandedItems
+      .map(item => ({ item, score: getItemScore(item) }))
+      .filter(entry => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(entry => entry.item)
+      .slice(0, 100);
+  }, [expandedItems, searchTerm, matchedSerialMap, exactSerialMatch]);
 
   const showEndOfList = (!!onSaveVoucher || !!onEndOfList) && !searchTerm.trim();
   const endOfListIdx = showEndOfList ? 0 : -1;
@@ -534,6 +570,11 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
               const stock = Number(item['Current Stock']) || 0;
               const price = getItemPrice(item);
               const costPrice = Number(item['Purchase Rate'] || 0);
+
+              const partNo = getItemPartNumber(item);
+              const rackLoc = getItemRackLocation(item);
+              const compat = getItemCompatibility(item);
+
               return (
                 <div
                   key={item['Item Code']}
@@ -548,38 +589,90 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
                       : 'text-slate-800 hover:bg-slate-50'
                   }`}
                 >
-                  <div className="flex-[3] min-w-0 pr-2 truncate font-medium flex items-center gap-1.5">
-                    <span className="truncate">{item['Item Name']}</span>
-                    {matchedSerialMap.has(item['Item Code']) && (
-                      <span className={`shrink-0 inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${
-                        isHighlighted ? 'bg-indigo-700 text-indigo-100' : 'bg-amber-100 text-amber-800 border border-amber-200'
-                      }`}>
-                        <Hash className="h-2.5 w-2.5" />
-                        {matchedSerialMap.get(item['Item Code'])}
-                      </span>
-                    )}
+                  <div className="flex-[3] min-w-0 pr-2 truncate font-medium flex flex-col justify-center py-0.5">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="truncate font-bold">{item['Item Name']}</span>
+                      {item.size && (
+                        <span className={`shrink-0 inline-flex items-center text-[9px] px-1 py-0.2 rounded font-bold ${
+                          isHighlighted ? 'bg-purple-900/50 text-purple-100' : 'bg-purple-100 text-purple-900 border border-purple-200'
+                        }`}>
+                          Size: {item.size}
+                        </span>
+                      )}
+                      {item.color && (
+                        <span className={`shrink-0 inline-flex items-center text-[9px] px-1 py-0.2 rounded font-bold ${
+                          isHighlighted ? 'bg-pink-900/50 text-pink-100' : 'bg-pink-100 text-pink-900 border border-pink-200'
+                        }`}>
+                          Color: {item.color}
+                        </span>
+                      )}
+                      {matchedSerialMap.has(item['Item Code']) && (
+                        <span className={`shrink-0 inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                          isHighlighted ? 'bg-indigo-700 text-indigo-100' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                        }`}>
+                          <Hash className="h-2.5 w-2.5" />
+                          {matchedSerialMap.get(item['Item Code'])}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   
                   <div className={`w-12 text-center shrink-0 pr-2 ${isHighlighted ? 'text-indigo-200' : 'text-slate-500'}`}>
                     {item.Unit}
                   </div>
-                  <div className={`w-16 text-right shrink-0 pr-2 font-mono ${
+                  <div className={`w-14 text-right shrink-0 pr-2 font-mono ${
                     isHighlighted ? 'text-white' : item['Maintain Stock'] === 'N' ? 'text-slate-400' : stock > 0 ? 'text-emerald-600' : 'text-rose-500'
                   }`}>
                     {item['Maintain Stock'] === 'N' ? 'N/A' : stock}
                   </div>
                   {showCostPrice && (
-                    <div className={`w-20 text-right shrink-0 font-mono font-extrabold ${
+                    <div className={`w-16 text-right shrink-0 font-mono font-extrabold ${
                       isHighlighted ? 'text-amber-200' : 'text-amber-700'
                     }`}>
                       {costPrice.toFixed(2)}
                     </div>
                   )}
                   {showPrice && (
-                    <div className="w-20 text-right shrink-0 font-mono font-bold">
+                    <div className="w-16 text-right shrink-0 font-mono font-bold">
                       {price.toFixed(2)}
                     </div>
                   )}
+
+                  {/* Action Buttons: Info Modal & Edit Master */}
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setInfoModalItem(item);
+                      }}
+                      className={`p-1 rounded transition cursor-pointer flex items-center gap-0.5 text-[10px] font-bold ${
+                        isHighlighted
+                          ? 'bg-white/20 text-white hover:bg-white/30'
+                          : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
+                      }`}
+                      title="View Full Item Details, Prices & Bin/Rack Info"
+                    >
+                      <Info className="h-3 w-3" />
+                      <span className="hidden sm:inline">Info</span>
+                    </button>
+
+                    {onEditItem && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditItem(item);
+                        }}
+                        className={`p-1 rounded transition cursor-pointer ${
+                          isHighlighted ? 'text-indigo-200 hover:text-white hover:bg-indigo-700' : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100'
+                        }`}
+                        title="Edit in Master"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -650,6 +743,21 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
 
       {/* Render overlay via React Portal */}
       {isOpen && typeof document !== 'undefined' && createPortal(portalContent, document.body)}
+
+      {/* Item Details, Bin/Rack & Price History Modal */}
+      <ItemInfoModal
+        isOpen={!!infoModalItem}
+        onClose={() => setInfoModalItem(null)}
+        item={infoModalItem}
+        onEditInMaster={(itemToEdit) => {
+          if (onEditItem) {
+            onEditItem(itemToEdit);
+          } else if (onCreateNewProp) {
+            onCreateNewProp(undefined, itemToEdit);
+          }
+        }}
+        currencySymbol={currencySymbol}
+      />
     </div>
   );
 };

@@ -86,7 +86,7 @@ interface VouchersProps {
   ledgers: Ledger[];
   onDataRefresh: () => void;
   onOpenNewLedgerModal?: (group?: string, onSelect?: (name: string) => void) => void;
-  onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
+  onOpenNewItemModal?: (onSelect?: (item: Item) => void, itemToEdit?: Item | null) => void;
   onNavigateTo?: (view: string, reportTarget?: any) => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onDrillVoucher?: (refNo: string) => void;

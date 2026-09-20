@@ -83,15 +83,15 @@ export const UnitMaster: React.FC<UnitMasterProps> = ({ units, onUpdated }) => {
       
       <p className="text-xs text-slate-500 mb-2">Define basic units (e.g., Pcs, Kg) and compound units (e.g., Box = 10 Pcs).</p>
 
-      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200">
+      <div className="border border-slate-200 rounded-xl overflow-auto max-h-[calc(100vh-250px)] bg-white shadow-2xs">
+        <table className="w-full text-left text-sm border-collapse">
+          <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 shadow-2xs">
             <tr>
-              <th className="py-2 px-3 font-bold text-slate-700 text-xs">Unit Name</th>
-              <th className="py-2 px-3 font-bold text-slate-700 text-xs">Symbol</th>
-              <th className="py-2 px-3 font-bold text-slate-700 text-xs">Base Unit</th>
-              <th className="py-2 px-3 font-bold text-slate-700 text-xs">Conversion Factor</th>
-              <th className="py-2 px-3 font-bold text-slate-700 text-xs text-right">Actions</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 font-bold text-slate-700 text-xs uppercase tracking-wider whitespace-nowrap">Unit Name</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 font-bold text-slate-700 text-xs uppercase tracking-wider whitespace-nowrap">Symbol</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 font-bold text-slate-700 text-xs uppercase tracking-wider whitespace-nowrap">Base Unit</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 font-bold text-slate-700 text-xs uppercase tracking-wider whitespace-nowrap">Conversion Factor</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 font-bold text-slate-700 text-xs uppercase tracking-wider text-right whitespace-nowrap">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">

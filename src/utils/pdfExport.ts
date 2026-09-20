@@ -5,6 +5,7 @@ import { Config, SalesInvoice, PurchaseInvoice, DeliveryNote, Quotation, Voucher
 import { getLedgers } from '../services/storageService';
 import { getAssetCategories, getAssets } from '../services/assetManagementService';
 import { formatDateDMY, formatDateTimeDMY } from './dateUtils';
+import { getItemDiscountDetails, calculateInvoiceSavings, calculateUndiscountedBillAndSavings } from './discountUtils';
 
 export function resolveBankDetailsForPrint(config: Config): string {
   if (config.PrintBankDetailsOnInvoice === 'false') return '';
@@ -987,17 +988,30 @@ export function drawDetailedBillSummaryBox(
   totalLabel: string = 'Total Invoice Amount:'
 ): number {
   const totals = extractInvoiceTotals(invoice);
-  const boxW = 92;
+  const savings = calculateInvoiceSavings(invoice);
+  const undiscounted = calculateUndiscountedBillAndSavings(invoice);
+  const boxW = 84;
   const boxX = pageWidth - margin - boxW;
 
-  const rows: { label: string; value: string; isBold?: boolean; isHighlight?: boolean }[] = [
-    { label: 'Taxable Amount:', value: `${currency} ${totals.taxable.toFixed(2)}` },
-    { label: 'Exempted / Zero Rated Sale:', value: `${currency} ${totals.zeroRated.toFixed(2)}` },
-    { label: 'GST Amount:', value: `${currency} ${totals.gstAmt.toFixed(2)}` },
-  ];
+  const hasGstOnBill = Number(totals.gstAmt || 0) > 0.001 || (Array.isArray(invoice.items) && invoice.items.some((it: any) =>
+    Number(it['GST Amount'] ?? it.gstAmount ?? 0) > 0.001 ||
+    (Number(it['GST %'] ?? it.gstPct ?? 0) > 0 && it['Zero Rated (Y/N)'] !== 'Y' && !it.zeroRated)
+  ));
+
+  const rows: { label: string; value: string; isBold?: boolean; isHighlight?: boolean; isSavings?: boolean; isNet?: boolean; isSavingsHeader?: boolean }[] = [];
+
+  if (hasGstOnBill) {
+    rows.push({ label: 'Taxable Amount:', value: `${currency} ${totals.taxable.toFixed(2)}` });
+    if (totals.zeroRated > 0) {
+      rows.push({ label: 'Exempted / Zero Rated Sale:', value: `${currency} ${totals.zeroRated.toFixed(2)}` });
+    }
+    rows.push({ label: 'GST Amount:', value: `${currency} ${totals.gstAmt.toFixed(2)}` });
+  } else if (totals.zeroRated > 0) {
+    rows.push({ label: 'Exempted / Zero Rated Sale:', value: `${currency} ${totals.zeroRated.toFixed(2)}` });
+  }
 
   if (totals.discount > 0) {
-    rows.push({ label: 'Discount:', value: `-${currency} ${totals.discount.toFixed(2)}` });
+    rows.push({ label: 'Bill Discount:', value: `-${currency} ${totals.discount.toFixed(2)}` });
   }
 
   rows.push({
@@ -1007,8 +1021,33 @@ export function drawDetailedBillSummaryBox(
     isHighlight: true
   });
 
-  const rowHeight = 6;
-  const paddingY = 4;
+  if (undiscounted.totalSavingsIncGst > 0.005 || savings.totalSavings > 0) {
+    rows.push({
+      label: 'Your Savings on this bill',
+      value: '',
+      isBold: true,
+      isSavingsHeader: true
+    });
+    rows.push({
+      label: 'Total Bill Amount (Inc GST):',
+      value: `${currency} ${undiscounted.undiscountedBillIncGst.toFixed(2)}`
+    });
+    rows.push({
+      label: 'less Discount (Total Savings):',
+      value: `-${currency} ${undiscounted.totalSavingsIncGst.toFixed(2)}`,
+      isBold: true,
+      isSavings: true
+    });
+    rows.push({
+      label: 'Net Amount Paid:',
+      value: `${currency} ${totals.total.toFixed(2)}`,
+      isBold: true,
+      isNet: true
+    });
+  }
+
+  const rowHeight = 5.3;
+  const paddingY = 3.0;
   const totalBoxHeight = rows.length * rowHeight + paddingY * 2;
 
   // Background Box
@@ -1017,38 +1056,71 @@ export function drawDetailedBillSummaryBox(
   doc.setLineWidth(0.3);
   doc.roundedRect(boxX, finalY, boxW, totalBoxHeight, 2, 2, 'FD');
 
-  let currentY = finalY + paddingY + 4;
+  let currentY = finalY + paddingY + 3.6;
 
   rows.forEach(r => {
-    if (r.isHighlight) {
-      const hY = currentY - 4.5;
-      doc.setFillColor(239, 246, 255);
-      doc.setDrawColor(191, 219, 254);
-      doc.roundedRect(boxX + 2, hY, boxW - 4, 8, 1.5, 1.5, 'FD');
+    if (r.isSavingsHeader) {
+      const bannerH = 5.2;
+      const bY = currentY - 3.8;
+      doc.setFillColor(22, 101, 52); // rich forest green
+      doc.roundedRect(boxX + 2, bY, boxW - 4, bannerH, 1, 1, 'F');
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(30, 58, 138);
-      doc.text(r.label, boxX + 5, currentY + 0.8);
+      doc.setFontSize(7.8);
+      doc.setTextColor(255, 255, 255);
+      doc.text(r.label, boxX + 4.5, currentY);
+    } else if (r.isSavings) {
+      const sY = currentY - 3.9;
+      doc.setFillColor(240, 253, 244);
+      doc.setDrawColor(187, 247, 208);
+      doc.roundedRect(boxX + 2, sY, boxW - 4, 6.2, 1, 1, 'FD');
 
-      doc.setFontSize(10.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(21, 128, 61);
+      doc.text(r.label, boxX + 4, currentY);
+
+      doc.setFontSize(8.2);
+      doc.setTextColor(22, 101, 52);
+      doc.text(r.value, boxX + boxW - 4, currentY, { align: 'right' });
+    } else if (r.isHighlight) {
+      const hY = currentY - 3.9;
+      doc.setFillColor(239, 246, 255);
+      doc.setDrawColor(191, 219, 254);
+      doc.roundedRect(boxX + 2, hY, boxW - 4, 6.6, 1, 1, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.6);
+      doc.setTextColor(30, 58, 138);
+      doc.text(r.label, boxX + 4, currentY);
+
+      doc.setFontSize(9);
       doc.setTextColor(29, 78, 216);
-      doc.text(r.value, boxX + boxW - 5, currentY + 0.8, { align: 'right' });
+      doc.text(r.value, boxX + boxW - 4, currentY, { align: 'right' });
+    } else if (r.isNet) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.6);
+      doc.setTextColor(15, 23, 42);
+      doc.text(r.label, boxX + 4, currentY);
+
+      doc.setFontSize(8.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(r.value, boxX + boxW - 4, currentY, { align: 'right' });
     } else {
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
+      doc.setFontSize(7.5);
       doc.setTextColor(71, 85, 105);
-      doc.text(r.label, boxX + 5, currentY);
+      doc.text(r.label, boxX + 4, currentY);
 
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(15, 23, 42);
-      doc.text(r.value, boxX + boxW - 5, currentY, { align: 'right' });
+      doc.text(r.value, boxX + boxW - 4, currentY, { align: 'right' });
     }
 
     currentY += rowHeight;
   });
 
-  return finalY + totalBoxHeight + 5;
+  return finalY + totalBoxHeight + 2;
 }
 
 function buildGenericVoucherPdf(
@@ -1061,7 +1133,8 @@ function buildGenericVoucherPdf(
   entityDetails: string[],
   items: any[],
   columns: any[],
-  summaryBlock: (doc: jsPDF, finalY: number, currency: string, margin: number, pageWidth: number) => number
+  summaryBlock: (doc: jsPDF, finalY: number, currency: string, margin: number, pageWidth: number) => number,
+  options?: { skipBottomRemarks?: boolean }
 ) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -1145,17 +1218,19 @@ function buildGenericVoucherPdf(
   
   finalY = summaryBlock(doc, finalY, currency, margin, pageWidth);
 
-  const remarksFields = [voucher.narration, voucher.remarks, voucher.paymentTerms, voucher.deliveryTerms, voucher.terms, voucher.termsAndConditions].filter(Boolean);
-  if (remarksFields.length > 0) {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.setTextColor(30, 41, 59);
-    doc.text('Notes / Remarks:', margin, finalY + 5);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
-    const splitNotes = doc.splitTextToSize(remarksFields.join('\n'), pageWidth - margin * 2);
-    doc.text(splitNotes, margin, finalY + 9);
+  if (!options?.skipBottomRemarks) {
+    const remarksFields = [voucher.narration, voucher.remarks, voucher.paymentTerms, voucher.deliveryTerms, voucher.terms, voucher.termsAndConditions].filter(Boolean);
+    if (remarksFields.length > 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text('Terms & Conditions:', margin, finalY + 5);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      const splitNotes = doc.splitTextToSize(remarksFields.join('\n'), pageWidth - margin * 2);
+      doc.text(splitNotes, margin, finalY + 9);
+    }
   }
 
   const footerY = pageHeight - 14;
@@ -1187,35 +1262,158 @@ export function generateInvoicePDF(invoice: SalesInvoice | any, config: Config, 
     (typeof invoice.customer === 'object' && invoice.customer?.gstNo) ? `GSTIN: ${invoice.customer.gstNo}` : ''
   ];
   
-  const cols = [
-    { header: 'Sl', align: 'center', width: 10, getValue: (_:any, i:number) => i + 1 },
-    { header: 'Item Description', align: 'left', getValue: (it:any) => it.itemName || it['Item Name'] || it.itemDescription || it['Item Description'] || it.description || '' },
-    { header: 'Qty', align: 'center', width: 18, getValue: (it:any) => `${it.qty ?? it.Qty ?? ''} ${it.unit || it.Unit || ''}`.trim() },
-    { header: 'Rate', align: 'right', width: 22, getValue: (it:any) => Number(it.rate ?? it.Rate ?? 0).toFixed(2) },
-    { header: 'Tax %', align: 'right', width: 15, getValue: (it:any) => (it.taxRate ?? it['GST %'] ?? it.gstPct) ? `${it.taxRate ?? it['GST %'] ?? it.gstPct}%` : '-' },
-    { header: 'Amount', align: 'right', width: 28, getValue: (it:any) => Number(it.amount ?? it['Line Total'] ?? it.lineTotal ?? 0).toFixed(2) }
+  const items = Array.isArray(invoice.items) ? invoice.items : [];
+
+  const hasDiscountOnBill = items.some((it: any) => {
+    const disc = getItemDiscountDetails(it, config);
+    const discAmt = disc.hasDiscount ? Number(disc.discountAmt || 0) : Number(it.Discount ?? it.discount ?? 0);
+    return discAmt > 0.001;
+  });
+
+  const hasGstOnBill = String(config.EnableGST) !== 'false' && (
+    Number(invoice.gstAmt || 0) > 0.001 ||
+    items.some((it: any) =>
+      Number(it['GST Amount'] ?? it.gstAmount ?? 0) > 0.001 ||
+      (Number(it['GST %'] ?? it.gstPct ?? 0) > 0 && it['Zero Rated (Y/N)'] !== 'Y' && !it.zeroRated)
+    )
+  );
+
+  const cols: any[] = [
+    { header: 'Sl', align: 'center', width: 9, getValue: (_: any, i: number) => i + 1 },
+    { 
+      header: 'Item Description', 
+      align: 'left', 
+      getValue: (it: any) => {
+        let name = it.itemName || it['Item Name'] || it.itemDescription || it['Item Description'] || it.description || '';
+        if (config.PrintPartNumber !== 'false' && it.partNumber) {
+          name += `\nPart No: ${it.partNumber}`;
+        }
+        if (config.PrintCompatibility === 'true' && it.compatibility) {
+          name += `\nFits: ${it.compatibility}`;
+        }
+        if (it['Serial Numbers']) {
+          name += `\nSN: ${it['Serial Numbers']}`;
+        }
+        return name;
+      }
+    },
+    { header: 'Qty', align: 'center', width: 16, getValue: (it: any) => `${it.qty ?? it.Qty ?? 1} ${it.unit || it.Unit || 'Pcs'}`.trim() },
+    { header: 'Rate', align: 'right', width: 18, getValue: (it: any) => Number(it.rate ?? it.Rate ?? 0).toFixed(2) }
   ];
 
-  const items = Array.isArray(invoice.items) ? invoice.items : [];
-  return buildGenericVoucherPdf(invoice, config, 'TAX INVOICE', meta, 'BILL TO:', entName, entDetails, items, cols, (doc, finalY, curr, margin, pw) => {
-    const endY = drawDetailedBillSummaryBox(doc, invoice, finalY, curr, margin, pw, 'Total Invoice Amount:');
-    
-    // Bank details
-    const bDetails = options?.customBankDetails || resolveBankDetailsForPrint(config);
-    if (bDetails) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.5);
-      doc.setTextColor(30, 41, 59);
-      doc.text('Bank Details:', margin, finalY + 4);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(71, 85, 105);
-      const splitB = doc.splitTextToSize(bDetails, pw / 2 - 10);
-      doc.text(splitB, margin, finalY + 8);
-    }
-    
-    return endY + 2;
+  if (hasDiscountOnBill) {
+    cols.push({ 
+      header: 'Disc Amt', 
+      align: 'right', 
+      width: 18, 
+      getValue: (it: any) => {
+        const disc = getItemDiscountDetails(it, config);
+        const discAmt = disc.hasDiscount ? Number(disc.discountAmt || 0) : Number(it.Discount ?? it.discount ?? 0);
+        return discAmt > 0 ? discAmt.toFixed(2) : '-';
+      } 
+    });
+  }
+
+  if (hasGstOnBill) {
+    cols.push({ 
+      header: 'Sale Amt', 
+      align: 'right', 
+      width: 20, 
+      getValue: (it: any) => {
+        const qty = Number(it.qty ?? it.Qty ?? 1);
+        const rate = Number(it.rate ?? it.Rate ?? 0);
+        const disc = getItemDiscountDetails(it, config);
+        const discAmt = disc.hasDiscount ? Number(disc.discountAmt || 0) : Number(it.Discount ?? it.discount ?? 0);
+        const saleAmt = it['Taxable Value'] !== undefined ? Number(it['Taxable Value']) : (qty * rate - discAmt);
+        return saleAmt.toFixed(2);
+      } 
+    });
+
+    cols.push({ 
+      header: 'GST (5%)', 
+      align: 'right', 
+      width: 18, 
+      getValue: (it: any) => {
+        const isZero = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
+        if (isZero) return '0.00';
+        if (it['GST Amount'] !== undefined) return Number(it['GST Amount']).toFixed(2);
+        const qty = Number(it.qty ?? it.Qty ?? 1);
+        const rate = Number(it.rate ?? it.Rate ?? 0);
+        const disc = getItemDiscountDetails(it, config);
+        const discAmt = disc.hasDiscount ? Number(disc.discountAmt || 0) : Number(it.Discount ?? it.discount ?? 0);
+        const saleAmt = it['Taxable Value'] !== undefined ? Number(it['Taxable Value']) : (qty * rate - discAmt);
+        const gstPct = Number(it['GST %'] ?? it.gstPct ?? 5);
+        return ((saleAmt * gstPct) / 100).toFixed(2);
+      } 
+    });
+  }
+
+  cols.push({ 
+    header: 'Total Amt', 
+    align: 'right', 
+    width: 22, 
+    getValue: (it: any) => Number(it.amount ?? it['Line Total'] ?? it.lineTotal ?? 0).toFixed(2) 
   });
+  const bDetails = options?.customBankDetails || resolveBankDetailsForPrint(config);
+  const termsText = options?.customTerms !== undefined
+    ? options.customTerms
+    : (invoice.terms || invoice.termsAndConditions || invoice.remarks || invoice.narration || config.TermsAndConditions || '');
+
+  return buildGenericVoucherPdf(
+    invoice, 
+    config, 
+    'TAX INVOICE', 
+    meta, 
+    'BILL TO:', 
+    entName, 
+    entDetails, 
+    items, 
+    cols, 
+    (doc, finalY, curr, margin, pw) => {
+      const boxW = 84;
+      const boxX = pw - margin - boxW;
+      const leftX = margin;
+      const leftW = boxX - margin - 6;
+
+      // Draw the squeezed summary box on the right
+      const endSummaryY = drawDetailedBillSummaryBox(doc, invoice, finalY, curr, margin, pw, 'Total Invoice Amount:');
+      
+      let leftY = finalY + 3;
+
+      // Bank details on the left
+      if (bDetails) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(30, 41, 59);
+        doc.text('Bank Details:', leftX, leftY);
+        leftY += 3.8;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(71, 85, 105);
+        const splitB = doc.splitTextToSize(bDetails, leftW);
+        doc.text(splitB, leftX, leftY);
+        leftY += (splitB.length * 3.3) + 3.5;
+      }
+
+      // Terms & Conditions on the left (accommodated under bank details)
+      if (termsText) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.setTextColor(30, 41, 59);
+        doc.text('Terms & Conditions:', leftX, leftY);
+        leftY += 3.8;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.2);
+        doc.setTextColor(71, 85, 105);
+        const splitT = doc.splitTextToSize(termsText, leftW);
+        doc.text(splitT, leftX, leftY);
+        leftY += (splitT.length * 3.1);
+      }
+      
+      return Math.max(endSummaryY, leftY) + 2;
+    },
+    { ...options, skipBottomRemarks: true }
+  );
 }
 
 export function generatePurchaseBillPDF(purchase: PurchaseInvoice | any, config: Config): jsPDF {

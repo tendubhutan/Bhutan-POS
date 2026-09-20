@@ -22,7 +22,7 @@ interface PurchaseOrderEntryProps {
   onDataRefresh: () => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onOpenQuickLedger: (group: string) => void;
-  onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
+  onOpenNewItemModal?: (onSelect?: (item: Item) => void, itemToEdit?: Item | null) => void;
   onPrintPurchaseOrder?: (po: PurchaseOrder) => void;
   onNavigateBack?: () => void;
   activeTab?: 'create' | 'register';
@@ -657,16 +657,32 @@ export const PurchaseOrderEntry: React.FC<PurchaseOrderEntryProps> = ({
                       </td>
 
                       <td className="py-0.5 px-1 align-middle text-center">
-                        <select
-                          value={line.unit || 'Pcs'}
-                          onChange={e => handleUpdateItem(idx, 'unit', e.target.value)}
-                          className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-cyan-600 outline-none bg-white"
-                        >
-                          {units.map((u, ui) => {
-                            const val = u.Symbol || u['Unit Name'] || 'Pcs';
-                            return <option key={`${val}-${ui}`} value={val}>{val}</option>;
-                          })}
-                        </select>
+                        {(() => {
+                          const lineItem = items.find(i => (i['Item Code'] && i['Item Code'] === line.itemCode) || i['Item Name'] === line.itemName);
+                          const primaryUnit = lineItem?.Unit || line.unit || 'Pcs';
+                          const altUnits = (lineItem?.multiUnits || []).map(m => m.unit).filter(Boolean);
+                          const allowedUnits = Array.from(new Set([primaryUnit, ...altUnits]));
+
+                          if (allowedUnits.length <= 1) {
+                            return (
+                              <span className="text-xs font-semibold text-slate-700 px-1">
+                                {allowedUnits[0] || line.unit || 'Pcs'}
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <select
+                              value={line.unit || allowedUnits[0]}
+                              onChange={e => handleUpdateItem(idx, 'unit', e.target.value)}
+                              className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-cyan-600 outline-none bg-white"
+                            >
+                              {allowedUnits.map((val, ui) => (
+                                <option key={`${val}-${ui}`} value={val}>{val}</option>
+                              ))}
+                            </select>
+                          );
+                        })()}
                       </td>
 
                       <td className="py-0.5 px-1 align-middle">

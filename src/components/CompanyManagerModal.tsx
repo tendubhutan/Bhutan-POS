@@ -1318,65 +1318,47 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
 
               {/* Dedicated Client Portal Link */}
               {(() => {
-                const clientDedicatedUrl = getCompanyDedicatedUrl(shareCompany.id, true);
-                const displayHost = typeof window !== 'undefined' && window.location.host 
-                  ? window.location.host 
+                const isCustomOrCloudflare = typeof window !== 'undefined' && 
+                  !window.location.origin.includes('ais-dev-') && 
+                  !window.location.origin.includes('ais-pre-') && 
+                  !window.location.origin.includes('localhost') && 
+                  !window.location.origin.includes('127.0.0.1');
+
+                const clientDedicatedUrl = isCustomOrCloudflare
+                  ? `${window.location.origin}/?company=${shareCompany.id}`
+                  : `https://bhutan-pos.tendubhutan.workers.dev/?company=${shareCompany.id}`;
+
+                const displayHost = isCustomOrCloudflare
+                  ? window.location.host
                   : 'bhutan-pos.tendubhutan.workers.dev';
-                const isDevContainer = typeof window !== 'undefined' && 
-                  (window.location.host.includes('run.app') || window.location.host.includes('localhost') || window.location.host.includes('127.0.0.1'));
 
                 return (
-                  <>
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-xs font-semibold text-slate-300">
-                          Client Production Portal Link
-                        </label>
-                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono font-semibold">
-                          {displayHost}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          readOnly
-                          value={clientDedicatedUrl}
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-emerald-400 select-all focus:outline-hidden"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleCopyShareUrl(clientDedicatedUrl)}
-                          className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
-                        >
-                          {copiedUrl ? <CheckCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                          <span>{copiedUrl ? 'Copied!' : 'Copy'}</span>
-                        </button>
-                      </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-300">
+                        Client Production Portal Link
+                      </label>
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono font-semibold">
+                        {displayHost}
+                      </span>
                     </div>
-
-                    {isDevContainer && (
-                      <div className="pt-1">
-                        <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                          Or Cloudflare Production URL:
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            readOnly
-                            value={`https://bhutan-pos.tendubhutan.workers.dev/?company=${shareCompany.id}`}
-                            className="w-full bg-slate-950/70 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-slate-400 select-all focus:outline-hidden"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleCopyShareUrl(`https://bhutan-pos.tendubhutan.workers.dev/?company=${shareCompany.id}`)}
-                            className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition shrink-0 cursor-pointer"
-                          >
-                            Copy
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={clientDedicatedUrl}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-emerald-400 select-all focus:outline-hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleCopyShareUrl(clientDedicatedUrl)}
+                        className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-xs"
+                      >
+                        {copiedUrl ? <CheckCheck className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                        <span>{copiedUrl ? 'Copied!' : 'Copy'}</span>
+                      </button>
+                    </div>
+                  </div>
                 );
               })()}
 

@@ -25,7 +25,7 @@ interface DeliveryNoteEntryProps {
   onDataRefresh: () => void;
   initialVoucherTarget?: { voucherNo: string; timestamp: number } | null;
   onOpenQuickLedger: (group: string) => void;
-  onOpenNewItemModal?: (onSelect?: (item: Item) => void) => void;
+  onOpenNewItemModal?: (onSelect?: (item: Item) => void, itemToEdit?: Item | null) => void;
   onPrintDeliveryNote?: (note: DeliveryNote) => void;
   onNavigateBack?: () => void;
   voucherTypeSelector?: React.ReactNode;
@@ -953,32 +953,48 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
                       </td>
 
                       <td className="py-0.5 px-1 align-middle text-center">
-                        <select
-                          value={line.unit || 'Pcs'}
-                          onChange={e => {
-                            const val = e.target.value;
-                            const updated = [...noteItems];
-                            updated[idx].unit = val;
-                            const item = items.find(i => (i['Item Code'] && i['Item Code'] === updated[idx].itemCode) || i['Item Name'] === updated[idx].itemName);
-                            if (item) {
-                              if (val === item.Unit) {
-                                updated[idx].rate = Number((item as any)['Sale Rate'] ?? (item as any)['Sales Rate'] ?? item.MRP ?? 0);
-                              } else if (item.multiUnits) {
-                                const mu = item.multiUnits.find(m => m.unit === val);
-                                if (mu && mu.saleRate) {
-                                  updated[idx].rate = mu.saleRate;
+                        {(() => {
+                          const lineItem = items.find(i => (i['Item Code'] && i['Item Code'] === line.itemCode) || i['Item Name'] === line.itemName);
+                          const primaryUnit = lineItem?.Unit || line.unit || 'Pcs';
+                          const altUnits = (lineItem?.multiUnits || []).map(m => m.unit).filter(Boolean);
+                          const allowedUnits = Array.from(new Set([primaryUnit, ...altUnits]));
+
+                          if (allowedUnits.length <= 1) {
+                            return (
+                              <span className="text-xs font-semibold text-slate-700 px-1">
+                                {allowedUnits[0] || line.unit || 'Pcs'}
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <select
+                              value={line.unit || allowedUnits[0]}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const updated = [...noteItems];
+                                updated[idx].unit = val;
+                                if (lineItem) {
+                                  if (val === lineItem.Unit) {
+                                    updated[idx].rate = Number((lineItem as any)['Sale Rate'] ?? (lineItem as any)['Sales Rate'] ?? lineItem.MRP ?? 0);
+                                  } else if (lineItem.multiUnits) {
+                                    const mu = lineItem.multiUnits.find(m => m.unit === val);
+                                    if (mu && mu.saleRate) {
+                                      updated[idx].rate = mu.saleRate;
+                                    }
+                                  }
+                                  updated[idx].amount = (updated[idx].qty || 0) * (updated[idx].rate || 0);
                                 }
-                              }
-                              updated[idx].amount = (updated[idx].qty || 0) * (updated[idx].rate || 0);
-                            }
-                            setNoteItems(updated);
-                          }}
-                          className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-cyan-600 outline-none bg-white"
-                        >
-                          {units.map(u => (
-                            <option key={u['Unit Name']} value={u['Unit Name']}>{u.Symbol || u['Unit Name']}</option>
-                          ))}
-                        </select>
+                                setNoteItems(updated);
+                              }}
+                              className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-cyan-600 outline-none bg-white"
+                            >
+                              {allowedUnits.map(u => (
+                                <option key={u} value={u}>{u}</option>
+                              ))}
+                            </select>
+                          );
+                        })()}
                       </td>
 
                       <td className="py-0.5 px-1 align-middle">

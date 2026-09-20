@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Item, Config } from '../types';
-import { loadJson, saveJson, saveItem, saveItemGroup, saveItemCategory, saveUnit, getItemCategories, getUnits, STORAGE_KEYS, DEFAULT_UNITS, DEFAULT_ITEM_GROUPS } from '../services/storageService';
-import { X, Save, Plus, KeyRound, Check } from 'lucide-react';
+import { Item, ItemVariant, ItemBatch, Config } from '../types';
+import { loadJson, saveJson, saveItem, saveItemGroup, saveItemCategory, saveUnit, getItemCategories, getUnits, getRacks, saveRack, getCompatibilities, saveCompatibility, getSizes, saveSize, getColors, saveColor, STORAGE_KEYS, DEFAULT_UNITS, DEFAULT_ITEM_GROUPS } from '../services/storageService';
+import { X, Save, Plus, KeyRound, Check, Shirt, Trash2 } from 'lucide-react';
 import { SerialModal } from './SerialModal';
 import { MultiUnitEditor } from './MultiUnitEditor';
+import { MultiTagSelect } from './MultiTagSelect';
 import { handleFormKeyDown, focusFirstFormInput } from '../utils/formKeyNavigation';
 
 interface QuickItemModalProps {
@@ -22,6 +23,10 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({
   itemToEdit
 }) => {
   const [itemForm, setItemForm] = useState<Partial<Item>>({});
+  const [racksList, setRacksList] = useState<string[]>(getRacks());
+  const [compatibilitiesList, setCompatibilitiesList] = useState<string[]>(getCompatibilities());
+  const [sizesList, setSizesList] = useState<string[]>(getSizes());
+  const [colorsList, setColorsList] = useState<string[]>(getColors());
   const [showOpeningSerialModal, setShowOpeningSerialModal] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
 
@@ -130,6 +135,7 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({
 
   const showGst = String(config.EnableGST) !== 'false';
   const showSerials = String(config.EnableSerials) === 'true';
+  const showPharmacyBatch = String(config.EnablePharmacyBatch) !== 'false';
   const showCategory = true;
 
   const handleSave = (e?: React.FormEvent) => {
@@ -138,12 +144,70 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({
       alert('Item Name is required.');
       return;
     }
-    const res = saveItem(itemForm as Item);
+
+    const purRate = Number(itemForm['Purchase Rate']) || 0;
+    const saleRate = Number(itemForm['Sale Rate']) || 0;
+    const wholesaleRate = Number((itemForm as any)['Wholesale Rate'] || (itemForm as any)['wholesaleRate'] || 0) || 0;
+    const mrp = Number(itemForm.MRP) || 0;
+    const opStock = Number(itemForm['Opening Stock']) || 0;
+
+    let finalBatches = itemForm.batches;
+    if (itemForm.isPharmacy === 'Y' || itemForm.maintainBatch === 'Y') {
+      if (!finalBatches || finalBatches.length === 0) {
+        finalBatches = [{
+          id: `batch_${Date.now()}`,
+          batchNo: 'B-101',
+          expDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          barcode: itemForm.Barcode ? `${itemForm.Barcode}-B1` : `${Math.floor(100000 + Math.random() * 900000)}`,
+          openingStock: opStock,
+          currentStock: opStock,
+          purchaseRate: purRate,
+          saleRate: saleRate,
+          wholesaleRate: wholesaleRate,
+          mrp: mrp
+        }];
+      } else {
+        const batchCount = finalBatches.length;
+        const totalExplicitStock = finalBatches.reduce((sum, b) => sum + (Number(b.currentStock) || Number(b.openingStock) || 0), 0);
+        const baseStock = batchCount > 0 ? Math.floor(opStock / batchCount) : opStock;
+        const remainder = batchCount > 0 ? opStock % batchCount : 0;
+
+        finalBatches = finalBatches.map((b, idx) => {
+          let bOp = Number(b.openingStock) || 0;
+          let bCur = Number(b.currentStock) || 0;
+
+          if (totalExplicitStock === 0 && opStock > 0) {
+            bOp = baseStock + (idx === 0 ? remainder : 0);
+            bCur = bOp;
+          } else {
+            if (bOp === 0 && opStock > 0) bOp = baseStock;
+            if (bCur === 0) bCur = bOp > 0 ? bOp : opStock;
+          }
+
+          return {
+            ...b,
+            openingStock: bOp,
+            currentStock: bCur,
+            purchaseRate: purRate,
+            saleRate: saleRate,
+            wholesaleRate: wholesaleRate,
+            mrp: mrp
+          };
+        });
+      }
+    }
+
+    const itemToSave = {
+      ...itemForm,
+      batches: finalBatches
+    } as Item;
+
+    const res = saveItem(itemToSave);
     if (res.ok) {
       setJustSaved(true);
       setTimeout(() => {
         setJustSaved(false);
-        onSave(itemForm as Item);
+        onSave(itemToSave);
       }, 250);
     } else {
       alert(res.error);
@@ -361,6 +425,430 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Spare Parts Additional Fields (if enabled) */}
+        {config.EnableSpareParts === 'true' && (
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs bg-blue-50/50 p-2.5 rounded-xl border border-blue-200">
+            <div className="sm:col-span-4">
+              <label className="block font-semibold text-slate-700 mb-0.5">Part Number / OEM No.</label>
+              <input
+                type="text"
+                value={itemForm.partNumber || ''}
+                onChange={e => setItemForm({ ...itemForm, partNumber: e.target.value })}
+                className="w-full h-8 rounded-lg border border-slate-300 px-2.5 font-mono font-bold text-xs outline-none focus:border-indigo-500 bg-white"
+                placeholder="e.g. 13780-61M00 / OEM-492"
+              />
+            </div>
+            {config.EnableRackBin !== 'false' && (
+              <div className="sm:col-span-3">
+                <MultiTagSelect
+                  label="Rack / Bin Location(s)"
+                  value={itemForm.rackLocation || ''}
+                  onChange={val => setItemForm({ ...itemForm, rackLocation: val })}
+                  options={racksList}
+                  onAddNewOption={newVal => {
+                    const res = saveRack(newVal);
+                    if (res.ok) setRacksList(res.racks);
+                  }}
+                  placeholder="Type rack/bin..."
+                  iconType="location"
+                  badgeBgColor="bg-amber-100 text-amber-900 border-amber-300"
+                />
+              </div>
+            )}
+            {config.EnableCompatibility !== 'false' && (
+              <div className={config.EnableRackBin !== 'false' ? "sm:col-span-5" : "sm:col-span-8"}>
+                <MultiTagSelect
+                  label="Vehicle / Machine Compatibility"
+                  value={itemForm.compatibility || ''}
+                  onChange={val => setItemForm({ ...itemForm, compatibility: val })}
+                  options={compatibilitiesList}
+                  onAddNewOption={newVal => {
+                    const res = saveCompatibility(newVal);
+                    if (res.ok) setCompatibilitiesList(res.compatibilities);
+                  }}
+                  placeholder="Type vehicle model..."
+                  iconType="vehicle"
+                  badgeBgColor="bg-indigo-50 text-indigo-900 border-indigo-200"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Garments & Footwear Size & Color Variants (Opening Stock Breakdown) */}
+        {config.EnableGarmentsAndFootwear === 'true' && (
+          <div className="space-y-2">
+            <div className="bg-purple-50/80 p-2 rounded-xl border border-purple-200 text-xs">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5 font-bold text-purple-950">
+                  <Shirt className="w-4 h-4 text-purple-700" />
+                  <span>Size & Color Variants (Opening Stock Breakdown)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentVars = itemForm.variants || [];
+                    const lastVar = currentVars.length > 0 ? currentVars[currentVars.length - 1] : null;
+                    const newVar: ItemVariant = {
+                      id: `var_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                      size: '',
+                      color: '',
+                      barcode: itemForm.Barcode ? `${itemForm.Barcode}-${currentVars.length + 1}` : `${Math.floor(100000 + Math.random() * 900000)}`,
+                      openingStock: 0,
+                      purchaseRate: lastVar ? (Number(lastVar.purchaseRate) || 0) : (Number(itemForm['Purchase Rate']) || 0),
+                      saleRate: lastVar ? (Number(lastVar.saleRate) || 0) : (Number(itemForm['Sale Rate']) || 0),
+                      wholesaleRate: lastVar ? (Number(lastVar.wholesaleRate) || 0) : (Number((itemForm as any)['Wholesale Rate'] || (itemForm as any)['wholesaleRate'] || 0) || 0),
+                      mrp: lastVar ? (Number(lastVar.mrp) || 0) : (Number(itemForm.MRP) || 0),
+                    };
+                    const updatedVars = [...currentVars, newVar];
+                    const totalOp = updatedVars.reduce((sum, v) => sum + (Number(v.openingStock) || 0), 0);
+                    const totalVal = updatedVars.reduce((sum, v) => sum + ((Number(v.openingStock) || 0) * (Number(v.purchaseRate) || Number(itemForm['Purchase Rate']) || 0)), 0);
+                    setItemForm({
+                      ...itemForm,
+                      variants: updatedVars,
+                      'Opening Stock': totalOp,
+                      'Opening Amount': totalVal,
+                    });
+                  }}
+                  className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg shadow-sm flex items-center gap-1 cursor-pointer transition-all text-[11px]"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Variant Row
+                </button>
+              </div>
+
+              {(!itemForm.variants || itemForm.variants.length === 0) ? (
+                <div className="text-[11px] text-purple-800 italic bg-white/70 p-2 rounded-lg border border-purple-100">
+                  No specific variant rows added yet. Click <strong>"+ Add Variant Row"</strong> to specify unique barcodes, opening stock, and custom rates for each size/color combination.
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-purple-200 bg-white shadow-xs">
+                  <table className="w-full text-left text-[11px]">
+                    <thead className="bg-purple-100/80 text-purple-900 font-bold border-b border-purple-200">
+                      <tr>
+                        <th className="py-1.5 px-2">Color</th>
+                        <th className="py-1.5 px-2">Size</th>
+                        <th className="py-1.5 px-2">Barcode</th>
+                        <th className="py-1.5 px-2 text-center">Opening Qty</th>
+                        <th className="py-1.5 px-2 text-right">Pur. Rate</th>
+                        <th className="py-1.5 px-2 text-right">Sale Rate</th>
+                        <th className="py-1.5 px-2 text-right">Wholesale Rate</th>
+                        <th className="py-1.5 px-2 text-right">MRP</th>
+                        <th className="py-1.5 px-2 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-purple-100">
+                      {itemForm.variants.map((v, vIdx) => (
+                        <tr key={v.id || vIdx} className="hover:bg-purple-50/40">
+                          <td className="p-1">
+                            <input
+                              type="text"
+                              value={v.color}
+                              onChange={e => {
+                                const updated = [...(itemForm.variants || [])];
+                                updated[vIdx] = { ...updated[vIdx], color: e.target.value };
+                                setItemForm({ ...itemForm, variants: updated });
+                              }}
+                              onFocus={e => e.target.select()}
+                              onClick={e => (e.target as HTMLInputElement).select()}
+                              placeholder="Color"
+                              className="w-full h-7 px-1.5 rounded border border-slate-300 font-medium text-[11px] outline-none focus:border-purple-500"
+                              list={`q_colors_list_${vIdx}`}
+                            />
+                            <datalist id={`q_colors_list_${vIdx}`}>
+                              {colorsList.map((c, cI) => <option key={cI} value={c} />)}
+                            </datalist>
+                          </td>
+                          <td className="p-1">
+                            <input
+                              type="text"
+                              value={v.size}
+                              onChange={e => {
+                                const updated = [...(itemForm.variants || [])];
+                                updated[vIdx] = { ...updated[vIdx], size: e.target.value };
+                                setItemForm({ ...itemForm, variants: updated });
+                              }}
+                              onFocus={e => e.target.select()}
+                              onClick={e => (e.target as HTMLInputElement).select()}
+                              placeholder="Size"
+                              className="w-full h-7 px-1.5 rounded border border-slate-300 font-medium text-[11px] outline-none focus:border-purple-500"
+                              list={`q_sizes_list_${vIdx}`}
+                            />
+                            <datalist id={`q_sizes_list_${vIdx}`}>
+                              {sizesList.map((s, sI) => <option key={sI} value={s} />)}
+                            </datalist>
+                          </td>
+                          <td className="p-1">
+                            <input
+                              type="text"
+                              value={v.barcode}
+                              onChange={e => {
+                                const updated = [...(itemForm.variants || [])];
+                                updated[vIdx] = { ...updated[vIdx], barcode: e.target.value };
+                                setItemForm({ ...itemForm, variants: updated });
+                              }}
+                              onFocus={e => e.target.select()}
+                              placeholder="Box / Custom Barcode"
+                              className="w-full h-7 px-1.5 rounded border border-slate-300 font-mono text-[11px] outline-none focus:border-purple-500"
+                            />
+                          </td>
+                          <td className="p-1 text-center">
+                            <input
+                              type="number"
+                              min="0"
+                              value={v.openingStock || ''}
+                              onChange={e => {
+                                const updated = [...(itemForm.variants || [])];
+                                const newOp = e.target.value === '' ? 0 : Number(e.target.value);
+                                updated[vIdx] = { ...updated[vIdx], openingStock: newOp };
+                                const totalOp = updated.reduce((sum, item) => sum + (Number(item.openingStock) || 0), 0);
+                                const totalVal = updated.reduce((sum, item) => sum + ((Number(item.openingStock) || 0) * (Number(item.purchaseRate) || Number(itemForm['Purchase Rate']) || 0)), 0);
+                                setItemForm({
+                                  ...itemForm,
+                                  variants: updated,
+                                  'Opening Stock': totalOp,
+                                  'Opening Amount': totalVal
+                                });
+                              }}
+                              onFocus={e => e.target.select()}
+                              className="w-16 h-7 px-1 rounded border border-slate-300 text-center font-bold text-[11px] outline-none focus:border-purple-500"
+                            />
+                          </td>
+                          <td className="p-1 text-right">
+                            <input
+                              type="number"
+                              step="any"
+                              value={v.purchaseRate || ''}
+                              onChange={e => {
+                                const updated = [...(itemForm.variants || [])];
+                                const newPR = e.target.value === '' ? 0 : Number(e.target.value);
+                                updated[vIdx] = { ...updated[vIdx], purchaseRate: newPR };
+                                const totalVal = updated.reduce((sum, item) => sum + ((Number(item.openingStock) || 0) * (Number(item.purchaseRate) || Number(itemForm['Purchase Rate']) || 0)), 0);
+                                setItemForm({
+                                  ...itemForm,
+                                  variants: updated,
+                                  'Opening Amount': totalVal,
+                                });
+                              }}
+                              onFocus={e => e.target.select()}
+                              className="w-16 h-7 px-1 rounded border border-slate-300 text-right font-mono text-[11px] outline-none focus:border-purple-500"
+                            />
+                          </td>
+                          <td className="p-1 text-right">
+                            <input
+                              type="number"
+                              step="any"
+                              value={v.saleRate || ''}
+                              onChange={e => {
+                                const updated = [...(itemForm.variants || [])];
+                                const newSR = e.target.value === '' ? 0 : Number(e.target.value);
+                                updated[vIdx] = { ...updated[vIdx], saleRate: newSR };
+                                setItemForm({
+                                  ...itemForm,
+                                  variants: updated,
+                                });
+                              }}
+                              onFocus={e => e.target.select()}
+                              className="w-16 h-7 px-1 rounded border border-slate-300 text-right font-mono font-bold text-indigo-900 text-[11px] outline-none focus:border-purple-500"
+                            />
+                          </td>
+                          <td className="p-1 text-right">
+                            <input
+                              type="number"
+                              step="any"
+                              value={v.wholesaleRate || ''}
+                              onChange={e => {
+                                const updated = [...(itemForm.variants || [])];
+                                const newWR = e.target.value === '' ? 0 : Number(e.target.value);
+                                updated[vIdx] = { ...updated[vIdx], wholesaleRate: newWR };
+                                setItemForm({
+                                  ...itemForm,
+                                  variants: updated,
+                                });
+                              }}
+                              onFocus={e => e.target.select()}
+                              className="w-16 h-7 px-1 rounded border border-slate-300 text-right font-mono text-emerald-800 text-[11px] outline-none focus:border-purple-500"
+                            />
+                          </td>
+                          <td className="p-1 text-right">
+                            <input
+                              type="number"
+                              step="any"
+                              value={v.mrp || ''}
+                              onChange={e => {
+                                const updated = [...(itemForm.variants || [])];
+                                const newMRP = e.target.value === '' ? 0 : Number(e.target.value);
+                                updated[vIdx] = { ...updated[vIdx], mrp: newMRP };
+                                setItemForm({
+                                  ...itemForm,
+                                  variants: updated,
+                                });
+                              }}
+                              onFocus={e => e.target.select()}
+                              className="w-16 h-7 px-1 rounded border border-slate-300 text-right font-mono text-[11px] outline-none focus:border-purple-500"
+                            />
+                          </td>
+                          <td className="p-1 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = (itemForm.variants || []).filter((_, i) => i !== vIdx);
+                                const totalOp = updated.reduce((sum, item) => sum + (Number(item.openingStock) || 0), 0);
+                                const totalVal = updated.reduce((sum, item) => sum + ((Number(item.openingStock) || 0) * (Number(item.purchaseRate) || Number(itemForm['Purchase Rate']) || 0)), 0);
+                                setItemForm({
+                                  ...itemForm,
+                                  variants: updated,
+                                  'Opening Stock': updated.length > 0 ? totalOp : itemForm['Opening Stock'],
+                                  'Opening Amount': updated.length > 0 ? totalVal : itemForm['Opening Amount']
+                                });
+                              }}
+                              className="p-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                              title="Remove Variant"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Pharmacy Batch & Expiry Tracking Section */}
+        {showPharmacyBatch && (
+          <div className="space-y-2">
+            <div className="bg-emerald-50/80 p-2.5 rounded-xl border border-emerald-200 text-xs">
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="chk_is_pharmacy"
+                    checked={itemForm.isPharmacy === 'Y' || itemForm.maintainBatch === 'Y'}
+                    onChange={e => {
+                      const val = e.target.checked ? 'Y' : 'N';
+                      setItemForm({ ...itemForm, isPharmacy: val, maintainBatch: val });
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <label htmlFor="chk_is_pharmacy" className="font-bold text-emerald-950 cursor-pointer flex items-center gap-1.5">
+                    💊 Maintain Pharmacy Batch & Expiry Date
+                  </label>
+                </div>
+
+                {(itemForm.isPharmacy === 'Y' || itemForm.maintainBatch === 'Y') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const currentBatches = itemForm.batches || [];
+                      const newBatch: ItemBatch = {
+                        id: `batch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                        batchNo: `B-${currentBatches.length + 101}`,
+                        expDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                        barcode: itemForm.Barcode ? `${itemForm.Barcode}-B${currentBatches.length + 1}` : `${Math.floor(100000 + Math.random() * 900000)}`,
+                        openingStock: 0,
+                        currentStock: 0,
+                        purchaseRate: Number(itemForm['Purchase Rate']) || 0,
+                        saleRate: Number(itemForm['Sale Rate']) || 0,
+                        wholesaleRate: Number((itemForm as any)['Wholesale Rate'] || (itemForm as any)['wholesaleRate'] || 0) || 0,
+                        mrp: Number(itemForm.MRP) || 0
+                      };
+                      const updated = [...currentBatches, newBatch];
+                      const totalOp = updated.reduce((sum, b) => sum + (Number(b.openingStock) || 0), 0);
+                      setItemForm({
+                        ...itemForm,
+                        batches: updated,
+                        'Opening Stock': updated.length > 0 ? totalOp : itemForm['Opening Stock']
+                      });
+                    }}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Batch Row
+                  </button>
+                )}
+              </div>
+
+              {(itemForm.isPharmacy === 'Y' || itemForm.maintainBatch === 'Y') && (
+                <div className="overflow-x-auto pt-1">
+                  {(itemForm.batches || []).length === 0 ? (
+                    <p className="text-[11px] text-emerald-800 italic">No batches created yet. Click "Add Batch Row" to add initial stock batches with batch numbers and expiry dates.</p>
+                  ) : (
+                    <table className="w-full text-[11px] border-separate border-spacing-0">
+                      <thead>
+                        <tr className="bg-emerald-100/70 text-emerald-900 font-bold border-b border-emerald-200">
+                          <th className="p-1.5 text-left">Batch No *</th>
+                          <th className="p-1.5 text-left">Expiry Date *</th>
+                          <th className="p-1.5 text-left">Batch Barcode</th>
+                          <th className="p-1.5 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(itemForm.batches || []).map((b, bIdx) => (
+                          <tr key={b.id} className="border-b border-emerald-100 hover:bg-emerald-50">
+                            <td className="p-1">
+                              <input
+                                type="text"
+                                value={b.batchNo}
+                                onChange={e => {
+                                  const updated = [...(itemForm.batches || [])];
+                                  updated[bIdx] = { ...updated[bIdx], batchNo: e.target.value };
+                                  setItemForm({ ...itemForm, batches: updated });
+                                }}
+                                placeholder="Batch No"
+                                className="w-full h-7 px-1.5 rounded border border-slate-300 font-mono font-bold text-slate-900 outline-none focus:border-emerald-500"
+                              />
+                            </td>
+                            <td className="p-1">
+                              <input
+                                type="date"
+                                value={b.expDate}
+                                onChange={e => {
+                                  const updated = [...(itemForm.batches || [])];
+                                  updated[bIdx] = { ...updated[bIdx], expDate: e.target.value };
+                                  setItemForm({ ...itemForm, batches: updated });
+                                }}
+                                className="w-full h-7 px-1.5 rounded border border-slate-300 font-mono outline-none focus:border-emerald-500"
+                              />
+                            </td>
+                            <td className="p-1">
+                              <input
+                                type="text"
+                                value={b.barcode || ''}
+                                onChange={e => {
+                                  const updated = [...(itemForm.batches || [])];
+                                  updated[bIdx] = { ...updated[bIdx], barcode: e.target.value };
+                                  setItemForm({ ...itemForm, batches: updated });
+                                }}
+                                placeholder="Barcode"
+                                className="w-full h-7 px-1.5 rounded border border-slate-300 font-mono text-[11px] outline-none focus:border-emerald-500"
+                              />
+                            </td>
+                            <td className="p-1 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = (itemForm.batches || []).filter((_, i) => i !== bIdx);
+                                  setItemForm({ ...itemForm, batches: updated });
+                                }}
+                                className="p-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded cursor-pointer"
+                                title="Delete Batch"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Row 2: Rates & Taxation */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">

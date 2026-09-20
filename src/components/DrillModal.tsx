@@ -664,7 +664,7 @@ export const DrillModal: React.FC<DrillModalProps> = ({
   };
 
   return (
-    <div data-drill-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+    <div data-drill-modal="true" className="fixed inset-0 z-[1000010] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
       <div className="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in duration-150 relative">
         {/* Header with Back button and Close */}
         <div className="flex justify-between items-center pb-2 border-b border-slate-100">

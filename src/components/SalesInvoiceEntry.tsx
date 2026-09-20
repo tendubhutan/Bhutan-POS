@@ -40,7 +40,10 @@ import {
   Calendar,
   ArrowDownToLine,
   Truck,
+  Tags,
+  Gift,
 } from "lucide-react";
+import { findBestItemScheme, findBestBillScheme, getAllActiveSchemes, getSchemes } from "../services/schemeService";
 import { FetchVoucherModal } from "./vouchers/FetchVoucherModal";
 import { SerialModal } from "./SerialModal";
 import { ThermalReceiptModal } from "./ThermalReceiptModal";
@@ -58,7 +61,7 @@ interface SalesInvoiceEntryProps {
   items: Item[];
   ledgers: Ledger[];
   onDataRefresh: () => void;
-  onOpenNewItemModal: (onSelect?: (item: Item) => void) => void;
+  onOpenNewItemModal: (onSelect?: (item: Item) => void, itemToEdit?: Item | null) => void;
   onOpenNewLedgerModal: (
     group?: string,
     onSelect?: (name: string) => void,
@@ -208,6 +211,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   });
 
   const [editingBillNo, setEditingBillNo] = useState<string | null>(null);
+  const [editingBillSchemeName, setEditingBillSchemeName] = useState<string | undefined>(undefined);
   const [savedInvoice, setSavedInvoice] = useState<any>(null);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [activeNoteIdx, setActiveNoteIdx] = useState<number | null>(null);
@@ -350,9 +354,10 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   const showItemDiscount = String(config.EnableItemDiscount) !== "false";
   const showBillDiscount = String(config.EnableBillDiscount) !== "false";
   const [billDiscount, setBillDiscount] = useState<number | "">("");
+  const [showOffersModal, setShowOffersModal] = useState(false);
 
   const getLineDiscountAmt = (line: CartLine) => {
-    if (!showItemDiscount) return 0;
+    if (!showItemDiscount && !line.appliedSchemeName && (!line.discount || Number(line.discount) === 0)) return 0;
     const rawDisc = Number(line.discount) || 0;
     const isPercent =
       line.discountType === "percent" || config.ItemDiscountType === "percent";
@@ -377,18 +382,61 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
           if (inv && (inv.isPOS === true || inv.voucherTypeId === 'VT-SALE-POS')) {
             return;
           }
-          const newCart = (inv.items || []).map((it: any) => {
+          const schemeEvalDate = inv.date ? new Date(inv.date) : new Date();
+          const allSchemes = getSchemes();
+          const newCart: CartLine[] = (inv.items || []).map((it: any) => {
             const itemMatch = items.find(i => i['Item Code'] === (it['Item Code'] || it.itemCode));
             const isZeroRated = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
+            let rawRate = Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0));
+            const rawQty = Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : 1));
+            const rawDisc = Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0));
+
+            let appliedSchemeId = it.appliedSchemeId;
+            let appliedSchemeName = it.appliedSchemeName;
+            let originalRate = it.originalRate !== undefined ? Number(it.originalRate) : undefined;
+            let discount = rawDisc;
+
+            const matchedScheme = appliedSchemeId ? allSchemes.find(s => s.id === appliedSchemeId) : null;
+            let discountType: 'flat' | 'percent' = it.discountType 
+              || (matchedScheme?.schemeType === 'percent_discount' ? 'percent' : undefined)
+              || ((it['Discount %'] && Number(it['Discount %']) > 0) ? 'percent' : (config.ItemDiscountType === 'percent' ? 'percent' : 'flat'));
+
+            // If scheme was not explicitly recorded, check if an active scheme applies for B2B
+            if (!appliedSchemeName && itemMatch && rawQty > 0) {
+              const bestScheme = findBestItemScheme(itemMatch, rawQty, 'b2b', schemeEvalDate) 
+                || findBestItemScheme(itemMatch, rawQty, 'b2b', new Date());
+              if (bestScheme) {
+                if (rawDisc === 0 || rawDisc === bestScheme.discountPct || rawDisc === bestScheme.discountAmt) {
+                  appliedSchemeId = bestScheme.scheme.id;
+                  appliedSchemeName = bestScheme.badgeText;
+                  if (bestScheme.scheme.schemeType === 'percent_discount') {
+                    discount = bestScheme.discountPct;
+                    discountType = 'percent';
+                  } else if (bestScheme.scheme.schemeType === 'flat_discount') {
+                    discount = bestScheme.discountAmt;
+                    discountType = 'flat';
+                  } else if (bestScheme.scheme.schemeType === 'special_rate' && bestScheme.specialRate) {
+                    if (rawRate >= bestScheme.specialRate) {
+                      originalRate = rawRate;
+                      rawRate = bestScheme.specialRate;
+                    }
+                  }
+                }
+              }
+            }
+
             return {
               itemCode: it["Item Code"] || it.itemCode || '',
               itemName: it["Item Name"] || it.itemName || '',
               description: it.description || it["Item Description"] || "",
               lineDescription: it.lineDescription || "",
-              qty: Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : 1)),
-              rate: Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0)),
-              discount: Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0)),
-              discountType: (it['Discount %'] && Number(it['Discount %']) > 0) ? ('percent' as const) : ('flat' as const),
+              qty: rawQty,
+              rate: rawRate,
+              discount,
+              discountType,
+              appliedSchemeId,
+              appliedSchemeName,
+              originalRate,
               unit: it.Unit || it.unit || itemMatch?.Unit || "Pcs",
               gstPct: Number(it["GST %"] !== undefined ? it["GST %"] : (it.gstPct !== undefined ? it.gstPct : (itemMatch?.["GST %"] || 0))),
               gstAmt: Number(it["GST Amount"] !== undefined ? it["GST Amount"] : (it.gstAmt !== undefined ? it.gstAmt : 0)),
@@ -400,7 +448,10 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                     .split(",")
                     .map((s: string) => s.trim())
                     .filter(Boolean)
-                : (Array.isArray(it.serials) ? it.serials : [])
+                : (Array.isArray(it.serials) ? it.serials : []),
+              selectedBatchNo: it['Batch No'] || it.selectedBatchNo || it.batchNo || '',
+              selectedBatchExp: it['Expiry Date'] || it.selectedBatchExp || it.expiryDate || '',
+              selectedBatchId: it.batchId || it.selectedBatchId || ''
             };
           });
           setCart(newCart);
@@ -438,11 +489,23 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
           } else {
             setAdditionalExpenses([]);
           }
-          if (inv.discount !== undefined || inv.billDiscount !== undefined) {
-            setBillDiscount(inv.discount ?? inv.billDiscount ?? "");
-          } else {
+          
+          const discVal = inv.discount ?? inv.billDiscount ?? "";
+          if (inv.appliedBillSchemeName) {
+            setEditingBillSchemeName(inv.appliedBillSchemeName);
             setBillDiscount("");
+          } else {
+            const bestBill = findBestBillScheme(Number(inv.subtotal || inv.total), 'b2b', inv.date ? new Date(inv.date) : new Date())
+              || findBestBillScheme(Number(inv.subtotal || inv.total), 'b2b', new Date());
+            if (bestBill && (Number(discVal) === 0 || Math.round(bestBill.discountAmt) === Math.round(Number(discVal)))) {
+              setEditingBillSchemeName(bestBill.badgeText);
+              setBillDiscount("");
+            } else {
+              setEditingBillSchemeName(undefined);
+              setBillDiscount(discVal !== "" ? Number(discVal) : "");
+            }
           }
+
           setNarration(inv.narration || inv.notes || '');
           if (inv.termsAndConditions !== undefined) {
             setTermsAndConditions(inv.termsAndConditions || "");
@@ -456,6 +519,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       if (loadedTargetKeyRef.current !== null) {
         loadedTargetKeyRef.current = null;
         setEditingBillNo(null);
+        setEditingBillSchemeName(undefined);
         setCart([]);
         setCustomerName('');
         setBillNo('');
@@ -813,7 +877,29 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
 
   const selectItem = (item: Item, autoAdd: boolean = true, preSelectedSerial?: string) => {
     const qty = 1;
-    const rate = getItemRate(item);
+    let rate = getItemRate(item);
+    let discount = 0;
+    let discountType: 'flat' | 'percent' = config.ItemDiscountType === 'percent' ? 'percent' : 'flat';
+    let appliedSchemeId: string | undefined;
+    let appliedSchemeName: string | undefined;
+    let originalRate: number | undefined;
+
+    // Check Schemes for B2B channel
+    const bestScheme = findBestItemScheme(item, qty, 'b2b');
+    if (bestScheme) {
+      appliedSchemeId = bestScheme.scheme.id;
+      appliedSchemeName = bestScheme.badgeText;
+      if (bestScheme.scheme.schemeType === 'percent_discount') {
+        discount = bestScheme.discountPct;
+        discountType = 'percent';
+      } else if (bestScheme.scheme.schemeType === 'flat_discount') {
+        discount = bestScheme.discountAmt;
+        discountType = 'flat';
+      } else if (bestScheme.scheme.schemeType === 'special_rate' && bestScheme.specialRate) {
+        originalRate = rate;
+        rate = bestScheme.specialRate;
+      }
+    }
 
     const isZ =
       isCustomerGstExempted ||
@@ -822,7 +908,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       ? 0
       : round2((qty * rate * (Number(item["GST %"]) || 0)) / 100);
 
-    const existingIdx = cart.findIndex((l) => l.itemCode === item["Item Code"]);
+    const existingIdx = cart.findIndex((l) => l.itemCode === item["Item Code"] && (l.selectedSize || '') === (item.size || '') && (l.selectedColor || '') === (item.color || ''));
     let updatedCart = [...cart];
     let targetIndex = existingIdx;
 
@@ -833,14 +919,34 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         alert(`Serial Number "${preSelectedSerial}" is already in the invoice!`);
         return;
       }
-      updatedCart[existingIdx].qty += qty;
-      const gr = updatedCart[existingIdx].qty * updatedCart[existingIdx].rate;
+      const newQty = updatedCart[existingIdx].qty + qty;
+      updatedCart[existingIdx].qty = newQty;
+      const matchingItem = items.find(i => i['Item Code'] === updatedCart[existingIdx].itemCode) || item;
+      const bestScheme = findBestItemScheme(matchingItem, newQty, 'b2b');
+      if (bestScheme) {
+        updatedCart[existingIdx].appliedSchemeId = bestScheme.scheme.id;
+        updatedCart[existingIdx].appliedSchemeName = bestScheme.badgeText;
+        if (bestScheme.scheme.schemeType === 'percent_discount') {
+          updatedCart[existingIdx].discount = bestScheme.discountPct;
+          updatedCart[existingIdx].discountType = 'percent';
+        } else if (bestScheme.scheme.schemeType === 'flat_discount') {
+          updatedCart[existingIdx].discount = bestScheme.discountAmt;
+          updatedCart[existingIdx].discountType = 'flat';
+        } else if (bestScheme.scheme.schemeType === 'special_rate' && bestScheme.specialRate) {
+          if (!updatedCart[existingIdx].originalRate) {
+            updatedCart[existingIdx].originalRate = updatedCart[existingIdx].rate;
+          }
+          updatedCart[existingIdx].rate = bestScheme.specialRate;
+        }
+      }
+      const lineDisc = getLineDiscountAmt(updatedCart[existingIdx]);
+      const gr = updatedCart[existingIdx].qty * updatedCart[existingIdx].rate - lineDisc;
       const z =
         isCustomerGstExempted ||
         String(updatedCart[existingIdx].zeroRated).toUpperCase() === "Y";
       updatedCart[existingIdx].gstAmt = z
         ? 0
-        : round2((gr * (Number(updatedCart[existingIdx].gstPct) || 0)) / 100);
+        : round2((Math.max(0, gr) * (Number(updatedCart[existingIdx].gstPct) || 0)) / 100);
       if (preSelectedSerial) {
         updatedCart[existingIdx].serials = [...existingSerials, preSelectedSerial];
       }
@@ -851,13 +957,20 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         unit: item.Unit || "Pcs",
         qty,
         rate,
-        discount: 0,
+        discount,
+        discountType,
+        appliedSchemeId,
+        appliedSchemeName,
+        originalRate,
         gstPct: Number(item["GST %"]) || 0,
         zeroRated: item["Zero Rated (Y/N)"] || "N",
         purchaseRate: item["Purchase Rate"] || 0,
         isSerialized: item["Is Serialized"],
         serials: preSelectedSerial ? [preSelectedSerial] : [],
         gstAmt: computedGstAmt,
+        selectedSize: item.size || '',
+        selectedColor: item.color || '',
+        barcode: item.Barcode || ''
       };
       updatedCart.push(newLine);
       targetIndex = updatedCart.length - 1;
@@ -895,6 +1008,34 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     const updated = [...cart];
     (updated[index] as any)[field] = val;
 
+    if (field === 'qty') {
+      const q = Number(val) || 0;
+      const matchingItem = items.find(i => i['Item Code'] === updated[index].itemCode);
+      if (matchingItem && q > 0) {
+        const bestScheme = findBestItemScheme(matchingItem, q, 'b2b');
+        if (bestScheme) {
+          updated[index].appliedSchemeId = bestScheme.scheme.id;
+          updated[index].appliedSchemeName = bestScheme.badgeText;
+          if (bestScheme.scheme.schemeType === 'percent_discount') {
+            updated[index].discount = bestScheme.discountPct;
+            updated[index].discountType = 'percent';
+          } else if (bestScheme.scheme.schemeType === 'flat_discount') {
+            updated[index].discount = bestScheme.discountAmt;
+            updated[index].discountType = 'flat';
+          } else if (bestScheme.scheme.schemeType === 'special_rate' && bestScheme.specialRate) {
+            if (!updated[index].originalRate) {
+              updated[index].originalRate = updated[index].rate;
+            }
+            updated[index].rate = bestScheme.specialRate;
+          }
+        }
+      }
+    }
+    if (field === 'discount') {
+      updated[index].appliedSchemeId = undefined;
+      updated[index].appliedSchemeName = undefined;
+    }
+
     if (
       field === "qty" ||
       field === "rate" ||
@@ -918,6 +1059,22 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       setActiveSerialIndex(index);
       setSerialModalOpen(true);
     }
+  };
+
+  const removeSchemeFromLine = (index: number) => {
+    const updated = [...cart];
+    updated[index].appliedSchemeId = undefined;
+    updated[index].appliedSchemeName = undefined;
+    updated[index].discount = 0;
+    if (updated[index].originalRate) {
+      updated[index].rate = updated[index].originalRate;
+      updated[index].originalRate = undefined;
+    }
+    const isZ = isCustomerGstExempted || String(updated[index].zeroRated).toUpperCase() === "Y";
+    const lineDisc = getLineDiscountAmt(updated[index]);
+    const gr = updated[index].qty * updated[index].rate - lineDisc;
+    updated[index].gstAmt = isZ ? 0 : round2((Math.max(0, gr) * (Number(updated[index].gstPct) || 0)) / 100);
+    setCart(updated);
   };
 
   const removeCartLine = (index: number) => {
@@ -950,12 +1107,21 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     rawTotal += expenses;
 
     let discountAmt = 0;
-    if (showBillDiscount && billDiscount !== "") {
+    let appliedBillSchemeName: string | undefined = editingBillSchemeName;
+    if (showBillDiscount && billDiscount !== "" && Number(billDiscount) > 0) {
       const d = Number(billDiscount);
       if (config.BillDiscountType === "percent") {
         discountAmt = (rawTotal * d) / 100;
       } else {
         discountAmt = d;
+      }
+    } else if (rawTotal > 0) {
+      // Evaluate Bill-Level Scheme for B2B
+      const billScheme = findBestBillScheme(rawTotal, 'b2b', billDate ? new Date(billDate) : new Date())
+        || findBestBillScheme(rawTotal, 'b2b', new Date());
+      if (billScheme) {
+        discountAmt = billScheme.discountAmt;
+        appliedBillSchemeName = billScheme.badgeText;
       }
     }
 
@@ -967,6 +1133,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       gstAmt,
       subtotal: rawTotal,
       discount: discountAmt,
+      appliedBillSchemeName,
       itemDiscountTotal,
       total: finalTotal,
     };
@@ -1037,7 +1204,10 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       orderDate: orderDate,
       deliveryNoteNo: deliveryNoteNo,
       billDiscount:
-        showBillDiscount && billDiscount !== "" ? Number(billDiscount) : 0,
+        showBillDiscount && billDiscount !== "" ? Number(billDiscount) : totals.discount,
+      billDiscountValue:
+        showBillDiscount && billDiscount !== "" ? Number(billDiscount) : totals.discount,
+      appliedBillSchemeName: totals.appliedBillSchemeName,
       additionalExpenses: additionalExpenses
         .map((exp) => ({ ledger: exp.ledger, amount: Number(exp.amount) || 0 }))
         .filter((exp) => exp.ledger && exp.amount > 0),
@@ -1217,6 +1387,19 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
           >
             <ArrowDownToLine className="h-3.5 w-3.5 text-indigo-600" />
             <span>Fetch (DN / Order) [Alt+F]</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowOffersModal(true)}
+            className="h-7 px-2.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[11px] flex items-center gap-1.5 transition cursor-pointer shadow-2xs shrink-0"
+            title="View Active Schemes & Offers for B2B"
+          >
+            <Tags className="h-3.5 w-3.5 text-amber-600" />
+            <span>Offers</span>
+            <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
+              {getAllActiveSchemes('b2b').length}
+            </span>
           </button>
 
           {deliveryNoteNo && (
@@ -1551,6 +1734,26 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                         )}
                       </div>
 
+                      {line.appliedSchemeName && (
+                        <div className="mt-1 flex items-center gap-1">
+                          <span 
+                            className="inline-flex items-center gap-1 px-1.5 py-0.2 text-[9px] font-extrabold rounded-md bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs" 
+                            title={`Applied Promotion: ${line.appliedSchemeName}`}
+                          >
+                            <Tag className="h-2.5 w-2.5 text-amber-700" />
+                            <span>{line.appliedSchemeName}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeSchemeFromLine(idx)}
+                              className="text-amber-700 hover:text-rose-600 font-bold ml-0.5 cursor-pointer"
+                              title="Remove offer from this line"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        </div>
+                      )}
+
                       {(Boolean((line.lineDescription || line.description) && (line.lineDescription || line.description).trim()) || activeNoteIdx === idx) && (
                         <ItemNoteInput
                           value={line.lineDescription || line.description || ''}
@@ -1586,31 +1789,47 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                       />
                     </td>
                     <td className="py-0.5 px-1 align-middle text-center">
-                      <select
-                        value={line.unit || "Pcs"}
-                        onChange={e => {
-                          const val = e.target.value;
-                          const updated = [...cart];
-                          updated[idx].unit = val;
-                          const item = items.find(i => (i['Item Code'] && i['Item Code'] === updated[idx].itemCode) || i['Item Name'] === updated[idx].itemName);
-                          if (item) {
-                            if (val === item.Unit) {
-                              updated[idx].rate = item['Sale Rate'] || 0;
-                            } else if (item.multiUnits) {
-                              const mu = item.multiUnits.find(m => m.unit === val);
-                              if (mu && mu.saleRate) {
-                                updated[idx].rate = mu.saleRate;
+                      {(() => {
+                        const lineItem = items.find(i => (i['Item Code'] && i['Item Code'] === line.itemCode) || i['Item Name'] === line.itemName);
+                        const primaryUnit = lineItem?.Unit || line.unit || 'Pcs';
+                        const altUnits = (lineItem?.multiUnits || []).map(m => m.unit).filter(Boolean);
+                        const allowedUnits = Array.from(new Set([primaryUnit, ...altUnits]));
+
+                        if (allowedUnits.length <= 1) {
+                          return (
+                            <span className="text-xs font-semibold text-slate-700 px-1">
+                              {allowedUnits[0] || line.unit || 'Pcs'}
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <select
+                            value={line.unit || allowedUnits[0]}
+                            onChange={e => {
+                              const val = e.target.value;
+                              const updated = [...cart];
+                              updated[idx].unit = val;
+                              if (lineItem) {
+                                if (val === lineItem.Unit) {
+                                  updated[idx].rate = lineItem['Sale Rate'] || 0;
+                                } else if (lineItem.multiUnits) {
+                                  const mu = lineItem.multiUnits.find(m => m.unit === val);
+                                  if (mu && mu.saleRate) {
+                                    updated[idx].rate = mu.saleRate;
+                                  }
+                                }
                               }
-                            }
-                          }
-                          setCart(updated);
-                        }}
-                        className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
-                      >
-                        {units.map(u => (
-                          <option key={u['Unit Name']} value={u['Unit Name']}>{u.Symbol || u['Unit Name']}</option>
-                        ))}
-                      </select>
+                              setCart(updated);
+                            }}
+                            className="w-full text-center h-6 rounded border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
+                          >
+                            {allowedUnits.map(u => (
+                              <option key={u} value={u}>{u}</option>
+                            ))}
+                          </select>
+                        );
+                      })()}
                     </td>
                     <td className="py-0.5 px-1 align-middle text-right">
                       <input
@@ -1847,10 +2066,10 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
               <>
                 <span className="text-slate-800">|</span>
                 <div>
-                  <span className="text-emerald-400 text-[10px] mr-1">
-                    Bill Disc:
+                  <span className="text-amber-400 text-[10px] mr-1">
+                    {totals.appliedBillSchemeName ? `Offer (${totals.appliedBillSchemeName}):` : 'Bill Disc:'}
                   </span>
-                  <span className="font-bold text-emerald-300">
+                  <span className="font-bold text-amber-300">
                     -{totals.discount.toFixed(2)}
                   </span>
                 </div>
@@ -2061,6 +2280,82 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         }}
         onCancel={() => setShowQuitModal(false)}
       />
+
+      {/* Active Offers / Schemes Quick View Modal for B2B */}
+      {showOffersModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-xl w-full p-5 overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
+                  <Tags className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Active B2B Schemes & Offers</h3>
+                  <p className="text-[11px] text-slate-500">Running promotional schemes applicable to Wholesale/B2B invoices</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOffersModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto py-3 space-y-2.5">
+              {getAllActiveSchemes('b2b').length === 0 ? (
+                <div className="py-8 text-center text-slate-400">
+                  <Tags className="h-8 w-8 mx-auto mb-2 text-slate-300 stroke-1" />
+                  <p className="text-xs font-semibold">No promotional schemes are currently running for B2B sales.</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Configure discounts, special rates, or volume deals under Schemes & Offers (Alt+O).</p>
+                </div>
+              ) : (
+                getAllActiveSchemes('b2b').map(sch => (
+                  <div key={sch.id} className="p-3 rounded-xl border border-amber-200 bg-amber-50/50 flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-slate-900 text-xs">{sch.name}</span>
+                        <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-amber-200 text-amber-900">
+                          {sch.schemeType.replace('_', ' ')}
+                        </span>
+                        <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700">
+                          Applies: {sch.targetType.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 mt-1">
+                        {sch.schemeType === 'percent_discount' && `Get ${sch.discountValue}% discount`}
+                        {sch.schemeType === 'flat_discount' && `Get ${config.CurrencySymbol || 'Nu.'} ${sch.discountValue} off per unit`}
+                        {sch.schemeType === 'special_rate' && `Special Promo Price: ${config.CurrencySymbol || 'Nu.'} ${sch.specialRate}`}
+                        {sch.schemeType === 'bogo' && `Buy ${sch.buyQty}, Get ${sch.freeQty} Free`}
+                        {sch.minQty && sch.minQty > 1 ? ` (Min Qty: ${sch.minQty})` : ''}
+                        {sch.schemeType === 'bill_discount' && sch.minBillAmount ? ` on orders above ${config.CurrencySymbol || 'Nu.'} ${sch.minBillAmount}` : ''}
+                      </p>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
+                        <span>Valid: {sch.startDate || 'Anytime'} to {sch.endDate || 'Ongoing'}</span>
+                        {sch.startTime && sch.endTime && (
+                          <span>• Happy Hours: {sch.startTime} - {sch.endTime}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowOffersModal(false)}
+                className="px-4 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
