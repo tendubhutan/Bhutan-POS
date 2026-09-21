@@ -287,6 +287,73 @@ export const Reports: React.FC<ReportsProps> = ({
     setToDate(formatYMD(endOfMonth));
   };
 
+  const activePresetId = useMemo<'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_month' | 'this_quarter' | 'this_fy' | null>(() => {
+    const now = new Date();
+    const formatYMD = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+    const today = formatYMD(now);
+    if (fromDate === today && toDate === today) return 'today';
+
+    const y = new Date(now);
+    y.setDate(y.getDate() - 1);
+    const yesterday = formatYMD(y);
+    if (fromDate === yesterday && toDate === yesterday) return 'yesterday';
+
+    const curr = new Date(now);
+    const first = curr.getDate() - curr.getDay() + (curr.getDay() === 0 ? -6 : 1);
+    const monday = new Date(curr.setDate(first));
+    const sunday = new Date(monday);
+    sunday.setDate(sunday.getDate() + 6);
+    if (fromDate === formatYMD(monday) && toDate === formatYMD(sunday)) return 'this_week';
+
+    const startThisMth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endThisMth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    if (fromDate === formatYMD(startThisMth) && toDate === formatYMD(endThisMth)) return 'this_month';
+
+    const startLastMth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const endLastMth = new Date(now.getFullYear(), now.getMonth(), 0);
+    if (fromDate === formatYMD(startLastMth) && toDate === formatYMD(endLastMth)) return 'last_month';
+
+    const qMonth = Math.floor(now.getMonth() / 3) * 3;
+    const startQ = new Date(now.getFullYear(), qMonth, 1);
+    const endQ = new Date(now.getFullYear(), qMonth + 3, 0);
+    if (fromDate === formatYMD(startQ) && toDate === formatYMD(endQ)) return 'this_quarter';
+
+    const year = now.getFullYear();
+    if (fromDate === `${year}-01-01` && toDate === `${year}-12-31`) return 'this_fy';
+
+    return null;
+  }, [fromDate, toDate]);
+
+  const activePresetLabel = useMemo<string | null>(() => {
+    if (activePresetId === 'today') return 'Today';
+    if (activePresetId === 'yesterday') return 'Yesterday';
+    if (activePresetId === 'this_week') return 'This Week';
+    if (activePresetId === 'this_month') return 'This Month';
+    if (activePresetId === 'last_month') return 'Last Month';
+    if (activePresetId === 'this_quarter') return 'This Qtr';
+    if (activePresetId === 'this_fy') return `FY ${new Date().getFullYear()}`;
+
+    // Check if it matches a single full month (e.g. Sep 2026)
+    if (fromDate && toDate && fromDate.length === 10 && toDate.length === 10) {
+      const [fy, fm, fd] = fromDate.split('-').map(Number);
+      const [ty, tm, td] = toDate.split('-').map(Number);
+      if (fy === ty && fm === tm && fd === 1) {
+        const lastDayOfMth = new Date(fy, fm, 0).getDate();
+        if (td === lastDayOfMth) {
+          const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          return `${months[fm - 1]} ${fy}`;
+        }
+      }
+    }
+
+    return null;
+  }, [activePresetId, fromDate, toDate]);
+
   useEffect(() => {
     const handlePeriodEvent = () => openChangePeriod();
     window.addEventListener('app:open-change-period' as any, handlePeriodEvent);
@@ -2298,48 +2365,6 @@ export const Reports: React.FC<ReportsProps> = ({
 
         {/* Right Section: Date Controls & Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap ml-auto">
-          {/* Month Step Buttons */}
-          <div className="flex items-center bg-slate-100 border border-slate-200 rounded-xl p-0.5 shadow-2xs">
-            <button
-              type="button"
-              onClick={() => shiftMonth(-1)}
-              className="px-1.5 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 rounded-lg transition text-xs font-bold flex items-center gap-0.5 cursor-pointer"
-              title="Previous Month"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              <span className="hidden xl:inline text-[10px]">Prev Mth</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => shiftMonth(1)}
-              className="px-1.5 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 rounded-lg transition text-xs font-bold flex items-center gap-0.5 cursor-pointer"
-              title="Next Month"
-            >
-              <span className="hidden xl:inline text-[10px]">Next Mth</span>
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-slate-500 text-[11px]">From:</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={e => setFromDate(e.target.value)}
-              className="h-8 rounded-xl border border-slate-300 px-2 font-medium outline-none text-xs"
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-slate-500 text-[11px]">To:</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={e => setToDate(e.target.value)}
-              className="h-8 rounded-xl border border-slate-300 px-2 font-medium outline-none text-xs"
-            />
-          </div>
-
           {/* Branch Filter (when EnableMultiBranch is enabled) */}
           {config?.EnableMultiBranch === 'true' && (
             <div className="h-8 inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/90 px-2.5 font-bold text-xs text-indigo-950 shadow-2xs">
@@ -2361,38 +2386,50 @@ export const Reports: React.FC<ReportsProps> = ({
             </div>
           )}
 
-          {/* Quick Presets Dropdown */}
-          <select
-            onChange={(e) => {
-              if (e.target.value) {
-                applyPreset(e.target.value as any);
-                e.target.value = '';
-              }
-            }}
-            defaultValue=""
-            className="h-8 rounded-xl border border-indigo-200 bg-indigo-50/80 px-2 font-bold text-xs text-indigo-900 outline-none cursor-pointer hover:bg-indigo-100 transition"
-            title="Quick Date Range Presets"
-          >
-            <option value="" disabled>Presets ▾</option>
-            <option value="today">Today</option>
-            <option value="yesterday">Yesterday</option>
-            <option value="this_week">This Week</option>
-            <option value="this_month">This Month</option>
-            <option value="last_month">Last Month</option>
-            <option value="this_quarter">This Quarter</option>
-            <option value="this_fy">Financial Year (FY)</option>
-          </select>
+          {/* Unified Dynamic Date Range & Period Tab (Option 2) */}
+          <div className="flex items-center rounded-xl border border-indigo-200 bg-white shadow-2xs hover:border-indigo-400 transition p-0.5">
+            {/* Quick Prev Month Step Button */}
+            <button
+              type="button"
+              onClick={() => shiftMonth(-1)}
+              className="h-7 w-7 flex items-center justify-center text-slate-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+              title="Previous Month (Shift Earlier)"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
 
-          {/* Change Period Button (Alt+F2) */}
-          <button
-            onClick={openChangePeriod}
-            className="h-8 inline-flex items-center gap-1 rounded-xl border border-indigo-300 bg-indigo-600 px-2.5 font-bold text-xs text-white hover:bg-indigo-700 transition shadow-2xs cursor-pointer"
-            title="Change Date Period (Alt+F2 / Alt+D)"
-          >
-            <Calendar className="h-3.5 w-3.5 text-indigo-100" />
-            <span>Period</span>
-            <kbd className="hidden sm:inline-block text-[9px] bg-indigo-800/80 border border-indigo-400 text-indigo-100 px-1 py-0.2 rounded font-mono font-bold">Alt+F2</kbd>
-          </button>
+            {/* Clickable Date Period Range Pill */}
+            <button
+              type="button"
+              onClick={openChangePeriod}
+              className="h-7 px-2.5 flex items-center gap-1.5 text-xs font-bold text-slate-800 hover:text-indigo-700 hover:bg-indigo-50/70 rounded-lg transition cursor-pointer group"
+              title="Click to Change Period, Select Presets, or Custom Dates (Alt+F2 / Alt+D)"
+            >
+              <Calendar className="h-3.5 w-3.5 text-indigo-600 shrink-0 group-hover:scale-110 transition-transform" />
+              <span className="font-mono text-xs font-bold text-slate-900 tracking-tight">
+                {formatDisplayDate(fromDate)} <span className="text-slate-400 font-normal">→</span> {formatDisplayDate(toDate)}
+              </span>
+              {activePresetLabel && (
+                <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-[10px] font-bold text-indigo-700 leading-none">
+                  {activePresetLabel}
+                </span>
+              )}
+              <kbd className="hidden md:inline-block text-[9px] bg-slate-100 border border-slate-300 text-slate-600 px-1 py-0.2 rounded font-mono font-bold group-hover:bg-indigo-100 group-hover:text-indigo-800 group-hover:border-indigo-300 transition">
+                Alt+F2
+              </kbd>
+              <ChevronDown className="h-3 w-3 text-slate-400 group-hover:text-indigo-600 transition" />
+            </button>
+
+            {/* Quick Next Month Step Button */}
+            <button
+              type="button"
+              onClick={() => shiftMonth(1)}
+              className="h-7 w-7 flex items-center justify-center text-slate-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+              title="Next Month (Shift Later)"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
 
           <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2">
             <button
@@ -5512,6 +5549,53 @@ export const Reports: React.FC<ReportsProps> = ({
 
             {/* Content */}
             <div className="p-5 space-y-4">
+              {/* Month Navigation Row */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Month Jumps
+                  </label>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      shiftMonth(-1);
+                      setShowChangePeriodModal(false);
+                    }}
+                    className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                    <span>Prev Month</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      applyPreset('this_month');
+                      setShowChangePeriodModal(false);
+                    }}
+                    className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                      activePresetId === 'this_month'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200'
+                    }`}
+                  >
+                    <span>This Month</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      shiftMonth(1);
+                      setShowChangePeriodModal(false);
+                    }}
+                    className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <span>Next Month</span>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+
               {/* Preset Chips */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
@@ -5526,19 +5610,27 @@ export const Reports: React.FC<ReportsProps> = ({
                     { id: 'last_month', label: 'Last Month' },
                     { id: 'this_quarter', label: 'This Quarter' },
                     { id: 'this_fy', label: 'Financial Year (FY)' },
-                  ].map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        applyPreset(p.id as any);
-                        setShowChangePeriodModal(false);
-                      }}
-                      className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs"
-                    >
-                      {p.label}
-                    </button>
-                  ))}
+                  ].map((p) => {
+                    const isSelected = activePresetId === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          applyPreset(p.id as any);
+                          setShowChangePeriodModal(false);
+                        }}
+                        className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs flex items-center gap-1 ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-300 ring-offset-1'
+                            : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200'
+                        }`}
+                      >
+                        {isSelected && <span>✓</span>}
+                        {p.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
