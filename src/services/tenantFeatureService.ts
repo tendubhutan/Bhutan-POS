@@ -92,6 +92,20 @@ export const ALL_SYSTEM_FEATURES: FeatureDefinition[] = [
     category: 'Inventory & Variants',
     defaultEnabled: true
   },
+  {
+    id: 'EnableMultiBranch',
+    label: 'Multi-Branch Management (HQ & Outstation Branches)',
+    shortDesc: 'Manage Head Office and outstation branches (Thimphu, Phuntsholing, Paro). Transfers goods branch-to-branch and filters reports.',
+    category: 'Inventory & Variants',
+    defaultEnabled: false
+  },
+  {
+    id: 'EnableMultiGodown',
+    label: 'Multiple Godowns / Warehouses',
+    shortDesc: 'Maintain separate sub-godowns, back-stores, or cold storage within a location.',
+    category: 'Inventory & Variants',
+    defaultEnabled: false
+  },
 
   // Taxation & Accounts
   {

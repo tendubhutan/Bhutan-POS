@@ -36,7 +36,8 @@ export type VoucherActionType =
   | 'PURCHASE_ORDER'
   | 'RECEIPT_NOTE'
   | 'S'
-  | 'PUR';
+  | 'PUR'
+  | 'STOCK_TRANSFER';
 
 export interface VoucherCatalogItem {
   id: VoucherActionType;
@@ -179,6 +180,17 @@ export const VOUCHER_CATALOG: VoucherCatalogItem[] = [
     color: 'text-emerald-700',
     bgLight: 'bg-emerald-50/70 hover:bg-emerald-100/60',
     borderLight: 'border-emerald-200'
+  },
+  {
+    id: 'STOCK_TRANSFER',
+    name: 'Stock Transfer / Challan',
+    category: 'inventory',
+    shortcut: 'Alt+F7',
+    description: 'Inter-branch or inter-godown stock movement (Direct transfer voucher or 2-step transit challan)',
+    icon: ArrowRightLeft,
+    color: 'text-indigo-600',
+    bgLight: 'bg-indigo-50 hover:bg-indigo-100/70',
+    borderLight: 'border-indigo-200'
   },
 
   // Orders & Quotations

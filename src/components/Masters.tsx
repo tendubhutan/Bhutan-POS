@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MultiUnitEditor } from './MultiUnitEditor';
 import { UnitMaster } from './masters/UnitMaster';
+import { BranchMaster } from './masters/BranchMaster';
+import { GodownMaster } from './masters/GodownMaster';
 import { ImportItemsModal } from './ImportItemsModal';
 import { MultiTagSelect } from './MultiTagSelect';
 import {
@@ -12,7 +14,8 @@ import {
   Unit,
   UnitGroup,
   Ledger,
-  LedgerGroup
+  LedgerGroup,
+  BranchStockAllocation
 } from '../types';
 import {
   saveItem,
@@ -37,9 +40,11 @@ import {
   getColors,
   saveColor,
   generateBarcode,
-  generateMissingBarcodes
+  generateMissingBarcodes,
+  getBranches,
+  getGodowns
 } from '../services/storageService';
-import { Search, Plus, Edit2, Trash2, CheckCircle2, X, FolderPlus, Tag, KeyRound, Sparkles, Check, Save, Layers, Building2, ClipboardPaste, FileSpreadsheet, MapPin, Car, SlidersHorizontal, Palette, Shirt } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, CheckCircle2, X, FolderPlus, Tag, KeyRound, Sparkles, Check, Save, Layers, Building2, Warehouse, ClipboardPaste, FileSpreadsheet, MapPin, Car, SlidersHorizontal, Palette, Shirt } from 'lucide-react';
 import { SerialModal } from './SerialModal';
 import { VoucherTypeManager } from './vouchers/VoucherTypeManager';
 import { ExportStockExcelModal } from './ExportStockExcelModal';
@@ -58,6 +63,7 @@ interface MastersProps {
   onDataRefresh: () => void;
   openItemModalCode?: string | null;
   openLedgerModalGroup?: string | null;
+  initialTab?: 'items' | 'ledgers' | 'branches' | 'godowns' | 'vouchertypes' | 'itemgroups' | 'units' | 'unitgroups' | 'ledgergroups';
   isActive?: boolean;
 }
 
@@ -73,28 +79,38 @@ export const Masters: React.FC<MastersProps> = ({
   onDataRefresh,
   openItemModalCode,
   openLedgerModalGroup,
+  initialTab,
   isActive = true
 }) => {
-  const [activeTab, setActiveTab] = useState<'items' | 'ledgers' | 'vouchertypes' | 'itemgroups' | 'units' | 'unitgroups' | 'ledgergroups'>('items');
-  const [tabHistory, setTabHistory] = useState<('items' | 'ledgers' | 'vouchertypes' | 'itemgroups' | 'units' | 'unitgroups' | 'ledgergroups')[]>(['items']);
+  type MasterTabKey = 'items' | 'ledgers' | 'branches' | 'godowns' | 'vouchertypes' | 'itemgroups' | 'units' | 'unitgroups' | 'ledgergroups';
+  const [activeTab, setActiveTab] = useState<MasterTabKey>(() => (initialTab as MasterTabKey) || 'items');
+  const [tabHistory, setTabHistory] = useState<MasterTabKey[]>([initialTab || 'items']);
   const [itemSearch, setItemSearch] = useState('');
   const [ledgerSearch, setLedgerSearch] = useState('');
 
-  const switchTab = (tab: 'items' | 'ledgers' | 'vouchertypes' | 'itemgroups' | 'units' | 'unitgroups' | 'ledgergroups') => {
+  useEffect(() => {
+    if (initialTab && initialTab !== activeTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  const switchTab = (tab: MasterTabKey) => {
     if (tab === activeTab) return;
     setActiveTab(tab);
     setTabHistory(prev => (prev[prev.length - 1] === tab ? prev : [...prev, tab]));
   };
 
-  const masterTabs = [
+  const masterTabs: { id: MasterTabKey; label: string }[] = [
     { id: 'items', label: 'Items Master' },
     { id: 'ledgers', label: 'Ledgers Master' },
+    ...(config?.EnableMultiBranch === 'true' ? [{ id: 'branches' as MasterTabKey, label: '🏢 Branches (HO & Outstations)' }] : []),
+    ...(config?.EnableMultiGodown === 'true' ? [{ id: 'godowns' as MasterTabKey, label: '🏭 Godowns / Storage' }] : []),
     { id: 'vouchertypes', label: 'Voucher Types' },
     { id: 'itemgroups', label: 'Item Groups' },
     { id: 'units', label: 'Units' },
     { id: 'unitgroups', label: 'Unit Groups' },
     { id: 'ledgergroups', label: 'Ledger Groups' }
-  ] as const;
+  ];
 
   const tabButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -208,6 +224,7 @@ export const Masters: React.FC<MastersProps> = ({
   const [showItemModal, setShowItemModal] = useState(false);
   const [editingItemCode, setEditingItemCode] = useState<string | null>(null);
   const [showOpeningSerialModal, setShowOpeningSerialModal] = useState(false);
+  const [showBranchAllocModal, setShowBranchAllocModal] = useState(false);
   const [racksList, setRacksList] = useState<string[]>(getRacks());
   const [compatibilitiesList, setCompatibilitiesList] = useState<string[]>(getCompatibilities());
   const [sizesList, setSizesList] = useState<string[]>(getSizes());
@@ -1216,6 +1233,16 @@ export const Masters: React.FC<MastersProps> = ({
         </div>
       )}
 
+      {/* BRANCHES MASTER */}
+      {activeTab === 'branches' && config?.EnableMultiBranch === 'true' && (
+        <BranchMaster config={config} onUpdated={onDataRefresh} />
+      )}
+
+      {/* GODOWNS MASTER */}
+      {activeTab === 'godowns' && config?.EnableMultiGodown === 'true' && (
+        <GodownMaster config={config} onUpdated={onDataRefresh} />
+      )}
+
       {/* VOUCHER TYPES MASTER */}
       {activeTab === 'vouchertypes' && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
@@ -2179,15 +2206,27 @@ export const Masters: React.FC<MastersProps> = ({
               <div className="sm:col-span-2">
                 <div className="flex items-center justify-between mb-0.5">
                   <label className="font-semibold text-slate-700">Opening Stock</label>
-                  {showSerials && itemForm['Is Serialized'] === 'Y' && (Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0)) > 0) && (
-                    <button
-                      type="button"
-                      onClick={() => setShowOpeningSerialModal(true)}
-                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline inline-flex items-center gap-0.5 cursor-pointer"
-                    >
-                      <KeyRound className="w-3 h-3" /> Serials
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {config.EnableMultiBranch === 'true' && (
+                      <button
+                        type="button"
+                        onClick={() => setShowBranchAllocModal(true)}
+                        className="text-[10px] font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded px-1.5 py-0.5 inline-flex items-center gap-0.5 cursor-pointer"
+                        title="Allocate opening stock across branches directly"
+                      >
+                        <Building2 className="w-2.5 h-2.5" /> Branch Split
+                      </button>
+                    )}
+                    {showSerials && itemForm['Is Serialized'] === 'Y' && (Math.max(0, Math.floor(Number(itemForm['Opening Stock']) || 0)) > 0) && (
+                      <button
+                        type="button"
+                        onClick={() => setShowOpeningSerialModal(true)}
+                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline inline-flex items-center gap-0.5 cursor-pointer"
+                      >
+                        <KeyRound className="w-3 h-3" /> Serials
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <input
                   type="number"
@@ -2205,6 +2244,11 @@ export const Masters: React.FC<MastersProps> = ({
                   }}
                   className="w-full h-7.5 rounded-lg border border-slate-300 px-2 font-mono text-xs outline-none focus:border-indigo-500 bg-white"
                 />
+                {itemForm.branchAllocations && itemForm.branchAllocations.length > 0 && (
+                  <div className="text-[10px] text-amber-700 font-medium truncate mt-0.5">
+                    {itemForm.branchAllocations.filter((a: any) => (a.openingStock || 0) > 0).length} branches allocated
+                  </div>
+                )}
               </div>
 
               <div className="sm:col-span-3">
@@ -2334,6 +2378,165 @@ export const Masters: React.FC<MastersProps> = ({
                 setShowOpeningSerialModal(false);
               }}
             />
+          )}
+
+          {/* Branch Opening Stock Allocation Modal */}
+          {showBranchAllocModal && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+              <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
+                      <Building2 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-sm">Branch Stock Allocation</h3>
+                      <p className="text-[11px] text-slate-500">Opening stock allocation by branch</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setShowBranchAllocModal(false)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="text-xs text-slate-600 bg-amber-50/70 border border-amber-200/60 rounded-lg p-2.5">
+                  Allocate stock directly to each branch or godown/store. Stock ledgers will record individual opening balances without requiring manual stock transfer vouchers.
+                </div>
+
+                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                  {getBranches().map(b => {
+                    const branchGodowns = getGodowns().filter(g => g.branchId === b.id && g.isActive);
+                    const hasGodowns = branchGodowns.length > 0;
+
+                    if (!hasGodowns) {
+                      const currentAlloc = (itemForm.branchAllocations || []).find((a: any) => a.branchId === b.id && !a.godownId);
+                      const qty = currentAlloc ? currentAlloc.openingStock : 0;
+                      return (
+                        <div key={b.id} className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200 bg-slate-50/50 hover:bg-slate-50">
+                          <div>
+                            <div className="font-semibold text-slate-800 text-xs flex items-center gap-1.5">
+                              {b.name}
+                              {b.isHeadOffice && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">HQ</span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-400">{b.code || b.id}</div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={qty || ''}
+                              placeholder="0"
+                              onChange={e => {
+                                const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                const prevAllocs = itemForm.branchAllocations || [];
+                                const filtered = prevAllocs.filter((a: any) => !(a.branchId === b.id && !a.godownId));
+                                const updated = [...filtered, { branchId: b.id, branchName: b.name, openingStock: val }];
+                                const totalQty = updated.reduce((sum, a) => sum + (Number(a.openingStock) || 0), 0);
+                                const pRate = Number(itemForm['Purchase Rate']) || 0;
+                                setItemSearchForm({
+                                  ...itemForm,
+                                  branchAllocations: updated,
+                                  'Opening Stock': totalQty,
+                                  'Opening Amount': totalQty * pRate
+                                });
+                              }}
+                              className="w-24 h-7 text-right rounded border border-slate-300 px-2 font-mono text-xs outline-none focus:border-amber-500 bg-white"
+                            />
+                            <span className="text-xs text-slate-500">{itemForm['Base Unit'] || 'Pcs'}</span>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    // Has one or more godowns for this branch
+                    return (
+                      <div key={b.id} className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2">
+                        <div className="flex items-center justify-between pb-1 border-b border-slate-200/70">
+                          <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                            <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                            {b.name}
+                            {b.isHeadOffice && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">HQ</span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-slate-400">{branchGodowns.length} godown(s)</span>
+                        </div>
+                        <div className="space-y-1.5 pl-2">
+                          {branchGodowns.map(g => {
+                            const currentAlloc = (itemForm.branchAllocations || []).find((a: any) => a.branchId === b.id && a.godownId === g.id);
+                            const qty = currentAlloc ? currentAlloc.openingStock : 0;
+                            return (
+                              <div key={g.id} className="flex items-center justify-between py-1 px-2 rounded-lg bg-white border border-slate-200/80">
+                                <div className="flex items-center gap-1.5">
+                                  <Warehouse className="w-3 h-3 text-amber-600" />
+                                  <div>
+                                    <div className="text-xs font-medium text-slate-700">
+                                      {g.name}
+                                      {g.isDefault && <span className="ml-1 text-[9px] text-amber-600 font-semibold">(Default)</span>}
+                                    </div>
+                                    <div className="text-[9px] text-slate-400">{g.code || g.id}</div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    value={qty || ''}
+                                    placeholder="0"
+                                    onChange={e => {
+                                      const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                      const prevAllocs = itemForm.branchAllocations || [];
+                                      const filtered = prevAllocs.filter((a: any) => !(a.branchId === b.id && a.godownId === g.id));
+                                      const updated = [...filtered, {
+                                        branchId: b.id,
+                                        branchName: b.name,
+                                        godownId: g.id,
+                                        godownName: g.name,
+                                        openingStock: val
+                                      }];
+                                      const totalQty = updated.reduce((sum, a) => sum + (Number(a.openingStock) || 0), 0);
+                                      const pRate = Number(itemForm['Purchase Rate']) || 0;
+                                      setItemSearchForm({
+                                        ...itemForm,
+                                        branchAllocations: updated,
+                                        'Opening Stock': totalQty,
+                                        'Opening Amount': totalQty * pRate
+                                      });
+                                    }}
+                                    className="w-20 h-6.5 text-right rounded border border-slate-300 px-1.5 font-mono text-xs outline-none focus:border-amber-500 bg-white"
+                                  />
+                                  <span className="text-[11px] text-slate-500">{itemForm['Base Unit'] || 'Pcs'}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                  <div className="text-xs text-slate-600">
+                    Total: <strong className="text-slate-900 font-mono text-sm">{Number(itemForm['Opening Stock']) || 0}</strong> {itemForm['Base Unit'] || 'Pcs'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowBranchAllocModal(false)}
+                    className="px-4 py-1.5 rounded-lg bg-amber-600 text-white font-bold text-xs hover:bg-amber-700 shadow-sm"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
 
       {/* Ledger Modal */}

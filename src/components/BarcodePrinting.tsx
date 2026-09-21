@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Config, Item, BarcodeQueueItem } from '../types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Config, Item, BarcodeQueueItem, ItemBatch } from '../types';
 import JsBarcode from 'jsbarcode';
-import { Search, Printer, Trash2, Plus, Tag, LayoutGrid } from 'lucide-react';
+import { Search, Printer, Trash2, Plus, Tag, LayoutGrid, Layers, Calendar, Edit3, X, Check, Filter } from 'lucide-react';
 
 interface BarcodePrintingProps {
   config: Config;
@@ -28,6 +28,9 @@ interface SavedBarcodeSettings {
   priceLabel: 'MRP' | 'Sale Price' | 'Price';
   priceFormat?: PriceDisplayFormat;
   showCodeTxt: boolean;
+  showBatch?: boolean;
+  showExpDate?: boolean;
+  showMfgDate?: boolean;
 }
 
 export const formatPriceDisplay = (
@@ -70,6 +73,9 @@ const loadSavedBarcodeSettings = (): SavedBarcodeSettings => {
         priceLabel: parsed.priceLabel || 'Sale Price',
         priceFormat: parsed.priceFormat || 'label_only',
         showCodeTxt: typeof parsed.showCodeTxt === 'boolean' ? parsed.showCodeTxt : true,
+        showBatch: typeof parsed.showBatch === 'boolean' ? parsed.showBatch : true,
+        showExpDate: typeof parsed.showExpDate === 'boolean' ? parsed.showExpDate : true,
+        showMfgDate: typeof parsed.showMfgDate === 'boolean' ? parsed.showMfgDate : false,
       };
     }
   } catch (e) {
@@ -90,6 +96,9 @@ const loadSavedBarcodeSettings = (): SavedBarcodeSettings => {
     priceLabel: 'Sale Price',
     priceFormat: 'label_only',
     showCodeTxt: true,
+    showBatch: true,
+    showExpDate: true,
+    showMfgDate: false,
   };
 };
 
@@ -123,6 +132,9 @@ const StickerPreviewCard: React.FC<{
   showWholesalePrice: boolean;
   showCodeTxt: boolean;
   showBorder?: boolean;
+  showBatch?: boolean;
+  showExpDate?: boolean;
+  showMfgDate?: boolean;
   priceLabel: string;
   priceFormat: PriceDisplayFormat;
   printedPrice: number;
@@ -140,6 +152,9 @@ const StickerPreviewCard: React.FC<{
   showWholesalePrice,
   showCodeTxt,
   showBorder = true,
+  showBatch = true,
+  showExpDate = true,
+  showMfgDate = false,
   priceLabel,
   priceFormat,
   printedPrice,
@@ -158,16 +173,16 @@ const StickerPreviewCard: React.FC<{
   const fontNm = Math.max(6.5, Math.min(9, Math.round(8.5 * scaleFactor)));
   const fontBc = Math.max(6, Math.min(8, Math.round(7.5 * scaleFactor)));
   const fontPr = Math.max(6, Math.min(8.5, Math.round(8.0 * scaleFactor)));
+  const fontBatch = Math.max(5.5, Math.min(7.5, Math.round(7.0 * scaleFactor)));
 
   const itemFontSize = getItemNameFontSize(sample.itemName, fontNm, widthMm);
 
   useEffect(() => {
     if (svgRef.current && sample.barcode) {
       try {
-        // Target barcode bar height in mm
         const targetBcMm = barcodeHeightMm > 0 ? barcodeHeightMm : (heightMm <= 22 ? 7 : (heightMm <= 25 ? 8 : 11));
-        const bcHeight = Math.max(14, Math.min(46, Math.round(targetBcMm * 2.8)));
-        const bcWidth = Math.max(0.65, Math.min(1.15, widthMm * 0.026));
+        const bcHeight = Math.max(12, Math.min(46, Math.round(targetBcMm * 2.6)));
+        const bcWidth = Math.max(0.60, Math.min(1.15, widthMm * 0.024));
 
         JsBarcode(svgRef.current, sample.barcode, {
           format: 'CODE128',
@@ -194,6 +209,8 @@ const StickerPreviewCard: React.FC<{
     printedWholesalePrice,
     priceFormat
   );
+
+  const hasBatchInfo = ((showBatch && !!sample.batchNo) || (showExpDate && !!sample.expDate) || (showMfgDate && !!sample.mfgDate));
 
   return (
     <div
@@ -226,6 +243,31 @@ const StickerPreviewCard: React.FC<{
           )}
         </div>
       )}
+
+      {/* Batch & Expiry Tag line */}
+      {hasBatchInfo && (
+        <div
+          style={{ fontSize: `${fontBatch}px` }}
+          className="font-mono font-bold text-slate-800 leading-none w-full truncate flex items-center justify-center gap-1 my-0.5"
+        >
+          {showBatch && sample.batchNo && (
+            <span className="bg-slate-100 text-slate-800 px-0.5 py-0.2 rounded border border-slate-300">
+              B:{sample.batchNo}
+            </span>
+          )}
+          {showExpDate && sample.expDate && (
+            <span className="bg-amber-50 text-amber-900 px-0.5 py-0.2 rounded border border-amber-300">
+              Exp:{sample.expDate}
+            </span>
+          )}
+          {showMfgDate && sample.mfgDate && (
+            <span className="bg-emerald-50 text-emerald-900 px-0.5 py-0.2 rounded border border-emerald-300">
+              Mfg:{sample.mfgDate}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-center w-full overflow-hidden leading-none">
         <svg ref={svgRef} className="max-w-full max-h-full block" />
       </div>
@@ -237,7 +279,7 @@ const StickerPreviewCard: React.FC<{
       {(showPrice || showWholesalePrice) && (
         <div
           style={{ fontSize: `${fontPr}px` }}
-          className={`font-extrabold text-slate-900 whitespace-nowrap leading-none ${showCodeTxt ? 'mt-1.5' : 'mt-0.5'} flex items-center justify-center gap-1 max-w-full overflow-hidden`}
+          className={`font-extrabold text-slate-900 whitespace-nowrap leading-none ${showCodeTxt ? 'mt-1' : 'mt-0.5'} flex items-center justify-center gap-1 max-w-full overflow-hidden`}
         >
           {showPrice && <span>{salePriceText}</span>}
           {showPrice && showWholesalePrice && <span className="text-slate-400 font-normal">|</span>}
@@ -251,6 +293,7 @@ const StickerPreviewCard: React.FC<{
 export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items, initialQueue }) => {
   const [queue, setQueue] = useState<BarcodeQueueItem[]>([]);
   const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'batches' | 'variants'>('all');
 
   // Load saved barcode settings from localStorage
   const [savedSettings] = useState(loadSavedBarcodeSettings);
@@ -272,6 +315,18 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
   const [priceLabel, setPriceLabel] = useState<'MRP' | 'Sale Price' | 'Price'>(savedSettings.priceLabel);
   const [priceFormat, setPriceFormat] = useState<PriceDisplayFormat>(savedSettings.priceFormat || 'label_only');
   const [showCodeTxt, setShowCodeTxt] = useState<boolean>(savedSettings.showCodeTxt);
+  const [showBatch, setShowBatch] = useState<boolean>(savedSettings.showBatch ?? true);
+  const [showExpDate, setShowExpDate] = useState<boolean>(savedSettings.showExpDate ?? true);
+  const [showMfgDate, setShowMfgDate] = useState<boolean>(savedSettings.showMfgDate ?? false);
+
+  // Modal / Inline batch edit state
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editBatchForm, setEditBatchForm] = useState<{
+    batchNo: string;
+    expDate: string;
+    mfgDate: string;
+    barcode: string;
+  }>({ batchNo: '', expDate: '', mfgDate: '', barcode: '' });
 
   // Automatically save barcode settings to localStorage on change
   useEffect(() => {
@@ -290,23 +345,51 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
       priceLabel,
       priceFormat,
       showCodeTxt,
+      showBatch,
+      showExpDate,
+      showMfgDate,
     };
     try {
       localStorage.setItem(SAVED_BARCODE_SETTINGS_KEY, JSON.stringify(settingsToSave));
     } catch (e) {
       console.error('Error saving barcode settings:', e);
     }
-  }, [rollUp, widthMm, heightMm, gapMm, showBorder, showCompany, showName, showPrice, showWholesalePrice, barcodeHeightMm, addGstToPrice, priceLabel, priceFormat, showCodeTxt]);
+  }, [
+    rollUp,
+    widthMm,
+    heightMm,
+    gapMm,
+    showBorder,
+    showCompany,
+    showName,
+    showPrice,
+    showWholesalePrice,
+    barcodeHeightMm,
+    addGstToPrice,
+    priceLabel,
+    priceFormat,
+    showCodeTxt,
+    showBatch,
+    showExpDate,
+    showMfgDate,
+  ]);
 
-  // Initialize initial queue if passed (e.g. from Purchase Entry)
+  // Initialize initial queue if passed (e.g. from Purchase Entry or Sales Invoice)
   useEffect(() => {
     if (initialQueue && initialQueue.length > 0) {
       setQueue(initialQueue.map(q => {
-        if (q.wholesaleRate !== undefined && q.wholesaleRate > 0) return q;
         const matchedItem = items.find(i => i['Item Code'] === q.itemCode);
+        const matchedBatch = matchedItem?.batches?.find(b => b.id === q.batchId || b.batchNo === q.batchNo);
         return {
           ...q,
-          wholesaleRate: Number(matchedItem?.['Wholesale Rate'] || (matchedItem as any)?.wholesaleRate || (matchedItem as any)?.wholesalePrice || 0)
+          barcode: q.barcode || matchedBatch?.barcode || matchedItem?.Barcode || '100001',
+          wholesaleRate: (q.wholesaleRate !== undefined && q.wholesaleRate > 0)
+            ? q.wholesaleRate
+            : Number(matchedBatch?.wholesaleRate || matchedItem?.['Wholesale Rate'] || (matchedItem as any)?.wholesaleRate || (matchedItem as any)?.wholesalePrice || 0),
+          batchNo: q.batchNo || matchedBatch?.batchNo,
+          expDate: q.expDate || matchedBatch?.expDate,
+          mfgDate: q.mfgDate || matchedBatch?.mfgDate,
+          batchId: q.batchId || matchedBatch?.id
         };
       }));
     }
@@ -321,13 +404,44 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
     else if (up === 4) { setWidthMm(25); setHeightMm(15); setGapMm(1.5); setBarcodeHeightMm(5); }
   };
 
-  const expandedItems = React.useMemo(() => {
-    const result: Item[] = [];
+  // Expanded items taking into account both Batches and Variants!
+  const expandedItems = useMemo(() => {
+    const result: (Item & {
+      batchNo?: string;
+      expDate?: string;
+      mfgDate?: string;
+      batchId?: string;
+      variantId?: string;
+    })[] = [];
+
     for (const item of items) {
-      if (item.variants && item.variants.length > 0) {
-        for (const v of item.variants) {
+      const hasBatches = item.batches && item.batches.length > 0;
+      const hasVariants = item.variants && item.variants.length > 0;
+
+      if (hasBatches) {
+        // Expand each batch of the product
+        for (const b of (item.batches || [])) {
+          const batchBc = b.barcode || (item.Barcode ? `${item.Barcode}-${b.batchNo}` : `${item['Item Code']}-${b.batchNo}`);
           result.push({
             ...item,
+            batchNo: b.batchNo,
+            expDate: b.expDate,
+            mfgDate: b.mfgDate,
+            batchId: b.id,
+            Barcode: batchBc,
+            'Purchase Rate': (b.purchaseRate !== undefined && b.purchaseRate > 0) ? b.purchaseRate : item['Purchase Rate'],
+            'Sale Rate': (b.saleRate !== undefined && b.saleRate > 0) ? b.saleRate : item['Sale Rate'],
+            'Wholesale Rate': (b.wholesaleRate !== undefined && b.wholesaleRate > 0) ? b.wholesaleRate : ((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate']),
+            MRP: (b.mrp !== undefined && b.mrp > 0) ? b.mrp : (item.MRP || item['Sale Rate']),
+            'Current Stock': b.currentStock !== undefined ? b.currentStock : item['Current Stock']
+          });
+        }
+      } else if (hasVariants) {
+        // Expand each size/color variant
+        for (const v of (item.variants || [])) {
+          result.push({
+            ...item,
+            variantId: v.id,
             size: v.size || item.size,
             color: v.color || item.color,
             Barcode: v.barcode || item.Barcode,
@@ -335,6 +449,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             'Sale Rate': (v.saleRate !== undefined && v.saleRate > 0) ? v.saleRate : item['Sale Rate'],
             'Wholesale Rate': (v.wholesaleRate !== undefined && v.wholesaleRate > 0) ? v.wholesaleRate : ((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate']),
             MRP: (v.mrp !== undefined && v.mrp > 0) ? v.mrp : item.MRP,
+            'Current Stock': v.currentStock !== undefined ? v.currentStock : item['Current Stock']
           });
         }
       } else {
@@ -344,11 +459,41 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
     return result;
   }, [items]);
 
-  const addItemToQueue = (item: Item) => {
-    const existing = queue.find(q => q.itemCode === item['Item Code'] && (q.size || '') === (item.size || '') && (q.color || '') === (item.color || '') && (q.barcode || '') === (item.Barcode || ''));
-    const wholesaleVal = Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate'] || (item as any)['wholesalePrice'] || 0);
-    if (existing) {
-      setQueue(queue.map(q => (q.itemCode === item['Item Code'] && (q.size || '') === (item.size || '') && (q.color || '') === (item.color || '') && (q.barcode || '') === (item.Barcode || '')) ? { ...q, qty: q.qty + 1 } : q));
+  // Filtered search list
+  const filteredItems = useMemo(() => {
+    let list = expandedItems;
+    if (filterType === 'batches') {
+      list = list.filter(i => !!i.batchNo || i.maintainBatch === 'Y' || i.isPharmacy === 'Y');
+    } else if (filterType === 'variants') {
+      list = list.filter(i => !!i.size || !!i.color || (i.variants && i.variants.length > 0));
+    }
+
+    if (!search.trim()) return list;
+
+    const term = search.toLowerCase();
+    return list.filter(i =>
+      (i['Item Name'] || '').toLowerCase().includes(term) ||
+      (i.Barcode || '').toLowerCase().includes(term) ||
+      (i['Item Code'] || '').toLowerCase().includes(term) ||
+      (i.batchNo || '').toLowerCase().includes(term) ||
+      (i.size || '').toLowerCase().includes(term) ||
+      (i.color || '').toLowerCase().includes(term)
+    );
+  }, [expandedItems, filterType, search]);
+
+  const addItemToQueue = (item: (Item & { batchNo?: string; expDate?: string; mfgDate?: string; batchId?: string })) => {
+    const existingIndex = queue.findIndex(q =>
+      q.itemCode === item['Item Code'] &&
+      (q.size || '') === (item.size || '') &&
+      (q.color || '') === (item.color || '') &&
+      (q.batchNo || '') === (item.batchNo || '') &&
+      (q.barcode || '') === (item.Barcode || '')
+    );
+
+    const wholesaleVal = Number(item['Wholesale Rate'] || (item as any)['wholesaleRate'] || (item as any)['wholesalePrice'] || 0);
+
+    if (existingIndex >= 0) {
+      setQueue(queue.map((q, idx) => idx === existingIndex ? { ...q, qty: q.qty + 1 } : q));
     } else {
       setQueue([
         ...queue,
@@ -362,7 +507,11 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
           gstPct: item['GST %'] || 0,
           qty: 1,
           size: item.size,
-          color: item.color
+          color: item.color,
+          batchNo: item.batchNo,
+          expDate: item.expDate,
+          mfgDate: item.mfgDate,
+          batchId: item.batchId
         }
       ]);
     }
@@ -375,26 +524,57 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
       itemName: item['Item Name'],
       barcode: item.Barcode || '100001',
       rate: item['Sale Rate'] || 0,
-      wholesaleRate: Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate'] || (item as any)['wholesalePrice'] || 0),
+      wholesaleRate: Number(item['Wholesale Rate'] || (item as any)['wholesaleRate'] || (item as any)['wholesalePrice'] || 0),
       mrp: item.MRP || item['Sale Rate'] || 0,
       gstPct: item['GST %'] || 0,
       qty: 1,
       size: item.size,
-      color: item.color
+      color: item.color,
+      batchNo: item.batchNo,
+      expDate: item.expDate,
+      mfgDate: item.mfgDate,
+      batchId: item.batchId
     }));
     setQueue(newItems);
   };
 
-  const updateQty = (code: string, qty: number) => {
-    setQueue(queue.map(q => q.itemCode === code ? { ...q, qty: Math.max(1, qty) } : q));
+  const updateQtyAtIndex = (index: number, qty: number) => {
+    setQueue(queue.map((q, idx) => idx === index ? { ...q, qty: Math.max(1, qty) } : q));
   };
 
-  const removeItem = (code: string) => {
-    setQueue(queue.filter(q => q.itemCode !== code));
+  const removeItemAtIndex = (index: number) => {
+    setQueue(queue.filter((_, idx) => idx !== index));
   };
 
   const clearQueue = () => {
     setQueue([]);
+  };
+
+  // Open inline batch editing
+  const startEditBatch = (index: number) => {
+    const q = queue[index];
+    setEditingIndex(index);
+    setEditBatchForm({
+      batchNo: q.batchNo || '',
+      expDate: q.expDate || '',
+      mfgDate: q.mfgDate || '',
+      barcode: q.barcode || ''
+    });
+  };
+
+  const saveEditBatch = () => {
+    if (editingIndex === null) return;
+    setQueue(queue.map((q, idx) => {
+      if (idx !== editingIndex) return q;
+      return {
+        ...q,
+        batchNo: editBatchForm.batchNo.trim() || undefined,
+        expDate: editBatchForm.expDate.trim() || undefined,
+        mfgDate: editBatchForm.mfgDate.trim() || undefined,
+        barcode: editBatchForm.barcode.trim() || q.barcode
+      };
+    }));
+    setEditingIndex(null);
   };
 
   // Calculate Printed Price for a Queue Item
@@ -424,7 +604,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
     }
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     return () => {
       cleanupPrintFrame();
     };
@@ -455,11 +635,12 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
     const fontNm = Math.max(6.5, Math.round(8.5 * scaleFactor));
     const fontBc = Math.max(6, Math.round(7.5 * scaleFactor));
     const fontPr = Math.max(6.5, Math.round(8.0 * scaleFactor));
+    const fontBatch = Math.max(5.5, Math.round(7.0 * scaleFactor));
 
     // Target barcode bar height in mm: clean proportion prevents cutting off bottom text
     const targetBcMm = barcodeHeightMm > 0 ? barcodeHeightMm : (heightMm <= 22 ? 7 : (heightMm <= 25 ? 8 : 11));
-    const barcodeH = Math.max(14, Math.round(targetBcMm * 3.78));
-    const barcodeW = Math.max(0.65, Math.min(1.15, 0.88 * (widthMm / 34)));
+    const barcodeH = Math.max(12, Math.round(targetBcMm * 3.78));
+    const barcodeW = Math.max(0.60, Math.min(1.15, 0.88 * (widthMm / 34)));
 
     const currSym = config.CurrencySymbol || 'Nu.';
 
@@ -563,6 +744,18 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             max-width: 100%;
             margin-bottom: 0.3mm;
           }
+          .batch-line {
+            font-family: monospace;
+            font-size: ${fontBatch}px;
+            font-weight: bold;
+            line-height: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+            margin-bottom: 0.2mm;
+            color: #000;
+          }
           .barcode-wrapper {
             display: flex;
             align-items: center;
@@ -579,7 +772,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             font-weight: bold;
             line-height: 1;
             letter-spacing: 0.5px;
-            margin-top: 0.3mm;
+            margin-top: 0.2mm;
           }
           .price-tag {
             font-size: ${fontPr}px;
@@ -593,7 +786,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             align-items: center;
             justify-content: center;
             gap: 2px;
-            margin-top: ${showCodeTxt ? '1.2mm' : '0.4mm'};
+            margin-top: ${showCodeTxt ? '0.8mm' : '0.3mm'};
           }
           @media print {
             .label-box {
@@ -623,6 +816,18 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
           const varTxt = [x.size ? `Size: ${x.size}` : '', x.color ? `Col: ${x.color}` : ''].filter(Boolean).join(' | ');
           html += `<div class="item-title" style="font-size: ${itemFontSize}px; max-height: ${itemFontSize * 2.1}px;">${x.itemName}${varTxt ? `<span style="display:block; font-size:80%; font-weight:600;">${varTxt}</span>` : ''}</div>`;
         }
+
+        // Batch / Expiry details
+        const hasBatchLine = ((showBatch && x.batchNo) || (showExpDate && x.expDate) || (showMfgDate && x.mfgDate));
+        if (hasBatchLine) {
+          const batchPieces = [
+            showBatch && x.batchNo ? `B:${x.batchNo}` : '',
+            showExpDate && x.expDate ? `Exp:${x.expDate}` : '',
+            showMfgDate && x.mfgDate ? `Mfg:${x.mfgDate}` : ''
+          ].filter(Boolean).join(' ');
+          html += `<div class="batch-line">${batchPieces}</div>`;
+        }
+
         html += `<div class="barcode-wrapper">`;
         html += `<svg id="bc_${x.barcode}_${randId}" style="max-width: 98%; height: ${barcodeH}px; display: block; margin: 0 auto;"></svg>`;
         html += `</div>`;
@@ -726,6 +931,11 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
 
   const currSym = config.CurrencySymbol || 'Nu.';
 
+  // Count batch items for filter badge
+  const batchItemsCount = useMemo(() => {
+    return expandedItems.filter(i => !!i.batchNo || i.maintainBatch === 'Y' || i.isPharmacy === 'Y').length;
+  }, [expandedItems]);
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -736,17 +946,19 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             Barcode Sticker Roll Generator
           </h1>
           <p className="text-xs text-slate-500 font-medium">
-            Generate and print barcode stickers on 1-Up, 2-Up, 3-Up, or 4-Up thermal paper rolls with GST pricing
+            Generate and print barcode stickers for Master products, Batch-Wise lots, and Size/Color Variants on thermal rolls
           </p>
         </div>
 
-        <button
-          onClick={addAllItemsToQueue}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50"
-        >
-          <Plus className="h-4 w-4" />
-          Add All Master Products
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={addAllItemsToQueue}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50"
+          >
+            <Plus className="h-4 w-4" />
+            Add All Products & Batches
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -768,50 +980,121 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
               )}
             </div>
 
+            {/* Quick Filter Bar */}
+            <div className="flex items-center gap-1.5 mb-2 overflow-x-auto pb-1">
+              <button
+                type="button"
+                onClick={() => setFilterType('all')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                  filterType === 'all'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                All Items ({expandedItems.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterType('batches')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                  filterType === 'batches'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                }`}
+              >
+                💊 Batch-Wise ({batchItemsCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterType('variants')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                  filterType === 'variants'
+                    ? 'bg-purple-600 text-white shadow-xs'
+                    : 'bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100'
+                }`}
+              >
+                Variants (Size/Color)
+              </button>
+            </div>
+
+            {/* Search Input */}
             <div className="relative mb-3">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search product name or barcode to add to queue..."
+                placeholder="Search product name, batch no (e.g. B-101), or barcode to add to queue..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none focus:border-indigo-500"
               />
 
               {search.trim() && (
-                <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
-                  {expandedItems
-                    .filter(i => (i['Item Name'] || '').toLowerCase().includes(search.toLowerCase()) || (i.Barcode || '').includes(search) || (i.size || '').toLowerCase().includes(search.toLowerCase()) || (i.color || '').toLowerCase().includes(search.toLowerCase()))
-                    .map((item, idx) => (
+                <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+                  {filteredItems.length === 0 ? (
+                    <div className="p-3 text-xs text-slate-400 text-center italic">
+                      No matching products or batches found for "{search}"
+                    </div>
+                  ) : (
+                    filteredItems.map((item, idx) => (
                       <div
-                        key={`${item['Item Code']}_${item.size}_${item.color}_${idx}`}
+                        key={`${item['Item Code']}_${item.batchNo || ''}_${item.size || ''}_${item.color || ''}_${idx}`}
                         onClick={() => addItemToQueue(item)}
-                        className="p-2.5 text-xs hover:bg-indigo-50 cursor-pointer border-b border-slate-100 flex justify-between items-center"
+                        className="p-2.5 text-xs hover:bg-indigo-50 cursor-pointer border-b border-slate-100 flex justify-between items-center transition"
                       >
-                        <div>
+                        <div className="space-y-0.5">
                           <div className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
                             <span>{item['Item Name']}</span>
-                            {item.size && <span className="px-1 py-0.2 text-[9px] bg-purple-100 text-purple-900 font-bold rounded">Size: {item.size}</span>}
-                            {item.color && <span className="px-1 py-0.2 text-[9px] bg-pink-100 text-pink-900 font-bold rounded">Color: {item.color}</span>}
+                            {item.batchNo && (
+                              <span className="px-1.5 py-0.2 text-[10px] bg-emerald-100 text-emerald-900 font-extrabold rounded border border-emerald-300 flex items-center gap-0.5">
+                                💊 Batch: {item.batchNo}
+                              </span>
+                            )}
+                            {item.expDate && (
+                              <span className="px-1.5 py-0.2 text-[10px] bg-amber-100 text-amber-900 font-bold rounded border border-amber-300">
+                                📅 Exp: {item.expDate}
+                              </span>
+                            )}
+                            {item.size && (
+                              <span className="px-1.5 py-0.2 text-[10px] bg-purple-100 text-purple-900 font-bold rounded">
+                                Size: {item.size}
+                              </span>
+                            )}
+                            {item.color && (
+                              <span className="px-1.5 py-0.2 text-[10px] bg-pink-100 text-pink-900 font-bold rounded">
+                                Color: {item.color}
+                              </span>
+                            )}
                           </div>
-                          <div className="text-[10px] text-slate-500">
-                            Sale Rate: {currSym} {item['Sale Rate']} | GST: {item['GST %'] || 0}%
+                          <div className="text-[10px] text-slate-500 flex items-center gap-2">
+                            <span>Sale: <strong>{currSym} {item['Sale Rate']}</strong></span>
+                            <span>|</span>
+                            <span>GST: {item['GST %'] || 0}%</span>
+                            {item['Current Stock'] !== undefined && (
+                              <>
+                                <span>|</span>
+                                <span className="text-slate-600 font-medium">Stock: {item['Current Stock']}</span>
+                              </>
+                            )}
                           </div>
                         </div>
-                        <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                          BC: {item.Barcode || '100001'}
-                        </span>
+                        <div className="text-right">
+                          <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                            BC: {item.Barcode || '100001'}
+                          </span>
+                        </div>
                       </div>
-                    ))}
+                    ))
+                  )}
                 </div>
               )}
             </div>
 
+            {/* Print Queue Table */}
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
               <table className="w-full border-collapse text-xs sm:text-sm">
                 <thead>
                   <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
-                    <th className="py-2.5 px-3 text-left">Product Name</th>
+                    <th className="py-2.5 px-3 text-left">Product / Batch Details</th>
                     <th className="py-2.5 px-3 text-left">Barcode</th>
                     <th className="py-2.5 px-3 text-right">Selling Rate</th>
                     {showWholesalePrice && (
@@ -825,27 +1108,116 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                   {queue.length === 0 ? (
                     <tr>
                       <td colSpan={showWholesalePrice ? 6 : 5} className="py-10 text-center text-slate-400 italic">
-                        Queue is empty. Search products above or click "Add All Master Products".
+                        Queue is empty. Search products / batches above or click "Add All Products & Batches".
                       </td>
                     </tr>
                   ) : (
-                    queue.map(q => {
+                    queue.map((q, qIdx) => {
                       const printedPrice = getPrintedPrice(q);
                       const printedWholesale = getPrintedWholesalePrice(q);
+                      const isEditing = editingIndex === qIdx;
+
                       return (
-                        <tr key={`${q.itemCode}_${q.size || ''}_${q.color || ''}_${q.barcode || ''}`} className="hover:bg-slate-50">
-                          <td className="py-2.5 px-3 font-semibold text-slate-800">
-                            {q.itemName}
-                            {(q.size || q.color) && (
-                              <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] font-bold">
-                                {q.size && <span className="bg-purple-100 text-purple-900 border border-purple-200 px-1 py-0.2 rounded">Size: {q.size}</span>}
-                                {q.color && <span className="bg-pink-100 text-pink-900 border border-pink-200 px-1 py-0.2 rounded">Color: {q.color}</span>}
-                              </span>
-                            )}
-                            {q.gstPct > 0 && (
-                              <span className="ml-1.5 text-[10px] text-slate-500 font-normal">
-                                ({q.gstPct}% GST)
-                              </span>
+                        <tr key={`${q.itemCode}_${q.batchNo || ''}_${q.size || ''}_${q.color || ''}_${qIdx}`} className="hover:bg-slate-50">
+                          <td className="py-2.5 px-3">
+                            <div className="font-semibold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                              <span>{q.itemName}</span>
+                              {q.gstPct > 0 && (
+                                <span className="text-[10px] text-slate-500 font-normal">
+                                  ({q.gstPct}% GST)
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Batch & Variant Badges */}
+                            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                              {q.batchNo && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 text-[10px] bg-emerald-100 text-emerald-900 font-bold rounded border border-emerald-300">
+                                  💊 B.No: {q.batchNo}
+                                </span>
+                              )}
+                              {q.expDate && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 text-[10px] bg-amber-100 text-amber-900 font-bold rounded border border-amber-300">
+                                  📅 Exp: {q.expDate}
+                                </span>
+                              )}
+                              {q.mfgDate && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 text-[10px] bg-teal-100 text-teal-900 font-bold rounded border border-teal-300">
+                                  Mfg: {q.mfgDate}
+                                </span>
+                              )}
+                              {q.size && (
+                                <span className="bg-purple-100 text-purple-900 border border-purple-200 px-1 py-0.2 text-[10px] font-bold rounded">
+                                  Size: {q.size}
+                                </span>
+                              )}
+                              {q.color && (
+                                <span className="bg-pink-100 text-pink-900 border border-pink-200 px-1 py-0.2 text-[10px] font-bold rounded">
+                                  Color: {q.color}
+                                </span>
+                              )}
+
+                              {/* Quick Edit Batch Button */}
+                              <button
+                                type="button"
+                                onClick={() => isEditing ? setEditingIndex(null) : startEditBatch(qIdx)}
+                                className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-0.5 underline ml-1"
+                              >
+                                <Edit3 className="w-2.5 h-2.5" />
+                                {q.batchNo ? 'Edit Batch' : 'Add Batch'}
+                              </button>
+                            </div>
+
+                            {/* Inline Edit Batch Form */}
+                            {isEditing && (
+                              <div className="mt-2 p-2 rounded-lg bg-indigo-50/80 border border-indigo-200 grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs">
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-700">Batch No</label>
+                                  <input
+                                    type="text"
+                                    value={editBatchForm.batchNo}
+                                    placeholder="e.g. B-101"
+                                    onChange={e => setEditBatchForm({ ...editBatchForm, batchNo: e.target.value })}
+                                    className="w-full h-7 px-1.5 rounded border border-slate-300 bg-white font-medium text-xs outline-none"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-700">Exp Date</label>
+                                  <input
+                                    type="text"
+                                    value={editBatchForm.expDate}
+                                    placeholder="YYYY-MM-DD"
+                                    onChange={e => setEditBatchForm({ ...editBatchForm, expDate: e.target.value })}
+                                    className="w-full h-7 px-1.5 rounded border border-slate-300 bg-white font-medium text-xs outline-none"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] font-bold text-slate-700">Batch Barcode</label>
+                                  <input
+                                    type="text"
+                                    value={editBatchForm.barcode}
+                                    placeholder="Barcode"
+                                    onChange={e => setEditBatchForm({ ...editBatchForm, barcode: e.target.value })}
+                                    className="w-full h-7 px-1.5 rounded border border-slate-300 bg-white font-mono text-xs outline-none"
+                                  />
+                                </div>
+                                <div className="flex items-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={saveEditBatch}
+                                    className="h-7 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold text-xs flex items-center gap-0.5"
+                                  >
+                                    <Check className="w-3 h-3" /> Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingIndex(null)}
+                                    className="h-7 px-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
                             )}
                           </td>
                           <td className="py-2.5 px-3 font-mono font-bold text-indigo-600">{q.barcode}</td>
@@ -862,12 +1234,12 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                               type="number"
                               min="1"
                               value={q.qty !== undefined && q.qty !== null ? q.qty : 1}
-                              onChange={e => updateQty(q.itemCode, Number(e.target.value))}
+                              onChange={e => updateQtyAtIndex(qIdx, Number(e.target.value))}
                               className="w-16 h-8 text-center rounded-lg border border-slate-300 font-bold text-xs outline-none focus:border-indigo-500"
                             />
                           </td>
                           <td className="py-2.5 px-3 text-center">
-                            <button onClick={() => removeItem(q.itemCode)} className="text-slate-400 hover:text-rose-600 p-1">
+                            <button onClick={() => removeItemAtIndex(qIdx)} className="text-slate-400 hover:text-rose-600 p-1">
                               <Trash2 className="h-4 w-4" />
                             </button>
                           </td>
@@ -1013,7 +1385,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                 />
               </div>
               <p className="text-[10px] text-slate-500 mt-1">
-                For 22mm height stickers, 6–7mm bar height leaves plenty of space so text below never cuts off.
+                For 22mm height stickers, 6–7mm bar height leaves plenty of space for batch and rate lines.
               </p>
             </div>
           </div>
@@ -1073,6 +1445,18 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                 <input type="checkbox" checked={showName} onChange={e => setShowName(e.target.checked)} className="rounded border-slate-300 text-indigo-600" />
                 Product Name
               </label>
+              <label className="flex items-center gap-2 cursor-pointer font-semibold text-emerald-800">
+                <input type="checkbox" checked={showBatch} onChange={e => setShowBatch(e.target.checked)} className="rounded border-emerald-400 text-emerald-600" />
+                Batch No. (B.No)
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer font-semibold text-amber-800">
+                <input type="checkbox" checked={showExpDate} onChange={e => setShowExpDate(e.target.checked)} className="rounded border-amber-400 text-amber-600" />
+                Expiry Date (Exp)
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer font-semibold text-teal-800">
+                <input type="checkbox" checked={showMfgDate} onChange={e => setShowMfgDate(e.target.checked)} className="rounded border-teal-400 text-teal-600" />
+                Mfg Date
+              </label>
               <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
                 <input type="checkbox" checked={showPrice} onChange={e => setShowPrice(e.target.checked)} className="rounded border-slate-300 text-indigo-600" />
                 Sale Price Tag
@@ -1127,6 +1511,9 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                         showWholesalePrice={showWholesalePrice}
                         showCodeTxt={showCodeTxt}
                         showBorder={showBorder}
+                        showBatch={showBatch}
+                        showExpDate={showExpDate}
+                        showMfgDate={showMfgDate}
                         priceLabel={priceLabel}
                         priceFormat={priceFormat}
                         printedPrice={printedPrice}
@@ -1154,4 +1541,3 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
     </div>
   );
 };
-

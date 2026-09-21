@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, Upload, ClipboardPaste, Check, AlertCircle, AlertTriangle, ArrowRight } from 'lucide-react';
+import { X, Upload, ClipboardPaste, Check, AlertCircle, AlertTriangle, ArrowRight, Building2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { bulkImportItems, BulkImportItem } from '../services/storageService';
+import { bulkImportItems, BulkImportItem, getBranches, getConfig } from '../services/storageService';
 
 interface ImportItemsModalProps {
   isOpen: boolean;
@@ -18,6 +18,11 @@ export const ImportItemsModal: React.FC<ImportItemsModalProps> = ({ isOpen, onCl
   const [importResult, setImportResult] = useState<{added: number, skipped: string[]} | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [unmappedPromptCols, setUnmappedPromptCols] = useState<{ index: number; header: string }[] | null>(null);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('auto');
+
+  const config = getConfig();
+  const branches = getBranches();
+  const isMultiBranch = config.EnableMultiBranch === 'true';
 
   // Track the exact sequence in which columns were added
   const [orderedKeys, setOrderedKeys] = useState<string[]>([
@@ -30,6 +35,7 @@ export const ImportItemsModal: React.FC<ImportItemsModalProps> = ({ isOpen, onCl
     { key: 'altUnit', label: 'Alt Unit' },
     { key: 'conversionFactor', label: 'Conv Factor' },
     { key: 'openingQty', label: 'Opening Qty' },
+    { key: 'branch', label: 'Branch / Godown' },
     { key: 'purchaseRate', label: 'Purchase Rate' },
     { key: 'altPurchaseRate', label: 'Alt Purchase Rate' },
     { key: 'saleRate', label: 'Sale Rate' },
@@ -99,7 +105,8 @@ export const ImportItemsModal: React.FC<ImportItemsModalProps> = ({ isOpen, onCl
       barcode: ['barcode', 'barcodeno', 'upc', 'ean', 'itemcode', 'code', 'barcodes'],
       group: ['group', 'itemgroup', 'brand', 'itembrand', 'categorygroup'],
       category: ['category', 'itemcategory', 'cat', 'subcategory'],
-      serials: ['serial', 'serials', 'serialno', 'serialnumber', 'imei', 'imeino']
+      serials: ['serial', 'serials', 'serialno', 'serialnumber', 'imei', 'imeino'],
+      branch: ['branch', 'branchname', 'location', 'outlet', 'depot', 'storelocation', 'godown', 'branchcode', 'warehouse']
     };
 
     for (const [key, aliasList] of Object.entries(aliases)) {
@@ -281,8 +288,11 @@ export const ImportItemsModal: React.FC<ImportItemsModalProps> = ({ isOpen, onCl
 
           const qty = Number(itemData.openingQty) || (itemData.serials ? 1 : 0);
           
-          if (groupedItems.has(name)) {
-            const existing = groupedItems.get(name)!;
+          const branchVal = itemData.branch ? String(itemData.branch).trim() : '';
+          const groupKey = `${name.toLowerCase()}___${branchVal.toLowerCase()}`;
+          
+          if (groupedItems.has(groupKey)) {
+            const existing = groupedItems.get(groupKey)!;
             existing.openingQty += qty;
             if (itemData.serials) {
               if (!existing.serials) existing.serials = [];
@@ -295,6 +305,7 @@ export const ImportItemsModal: React.FC<ImportItemsModalProps> = ({ isOpen, onCl
               altUnit: itemData.altUnit ? String(itemData.altUnit).trim() : undefined,
               conversionFactor: Number(itemData.conversionFactor) || 1,
               openingQty: qty,
+              branch: branchVal || undefined,
               purchaseRate: Number(itemData.purchaseRate) || 0,
               altPurchaseRate: itemData.altPurchaseRate ? Number(itemData.altPurchaseRate) : undefined,
               saleRate: Number(itemData.saleRate) || 0,
@@ -308,13 +319,13 @@ export const ImportItemsModal: React.FC<ImportItemsModalProps> = ({ isOpen, onCl
               category: itemData.category ? String(itemData.category).trim() : undefined,
               serials: itemData.serials ? [String(itemData.serials).trim()] : undefined
             };
-            groupedItems.set(name, newItem);
+            groupedItems.set(groupKey, newItem);
           }
         }
 
         const itemsToImport = Array.from(groupedItems.values());
         if (itemsToImport.length > 0) {
-          const res = bulkImportItems(itemsToImport);
+          const res = bulkImportItems(itemsToImport, selectedBranchId === 'auto' ? undefined : selectedBranchId);
           if (res.ok) {
             setImportResult({ added: res.added || 0, skipped: res.skipped || [] });
             onImportComplete();
@@ -392,6 +403,36 @@ export const ImportItemsModal: React.FC<ImportItemsModalProps> = ({ isOpen, onCl
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Multi-Branch Allocation Bar */}
+        {isMultiBranch && (
+          <div className="mx-6 mt-3 px-4 py-2.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold shrink-0">
+                <Building2 className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="font-bold text-amber-900">Direct Branch Opening Stock Destination</div>
+                <div className="text-[11px] text-amber-700">Assign opening stock directly to branches without doing manual transfer vouchers</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-slate-700">Assign Opening Qty To:</span>
+              <select
+                value={selectedBranchId}
+                onChange={e => setSelectedBranchId(e.target.value)}
+                className="bg-white border border-amber-300 rounded-lg px-3 py-1 font-semibold text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"
+              >
+                <option value="auto">Auto-detect from 'Branch' Column (Fallback to HO)</option>
+                {branches.map(b => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} {b.isHeadOffice ? '(Head Office HQ)' : '(Branch)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex px-6 pt-4 border-b border-slate-200 shrink-0 gap-6">

@@ -1144,14 +1144,22 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   const prepareBarcodeQueue = (): BarcodeQueueItem[] => {
     return cart.map((line) => {
       const matchedItem = items.find((i) => i["Item Code"] === line.itemCode);
+      const matchedBatch = matchedItem?.batches?.find((b) => b.id === line.selectedBatchId || b.batchNo === line.selectedBatchNo);
       return {
         itemCode: line.itemCode,
         itemName: line.itemName,
-        barcode: matchedItem?.Barcode || "100001",
-        rate: matchedItem?.["Sale Rate"] || line.rate,
-        mrp: matchedItem?.MRP || matchedItem?.["Sale Rate"] || line.rate,
+        barcode: line.barcode || matchedBatch?.barcode || matchedItem?.Barcode || "100001",
+        rate: matchedBatch?.saleRate || matchedItem?.["Sale Rate"] || line.rate,
+        wholesaleRate: Number(matchedBatch?.wholesaleRate || matchedItem?.["Wholesale Rate"] || (matchedItem as any)?.wholesaleRate || (matchedItem as any)?.wholesalePrice || 0),
+        mrp: matchedBatch?.mrp || matchedItem?.MRP || matchedItem?.["Sale Rate"] || line.rate,
         gstPct: line.gstPct || Number(matchedItem?.["GST %"]) || 0,
         qty: line.qty,
+        size: line.selectedSize || matchedItem?.size,
+        color: line.selectedColor || matchedItem?.color,
+        batchNo: line.selectedBatchNo || matchedBatch?.batchNo,
+        expDate: line.selectedBatchExp || matchedBatch?.expDate,
+        mfgDate: matchedBatch?.mfgDate,
+        batchId: line.selectedBatchId || matchedBatch?.id
       };
     });
   };

@@ -39,7 +39,11 @@ import {
   BillAllocation,
   BillWiseDetail,
   AuditLogEntry,
-  AuditActionType
+  AuditActionType,
+  Branch,
+  Godown,
+  StockTransferVoucher,
+  StockTransferItem
 } from '../types';
 import {
   AssetCategory,
@@ -107,8 +111,80 @@ export const STORAGE_KEYS = {
   COMPATIBILITIES: 'deep_pos_compatibilities',
   SIZES: 'deep_pos_sizes',
   COLORS: 'deep_pos_colors',
-  SCHEMES: 'deep_pos_schemes'
+  SCHEMES: 'deep_pos_schemes',
+  BRANCHES: 'deep_pos_branches',
+  GODOWNS: 'deep_pos_godowns',
+  STOCK_TRANSFERS: 'deep_pos_stock_transfers'
 };
+
+export const DEFAULT_BRANCHES: Branch[] = [
+  {
+    id: 'branch_ho',
+    code: 'HO-01',
+    name: 'Head Office (Thimphu)',
+    isHeadOffice: true,
+    address: 'Norzin Lam, Thimphu, Bhutan',
+    dzongkhag: 'Thimphu',
+    phone: '+975-2-321000',
+    email: 'ho@store.bt',
+    taxId: '30AAAAA0000A1Z5',
+    tradeLicense: 'TL-TH-2024-001',
+    isActive: true,
+    createdDate: '2026-01-01',
+    notes: 'Main Head Office & Central Administration'
+  },
+  {
+    id: 'branch_phuntsholing',
+    code: 'BR-02',
+    name: 'Phuntsholing Branch',
+    isHeadOffice: false,
+    address: 'Dhamdhara, Phuntsholing, Chukha, Bhutan',
+    dzongkhag: 'Chukha',
+    phone: '+975-5-252000',
+    email: 'pshling@store.bt',
+    taxId: '30AAAAA0000A1Z5',
+    tradeLicense: 'TL-CH-2024-042',
+    isActive: true,
+    createdDate: '2026-01-15',
+    notes: 'Border Town Wholesale & Retail Outstation'
+  }
+];
+
+export const DEFAULT_GODOWNS: Godown[] = [
+  {
+    id: 'godown_ho_main',
+    code: 'GD-HO-01',
+    name: 'Main Central Godown',
+    branchId: 'branch_ho',
+    branchName: 'Head Office (Thimphu)',
+    address: 'Basement Storage Area, Norzin Lam',
+    isDefault: true,
+    isActive: true,
+    notes: 'Primary bulk receiving warehouse'
+  },
+  {
+    id: 'godown_ho_counter',
+    code: 'GD-HO-02',
+    name: 'Front Retail Counter',
+    branchId: 'branch_ho',
+    branchName: 'Head Office (Thimphu)',
+    address: 'Ground Floor Showroom Floor',
+    isDefault: false,
+    isActive: true,
+    notes: 'Retail sales counter and display shelves'
+  },
+  {
+    id: 'godown_pshling_main',
+    code: 'GD-PSH-01',
+    name: 'Phuntsholing Warehouse',
+    branchId: 'branch_phuntsholing',
+    branchName: 'Phuntsholing Branch',
+    address: 'Dhamdhara Commercial Godown',
+    isDefault: true,
+    isActive: true,
+    notes: 'Outstation receiving and dispatch godown'
+  }
+];
 
 export const DEFAULT_SIZES = [
   'XS',
@@ -229,7 +305,14 @@ export const DEFAULT_CONFIG: Config = {
   EnableSize: 'true',
   EnableColor: 'true',
   PrintSize: 'true',
-  PrintColor: 'true'
+  PrintColor: 'true',
+  EnableMultiBranch: 'false',
+  EnableMultiGodown: 'false',
+  BranchTransferMode: 'flexible',
+  StockTransferPrefix: 'TRF-',
+  TransferChallanPrefix: 'TRC-',
+  ActiveBranchId: 'branch_ho',
+  ActiveBranchName: 'Head Office (Thimphu)'
 };
 
 export const DEFAULT_VOUCHER_TYPES: VoucherType[] = [
@@ -1516,6 +1599,10 @@ export function resetDefaultVoucherTypes() {
   return { ok: true, voucherTypes: DEFAULT_VOUCHER_TYPES };
 }
 
+export function getConfig(): Config {
+  return loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
+}
+
 export function saveConfig(cfgObj: Partial<Config>) {
   const cur = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const updated = { ...cur, ...cfgObj };
@@ -1692,6 +1779,312 @@ export function deleteColor(colorName: string) {
   return { ok: true, colors: filtered };
 }
 
+// ==========================================
+// MULTI-BRANCH & GODOWN / LOCATION SERVICES
+// ==========================================
+export function getBranches(): Branch[] {
+  return loadJson<Branch[]>(STORAGE_KEYS.BRANCHES, DEFAULT_BRANCHES);
+}
+
+export function saveBranch(branch: Branch) {
+  const list = getBranches();
+  const cleanName = (branch.name || '').trim();
+  if (!cleanName) return { ok: false, error: 'Branch Name is required.', branches: list };
+
+  const dup = list.find(b => b.name.trim().toLowerCase() === cleanName.toLowerCase() && b.id !== branch.id);
+  if (dup) return { ok: false, error: `Duplicate Branch: A branch named "${cleanName}" already exists.`, branches: list };
+
+  const idx = list.findIndex(b => b.id === branch.id);
+  if (idx > -1) {
+    list[idx] = { ...list[idx], ...branch };
+  } else {
+    list.push(branch);
+  }
+  saveJson(STORAGE_KEYS.BRANCHES, list);
+  return { ok: true, branches: list };
+}
+
+export function deleteBranch(branchId: string) {
+  const list = getBranches();
+  const target = list.find(b => b.id === branchId);
+  if (target?.isHeadOffice) {
+    return { ok: false, error: 'Cannot delete the Head Office (HQ) branch.', branches: list };
+  }
+  const filtered = list.filter(b => b.id !== branchId);
+  saveJson(STORAGE_KEYS.BRANCHES, filtered);
+  return { ok: true, branches: filtered };
+}
+
+export function getTerminalBranchId(config?: Config): string {
+  try {
+    const local = localStorage.getItem('terminal_branch_id');
+    if (local) return local;
+  } catch {}
+  return config?.ActiveBranchId || 'branch_ho';
+}
+
+export function setTerminalBranchId(branchId: string): void {
+  try {
+    localStorage.setItem('terminal_branch_id', branchId);
+    window.dispatchEvent(new CustomEvent('terminal:branch_changed', { detail: { branchId } }));
+  } catch {}
+}
+
+export function getActiveBranch(config?: Config): Branch {
+  const branches = getBranches();
+  const terminalId = getTerminalBranchId(config);
+  const found = branches.find(b => b.id === terminalId && b.isActive);
+  if (found) return found;
+  const configBranch = config?.ActiveBranchId ? branches.find(b => b.id === config.ActiveBranchId && b.isActive) : undefined;
+  if (configBranch) return configBranch;
+  const ho = branches.find(b => b.isHeadOffice && b.isActive);
+  return ho || branches[0] || DEFAULT_BRANCHES[0];
+}
+
+export function getGodowns(): Godown[] {
+  return loadJson<Godown[]>(STORAGE_KEYS.GODOWNS, DEFAULT_GODOWNS);
+}
+
+export function saveGodown(godown: Godown) {
+  const list = getGodowns();
+  const cleanName = (godown.name || '').trim();
+  if (!cleanName) return { ok: false, error: 'Godown Name is required.', godowns: list };
+
+  const dup = list.find(g => g.name.trim().toLowerCase() === cleanName.toLowerCase() && g.branchId === godown.branchId && g.id !== godown.id);
+  if (dup) return { ok: false, error: `Duplicate Godown: A godown named "${cleanName}" already exists for this branch.`, godowns: list };
+
+  const idx = list.findIndex(g => g.id === godown.id);
+  if (idx > -1) {
+    list[idx] = { ...list[idx], ...godown };
+  } else {
+    list.push(godown);
+  }
+  saveJson(STORAGE_KEYS.GODOWNS, list);
+  return { ok: true, godowns: list };
+}
+
+export function deleteGodown(godownId: string): { ok: boolean; godowns: Godown[]; error?: string } {
+  const list = getGodowns();
+  const filtered = list.filter(g => g.id !== godownId);
+  saveJson(STORAGE_KEYS.GODOWNS, filtered);
+  return { ok: true, godowns: filtered };
+}
+
+export function getStockTransfers(): StockTransferVoucher[] {
+  return loadJson<StockTransferVoucher[]>(STORAGE_KEYS.STOCK_TRANSFERS, []);
+}
+
+export function peekNextTransferNo(mode: 'direct' | 'challan' = 'direct'): string {
+  const config = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
+  const prefix = mode === 'challan' ? (config.TransferChallanPrefix || 'TRC-') : (config.StockTransferPrefix || 'TRF-');
+  const transfers = getStockTransfers();
+  const matching = transfers.filter(t => t.transferNo && t.transferNo.startsWith(prefix));
+  let maxNum = 0;
+  matching.forEach(t => {
+    const numPart = parseInt(t.transferNo.replace(prefix, ''), 10);
+    if (!isNaN(numPart) && numPart > maxNum) maxNum = numPart;
+  });
+  return `${prefix}${String(maxNum + 1).padStart(4, '0')}`;
+}
+
+export function saveStockTransfer(transfer: StockTransferVoucher) {
+  if (!transfer.items || transfer.items.length === 0) {
+    return { ok: false, error: 'At least one item is required for stock transfer.' };
+  }
+  if (transfer.fromBranchId === transfer.toBranchId && (!transfer.fromGodownId || transfer.fromGodownId === transfer.toGodownId)) {
+    return { ok: false, error: 'Source and Destination locations cannot be identical.' };
+  }
+
+  const transfers = getStockTransfers();
+  const isNew = !transfers.some(t => t.id === transfer.id);
+  if (isNew) {
+    transfers.unshift(transfer);
+  } else {
+    const idx = transfers.findIndex(t => t.id === transfer.id);
+    if (idx > -1) transfers[idx] = transfer;
+  }
+  saveJson(STORAGE_KEYS.STOCK_TRANSFERS, transfers);
+
+  // Update stock ledger
+  const stockLog = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+  const dateIso = transfer.date ? new Date(transfer.date).toISOString() : new Date().toISOString();
+
+  // If transfer mode is direct or status is completed, post Outward from source and Inward to destination
+  if (transfer.transferMode === 'direct' || transfer.status === 'completed') {
+    transfer.items.forEach(item => {
+      // Source outward
+      stockLog.push({
+        DateIso: dateIso,
+        'Item Code': item.itemCode,
+        'Item Name': item.itemName,
+        Type: 'Stock Transfer Out',
+        'Qty In': 0,
+        'Qty Out': Number(item.qty) || 0,
+        Balance: 0,
+        'Ref No': transfer.transferNo,
+        branchId: transfer.fromBranchId,
+        branchName: transfer.fromBranchName,
+        godownId: transfer.fromGodownId,
+        godownName: transfer.fromGodownName
+      });
+      // Destination inward
+      stockLog.push({
+        DateIso: dateIso,
+        'Item Code': item.itemCode,
+        'Item Name': item.itemName,
+        Type: 'Stock Transfer In',
+        'Qty In': Number(item.qty) || 0,
+        'Qty Out': 0,
+        Balance: 0,
+        'Ref No': transfer.transferNo,
+        branchId: transfer.toBranchId,
+        branchName: transfer.toBranchName,
+        godownId: transfer.toGodownId,
+        godownName: transfer.toGodownName
+      });
+    });
+  } else if (transfer.transferMode === 'challan' && transfer.status === 'in_transit') {
+    // 2-step Challan dispatch: Deduct from source branch into Transit
+    transfer.items.forEach(item => {
+      stockLog.push({
+        DateIso: dateIso,
+        'Item Code': item.itemCode,
+        'Item Name': item.itemName,
+        Type: 'Transfer Challan Out (In-Transit)',
+        'Qty In': 0,
+        'Qty Out': Number(item.qty) || 0,
+        Balance: 0,
+        'Ref No': transfer.transferNo,
+        branchId: transfer.fromBranchId,
+        branchName: transfer.fromBranchName,
+        godownId: transfer.fromGodownId,
+        godownName: transfer.fromGodownName
+      });
+    });
+  }
+  saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLog);
+
+  // Add audit trail entry
+  addAuditLog({
+    action: isNew ? 'ENTERED' : 'ALTERED',
+    module: transfer.transferMode === 'challan' ? 'Transfer Challan' : 'Stock Transfer',
+    recordId: transfer.transferNo,
+    partyName: `${transfer.fromBranchName} -> ${transfer.toBranchName}`,
+    amount: transfer.totalAmount || 0,
+    details: `${transfer.items.length} item(s) transferred [Mode: ${transfer.transferMode}, Status: ${transfer.status}]`
+  });
+
+  return { ok: true, transfer, transfers };
+}
+
+export function receiveStockTransferChallan(transferId: string, receivedNotes?: string, receivedBy?: string) {
+  const transfers = getStockTransfers();
+  const transfer = transfers.find(t => t.id === transferId);
+  if (!transfer) return { ok: false, error: 'Transfer Challan not found.' };
+  if (transfer.status === 'received' || transfer.status === 'completed') {
+    return { ok: false, error: 'This shipment has already been received.' };
+  }
+
+  transfer.status = 'received';
+  transfer.receivedDate = new Date().toISOString().split('T')[0];
+  transfer.receivedBy = receivedBy || 'Storekeeper';
+  transfer.receivedNotes = receivedNotes || 'Received and verified at destination';
+
+  saveJson(STORAGE_KEYS.STOCK_TRANSFERS, transfers);
+
+  // Post destination inward stock
+  const stockLog = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+  const dateIso = new Date().toISOString();
+
+  transfer.items.forEach(item => {
+    stockLog.push({
+      DateIso: dateIso,
+      'Item Code': item.itemCode,
+      'Item Name': item.itemName,
+      Type: 'Transfer Challan In (Received)',
+      'Qty In': Number(item.qty) || 0,
+      'Qty Out': 0,
+      Balance: 0,
+      'Ref No': transfer.transferNo,
+      branchId: transfer.toBranchId,
+      branchName: transfer.toBranchName,
+      godownId: transfer.toGodownId,
+      godownName: transfer.toGodownName
+    });
+  });
+  saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLog);
+
+  addAuditLog({
+    action: 'ALTERED',
+    module: 'Transfer Challan',
+    recordId: transfer.transferNo,
+    partyName: `Received at ${transfer.toBranchName}`,
+    amount: transfer.totalAmount || 0,
+    details: `Challan received by ${transfer.receivedBy}. Notes: ${transfer.receivedNotes}`
+  });
+
+  return { ok: true, transfer, transfers };
+}
+
+export function cancelStockTransfer(transferId: string, reason?: string) {
+  const transfers = getStockTransfers();
+  const transfer = transfers.find(t => t.id === transferId);
+  if (!transfer) return { ok: false, error: 'Transfer not found.' };
+  if (transfer.status === 'received' || transfer.status === 'completed') {
+    return { ok: false, error: 'Cannot cancel a completed or received transfer.' };
+  }
+
+  transfer.status = 'cancelled';
+  transfer.narration = (transfer.narration ? transfer.narration + ' ' : '') + `[Cancelled: ${reason || 'User cancelled'}]`;
+  saveJson(STORAGE_KEYS.STOCK_TRANSFERS, transfers);
+
+  // If it was in transit, reverse the source outward deduction
+  if (transfer.transferMode === 'challan') {
+    const stockLog = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+    const dateIso = new Date().toISOString();
+    transfer.items.forEach(item => {
+      stockLog.push({
+        DateIso: dateIso,
+        'Item Code': item.itemCode,
+        'Item Name': item.itemName,
+        Type: 'Transfer Challan Cancelled (Reversal)',
+        'Qty In': Number(item.qty) || 0,
+        'Qty Out': 0,
+        Balance: 0,
+        'Ref No': transfer.transferNo,
+        branchId: transfer.fromBranchId,
+        branchName: transfer.fromBranchName,
+        godownId: transfer.fromGodownId,
+        godownName: transfer.fromGodownName
+      });
+    });
+    saveJson(STORAGE_KEYS.STOCK_LEDGER, stockLog);
+  }
+
+  addAuditLog({
+    action: 'CANCELLED',
+    module: 'Stock Transfer',
+    recordId: transfer.transferNo,
+    details: `Transfer cancelled: ${reason || 'User cancelled'}`
+  });
+
+  return { ok: true, transfer, transfers };
+}
+
+export function getItemStockForBranch(itemCode: string, branchId?: string): number {
+  if (!branchId || branchId === 'all') {
+    const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+    const it = items.find(i => i['Item Code'] === itemCode);
+    return Number(it?.['Current Stock']) || 0;
+  }
+  const stockLog = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+  let branchStock = 0;
+  stockLog.filter(l => l['Item Code'] === itemCode && (l.branchId === branchId || (!l.branchId && branchId === 'branch_ho'))).forEach(l => {
+    branchStock += (Number(l['Qty In']) || 0) - (Number(l['Qty Out']) || 0);
+  });
+  return branchStock;
+}
+
 export function generateBarcode(): string {
   const num = nextCounter('InternalBarcode');
   // Auto generate 6 to 7 digit numeric barcode starting from 100001
@@ -1733,14 +2126,20 @@ export interface BulkImportItem {
   group?: string;
   category?: string;
   serials?: string[];
+  branch?: string;
 }
 
-export function bulkImportItems(itemsToImport: BulkImportItem[]) {
+export function bulkImportItems(itemsToImport: BulkImportItem[], defaultTargetBranchId?: string) {
   const itemsList = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const groupsList = loadJson<ItemGroup[]>(STORAGE_KEYS.ITEM_GROUPS, DEFAULT_ITEM_GROUPS);
   const catsList = loadJson<string[]>(STORAGE_KEYS.ITEM_CATEGORIES, DEFAULT_ITEM_CATEGORIES);
   const unitsList = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
   const deletedItems = loadJson<string[]>(STORAGE_KEYS.DELETED_ITEMS, []);
+  const allBranches = getBranches();
+  const defaultBranch = defaultTargetBranchId
+    ? (allBranches.find(b => b.id === defaultTargetBranchId) || getActiveBranch())
+    : getActiveBranch();
+
   let deletedListChanged = false;
 
   let addedItems = 0;
@@ -1753,10 +2152,69 @@ export function bulkImportItems(itemsToImport: BulkImportItem[]) {
     const cleanName = String(importItem.name || '').trim();
     if (!cleanName) continue;
 
+    // Resolve target branch for this item
+    let targetBranch = defaultBranch;
+    if (importItem.branch && String(importItem.branch).trim()) {
+      const bStr = String(importItem.branch).trim().toLowerCase();
+      const matched = allBranches.find(b => 
+        b.id.toLowerCase() === bStr || 
+        b.name.toLowerCase() === bStr ||
+        b.code?.toLowerCase() === bStr ||
+        (bStr.includes('head') && b.isHeadOffice)
+      );
+      if (matched) {
+        targetBranch = matched;
+      }
+    }
+
+    const opQty = Number(importItem.openingQty) || 0;
+
     // Check if item already exists by name
-    if (itemsList.some(i => i['Item Name'].toLowerCase() === cleanName.toLowerCase())) {
-      skippedItems.push(cleanName);
-      continue; // Skip duplicates for now, or we could update
+    const existingIdx = itemsList.findIndex(i => i['Item Name'].toLowerCase() === cleanName.toLowerCase());
+    if (existingIdx > -1) {
+      const existing = itemsList[existingIdx];
+      // If importing additional branch opening stock for an existing item
+      if (opQty > 0) {
+        existing['Current Stock'] = (Number(existing['Current Stock']) || 0) + opQty;
+        existing['Opening Stock'] = (Number(existing['Opening Stock']) || 0) + opQty;
+        const pRate = Number(existing['Purchase Rate']) || Number(importItem.purchaseRate) || 0;
+        existing['Opening Amount'] = (existing['Opening Stock'] || 0) * pRate;
+
+        // Update branchAllocations
+        if (!existing.branchAllocations) {
+          existing.branchAllocations = [];
+        }
+        const allocIdx = existing.branchAllocations.findIndex(a => a.branchId === targetBranch.id);
+        if (allocIdx > -1) {
+          existing.branchAllocations[allocIdx].openingStock = (Number(existing.branchAllocations[allocIdx].openingStock) || 0) + opQty;
+        } else {
+          existing.branchAllocations.push({
+            branchId: targetBranch.id,
+            branchName: targetBranch.name,
+            openingStock: opQty
+          });
+        }
+
+        // Log opening stock into Stock Ledger under that branch
+        logStock(
+          existing['Item Code'],
+          existing['Item Name'],
+          'Opening',
+          opQty,
+          0,
+          existing['Current Stock'],
+          `OPENING (${targetBranch.name})`,
+          existing.Unit,
+          targetBranch.id,
+          targetBranch.name
+        );
+
+        newlyAddedItems.push(existing);
+        addedItems++;
+      } else {
+        skippedItems.push(cleanName);
+      }
+      continue;
     }
 
     const groupName = String(importItem.group || '').trim() || 'Primary';
@@ -1824,11 +2282,16 @@ export function bulkImportItems(itemsToImport: BulkImportItem[]) {
       'Is Serialized': isSerialized,
       'Maintain Stock': 'Y',
       'HSN/SAC': '',
-      'Opening Stock': Number(importItem.openingQty) || 0,
-      'Opening Amount': (Number(importItem.openingQty) || 0) * basePurchaseRate,
-      'Current Stock': Number(importItem.openingQty) || 0,
+      'Opening Stock': opQty,
+      'Opening Amount': opQty * basePurchaseRate,
+      'Current Stock': opQty,
       'Reorder Level': 0,
-      'Opening Serials': openingSerials
+      'Opening Serials': openingSerials,
+      branchAllocations: opQty > 0 ? [{
+        branchId: targetBranch.id,
+        branchName: targetBranch.name,
+        openingStock: opQty
+      }] : []
     };
 
     if (importItem.altUnit && String(importItem.altUnit).trim() && convFactor > 1) {
@@ -1846,6 +2309,22 @@ export function bulkImportItems(itemsToImport: BulkImportItem[]) {
     itemsList.push(newItem);
     newlyAddedItems.push(newItem);
     addedItems++;
+
+    // Log initial opening stock into Stock Ledger under the assigned branch
+    if (opQty > 0) {
+      logStock(
+        itemCode,
+        cleanName,
+        'Opening',
+        opQty,
+        0,
+        opQty,
+        `OPENING (${targetBranch.name})`,
+        baseUnitName,
+        targetBranch.id,
+        targetBranch.name
+      );
+    }
 
     // Un-delete if previously in deleted items
     const cNorm = itemCode.toLowerCase();
@@ -1939,7 +2418,32 @@ export function saveItem(item: Item) {
     const openingRef = item['Opening Serials'] && item['Opening Serials'].trim()
       ? `OPENING (SN: ${item['Opening Serials']})`
       : 'OPENING';
-    logStock(item['Item Code'], item['Item Name'], 'Opening', Number(item['Opening Stock']), 0, Number(item['Opening Stock']), openingRef);
+
+    if (item.branchAllocations && item.branchAllocations.length > 0) {
+      item.branchAllocations.forEach(alloc => {
+        const aQty = Number(alloc.openingStock) || 0;
+        if (aQty > 0) {
+          const locLabel = alloc.godownName ? `${alloc.branchName} - ${alloc.godownName}` : alloc.branchName;
+          logStock(
+            item['Item Code'],
+            item['Item Name'],
+            'Opening',
+            aQty,
+            0,
+            aQty,
+            `${openingRef} (${locLabel})`,
+            item.Unit,
+            alloc.branchId,
+            alloc.branchName,
+            alloc.godownId,
+            alloc.godownName
+          );
+        }
+      });
+    } else {
+      const activeBr = getActiveBranch();
+      logStock(item['Item Code'], item['Item Name'], 'Opening', Number(item['Opening Stock']), 0, Number(item['Opening Stock']), openingRef, item.Unit, activeBr.id, activeBr.name);
+    }
   }
 
   return { ok: true, items: list };
@@ -2232,12 +2736,33 @@ function adjustLedgerBalance(ledgerName: string, amount: number, drCr: 'Dr' | 'C
   saveJson(STORAGE_KEYS.LEDGER_LOG, logs);
 }
 
-function logStock(itemCode: string, itemName: string, type: string, qtyIn: number, qtyOut: number, balanceQty: number, refNo: string, unitName?: string) {
+function logStock(
+  itemCode: string,
+  itemName: string,
+  type: string,
+  qtyIn: number,
+  qtyOut: number,
+  balanceQty: number,
+  refNo: string,
+  unitName?: string,
+  branchId?: string,
+  branchName?: string,
+  godownId?: string,
+  godownName?: string
+) {
   qtyIn = getBaseQty(itemCode, unitName, qtyIn);
   qtyOut = getBaseQty(itemCode, unitName, qtyOut);
   const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const it = items.find(i => i['Item Code'] === itemCode);
   if (it && it['Maintain Stock'] === 'N') return; // Do not log stock movement for non-stock / service items
+
+  let bId = branchId;
+  let bName = branchName;
+  if (!bId) {
+    const actBr = getActiveBranch();
+    bId = actBr.id;
+    bName = actBr.name;
+  }
 
   const logs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
   logs.push({
@@ -2248,7 +2773,11 @@ function logStock(itemCode: string, itemName: string, type: string, qtyIn: numbe
     'Qty In': qtyIn || 0,
     'Qty Out': qtyOut || 0,
     Balance: balanceQty,
-    'Ref No': refNo
+    'Ref No': refNo,
+    branchId: bId,
+    branchName: bName,
+    godownId: godownId,
+    godownName: godownName
   });
   saveJson(STORAGE_KEYS.STOCK_LEDGER, logs);
 }
@@ -2522,6 +3051,15 @@ export function saveSalesInvoice(payload: {
     ? new Date(payload.date).toISOString() 
     : (originalDate || new Date().toISOString());
 
+  const sales = getDeduplicatedSales();
+  const matchTarget = (originalInvoiceNo || iNo || '').trim().toLowerCase();
+  const existIdx = sales.findIndex(s => s.invoiceNo?.trim().toLowerCase() === matchTarget || s.invoiceNo?.trim().toLowerCase() === iNo.toLowerCase());
+  const oldInv = existIdx >= 0 ? sales[existIdx] : null;
+
+  const activeBr = getActiveBranch(cfg);
+  const finalBranchId = (payload as any).branchId || oldInv?.branchId || activeBr.id;
+  const finalBranchName = (payload as any).branchName || oldInv?.branchName || activeBr.name;
+
   const invoice: SalesInvoice = {
     invoiceNo: iNo,
     date: invoiceDate,
@@ -2539,6 +3077,8 @@ export function saveSalesInvoice(payload: {
     bank2: b2,
     credit: cr,
     status: st,
+    branchId: finalBranchId,
+    branchName: finalBranchName,
     additionalExpenses,
     termsAndConditions: finalTerms || (cfg.FooterTerms || ''),
     voucherTypeId: matchedVt?.id || voucherTypeId,
@@ -2556,10 +3096,6 @@ export function saveSalesInvoice(payload: {
     items: itemsRows
   };
 
-  const sales = getDeduplicatedSales();
-  const matchTarget = (originalInvoiceNo || iNo || '').trim().toLowerCase();
-  const existIdx = sales.findIndex(s => s.invoiceNo?.trim().toLowerCase() === matchTarget || s.invoiceNo?.trim().toLowerCase() === iNo.toLowerCase());
-  const oldInv = existIdx >= 0 ? sales[existIdx] : null;
   if (existIdx >= 0) {
     sales[existIdx] = invoice;
   } else {
@@ -2614,9 +3150,9 @@ export function saveSalesInvoice(payload: {
         updateItemBatchStock(l.itemCode, l.selectedBatchId || l.selectedBatchNo, -q, l.unit);
       }
       if (q < 0) {
-        logStock(l.itemCode, l.itemName, 'Sale Return', Math.abs(q), 0, nq, iNo, l.unit);
+        logStock(l.itemCode, l.itemName, 'Sale Return', Math.abs(q), 0, nq, iNo, l.unit, finalBranchId, finalBranchName);
       } else {
-        logStock(l.itemCode, l.itemName, 'Sale', 0, q, nq, iNo, l.unit);
+        logStock(l.itemCode, l.itemName, 'Sale', 0, q, nq, iNo, l.unit, finalBranchId, finalBranchName);
       }
     });
   }
@@ -2877,6 +3413,10 @@ export function savePurchaseInvoice(payload: {
     ? new Date(payload.date).toISOString()
     : (originalDate || new Date().toISOString());
 
+  const activeBr = getActiveBranch(cfg);
+  const finalBranchId = (payload as any).branchId || (oldPur as any)?.branchId || activeBr.id;
+  const finalBranchName = (payload as any).branchName || (oldPur as any)?.branchName || activeBr.name;
+
   const purchase: PurchaseInvoice = {
     billNo: bNo,
     supplierBillNo: payload.supplierBillNo || '',
@@ -2893,6 +3433,8 @@ export function savePurchaseInvoice(payload: {
     bank2: b2,
     credit: cr,
     status: st,
+    branchId: finalBranchId,
+    branchName: finalBranchName,
     bankTxnNo: payment.bankTxnNo || '',
     bank2TxnNo: payment.bank2TxnNo || '',
     items: itemsRows,
@@ -2949,7 +3491,7 @@ export function savePurchaseInvoice(payload: {
       if (l.selectedBatchId || l.selectedBatchNo) {
         updateItemBatchStock(l.itemCode, l.selectedBatchId || l.selectedBatchNo, Number(l.qty), l.unit);
       }
-      logStock(l.itemCode, l.itemName, 'Purchase', Number(l.qty), 0, nq, bNo, l.unit);
+      logStock(l.itemCode, l.itemName, 'Purchase', Number(l.qty), 0, nq, bNo, l.unit, finalBranchId, finalBranchName);
     });
   }
 
@@ -5267,13 +5809,41 @@ export function getVoucherDetails(refNo: string) {
   return null;
 }
 
-export function getItemStockLedger(code: string, fromDate?: string, toDate?: string): StockLedgerEntry[] {
+export function getItemStockLedger(code: string, fromDate?: string, toDate?: string, branchId?: string, godownId?: string): StockLedgerEntry[] {
   const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const cleanCode = (code || '').trim().toLowerCase();
   const it = items.find(i => String(i['Item Code'] || '').trim().toLowerCase() === cleanCode || String(i['Item Name'] || '').trim().toLowerCase() === cleanCode);
   if (it && it['Maintain Stock'] === 'N') return [];
 
-  const baseOpening = it ? (Number(it['Opening Stock']) || 0) : 0;
+  const godownsList = getGodowns();
+  const targetGodown = godownId ? godownsList.find(g => g.id === godownId) : null;
+
+  let baseOpening = 0;
+  if (it) {
+    if (godownId) {
+      const explicitAlloc = (it.branchAllocations || []).find((a: any) => a.godownId === godownId);
+      if (explicitAlloc) {
+        baseOpening = Number(explicitAlloc.openingStock) || 0;
+      } else if (targetGodown && targetGodown.isDefault) {
+        const branchAlloc = (it.branchAllocations || []).find((a: any) => a.branchId === targetGodown.branchId && !a.godownId);
+        if (branchAlloc) {
+          baseOpening = Number(branchAlloc.openingStock) || 0;
+        } else if (!it.branchAllocations || it.branchAllocations.length === 0) {
+          baseOpening = Number(it['Opening Stock']) || 0;
+        }
+      }
+    } else if (branchId) {
+      const bAllocs = (it.branchAllocations || []).filter((a: any) => a.branchId === branchId);
+      if (bAllocs.length > 0) {
+        baseOpening = bAllocs.reduce((sum: number, a: any) => sum + (Number(a.openingStock) || 0), 0);
+      } else if (!it.branchAllocations || it.branchAllocations.length === 0) {
+        baseOpening = Number(it['Opening Stock']) || 0;
+      }
+    } else {
+      baseOpening = Number(it['Opening Stock']) || 0;
+    }
+  }
+
   const rawLogs = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
   
   // Find all sales invoices that were issued against delivery notes
@@ -5303,10 +5873,22 @@ export function getItemStockLedger(code: string, fromDate?: string, toDate?: str
     return true;
   });
 
+  // Filter by item code, and by godown / branch if specified
+  let itemLogs = sanitizedLogs
+    .filter(r => String(r['Item Code'] || '').trim().toLowerCase() === cleanCode || String(r['Item Name'] || '').trim().toLowerCase() === cleanCode);
+
+  if (godownId) {
+    itemLogs = itemLogs.filter(r => {
+      if (r.godownId === godownId) return true;
+      if (!r.godownId && targetGodown && r.branchId === targetGodown.branchId && targetGodown.isDefault) return true;
+      return false;
+    });
+  } else if (branchId) {
+    itemLogs = itemLogs.filter(r => r.branchId === branchId);
+  }
+
   // Sort everything chronologically
-  const itemLogs = sanitizedLogs
-    .filter(r => String(r['Item Code'] || '').trim().toLowerCase() === cleanCode || String(r['Item Name'] || '').trim().toLowerCase() === cleanCode)
-    .sort((a, b) => new Date(a.DateIso).getTime() - new Date(b.DateIso).getTime());
+  itemLogs = itemLogs.sort((a, b) => new Date(a.DateIso).getTime() - new Date(b.DateIso).getTime());
 
   // Check if there is an explicit Opening log entry
   const hasOpeningEntry = itemLogs.some(r => r.Type === 'Opening' || (r['Ref No'] && r['Ref No'].startsWith('OPENING')));
@@ -5346,7 +5928,10 @@ export function getItemStockLedger(code: string, fromDate?: string, toDate?: str
       'Qty In': openingBalAtFromDate >= 0 ? openingBalAtFromDate : 0,
       'Qty Out': openingBalAtFromDate < 0 ? Math.abs(openingBalAtFromDate) : 0,
       Balance: openingBalAtFromDate,
-      'Ref No': 'OPENING'
+      'Ref No': 'OPENING',
+      branchId: targetGodown?.branchId || branchId,
+      godownId: godownId,
+      godownName: targetGodown?.name
     });
   } else if (!hasOpeningEntry && it) {
     finalLogs.push({
@@ -5357,7 +5942,10 @@ export function getItemStockLedger(code: string, fromDate?: string, toDate?: str
       'Qty In': baseOpening,
       'Qty Out': 0,
       Balance: baseOpening,
-      'Ref No': it['Opening Serials'] && it['Opening Serials'].trim() ? `OPENING (${it['Opening Serials']})` : 'OPENING'
+      'Ref No': it['Opening Serials'] && it['Opening Serials'].trim() ? `OPENING (${it['Opening Serials']})` : 'OPENING',
+      branchId: targetGodown?.branchId || branchId,
+      godownId: godownId,
+      godownName: targetGodown?.name
     });
   }
 
@@ -6431,6 +7019,89 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
     return { movement };
   }
 
+  if (type === 'godown_summary') {
+    const godowns = getGodowns().filter(g => g.isActive);
+    const sLogFiltered = sLog.filter(l => {
+      const isSale = l.Type === 'Sale' || l.Type === 'Sales' || l.Type === 'Sale Invoice';
+      if (isSale && l['Ref No']) {
+        const ref = l['Ref No'].trim().toLowerCase();
+        const salesAgainstDN = sales.some(s => (s.invoiceNo?.trim().toLowerCase() === ref) && Boolean(s.deliveryNoteNo && s.deliveryNoteNo.trim()));
+        if (salesAgainstDN) return false;
+      }
+      return true;
+    });
+
+    const stockItems = items.filter(i => i['Maintain Stock'] !== 'N');
+    const godownRows: any[] = [];
+
+    godowns.forEach(g => {
+      stockItems.forEach(i => {
+        const c = i['Item Code'];
+        const pr = Number(i['Purchase Rate']) || 0;
+        const sr = Number(i['Sale Rate']) || 0;
+
+        const alloc = (i.branchAllocations || []).find((a: any) => a.godownId === g.id);
+        const branchAlloc = (i.branchAllocations || []).find((a: any) => a.branchId === g.branchId && !a.godownId);
+
+        let op = 0;
+        if (alloc) {
+          op = Number(alloc.openingStock) || 0;
+        } else if (branchAlloc && g.isDefault) {
+          op = Number(branchAlloc.openingStock) || 0;
+        } else if ((!i.branchAllocations || i.branchAllocations.length === 0) && g.isDefault && g.branchId === 'branch_ho') {
+          op = Number(i['Opening Stock']) || 0;
+        }
+
+        let inQ = 0;
+        let outQ = 0;
+
+        sLogFiltered.filter(l => l['Item Code'] === c).forEach(log => {
+          const matchesGodown = log.godownId === g.id || (!log.godownId && log.branchId === g.branchId && g.isDefault);
+          if (!matchesGodown) return;
+
+          if (log.Type === 'Opening' || (log['Ref No'] && log['Ref No'].startsWith('OPENING'))) {
+            return;
+          }
+
+          const d = new Date(log.DateIso).getTime();
+          const li = Number(log['Qty In']) || 0;
+          const lo = Number(log['Qty Out']) || 0;
+          if (d < fr) {
+            op += (li - lo);
+          } else if (d >= fr && d <= toDt) {
+            inQ += li;
+            outQ += lo;
+          }
+        });
+
+        const clQ = op + inQ - outQ;
+
+        // Include all items that have any movement or non-zero balance, or if it has opening stock
+        godownRows.push({
+          godownId: g.id,
+          godownName: g.name,
+          godownCode: g.code,
+          branchId: g.branchId,
+          branchName: g.branchName || '',
+          code: c,
+          name: i['Item Name'],
+          group: i.Group || '-',
+          category: i.Category || '-',
+          unit: i.Unit || 'Pcs',
+          opQty: op,
+          inQty: inQ,
+          outQty: outQ,
+          clQty: clQ,
+          pRate: pr,
+          sRate: sr,
+          valuation: clQ * pr
+        });
+      });
+    });
+
+    return godownRows;
+  }
+
   return {
     profit: pList,
     topQty: pList.slice().sort((a, b) => b.qty - a.qty).slice(0, 15),
@@ -6477,19 +7148,33 @@ export function getStockBalancesAsOfDate(asOfDate?: string): Record<string, numb
   return map;
 }
 
-export function getFinancialReports(type: string, from: string, to: string) {
+export function getFinancialReports(type: string, from: string, to: string, branchId?: string) {
   // Synchronize any posted payroll records to accounting entries & ledgers
   syncPayrollToAccounting();
 
   const fr = new Date(from).setHours(0, 0, 0, 0);
   const toDt = new Date(to).setHours(23, 59, 59, 999);
   const rawLedgers = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
-  const ledgerLog = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
+  const rawLedgerLog = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
   const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
-  const stockLog = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
+  const rawStockLog = loadJson<StockLedgerEntry[]>(STORAGE_KEYS.STOCK_LEDGER, []);
   const groups = loadJson<LedgerGroup[]>(STORAGE_KEYS.LEDGER_GROUPS, DEFAULT_LEDGER_GROUPS);
-  const sales = getDeduplicatedSales();
-  const purchases = getDeduplicatedPurchases();
+  const rawSales = getDeduplicatedSales();
+  const rawPurchases = getDeduplicatedPurchases();
+
+  const isBranchFilter = Boolean(branchId && branchId !== 'all');
+  const ledgerLog = isBranchFilter
+    ? rawLedgerLog.filter(log => log.branchId === branchId || (!log.branchId && branchId === 'branch_ho'))
+    : rawLedgerLog;
+  const stockLog = isBranchFilter
+    ? rawStockLog.filter(l => l.branchId === branchId || (!l.branchId && branchId === 'branch_ho'))
+    : rawStockLog;
+  const sales = isBranchFilter
+    ? rawSales.filter(s => s.branchId === branchId || (!s.branchId && branchId === 'branch_ho'))
+    : rawSales;
+  const purchases = isBranchFilter
+    ? rawPurchases.filter(p => p.branchId === branchId || (!p.branchId && branchId === 'branch_ho'))
+    : rawPurchases;
 
   // Ensure all distinct ledgers from ledgerLog are represented
   const ledgers = [...rawLedgers];

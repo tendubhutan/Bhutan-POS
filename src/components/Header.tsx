@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown, UserCircle, Lock, Shield } from 'lucide-react';
 import { Config, AppUser } from '../types';
 import { AIAssistant } from './AIAssistant';
 import { getCurrentTenantSession, isSuperAdmin as checkIsSuperAdmin } from '../services/authTenantContext';
+import { getBranches, getTerminalBranchId, setTerminalBranchId } from '../services/storageService';
 
 interface HeaderProps {
   config: Config;
@@ -60,6 +61,19 @@ export const Header: React.FC<HeaderProps> = ({
   const displayRole = isSuperAdmin
     ? 'SUPERADMIN'
     : (currentUser?.role === 'Administrator' ? 'ADMIN' : (currentUser?.role?.toUpperCase() || 'STAFF'));
+
+  const [terminalBranchId, setLocalTerminalBranchId] = useState<string>(() => getTerminalBranchId(config));
+  const branches = getBranches();
+
+  useEffect(() => {
+    const handleBranchChanged = (e: any) => {
+      if (e.detail?.branchId) {
+        setLocalTerminalBranchId(e.detail.branchId);
+      }
+    };
+    window.addEventListener('terminal:branch_changed', handleBranchChanged);
+    return () => window.removeEventListener('terminal:branch_changed', handleBranchChanged);
+  }, []);
 
   return (
     <header className={`bg-blue-700 text-white border-b border-blue-800 px-3 sm:px-4 ${isPosMode ? 'py-1.5' : 'py-2'} flex items-center justify-between shadow-md relative z-50`}>
@@ -132,6 +146,32 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* High Density Status Indicators & Action Bar */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Terminal Branch Selector Pill (when Multi-Branch is enabled) */}
+        {config?.EnableMultiBranch === 'true' && (
+          <div 
+            className="hidden sm:flex items-center gap-1.5 bg-blue-900/90 border border-blue-400/50 hover:border-blue-300 px-2.5 py-1 rounded-xl text-xs font-bold text-white shadow-xs transition"
+            title="Active Branch for this Terminal/Computer (click to switch branch)"
+          >
+            <Building2 className="h-3.5 w-3.5 text-amber-300 shrink-0" />
+            <span className="text-[10px] text-blue-200 uppercase font-semibold hidden md:inline">Branch:</span>
+            <select
+              value={terminalBranchId || config.ActiveBranchId || ''}
+              onChange={(e) => {
+                const newId = e.target.value;
+                setLocalTerminalBranchId(newId);
+                setTerminalBranchId(newId);
+              }}
+              className="bg-transparent text-white font-extrabold text-xs outline-none cursor-pointer pr-1"
+            >
+              {branches.map(b => (
+                <option key={b.id} value={b.id} className="text-slate-900 bg-white font-bold">
+                  {b.name} {b.isHeadOffice ? '(HQ)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="hidden md:flex items-center gap-2 bg-blue-800/80 px-2.5 py-1 rounded-full text-xs font-mono text-blue-100 border border-blue-600/60">
           <Terminal className="h-3.5 w-3.5 text-blue-300" />
           <span>ST-01</span>

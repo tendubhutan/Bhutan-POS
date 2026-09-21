@@ -2,11 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Config, Item, Ledger } from '../types';
 import {
   getDailyColumnarReport, getGSTReport, getGSTInputDomReport, getGSTInputImpReport, getGSTSummaryReport, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig,
-  getPartyOutstandingBills, saveVoucher, canUserViewAuditTrail, getActiveUser
+  getPartyOutstandingBills, saveVoucher, canUserViewAuditTrail, getActiveUser, getBranches, getGodowns
 } from '../services/storageService';
 import XLSX from 'xlsx-js-style';
 import {
-  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History
+  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, Warehouse, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History
 } from 'lucide-react';
 import { PrintReportModal } from './PrintReportModal';
 import { generateReportPDF, shareOrDownloadPDF } from '../utils/pdfExport';
@@ -19,7 +19,7 @@ import { getGstFieldLabel, getGstFieldsForType } from '../utils/gstConfigUtils';
 export interface ReportTarget {
   category: 'daily' | 'gst' | 'inv' | 'fin' | 'reg' | 'audit';
   finSubTab?: 'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED';
-  invSubTab?: 'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary';
+  invSubTab?: 'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary' | 'godown_summary';
   regSubTab?: 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes';
   voucherTypeFilter?: string;
   voucherStatusFilter?: string;
@@ -127,7 +127,7 @@ export function formatDisplayDate(isoStr: string): string {
 interface ReportViewState {
   mainCategory: 'daily' | 'gst' | 'gst_summary' | 'gst_input_dom' | 'gst_input_imp' | 'inv' | 'fin' | 'reg' | 'audit';
   finSubTab: 'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED';
-  invSubTab: 'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary';
+  invSubTab: 'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary' | 'godown_summary';
   regSubTab: 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes';
   itemWise: boolean;
   selectedLedger: string;
@@ -149,7 +149,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const [mainCategory, setMainCategory] = useState<'daily' | 'gst' | 'gst_summary' | 'gst_input_dom' | 'gst_input_imp' | 'inv' | 'fin' | 'reg' | 'audit'>('daily');
   const activeUser = useMemo(() => getActiveUser(), []);
   const canViewAudit = canUserViewAuditTrail(activeUser);
-  const [invSubTab, setInvSubTab] = useState<'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary'>('summary');
+  const [invSubTab, setInvSubTab] = useState<'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary' | 'godown_summary'>('summary');
   const [finSubTab, setFinSubTab] = useState<'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED'>('TB');
   const [reportDepth, setReportDepth] = useState<ReportDetailDepth>(config?.ReportDetailDepth || 'detailed');
   const [regSubTab, setRegSubTab] = useState<'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes'>('vouchers');
@@ -167,6 +167,8 @@ export const Reports: React.FC<ReportsProps> = ({
   const [gstOnly, setGstOnly] = useState(false);
   const [includeSalesReturn, setIncludeSalesReturn] = useState(true);
   const [selectedLedger, setSelectedLedger] = useState('');
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('ALL');
+  const availableBranches = useMemo(() => getBranches(), [config]);
 
   // Report View Navigation History (for strict sequential Escape key back navigation)
   const [reportHistory, setReportHistory] = useState<ReportViewState[]>([]);
@@ -350,9 +352,11 @@ export const Reports: React.FC<ReportsProps> = ({
 
   const [reportData, setReportData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [stockFilters, setStockFilters] = useState({ group: 'ALL', category: 'ALL', supplier: '', serial: '', user: '', item: '', status: 'ALL', color: 'ALL', size: 'ALL' });
+  const [stockFilters, setStockFilters] = useState({ group: 'ALL', category: 'ALL', supplier: '', serial: '', user: '', item: '', status: 'ALL', color: 'ALL', size: 'ALL', godownId: 'ALL' });
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [showReportCatalog, setShowReportCatalog] = useState(false);
+
+  const godowns = useMemo(() => getGodowns().filter(g => g.isActive), []);
 
   const showGst = String(config.EnableGST) !== 'false';
 
@@ -368,6 +372,7 @@ export const Reports: React.FC<ReportsProps> = ({
     ] : []),
     { cat: 'inv', invSub: 'summary', label: 'Stock Summary & Valuation' },
     { cat: 'inv', invSub: 'mov', label: 'Stock Movement (In / Out)' },
+    { cat: 'inv', invSub: 'godown_summary', label: 'Godown & Store Wise Stock' },
     { cat: 'inv', invSub: 'prof', label: 'Item Profitability' },
     { cat: 'inv', invSub: 'top', label: 'Top 15 Sellers' },
     { cat: 'fin', finSub: 'TB', label: 'Trial Balance' },
@@ -628,7 +633,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
   useEffect(() => {
     runReport();
-  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, includeSalesReturn, selectedLedger]);
+  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, includeSalesReturn, selectedLedger, selectedBranchId]);
 
   useEffect(() => {
     const handleRefresh = () => {
@@ -643,7 +648,7 @@ export const Reports: React.FC<ReportsProps> = ({
       window.removeEventListener('voucher:cancelled', handleRefresh);
       window.removeEventListener('voucher:deleted', handleRefresh);
     };
-  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, includeSalesReturn, selectedLedger]);
+  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, includeSalesReturn, selectedLedger, selectedBranchId]);
 
   const runReport = () => {
     setLoading(true);
@@ -685,7 +690,12 @@ export const Reports: React.FC<ReportsProps> = ({
             setReportData(data);
           }
         } else {
-          const data = getFinancialReports(finSubTab, fromDate, toDate);
+          const data = getFinancialReports(
+            finSubTab,
+            fromDate,
+            toDate,
+            selectedBranchId === 'ALL' ? undefined : selectedBranchId
+          );
           setReportData(data);
         }
       }
@@ -937,6 +947,57 @@ export const Reports: React.FC<ReportsProps> = ({
           { label: 'Total Inward Qty', value: `+${totIn}` },
           { label: 'Total Outward Qty', value: `-${totOut}` },
           { label: 'Total Closing Qty', value: totCl }
+        ];
+      } else if (invSubTab === 'godown_summary' && Array.isArray(reportData)) {
+        reportTitle = 'Godown & Store Wise Stock Movement & Valuation Report';
+        headers = ['Godown / Store', 'Branch', 'Item Name', 'Item Code', 'Group', 'Unit', 'Opening Qty', 'Qty In', 'Qty Out', 'Closing Qty', 'Valuation (Nu.)'];
+        let totOp = 0;
+        let totIn = 0;
+        let totOut = 0;
+        let totCl = 0;
+        let totVal = 0;
+        let filteredCount = 0;
+        reportData.forEach((row: any) => {
+          if (stockFilters.godownId && stockFilters.godownId !== 'ALL' && row.godownId !== stockFilters.godownId) return;
+          if (stockFilters.group !== 'ALL' && row.group && row.group !== stockFilters.group) return;
+          if (stockFilters.category !== 'ALL' && row.category && row.category !== stockFilters.category) return;
+          if (stockFilters.item && stockFilters.item !== 'ALL' && !row.name?.toLowerCase().includes(stockFilters.item.toLowerCase()) && !row.code?.toLowerCase().includes(stockFilters.item.toLowerCase())) return;
+
+          const op = Number(row.opQty) || 0;
+          const inQ = Number(row.inQty) || 0;
+          const outQ = Number(row.outQty) || 0;
+          const cl = Number(row.clQty) || 0;
+          const val = Number(row.valuation) || 0;
+
+          totOp += op;
+          totIn += inQ;
+          totOut += outQ;
+          totCl += cl;
+          totVal += val;
+          filteredCount++;
+
+          rows.push([
+            row.godownName || '-',
+            row.branchName || '-',
+            row.name,
+            row.code,
+            row.group || '-',
+            row.unit || 'Pcs',
+            op,
+            inQ,
+            outQ,
+            cl,
+            fmt(val)
+          ]);
+        });
+        totalsRow = ['TOTAL', '', '', '', '', '', totOp, totIn, totOut, totCl, fmt(totVal)];
+        summaryCards = [
+          { label: 'Total Godown Records', value: filteredCount },
+          { label: 'Total Opening Qty', value: totOp },
+          { label: 'Total Inward Qty', value: `+${totIn}` },
+          { label: 'Total Outward Qty', value: `-${totOut}` },
+          { label: 'Total Closing Qty', value: totCl },
+          { label: 'Total Valuation', value: `Nu. ${fmt(totVal)}` }
         ];
       } else if (invSubTab === 'prof' && reportData?.profit) {
         reportTitle = 'Item Profitability Analysis';
@@ -2039,6 +2100,11 @@ export const Reports: React.FC<ReportsProps> = ({
               <optgroup label="Inventory & Stock">
                 <option value="inv-summary">Stock Summary & Valuation</option>
                 <option value="inv-mov">Stock Movement (In / Out)</option>
+                <option value="inv-godown_summary">Godown & Store Wise Stock</option>
+                <option value="inv-variant_summary">Size & Color Wise</option>
+                <option value="inv-part_summary">Part Number Wise</option>
+                <option value="inv-serials">Serialwise Stock</option>
+                <option value="inv-batch_summary">Batch & Expiry Wise</option>
                 <option value="inv-prof">Item Profitability</option>
                 <option value="inv-top">Top 15 Sellers</option>
               </optgroup>
@@ -2274,6 +2340,27 @@ export const Reports: React.FC<ReportsProps> = ({
             />
           </div>
 
+          {/* Branch Filter (when EnableMultiBranch is enabled) */}
+          {config?.EnableMultiBranch === 'true' && (
+            <div className="h-8 inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/90 px-2.5 font-bold text-xs text-indigo-950 shadow-2xs">
+              <Building2 className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+              <span className="text-[11px] text-slate-500 font-semibold hidden sm:inline">Branch:</span>
+              <select
+                value={selectedBranchId}
+                onChange={(e) => setSelectedBranchId(e.target.value)}
+                className="bg-transparent font-bold text-xs text-indigo-950 outline-none cursor-pointer pr-1"
+                title="Filter Report by Specific Branch or Consolidated"
+              >
+                <option value="ALL">All Branches (Consolidated)</option>
+                {availableBranches.map(b => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} {b.isHeadOffice ? '(HQ)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Quick Presets Dropdown */}
           <select
             onChange={(e) => {
@@ -2457,6 +2544,11 @@ export const Reports: React.FC<ReportsProps> = ({
                 {[
                   { id: 'summary', label: 'Stock Summary & Valuation' },
                   { id: 'mov', label: 'Stock Movement (In/Out)' },
+                  { id: 'godown_summary', label: 'Godown & Store Wise Stock' },
+                  { id: 'variant_summary', label: 'Size & Color Wise' },
+                  { id: 'part_summary', label: 'Part Number Wise' },
+                  { id: 'serials', label: 'Serialwise Stock' },
+                  { id: 'batch_summary', label: 'Batch & Expiry Wise' },
                   { id: 'prof', label: 'Item Profitability' },
                   { id: 'top', label: 'Top 15 Sellers' }
                 ].map(tab => (
@@ -3024,6 +3116,20 @@ export const Reports: React.FC<ReportsProps> = ({
                     </button>
                     <button
                       type="button"
+                      onClick={() => setInvSubTab('mov')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'mov' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
+                    >
+                      📈 Stock Movement (In/Out)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInvSubTab('godown_summary')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'godown_summary' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
+                    >
+                      🏢 Godown Wise Stock
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setInvSubTab('variant_summary')}
                       className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'variant_summary' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
                     >
@@ -3049,6 +3155,20 @@ export const Reports: React.FC<ReportsProps> = ({
                       className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'batch_summary' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
                     >
                       💊 Batch/Expiry Wise
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInvSubTab('prof')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'prof' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
+                    >
+                      💰 Profitability
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInvSubTab('top')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'top' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
+                    >
+                      🏆 Top Sellers
                     </button>
                   </div>
                 </div>
@@ -3358,6 +3478,45 @@ export const Reports: React.FC<ReportsProps> = ({
 
                   return (
                     <div className="space-y-3">
+                      {/* Movement Filter Bar */}
+                      <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 min-w-[180px]">
+                            <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="text"
+                              placeholder="Search item name or code..."
+                              value={stockFilters.item || ''}
+                              onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
+                              className="text-xs w-full bg-transparent outline-none font-medium"
+                            />
+                          </div>
+
+                          <select
+                            value={stockFilters.group || 'ALL'}
+                            onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none"
+                          >
+                            <option value="ALL">All Groups</option>
+                            {Array.from(new Set(reportData.movement.map((d: any) => d.group).filter(Boolean))).sort().map((g: any) => (
+                              <option key={g} value={g}>{g}</option>
+                            ))}
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={() => setInvSubTab('godown_summary')}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg border border-indigo-200 transition cursor-pointer"
+                          >
+                            <Warehouse className="w-3.5 h-3.5" />
+                            <span>View Godown Wise In/Out</span>
+                          </button>
+                        </div>
+                        <div className="text-xs text-slate-500 font-medium">
+                          Showing {filteredMovement.length} item records
+                        </div>
+                      </div>
+
                       <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
                         <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
                           <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
@@ -3410,6 +3569,198 @@ export const Reports: React.FC<ReportsProps> = ({
                           </tfoot>
                         )}
                       </table>
+                    </div>
+                  );
+                })()}
+
+                {invSubTab === 'godown_summary' && Array.isArray(reportData) && (() => {
+                  const filteredGodownRows = reportData.filter((r: any) => {
+                    if (stockFilters.godownId && stockFilters.godownId !== 'ALL' && r.godownId !== stockFilters.godownId) return false;
+                    if (stockFilters.group !== 'ALL' && r.group && r.group !== stockFilters.group) return false;
+                    if (stockFilters.category !== 'ALL' && r.category && r.category !== stockFilters.category) return false;
+                    if (stockFilters.item) {
+                      const q = stockFilters.item.toLowerCase();
+                      if (!r.name?.toLowerCase().includes(q) && !r.code?.toLowerCase().includes(q)) return false;
+                    }
+                    return true;
+                  });
+
+                  const totOp = filteredGodownRows.reduce((acc: number, r: any) => acc + (Number(r.opQty) || 0), 0);
+                  const totIn = filteredGodownRows.reduce((acc: number, r: any) => acc + (Number(r.inQty) || 0), 0);
+                  const totOut = filteredGodownRows.reduce((acc: number, r: any) => acc + (Number(r.outQty) || 0), 0);
+                  const totCl = filteredGodownRows.reduce((acc: number, r: any) => acc + (Number(r.clQty) || 0), 0);
+                  const totVal = filteredGodownRows.reduce((acc: number, r: any) => acc + (Number(r.valuation) || 0), 0);
+                  const uniqueGodowns = Array.from(new Set(filteredGodownRows.map((r: any) => r.godownName))).filter(Boolean);
+
+                  return (
+                    <div className="space-y-4">
+                      {/* Godown Filter Bar */}
+                      <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1">
+                            <Warehouse className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                            <select
+                              value={stockFilters.godownId || 'ALL'}
+                              onChange={e => setStockFilters({ ...stockFilters, godownId: e.target.value })}
+                              className="text-xs font-bold text-slate-800 bg-transparent outline-none cursor-pointer"
+                            >
+                              <option value="ALL">🏢 All Godowns & Stores ({godowns.length})</option>
+                              {godowns.map(g => (
+                                <option key={g.id} value={g.id}>
+                                  {g.name} ({g.branchName || 'Branch'}) {g.isDefault ? '• Default' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <select
+                            value={stockFilters.group || 'ALL'}
+                            onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none"
+                          >
+                            <option value="ALL">All Groups</option>
+                            {Array.from(new Set(reportData.map((d: any) => d.group).filter(Boolean))).sort().map((g: any) => (
+                              <option key={g} value={g}>{g}</option>
+                            ))}
+                          </select>
+
+                          <select
+                            value={stockFilters.category || 'ALL'}
+                            onChange={e => setStockFilters({ ...stockFilters, category: e.target.value })}
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none"
+                          >
+                            <option value="ALL">All Brands / Categories</option>
+                            {Array.from(new Set(reportData.map((d: any) => d.category).filter(Boolean))).sort().map((c: any) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
+
+                          <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 min-w-[180px]">
+                            <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="text"
+                              placeholder="Search item name or code..."
+                              value={stockFilters.item || ''}
+                              onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
+                              className="text-xs w-full bg-transparent outline-none font-medium"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="text-xs text-slate-600 font-semibold">
+                          Showing <span className="text-indigo-600 font-bold">{filteredGodownRows.length}</span> records across <span className="text-indigo-600 font-bold">{uniqueGodowns.length}</span> godowns
+                        </div>
+                      </div>
+
+                      {/* Summary KPI Cards */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                          <div className="text-[11px] font-semibold text-slate-500 uppercase">Active Godowns</div>
+                          <div className="text-base font-bold text-slate-800">{uniqueGodowns.length}</div>
+                        </div>
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                          <div className="text-[11px] font-semibold text-slate-500 uppercase">Opening Qty</div>
+                          <div className="text-base font-bold text-slate-700 font-mono">{totOp}</div>
+                        </div>
+                        <div className="bg-emerald-50/60 border border-emerald-200 rounded-lg p-2.5">
+                          <div className="text-[11px] font-semibold text-emerald-700 uppercase">Inward Qty (+)</div>
+                          <div className="text-base font-bold text-emerald-700 font-mono">+{totIn}</div>
+                        </div>
+                        <div className="bg-rose-50/60 border border-rose-200 rounded-lg p-2.5">
+                          <div className="text-[11px] font-semibold text-rose-700 uppercase">Outward Qty (-)</div>
+                          <div className="text-base font-bold text-rose-700 font-mono">-{totOut}</div>
+                        </div>
+                        <div className="bg-indigo-50/60 border border-indigo-200 rounded-lg p-2.5">
+                          <div className="text-[11px] font-semibold text-indigo-700 uppercase">Closing Qty</div>
+                          <div className="text-base font-bold text-indigo-900 font-mono">{totCl}</div>
+                        </div>
+                        <div className="bg-amber-50/60 border border-amber-200 rounded-lg p-2.5">
+                          <div className="text-[11px] font-semibold text-amber-700 uppercase">Stock Valuation</div>
+                          <div className="text-base font-bold text-amber-900 font-mono">Nu. {fmt(totVal)}</div>
+                        </div>
+                      </div>
+
+                      {/* Table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                          <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                            <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Godown / Store</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Branch</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Code</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Group</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Opening Qty</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Inward (+)</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Outward (-)</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Closing Qty</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Pur. Rate</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Valuation (Nu.)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredGodownRows.length === 0 ? (
+                              <tr>
+                                <td colSpan={11} className="py-8 text-center text-slate-400 italic">
+                                  No godown stock records found for the selected filters
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredGodownRows.map((r: any, idx: number) => (
+                                <tr
+                                  key={idx}
+                                  onClick={() => onDrillStock(r.code, fromDate, toDate)}
+                                  className="hover:bg-indigo-50/50 cursor-pointer transition"
+                                >
+                                  <td className="py-2 px-3 font-semibold text-slate-800">
+                                    <div className="flex items-center gap-1.5">
+                                      <Warehouse className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                      <span>{r.godownName}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-3 text-slate-600 text-xs">
+                                    <div className="flex items-center gap-1">
+                                      <Building2 className="w-3 h-3 text-slate-400 shrink-0" />
+                                      <span>{r.branchName || 'Branch'}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-3 font-semibold text-slate-800">
+                                    {r.name}
+                                    {r.unit && <span className="ml-1 text-[11px] text-slate-400 font-normal">({r.unit})</span>}
+                                  </td>
+                                  <td className="py-2 px-3 font-mono text-xs text-slate-500">{r.code}</td>
+                                  <td className="py-2 px-3 text-slate-600 text-xs">{r.group || '-'}</td>
+                                  <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700">{r.opQty}</td>
+                                  <td className="py-2 px-3 text-right font-mono font-medium text-emerald-600">
+                                    {r.inQty > 0 ? `+${r.inQty}` : '0'}
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-mono font-medium text-rose-600">
+                                    {r.outQty > 0 ? `-${r.outQty}` : '0'}
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{r.clQty}</td>
+                                  <td className="py-2 px-3 text-right font-mono text-slate-600">{fmt(r.pRate)}</td>
+                                  <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{fmt(r.valuation)}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                          {filteredGodownRows.length > 0 && (
+                            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                              <tr>
+                                <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={5}>
+                                  Total ({filteredGodownRows.length} Godown Allocations)
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono text-slate-900">{totOp}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-emerald-700">+{totIn}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-rose-700">-{totOut}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-indigo-900">{totCl}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-slate-600">-</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-indigo-900 font-extrabold">{fmt(totVal)}</td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
                     </div>
                   );
                 })()}

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Config, Ledger, AppUser, ModuleId, UserPermission } from '../types';
-import { saveConfig, getUsers, saveUsers, setActiveUser, getActiveUser, loadJson, saveJson, STORAGE_KEYS, canUserViewAuditTrail } from '../services/storageService';
+import { saveConfig, getUsers, saveUsers, setActiveUser, getActiveUser, loadJson, saveJson, STORAGE_KEYS, canUserViewAuditTrail, getBranches, getTerminalBranchId, setTerminalBranchId } from '../services/storageService';
 import { POSSettings, loadPOSSettings, savePOSSettings, DEFAULT_POS_SETTINGS } from '../types/posSettings';
 import { playSaveSound } from '../utils/audio';
 import { AcceptModal } from './AcceptModal';
@@ -78,6 +78,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [justSavedSection, setJustSavedSection] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'company' | 'features' | 'vouchers' | 'pos' | 'inventory' | 'invoice' | 'security'>('company');
+  const [terminalBranchId, setLocalTerminalBranchId] = useState<string>(() => getTerminalBranchId(config));
 
   // Security Users State
   const [usersList, setUsersList] = useState<AppUser[]>([]);
@@ -1000,6 +1001,147 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* Multi-Branch Management (HO & Outstation Branches) */}
+              {isFeatureAllowed(form, 'EnableMultiBranch', isSuperadminUser) && (
+                <div className="p-4 bg-indigo-50/60 border border-indigo-200 rounded-2xl flex flex-col gap-3 hover:bg-indigo-100/40 transition sm:col-span-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <label className="flex items-start gap-3.5 cursor-pointer flex-1">
+                      <div className="pt-0.5">
+                        <input
+                          id="cfg-enable-multibranch"
+                          type="checkbox"
+                          className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer"
+                          checked={form.EnableMultiBranch === 'true'}
+                          onChange={e => setForm({ ...form, EnableMultiBranch: e.target.checked ? 'true' : 'false' })}
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-slate-900 text-xs">Enable Multi-Branch Management (Head Office &amp; Outstations)</span>
+                          {form.EnableMultiBranch === 'true' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                          Maintain distinct Head Office (e.g. Thimphu) and regional branches (Phuntsholing, Paro, Gelephu). Enables inter-branch stock transfers and branch-filtered financial statements (Profit &amp; Loss, Trial Balance, Balance Sheet).
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
+                  {form.EnableMultiBranch === 'true' && (
+                    <div className="ml-7 pt-2.5 border-t border-indigo-200/70 grid grid-cols-1 md:grid-cols-2 gap-3 bg-white p-3 rounded-xl border border-indigo-200/60 shadow-2xs">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Goods Transfer Mode between Branches:
+                        </label>
+                        <select
+                          value={form.BranchTransferMode || 'flexible'}
+                          onChange={e => setForm({ ...form, BranchTransferMode: e.target.value as any })}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-slate-50 font-bold text-slate-800 outline-none focus:border-indigo-500 text-xs cursor-pointer"
+                        >
+                          <option value="flexible">Flexible (Both Direct Voucher &amp; Transfer Challan)</option>
+                          <option value="direct">Direct Transfer Voucher Only (Instant 1-step)</option>
+                          <option value="challan">Transfer Challan Only (2-step In-Transit &amp; Inward Receipt)</option>
+                        </select>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          Direct updates both branches immediately. Challan maintains in-transit status until destination receives goods.
+                        </p>
+                      </div>
+
+                      <div className="md:col-span-2 pt-1 border-b border-slate-200 pb-2 flex flex-col gap-1">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wide text-indigo-900">
+                          Branch Assignment &amp; Multi-Device Terminal Settings
+                        </span>
+                        <p className="text-[11px] text-slate-600 leading-snug">
+                          How multi-branch operates across different computers: You can set a <strong>Company Default HQ</strong>, while each individual computer or counter terminal can pick its own <strong>Local Terminal Branch</strong>.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          🏢 Company Default Head Office (HQ):
+                        </label>
+                        <select
+                          value={form.ActiveBranchId || ''}
+                          onChange={e => setForm({ ...form, ActiveBranchId: e.target.value })}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-slate-50 font-bold text-slate-800 outline-none focus:border-indigo-500 text-xs cursor-pointer"
+                        >
+                          <option value="">Default (First Head Office)</option>
+                          {getBranches().map(b => (
+                            <option key={b.id} value={b.id}>
+                              {b.name} {b.isHeadOffice ? '(HQ)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          Organization-wide fallback branch used across financial books and consolidated reports.
+                        </p>
+                      </div>
+
+                      <div className="bg-indigo-50/70 p-2.5 rounded-xl border border-indigo-200">
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[11px] font-extrabold text-indigo-950">
+                            💻 This Machine / Terminal Location:
+                          </label>
+                          <span className="text-[10px] font-bold bg-indigo-200 text-indigo-800 px-1.5 py-0.2 rounded">
+                            Device Specific
+                          </span>
+                        </div>
+                        <select
+                          value={terminalBranchId || form.ActiveBranchId || ''}
+                          onChange={e => {
+                            const newBranch = e.target.value;
+                            setLocalTerminalBranchId(newBranch);
+                            setTerminalBranchId(newBranch);
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-indigo-300 bg-white font-black text-indigo-950 outline-none focus:border-indigo-600 text-xs cursor-pointer shadow-2xs"
+                        >
+                          {getBranches().map(b => (
+                            <option key={b.id} value={b.id}>
+                              {b.name} {b.isHeadOffice ? '(HQ)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-indigo-800/80 mt-1 leading-snug">
+                          ✓ <strong>Independent per Computer</strong>: Changing this only affects transactions entered on this specific screen/computer. Outstation branches (Paro, Phuntsholing, etc.) select their own branch on their respective terminals.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Multi-Godown / Warehouse Management */}
+              {isFeatureAllowed(form, 'EnableMultiGodown', isSuperadminUser) && (
+                <label className="p-4 bg-teal-50/60 border border-teal-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-teal-100/40 transition sm:col-span-2">
+                  <div className="pt-0.5">
+                    <input
+                      id="cfg-enable-multigodown"
+                      type="checkbox"
+                      className="w-4 h-4 text-teal-600 rounded border-slate-300 focus:ring-teal-500 cursor-pointer"
+                      checked={form.EnableMultiGodown === 'true'}
+                      onChange={e => setForm({ ...form, EnableMultiGodown: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-slate-900 text-xs">Enable Godowns &amp; Storage Locations</span>
+                      {form.EnableMultiGodown === 'true' && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                      Maintain separate warehouses, storerooms, and stock bins under each branch (e.g. Central Godown vs Retail Shelf).
+                    </p>
+                  </div>
+                </label>
               )}
             </div>
 

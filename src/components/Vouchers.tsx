@@ -65,6 +65,7 @@ import { CreditNoteEntry } from './vouchers/CreditNoteEntry';
 import { DebitNoteEntry } from './vouchers/DebitNoteEntry';
 import { DeliveryNoteEntry } from './vouchers/DeliveryNoteEntry';
 import { PhysicalStockEntry } from './vouchers/PhysicalStockEntry';
+import { StockTransferEntry } from './vouchers/StockTransferEntry';
 import { QuotationEntry } from './vouchers/QuotationEntry';
 import { SalesOrderEntry } from './vouchers/SalesOrderEntry';
 import { PurchaseOrderEntry } from './vouchers/PurchaseOrderEntry';
@@ -750,6 +751,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
       } else if (e.altKey && e.key === 'F8') {
         e.preventDefault();
         handleVTypeChange('DEL_NOTE');
+      } else if (e.altKey && e.key === 'F7') {
+        e.preventDefault();
+        handleVTypeChange('STOCK_TRANSFER');
       } else if (e.altKey && e.key === 'F10') {
         e.preventDefault();
         handleVTypeChange('PHYSICAL_STOCK');
@@ -2032,6 +2036,48 @@ export const Vouchers: React.FC<VouchersProps> = ({
                 </optgroup>
               </select>
               <ChevronDown className="absolute right-2 top-2 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
+            </div>
+          }
+        />
+      ) : activeVType === 'STOCK_TRANSFER' ? (
+        <StockTransferEntry
+          config={config}
+          items={items}
+          onDataRefresh={onDataRefresh}
+          onNavigateBack={handleSubVoucherBack}
+          voucherTypeSelector={
+            <div className="relative shrink-0">
+              <select
+                value={activeVType}
+                onChange={e => handleVTypeChange(e.target.value as VoucherActionType | '')}
+                className="h-8 rounded-lg border-2 border-indigo-500 bg-indigo-50 pl-2.5 pr-7 font-black text-indigo-700 text-xs shadow-xs outline-none hover:bg-indigo-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-600 appearance-none cursor-pointer transition-all"
+              >
+                <option value="" disabled>Select Voucher Form...</option>
+                <optgroup label="Financial & Accounting">
+                  <option value="P">Payment Voucher (F5)</option>
+                  <option value="R">Receipt Voucher (F6)</option>
+                  <option value="J">Journal Voucher (F7)</option>
+                  <option value="C">Contra Voucher (F4)</option>
+                </optgroup>
+                <optgroup label="Invoicing & Returns">
+                  <option value="CN">Credit Note / Sales Return (Ctrl+F8)</option>
+                  <option value="DN">Debit Note / Purchase Return (Ctrl+F9)</option>
+                  <option value="S">Sales Invoice / POS (F8)</option>
+                  <option value="PUR">Purchase Invoice (F9)</option>
+                </optgroup>
+                <optgroup label="Orders & Quotations">
+                  <option value="QUOTATION">Quotation / Estimate (Alt+F4)</option>
+                  <option value="SALES_ORDER">Sales Order (Alt+F5)</option>
+                  <option value="PURCHASE_ORDER">Purchase Order (Alt+F6)</option>
+                </optgroup>
+                <optgroup label="Inventory & Stock">
+                  <option value="STOCK_TRANSFER">Stock Transfer / Challan (Alt+F7)</option>
+                  <option value="DEL_NOTE">Delivery Note / Challan (Alt+F8)</option>
+                  <option value="RECEIPT_NOTE">Receipt Note / GRN (Alt+F9)</option>
+                  <option value="PHYSICAL_STOCK">Physical Stock Audit (Alt+F10)</option>
+                </optgroup>
+              </select>
+              <ChevronDown className="absolute right-2 top-2.5 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
             </div>
           }
         />

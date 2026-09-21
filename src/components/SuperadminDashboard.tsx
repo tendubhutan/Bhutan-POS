@@ -33,12 +33,17 @@ import {
   Layers,
   SlidersHorizontal,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Pencil,
+  Settings2,
+  Calendar,
+  Tag
 } from 'lucide-react';
 import { 
   SupabaseCompany, 
   fetchUserCompanies, 
   updateCompanyStatus, 
+  updateCompany,
   createCompany, 
   setActiveCompanyId,
   getCompanyDedicatedUrl,
@@ -58,6 +63,129 @@ import {
   getCompanyConfig, 
   saveCompanyFeatures 
 } from '../services/tenantFeatureService';
+
+export interface SubscriptionPlanDetails {
+  planName: string;
+  price: number;
+  currency: string;
+  billingCycle: 'monthly' | 'yearly' | 'quarterly' | 'one-time';
+  expiresAt?: string;
+  notes?: string;
+}
+
+export interface GlobalPricingSettings {
+  defaultPrice: number;
+  defaultCurrency: string;
+  defaultTierName: string;
+}
+
+const GLOBAL_PRICING_STORAGE_KEY = 'superadmin_global_pricing_config';
+
+export function getGlobalPricingSettings(): GlobalPricingSettings {
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const saved = localStorage.getItem(GLOBAL_PRICING_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          defaultPrice: typeof parsed.defaultPrice === 'number' ? parsed.defaultPrice : 25,
+          defaultCurrency: parsed.defaultCurrency || 'USD',
+          defaultTierName: parsed.defaultTierName || 'Commercial'
+        };
+      }
+    } catch {}
+  }
+  return {
+    defaultPrice: 25,
+    defaultCurrency: 'USD',
+    defaultTierName: 'Commercial'
+  };
+}
+
+export function saveGlobalPricingSettings(settings: GlobalPricingSettings): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(GLOBAL_PRICING_STORAGE_KEY, JSON.stringify(settings));
+  }
+}
+
+export function parseSubscriptionPlan(
+  rawPlan?: string,
+  globalPricing?: GlobalPricingSettings
+): SubscriptionPlanDetails {
+  const gPrice = globalPricing?.defaultPrice ?? 25;
+  const gCurrency = globalPricing?.defaultCurrency ?? 'USD';
+  const gTier = globalPricing?.defaultTierName ?? 'Commercial';
+
+  if (!rawPlan || !rawPlan.trim()) {
+    return {
+      planName: gTier,
+      price: gPrice,
+      currency: gCurrency,
+      billingCycle: 'monthly',
+      notes: 'Standard plan tier'
+    };
+  }
+
+  // 1. Try JSON parsing
+  if (rawPlan.startsWith('{') && rawPlan.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(rawPlan);
+      return {
+        planName: parsed.planName || parsed.name || gTier,
+        price: typeof parsed.price === 'number' ? parsed.price : (parseFloat(parsed.price) || 0),
+        currency: parsed.currency || gCurrency,
+        billingCycle: parsed.billingCycle || parsed.interval || 'monthly',
+        expiresAt: parsed.expiresAt,
+        notes: parsed.notes
+      };
+    } catch {}
+  }
+
+  // 2. Parse string format like "$25/mo Commercial" or "Nu. 1800/mo"
+  let currency = gCurrency;
+  if (/nu\.?|btn/i.test(rawPlan)) currency = 'Nu.';
+  else if (/\$|usd/i.test(rawPlan)) currency = 'USD';
+  else if (/₹|inr/i.test(rawPlan)) currency = '₹';
+
+  let billingCycle: 'monthly' | 'yearly' = 'monthly';
+  if (/yr|year|annual/i.test(rawPlan)) billingCycle = 'yearly';
+
+  const numMatch = rawPlan.match(/[\d,]+(?:\.\d+)?/);
+  const price = numMatch ? parseFloat(numMatch[0].replace(/,/g, '')) : gPrice;
+
+  let cleanName = rawPlan
+    .replace(/[\$\d,\.\/]+(mo|month|yr|year|qtr)?/gi, '')
+    .replace(/Nu\.?|USD|BTN|INR|₹/gi, '')
+    .replace(/per\s+(month|year)/gi, '')
+    .replace(/[\(\)\-\:\/]/g, '')
+    .trim();
+
+  if (!cleanName) cleanName = gTier;
+
+  return {
+    planName: cleanName,
+    price,
+    currency,
+    billingCycle
+  };
+}
+
+export function formatPlanBadge(plan: SubscriptionPlanDetails): { label: string; currencySymbol: string } {
+  const symbol = plan.currency === 'USD' ? '$' : plan.currency === 'INR' ? '₹' : plan.currency === 'Nu.' ? 'Nu. ' : `${plan.currency} `;
+  const cycleSuffix = plan.billingCycle === 'monthly' ? '/mo' : plan.billingCycle === 'yearly' ? '/yr' : plan.billingCycle === 'quarterly' ? '/qtr' : '';
+
+  if (plan.price === 0) {
+    return {
+      label: `Free ${plan.planName}`,
+      currencySymbol: symbol
+    };
+  }
+
+  return {
+    label: `${symbol}${plan.price.toLocaleString()}${cycleSuffix} ${plan.planName}`,
+    currencySymbol: symbol
+  };
+}
 
 interface SuperadminDashboardProps {
   currentUser?: AppUser;
@@ -107,6 +235,25 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   const [editingFeatures, setEditingFeatures] = useState<Record<string, boolean>>({});
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [isSavingFeatures, setIsSavingFeatures] = useState<boolean>(false);
+
+  // Global Benchmark Pricing state
+  const [globalPricing, setGlobalPricing] = useState<GlobalPricingSettings>(getGlobalPricingSettings);
+  const [showGlobalPricingModal, setShowGlobalPricingModal] = useState<boolean>(false);
+  const [editGlobalPrice, setEditGlobalPrice] = useState<number | string>(globalPricing.defaultPrice);
+  const [editGlobalCurrency, setEditGlobalCurrency] = useState<string>(globalPricing.defaultCurrency);
+  const [editGlobalTierName, setEditGlobalTierName] = useState<string>(globalPricing.defaultTierName);
+
+  // Tenant Plan Edit Modal state
+  const [showPlanModal, setShowPlanModal] = useState<boolean>(false);
+  const [editingPlanCompany, setEditingPlanCompany] = useState<SupabaseCompany | null>(null);
+  const [planFormTier, setPlanFormTier] = useState<string>('commercial');
+  const [planFormName, setPlanFormName] = useState<string>('Commercial');
+  const [planFormPrice, setPlanFormPrice] = useState<number | string>(25);
+  const [planFormCurrency, setPlanFormCurrency] = useState<string>('USD');
+  const [planFormCycle, setPlanFormCycle] = useState<'monthly' | 'yearly' | 'quarterly' | 'one-time'>('monthly');
+  const [planFormExpiresAt, setPlanFormExpiresAt] = useState<string>('');
+  const [planFormNotes, setPlanFormNotes] = useState<string>('');
+  const [isSavingPlan, setIsSavingPlan] = useState<boolean>(false);
 
   // Verify superadmin access
   const session = getCurrentTenantSession();
@@ -357,12 +504,179 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     }
   };
 
+  // Open Plan Modal for Tenant
+  const handleOpenPlanModal = (company: SupabaseCompany) => {
+    const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing);
+    setEditingPlanCompany(company);
+    setPlanFormName(plan.planName);
+    setPlanFormPrice(plan.price);
+    setPlanFormCurrency(plan.currency);
+    setPlanFormCycle(plan.billingCycle);
+    setPlanFormExpiresAt(company.subscription_expires_at || plan.expiresAt || '');
+    setPlanFormNotes(plan.notes || '');
+
+    if (plan.price === 0) {
+      setPlanFormTier('free');
+    } else if (plan.price === 15 || plan.price === 1000) {
+      setPlanFormTier('starter');
+    } else if (plan.price === 25 || plan.price === 1800) {
+      setPlanFormTier('commercial');
+    } else if (plan.price === 50 || plan.price === 3500) {
+      setPlanFormTier('enterprise');
+    } else {
+      setPlanFormTier('custom');
+    }
+
+    setShowPlanModal(true);
+  };
+
+  // Quick Preset Selector for Plan Modal
+  const applyPlanPreset = (presetKey: string) => {
+    setPlanFormTier(presetKey);
+    const isNu = planFormCurrency === 'Nu.' || planFormCurrency === 'BTN';
+    if (presetKey === 'free') {
+      setPlanFormName('Free Trial');
+      setPlanFormPrice(0);
+      setPlanFormCycle('monthly');
+    } else if (presetKey === 'starter') {
+      setPlanFormName('Starter Tier');
+      setPlanFormPrice(isNu ? 1000 : 15);
+      setPlanFormCycle('monthly');
+    } else if (presetKey === 'commercial') {
+      setPlanFormName('Commercial Plan');
+      setPlanFormPrice(isNu ? 1800 : 25);
+      setPlanFormCycle('monthly');
+    } else if (presetKey === 'enterprise') {
+      setPlanFormName('Enterprise Tier');
+      setPlanFormPrice(isNu ? 3500 : 50);
+      setPlanFormCycle('monthly');
+    }
+  };
+
+  // Save Tenant Subscription Plan
+  const handleSaveCompanyPlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPlanCompany) return;
+
+    setIsSavingPlan(true);
+    try {
+      const numPrice = typeof planFormPrice === 'string' ? (parseFloat(planFormPrice) || 0) : planFormPrice;
+      const planDetails: SubscriptionPlanDetails = {
+        planName: planFormName.trim() || 'Commercial Plan',
+        price: numPrice,
+        currency: planFormCurrency,
+        billingCycle: planFormCycle,
+        expiresAt: planFormExpiresAt || undefined,
+        notes: planFormNotes.trim() || undefined
+      };
+
+      const serializedPlan = JSON.stringify(planDetails);
+      const updates: Partial<SupabaseCompany> = {
+        subscription_plan: serializedPlan,
+        subscription_expires_at: planFormExpiresAt || undefined
+      };
+
+      const res = await updateCompany(editingPlanCompany.id, updates);
+      if (res.error) {
+        setFeedbackMsg({ type: 'error', text: res.error });
+      } else {
+        setCompanies(prev =>
+          prev.map(c =>
+            c.id === editingPlanCompany.id
+              ? { ...c, subscription_plan: serializedPlan, subscription_expires_at: planFormExpiresAt || undefined }
+              : c
+          )
+        );
+        const formatted = formatPlanBadge(planDetails);
+        setFeedbackMsg({
+          type: 'success',
+          text: `Updated "${editingPlanCompany.company_name}" subscription plan to ${formatted.label}.`
+        });
+        setShowPlanModal(false);
+      }
+    } catch (err: any) {
+      setFeedbackMsg({ type: 'error', text: err?.message || 'Failed to update plan' });
+    } finally {
+      setIsSavingPlan(false);
+    }
+  };
+
+  // Save Global Benchmark Pricing Settings
+  const handleSaveGlobalPricing = (e: React.FormEvent) => {
+    e.preventDefault();
+    const numPrice = typeof editGlobalPrice === 'string' ? (parseFloat(editGlobalPrice) || 0) : editGlobalPrice;
+    const newSettings: GlobalPricingSettings = {
+      defaultPrice: numPrice,
+      defaultCurrency: editGlobalCurrency,
+      defaultTierName: editGlobalTierName.trim() || 'Commercial'
+    };
+    saveGlobalPricingSettings(newSettings);
+    setGlobalPricing(newSettings);
+    setShowGlobalPricingModal(false);
+    setFeedbackMsg({
+      type: 'success',
+      text: `Updated global default platform pricing benchmark to ${newSettings.defaultCurrency === 'USD' ? '$' : newSettings.defaultCurrency === 'Nu.' ? 'Nu. ' : `${newSettings.defaultCurrency} `}${newSettings.defaultPrice}/mo (${newSettings.defaultTierName}).`
+    });
+  };
+
   // Calculated Metrics
   const totalTenants = companies.length;
   const activeTenants = companies.filter(c => c.is_active !== false).length;
   const inactiveTenants = totalTenants - activeTenants;
-  const estimatedMRR = activeTenants * PLAN_PRICE_PER_TENANT_USD;
   const quotaPercent = Math.min(100, Math.round((totalTenants / RECOMMENDED_TENANT_QUOTA) * 100));
+
+  // Dynamic MRR Calculation across all active companies
+  const mrrData = useMemo(() => {
+    const activeCompanies = companies.filter(c => c.is_active !== false);
+    const totalsByCurrency: Record<string, number> = {};
+
+    activeCompanies.forEach(c => {
+      const plan = parseSubscriptionPlan(c.subscription_plan, globalPricing);
+      const monthlyPrice = plan.billingCycle === 'yearly'
+        ? Math.round(plan.price / 12)
+        : plan.billingCycle === 'quarterly'
+        ? Math.round(plan.price / 3)
+        : plan.price;
+
+      const curr = plan.currency || globalPricing.defaultCurrency;
+      totalsByCurrency[curr] = (totalsByCurrency[curr] || 0) + monthlyPrice;
+    });
+
+    const entries = Object.entries(totalsByCurrency);
+    if (entries.length === 0) {
+      const currSymbol = globalPricing.defaultCurrency === 'USD' ? '$' : globalPricing.defaultCurrency === 'Nu.' ? 'Nu. ' : `${globalPricing.defaultCurrency} `;
+      return {
+        displayValue: `${currSymbol}0`,
+        suffix: `${globalPricing.defaultCurrency} / Month`,
+        subtitle: `${currSymbol}${globalPricing.defaultPrice}/mo default benchmark rate`,
+        totalCount: 0
+      };
+    }
+
+    if (entries.length === 1) {
+      const [curr, total] = entries[0];
+      const symbol = curr === 'USD' ? '$' : curr === 'Nu.' ? 'Nu. ' : curr === 'INR' ? '₹' : `${curr} `;
+      return {
+        displayValue: `${symbol}${total.toLocaleString()}`,
+        suffix: `${curr === 'Nu.' ? 'BTN' : curr} / Month`,
+        subtitle: `Calculated from ${activeTenants} active client ${activeTenants === 1 ? 'tier' : 'tiers'}`,
+        totalCount: activeTenants
+      };
+    }
+
+    // Multi-currency display
+    const formattedParts = entries.map(([curr, total]) => {
+      const symbol = curr === 'USD' ? '$' : curr === 'Nu.' ? 'Nu. ' : curr === 'INR' ? '₹' : `${curr} `;
+      return `${symbol}${total.toLocaleString()}`;
+    });
+
+    return {
+      displayValue: formattedParts.join(' + '),
+      suffix: 'Combined / Month',
+      subtitle: `Aggregated across ${activeTenants} active clients`,
+      totalCount: activeTenants
+    };
+  }, [companies, globalPricing, activeTenants]);
 
   // Filtered List
   const filteredCompanies = useMemo(() => {
@@ -658,17 +972,44 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
         </div>
 
         {/* Card 3: Estimated MRR */}
-        <div className="p-4 sm:p-5 bg-slate-900/90 border border-slate-800 rounded-2xl flex flex-col justify-between shadow-md">
+        <div className="p-4 sm:p-5 bg-slate-900/90 border border-slate-800 rounded-2xl flex flex-col justify-between shadow-md relative group">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Estimated MRR</span>
-            <DollarSign className="h-4 w-4 text-indigo-400" />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditGlobalPrice(globalPricing.defaultPrice);
+                  setEditGlobalCurrency(globalPricing.defaultCurrency);
+                  setEditGlobalTierName(globalPricing.defaultTierName);
+                  setShowGlobalPricingModal(true);
+                }}
+                className="p-1 hover:bg-slate-800 text-slate-400 hover:text-indigo-300 rounded-lg transition cursor-pointer"
+                title="Configure platform benchmark pricing & default currency"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+              </button>
+              <DollarSign className="h-4 w-4 text-indigo-400" />
+            </div>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-indigo-400">${estimatedMRR}</span>
-            <span className="text-[11px] text-slate-400 font-medium">USD / Month</span>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-2xl sm:text-3xl font-black text-indigo-400">{mrrData.displayValue}</span>
+            <span className="text-[11px] text-slate-400 font-medium">{mrrData.suffix}</span>
           </div>
-          <div className="mt-2 text-[10px] text-indigo-300/80 font-mono">
-            ${PLAN_PRICE_PER_TENANT_USD}/mo per active client tier
+          <div className="mt-2 text-[10px] text-indigo-300/80 font-mono flex items-center justify-between">
+            <span className="truncate mr-1">{mrrData.subtitle}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setEditGlobalPrice(globalPricing.defaultPrice);
+                setEditGlobalCurrency(globalPricing.defaultCurrency);
+                setEditGlobalTierName(globalPricing.defaultTierName);
+                setShowGlobalPricingModal(true);
+              }}
+              className="text-indigo-400 hover:text-indigo-200 underline cursor-pointer text-[10px] shrink-0"
+            >
+              Configure
+            </button>
           </div>
         </div>
 
@@ -763,7 +1104,12 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                 <th className="py-3 px-3">Commercial Client</th>
                 <th className="py-3 px-3">License & Tax ID</th>
                 <th className="py-3 px-3">Contact Details</th>
-                <th className="py-3 px-3">Commercial Plan</th>
+                <th className="py-3 px-3">
+                  <div className="flex items-center gap-1.5">
+                    <span>Commercial Plan</span>
+                    <span className="text-[9px] text-indigo-400 font-normal font-sans lowercase tracking-normal">(click to edit)</span>
+                  </div>
+                </th>
                 <th className="py-3 px-3 text-center">Account Status</th>
                 <th className="py-3 px-3 text-right">Actions</th>
               </tr>
@@ -871,10 +1217,22 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
                       {/* Column 4: Plan */}
                       <td className="py-3.5 px-3">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-950/60 border border-indigo-800/60 text-indigo-300 text-[11px] font-medium font-mono">
-                          <CreditCard className="h-3 w-3 text-indigo-400" />
-                          <span>${PLAN_PRICE_PER_TENANT_USD}/mo Commercial</span>
-                        </span>
+                        {(() => {
+                          const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing);
+                          const badge = formatPlanBadge(plan);
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPlanModal(company)}
+                              className="group inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-800/60 hover:border-indigo-500 text-indigo-300 hover:text-white text-[11px] font-medium font-mono transition-all cursor-pointer shadow-xs"
+                              title="Click to edit Commercial Plan, pricing & billing details"
+                            >
+                              <CreditCard className="h-3 w-3 text-indigo-400 group-hover:text-indigo-200 shrink-0" />
+                              <span className="font-semibold">{badge.label}</span>
+                              <Pencil className="h-2.5 w-2.5 text-indigo-400/60 group-hover:text-indigo-200 ml-0.5" />
+                            </button>
+                          );
+                        })()}
                       </td>
 
                       {/* Column 5: Live Subscription Switch (Lock/Unlock) */}
@@ -1230,6 +1588,314 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Commercial Subscription Plan & Pricing Modal */}
+      {showPlanModal && editingPlanCompany && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg shadow-2xl p-6 flex flex-col max-h-[90vh] text-slate-100 animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-indigo-950 border border-indigo-700 flex items-center justify-center text-indigo-400">
+                  <CreditCard className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Commercial Subscription Plan</h3>
+                  <p className="text-xs text-slate-400">
+                    Set tier, pricing & billing interval for <span className="text-indigo-300 font-bold">{editingPlanCompany.company_name}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPlanModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSaveCompanyPlan} className="flex-1 overflow-y-auto pt-4 pb-2 space-y-4 text-xs">
+              {/* Quick Plan Preset Selector */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                  Select Plan Preset
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'free', label: 'Free Trial', priceLabel: '0 / Free' },
+                    { id: 'starter', label: 'Starter', priceLabel: planFormCurrency === 'Nu.' ? 'Nu. 1,000' : '$15/mo' },
+                    { id: 'commercial', label: 'Commercial', priceLabel: planFormCurrency === 'Nu.' ? 'Nu. 1,800' : '$25/mo' },
+                    { id: 'enterprise', label: 'Enterprise', priceLabel: planFormCurrency === 'Nu.' ? 'Nu. 3,500' : '$50/mo' },
+                  ].map(preset => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => applyPlanPreset(preset.id)}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                        planFormTier === preset.id
+                          ? 'bg-indigo-600/30 border-indigo-500 text-white shadow-xs'
+                          : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                      }`}
+                    >
+                      <div className="font-bold text-xs">{preset.label}</div>
+                      <div className="text-[10px] text-indigo-400 font-mono mt-0.5">{preset.priceLabel}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Plan Name & Price */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Plan Tier Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={planFormName}
+                    onChange={e => {
+                      setPlanFormName(e.target.value);
+                      setPlanFormTier('custom');
+                    }}
+                    placeholder="e.g. Commercial Plan"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Billing Price / Rate *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={planFormPrice}
+                    onChange={e => {
+                      setPlanFormPrice(e.target.value);
+                      setPlanFormTier('custom');
+                    }}
+                    placeholder="25"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Currency & Billing Frequency */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Currency</label>
+                  <select
+                    value={planFormCurrency}
+                    onChange={e => setPlanFormCurrency(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="USD">USD ($ - US Dollar)</option>
+                    <option value="Nu.">Nu. (BTN - Bhutanese Ngultrum)</option>
+                    <option value="INR">INR (₹ - Indian Rupee)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Billing Cycle</label>
+                  <select
+                    value={planFormCycle}
+                    onChange={e => setPlanFormCycle(e.target.value as any)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="monthly">Monthly (/mo)</option>
+                    <option value="yearly">Yearly (/yr)</option>
+                    <option value="quarterly">Quarterly (/qtr)</option>
+                    <option value="one-time">One-Time / Lifetime</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Expiry Date & Notes */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Subscription / Renewal Expiry (Optional)</label>
+                  <input
+                    type="date"
+                    value={planFormExpiresAt}
+                    onChange={e => setPlanFormExpiresAt(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Admin Notes (Optional)</label>
+                  <input
+                    type="text"
+                    value={planFormNotes}
+                    onChange={e => setPlanFormNotes(e.target.value)}
+                    placeholder="e.g. Contract signed, direct invoice"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {/* Live Preview Box */}
+              <div className="p-3 bg-indigo-950/40 border border-indigo-800/60 rounded-2xl flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">Live Badge Preview</span>
+                  <div className="mt-1">
+                    {(() => {
+                      const numP = typeof planFormPrice === 'string' ? (parseFloat(planFormPrice) || 0) : planFormPrice;
+                      const badge = formatPlanBadge({
+                        planName: planFormName || 'Commercial Plan',
+                        price: numP,
+                        currency: planFormCurrency,
+                        billingCycle: planFormCycle
+                      });
+                      return (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/80 border border-indigo-700 text-indigo-300 font-mono text-xs font-bold">
+                          <CreditCard className="h-3.5 w-3.5 text-indigo-400" />
+                          <span>{badge.label}</span>
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">Monthly MRR Value</span>
+                  <span className="text-sm font-black text-emerald-400 font-mono">
+                    {(() => {
+                      const numP = typeof planFormPrice === 'string' ? (parseFloat(planFormPrice) || 0) : planFormPrice;
+                      const sym = planFormCurrency === 'USD' ? '$' : planFormCurrency === 'Nu.' ? 'Nu. ' : '₹';
+                      const monthly = planFormCycle === 'yearly' ? Math.round(numP / 12) : planFormCycle === 'quarterly' ? Math.round(numP / 3) : numP;
+                      return `${sym}${monthly.toLocaleString()}/mo`;
+                    })()}
+                  </span>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowPlanModal(false)}
+                  className="py-2 px-4 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition font-bold text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingPlan}
+                  className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs transition shadow-md shadow-blue-600/30 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSavingPlan ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>Saving Plan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      <span>Save Subscription Plan</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Global Benchmark Pricing Settings Modal */}
+      {showGlobalPricingModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl p-6 flex flex-col text-slate-100 animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="h-9 w-9 rounded-xl bg-indigo-950 border border-indigo-700 flex items-center justify-center text-indigo-400">
+                  <Settings2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">Global Pricing Benchmark</h3>
+                  <p className="text-xs text-slate-400">
+                    Default rate for unassigned companies & baseline MRR
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowGlobalPricingModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSaveGlobalPricing} className="pt-4 space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-bold mb-1">Default Plan Tier Name</label>
+                <input
+                  type="text"
+                  required
+                  value={editGlobalTierName}
+                  onChange={e => setEditGlobalTierName(e.target.value)}
+                  placeholder="Commercial"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Default Monthly Rate</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={editGlobalPrice}
+                    onChange={e => setEditGlobalPrice(e.target.value)}
+                    placeholder="25"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Default Currency</label>
+                  <select
+                    value={editGlobalCurrency}
+                    onChange={e => setEditGlobalCurrency(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="USD">USD ($)</option>
+                    <option value="Nu.">Nu. (BTN)</option>
+                    <option value="INR">INR (₹)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-800/80 border border-slate-700 rounded-xl text-[11px] text-slate-400 leading-relaxed">
+                <span className="font-bold text-slate-200">Note:</span> Individual client companies with custom plans configured will keep their specific pricing. This setting controls the default baseline rate and fallback for MRR estimation.
+              </div>
+
+              {/* Modal Footer */}
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowGlobalPricingModal(false)}
+                  className="py-2 px-4 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition font-bold text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="py-2.5 px-5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs transition shadow-md shadow-blue-600/30 flex items-center gap-2 cursor-pointer"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  <span>Save Benchmark Settings</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

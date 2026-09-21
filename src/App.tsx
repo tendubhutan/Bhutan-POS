@@ -72,6 +72,7 @@ export default function App() {
 
   // Pre-POS Voucher Type Selection State
   const [selectedSaleVoucherType, setSelectedSaleVoucherType] = useState<VoucherType | null>(null);
+  const [mastersInitialTab, setMastersInitialTab] = useState<any>('items');
 
   // Sequential Navigation Functions
   const navigateTo = (view: string, reportTargetOverride?: any, keepTarget?: boolean) => {
@@ -465,11 +466,19 @@ export default function App() {
       navigateBackDirect();
     };
 
+    const handleOpenMasters = (e: any) => {
+      if (e.detail?.tab) {
+        setMastersInitialTab(e.detail.tab);
+      }
+      navigateTo('masters');
+    };
+
     window.addEventListener('app:navigate', handleAppNavigate);
     window.addEventListener('app:navigate-back-direct', handleDirectBack);
     window.addEventListener('app:openTrash', handleOpenTrash);
     window.addEventListener('app:openBulkDelete', handleOpenBulkDelete);
     window.addEventListener('app:openVoucher', handleOpenVoucher);
+    window.addEventListener('app:open-masters', handleOpenMasters);
 
     return () => {
       unsubStatus();
@@ -479,6 +488,7 @@ export default function App() {
       window.removeEventListener('app:openTrash', handleOpenTrash);
       window.removeEventListener('app:openBulkDelete', handleOpenBulkDelete);
       window.removeEventListener('app:openVoucher', handleOpenVoucher);
+      window.removeEventListener('app:open-masters', handleOpenMasters);
     };
   }, []);
 
@@ -793,6 +803,7 @@ export default function App() {
               onDataRefresh={refreshData}
               openItemModalCode={openItemModalCode}
               openLedgerModalGroup={openLedgerModalGroup}
+              initialTab={mastersInitialTab}
               isActive={currentView === 'masters' && !isAnyModalOpen}
             />
           )}

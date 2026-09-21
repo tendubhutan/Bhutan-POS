@@ -100,7 +100,85 @@ export interface Config {
   EnableVouchers?: string; // "true" | "false"
   EnableSchemes?: string; // "true" | "false"
   EnableBarcodePrinting?: string; // "true" | "false"
+  EnableMultiBranch?: string; // "true" | "false"
+  EnableMultiGodown?: string; // "true" | "false"
+  BranchTransferMode?: 'flexible' | 'direct' | 'challan';
+  StockTransferPrefix?: string;
+  TransferChallanPrefix?: string;
+  ActiveBranchId?: string;
+  ActiveBranchName?: string;
   superadminFeatures?: Record<string, boolean>;
+}
+
+export interface Branch {
+  id: string;
+  code: string;
+  name: string;
+  isHeadOffice?: boolean;
+  address?: string;
+  dzongkhag?: string;
+  phone?: string;
+  email?: string;
+  taxId?: string;
+  tradeLicense?: string;
+  isActive: boolean;
+  createdDate?: string;
+  notes?: string;
+}
+
+export interface Godown {
+  id: string;
+  code: string;
+  name: string;
+  branchId: string;
+  branchName?: string;
+  address?: string;
+  isDefault?: boolean;
+  isActive: boolean;
+  notes?: string;
+}
+
+export interface StockTransferItem {
+  itemCode: string;
+  itemName: string;
+  unit: string;
+  qty: number;
+  rate?: number;
+  amount?: number;
+  batchNo?: string;
+  expiryDate?: string;
+  serials?: string[];
+  size?: string;
+  color?: string;
+  partNumber?: string;
+}
+
+export interface StockTransferVoucher {
+  id: string;
+  transferNo: string;
+  date: string;
+  transferMode: 'direct' | 'challan'; // 'direct' = 1-step instant; 'challan' = 2-step in-transit
+  status: 'completed' | 'in_transit' | 'received' | 'cancelled';
+  fromBranchId: string;
+  fromBranchName: string;
+  toBranchId: string;
+  toBranchName: string;
+  fromGodownId?: string;
+  fromGodownName?: string;
+  toGodownId?: string;
+  toGodownName?: string;
+  vehicleNo?: string;
+  driverName?: string;
+  driverPhone?: string;
+  dispatchTime?: string;
+  receivedDate?: string;
+  receivedBy?: string;
+  receivedNotes?: string;
+  narration?: string;
+  items: StockTransferItem[];
+  totalQty: number;
+  totalAmount?: number;
+  createdBy?: string;
 }
 
 export type AuditActionType = 'ENTERED' | 'ALTERED' | 'CANCELLED' | 'DELETED';
@@ -189,6 +267,14 @@ export interface ItemBatch {
   manufacturer?: string;
 }
 
+export interface BranchStockAllocation {
+  branchId: string;
+  branchName: string;
+  godownId?: string;
+  godownName?: string;
+  openingStock: number;
+}
+
 export interface Item {
   'Item Code': string;
   Barcode: string;
@@ -222,6 +308,7 @@ export interface Item {
   maintainBatch?: 'Y' | 'N';
   batches?: ItemBatch[];
   variants?: ItemVariant[];
+  branchAllocations?: BranchStockAllocation[];
   multiUnits?: { unit: string; conversionFactor: number; purchaseRate: number; saleRate: number; wholesaleRate?: number; mrp: number; }[];
   oldCode?: string;
 }
@@ -410,6 +497,10 @@ export interface SalesInvoice {
   config: Config;
   bankTxnNo?: string;
   bank2TxnNo?: string;
+  branchId?: string;
+  branchName?: string;
+  godownId?: string;
+  godownName?: string;
   items: Array<{
     'Invoice No'?: string;
     'Item Code': string;
@@ -471,6 +562,10 @@ export interface PurchaseInvoice {
   voucherTypeName?: string;
   bankTxnNo?: string;
   bank2TxnNo?: string;
+  branchId?: string;
+  branchName?: string;
+  godownId?: string;
+  godownName?: string;
   items: Array<{
     'Bill No'?: string;
     'Item Code': string;
@@ -513,6 +608,10 @@ export interface StockLedgerEntry {
   'Qty Out': number;
   Balance: number;
   'Ref No': string;
+  branchId?: string;
+  branchName?: string;
+  godownId?: string;
+  godownName?: string;
 }
 
 export interface LedgerLogEntry {
@@ -525,6 +624,8 @@ export interface LedgerLogEntry {
   Narration: string;
   transactionId?: string;
   'Transaction ID'?: string;
+  branchId?: string;
+  branchName?: string;
 }
 
 export type VoucherGroupType =
@@ -582,9 +683,15 @@ export interface VoucherLine {
 export interface Voucher {
   voucherNo: string;
   date: string;
-  type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'PHYSICAL_STOCK' | 'QUOTATION' | 'SALES_ORDER' | 'PURCHASE_ORDER' | 'RECEIPT_NOTE';
+  type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'PHYSICAL_STOCK' | 'QUOTATION' | 'SALES_ORDER' | 'PURCHASE_ORDER' | 'RECEIPT_NOTE' | 'STOCK_TRANSFER';
   voucherTypeId?: string;
   voucherTypeName?: string;
+  branchId?: string;
+  branchName?: string;
+  fromBranchId?: string;
+  fromBranchName?: string;
+  toBranchId?: string;
+  toBranchName?: string;
   debitLedger?: string;
   creditLedger?: string;
   amount: number;
@@ -732,6 +839,10 @@ export interface BarcodeQueueItem {
   qty: number;
   size?: string;
   color?: string;
+  batchNo?: string;
+  expDate?: string;
+  mfgDate?: string;
+  batchId?: string;
 }
 
 export interface PayHead {
