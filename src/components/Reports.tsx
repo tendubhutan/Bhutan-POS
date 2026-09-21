@@ -423,9 +423,187 @@ export const Reports: React.FC<ReportsProps> = ({
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [showReportCatalog, setShowReportCatalog] = useState(false);
 
+  // Searchable Multi-Column Report Selector Popover State
+  const [isReportMenuOpen, setIsReportMenuOpen] = useState(false);
+  const [reportMenuSearch, setReportMenuSearch] = useState('');
+  const reportMenuRef = useRef<HTMLDivElement>(null);
+  const reportSearchInputRef = useRef<HTMLInputElement>(null);
+
+  // Close report popover on click outside or Esc key
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (reportMenuRef.current && !reportMenuRef.current.contains(e.target as Node)) {
+        setIsReportMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isReportMenuOpen) {
+        setIsReportMenuOpen(false);
+      }
+    };
+    if (isReportMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isReportMenuOpen]);
+
+  // Auto-focus search input when popover opens
+  useEffect(() => {
+    if (isReportMenuOpen) {
+      setTimeout(() => {
+        reportSearchInputRef.current?.focus();
+      }, 50);
+    } else {
+      setReportMenuSearch('');
+    }
+  }, [isReportMenuOpen]);
+
   const godowns = useMemo(() => getGodowns().filter(g => g.isActive), []);
 
   const showGst = String(config.EnableGST) !== 'false';
+
+  // All structured report categories
+  const allReportCategories = useMemo(() => {
+    return [
+      {
+        id: 'sales_registers',
+        name: 'Sales & Registers',
+        icon: Receipt,
+        items: [
+          { id: 'daily-bill', name: 'Daily Sales (Bill-wise)', group: 'Sales & Billing', desc: 'Columnar cash/bank/credit breakdown', keywords: ['bill', 'sales', 'cash', 'credit', 'bank', 'daily', 'pos'] },
+          { id: 'daily-item', name: 'Daily Sales (Item-wise)', group: 'Sales & Billing', desc: 'Item-by-item sales quantity and revenue', keywords: ['item', 'products', 'sold', 'itemwise'] },
+          { id: 'reg-vouchers', name: 'Accounting Voucher Register', group: 'Registers', desc: 'All journal, payment, receipt vouchers', keywords: ['voucher', 'journal', 'payment', 'receipt', 'contra'] },
+          { id: 'reg-sales', name: 'Sales Register', group: 'Registers', desc: 'Detailed sales invoice logbook', keywords: ['sales register', 'invoices', 'billed'] },
+          { id: 'reg-purchases', name: 'Purchase Register', group: 'Registers', desc: 'Supplier purchase invoice register', keywords: ['purchase register', 'vendor', 'bills'] },
+          { id: 'reg-quotations', name: 'Quotation Register', group: 'Registers', desc: 'Proforma and sales quotations', keywords: ['quote', 'estimate', 'quotation'] },
+          { id: 'reg-delivery_notes', name: 'Delivery Note Register', group: 'Registers', desc: 'Goods dispatch and delivery challans', keywords: ['delivery', 'challan', 'dispatch', 'dc'] }
+        ]
+      },
+      {
+        id: 'inventory_stock',
+        name: 'Inventory & Stock',
+        icon: Package,
+        items: [
+          { id: 'inv-summary', name: 'Stock Summary & Valuation', group: 'Inventory', desc: 'Opening, closing, rate & asset value', keywords: ['stock', 'inventory', 'valuation', 'assets', 'balance'] },
+          { id: 'inv-mov', name: 'Stock Movement (In / Out)', group: 'Inventory', desc: 'Purchase inflows and sales outflows', keywords: ['movement', 'inflow', 'outflow', 'in out', 'transfers'] },
+          { id: 'inv-godown_summary', name: 'Godown & Store Wise Stock', group: 'Inventory', desc: 'Multi-location warehouse balances', keywords: ['godown', 'store', 'warehouse', 'location'] },
+          { id: 'inv-variant_summary', name: 'Size & Color Wise', group: 'Inventory', desc: 'Matrix breakdown of apparel & variants', keywords: ['size', 'color', 'matrix', 'apparel', 'variants'] },
+          { id: 'inv-part_summary', name: 'Part Number Wise', group: 'Inventory', desc: 'Stock filtered by OEM / part numbers', keywords: ['part number', 'parts', 'oem', 'automotive'] },
+          { id: 'inv-serials', name: 'Serialwise Stock', group: 'Inventory', desc: 'Tracked by individual serial / IMEI', keywords: ['serial', 'imei', 'barcode', 'device'] },
+          { id: 'inv-batch_summary', name: 'Batch & Expiry Wise', group: 'Inventory', desc: 'Pharmaceutical batch lots & expiry dates', keywords: ['batch', 'expiry', 'exp', 'mfg', 'lot', 'pharma'] },
+          { id: 'inv-prof', name: 'Item Profitability', group: 'Inventory', desc: 'Gross margin & markup percentage per item', keywords: ['profit', 'margin', 'markup', 'profitability'] },
+          { id: 'inv-top', name: 'Top 15 Sellers', group: 'Inventory', desc: 'Fastest-moving high volume products', keywords: ['top', 'sellers', 'best', 'fast moving'] }
+        ]
+      },
+      {
+        id: 'financial_accounts',
+        name: 'Financial Accounts & Tax',
+        icon: FileSpreadsheet,
+        items: [
+          { id: 'fin-LED', name: 'Ledger Statement (Ctrl+L)', group: 'Financials', desc: 'Full debit/credit party transaction statement', keywords: ['ledger', 'statement', 'customer', 'supplier', 'account'] },
+          { id: 'fin-TB', name: 'Trial Balance', group: 'Financials', desc: 'Summary debit/credit ledger balance audit', keywords: ['trial balance', 'tb', 'balances'] },
+          { id: 'fin-PNL', name: 'Profit & Loss Account', group: 'Financials', desc: 'Revenue, direct/indirect expense & net profit', keywords: ['pnl', 'profit and loss', 'income', 'net profit'] },
+          { id: 'fin-BS', name: 'Balance Sheet', group: 'Financials', desc: 'Assets, liabilities, capital & net worth', keywords: ['balance sheet', 'bs', 'assets', 'liabilities'] },
+          { id: 'fin-REC', name: 'Receivables (Debtors)', group: 'Financials', desc: 'Customer outstanding overdue balances', keywords: ['receivables', 'debtors', 'unpaid', 'customer balance'] },
+          { id: 'fin-PAY', name: 'Payables (Creditors)', group: 'Financials', desc: 'Supplier bills due for payment', keywords: ['payables', 'creditors', 'vendor balance', 'bills due'] },
+          ...(showGst ? [
+            { id: 'gst', name: 'GST Output (Sales)', group: 'Taxation', desc: 'Output sales tax collections', keywords: ['gst', 'tax', 'output', 'sales tax'] },
+            ...(config.EnableGSTInputTax === 'true' ? [
+              { id: 'gst_summary', name: 'Net GST Summary', group: 'Taxation', desc: 'Net tax liability (Output minus Input)', keywords: ['net gst', 'tax liability', 'tax summary'] },
+              { id: 'gst_input_dom', name: 'GST Input (Domestic)', group: 'Taxation', desc: 'ITC claimable on local purchases & expenses', keywords: ['gst input', 'domestic', 'itc', 'claim'] },
+              { id: 'gst_input_imp', name: 'GST Input (Import)', group: 'Taxation', desc: 'Customs and import purchase tax claims', keywords: ['gst input import', 'import', 'customs'] }
+            ] : [])
+          ] : []),
+          ...(canViewAudit ? [
+            { id: 'audit', name: 'Audit Trail & Logs', group: 'Compliance', desc: 'Tamper-evident system activity history', keywords: ['audit', 'trail', 'security', 'logs', 'history'] }
+          ] : [])
+        ]
+      }
+    ];
+  }, [showGst, config.EnableGSTInputTax, canViewAudit]);
+
+  // Current active report key
+  const currentActiveReportKey = useMemo(() => {
+    if (mainCategory === 'daily') return itemWise ? 'daily-item' : 'daily-bill';
+    if (mainCategory === 'gst') return 'gst';
+    if (mainCategory === 'gst_summary') return 'gst_summary';
+    if (mainCategory === 'gst_input_dom') return 'gst_input_dom';
+    if (mainCategory === 'gst_input_imp') return 'gst_input_imp';
+    if (mainCategory === 'inv') return `inv-${invSubTab}`;
+    if (mainCategory === 'reg') return `reg-${regSubTab}`;
+    if (mainCategory === 'audit') return 'audit';
+    return `fin-${finSubTab}`;
+  }, [mainCategory, itemWise, invSubTab, regSubTab, finSubTab]);
+
+  // Current report display metadata
+  const currentReportDisplay = useMemo(() => {
+    for (const cat of allReportCategories) {
+      const found = cat.items.find(i => i.id === currentActiveReportKey);
+      if (found) {
+        return {
+          name: found.name,
+          categoryName: cat.name,
+          group: found.group,
+          Icon: cat.icon
+        };
+      }
+    }
+    return {
+      name: 'Select Report',
+      categoryName: 'Reports',
+      group: 'Reports',
+      Icon: FileText
+    };
+  }, [allReportCategories, currentActiveReportKey]);
+
+  // Filtered categories based on search input
+  const filteredReportCategories = useMemo(() => {
+    if (!reportMenuSearch.trim()) return allReportCategories;
+    const term = reportMenuSearch.toLowerCase().trim();
+
+    return allReportCategories.map(cat => {
+      const matchingItems = cat.items.filter(item =>
+        item.name.toLowerCase().includes(term) ||
+        item.desc.toLowerCase().includes(term) ||
+        item.group.toLowerCase().includes(term) ||
+        (item.keywords && item.keywords.some(k => k.toLowerCase().includes(term)))
+      );
+      return {
+        ...cat,
+        items: matchingItems
+      };
+    }).filter(cat => cat.items.length > 0);
+  }, [allReportCategories, reportMenuSearch]);
+
+  const handleSelectReport = (val: string) => {
+    if (val === 'audit') {
+      setMainCategory('audit');
+    } else if (val === 'daily-bill') {
+      setMainCategory('daily');
+      setItemWise(false);
+    } else if (val === 'daily-item') {
+      setMainCategory('daily');
+      setItemWise(true);
+    } else if (val === 'gst' || val === 'gst_summary' || val === 'gst_input_dom' || val === 'gst_input_imp') {
+      setMainCategory(val as any);
+    } else if (val.startsWith('inv-')) {
+      setMainCategory('inv');
+      setInvSubTab(val.replace('inv-', '') as any);
+    } else if (val.startsWith('reg-')) {
+      setMainCategory('reg');
+      setRegSubTab(val.replace('reg-', '') as any);
+    } else if (val.startsWith('fin-')) {
+      setMainCategory('fin');
+      setFinSubTab(val.replace('fin-', '') as any);
+    }
+    setIsReportMenuOpen(false);
+    setReportMenuSearch('');
+    setShowReportCatalog(false);
+  };
 
   const allReportsList = useMemo(() => [
     { cat: 'daily', itemWise: false, label: 'Daily Sales (Bill-wise)' },
@@ -2104,92 +2282,128 @@ export const Reports: React.FC<ReportsProps> = ({
             <span className="hidden sm:inline">All Reports</span>
           </button>
 
-          {/* Direct Dropdown Switcher */}
-          <div className="relative">
-            <select
-              value={
-                mainCategory === 'daily' ? (itemWise ? 'daily-item' : 'daily-bill') :
-                mainCategory === 'gst' ? 'gst' : mainCategory === 'gst_summary' ? 'gst_summary' : mainCategory === 'gst_input_dom' ? 'gst_input_dom' : mainCategory === 'gst_input_imp' ? 'gst_input_imp' :
-                mainCategory === 'inv' ? `inv-${invSubTab}` :
-                mainCategory === 'reg' ? `reg-${regSubTab}` :
-                mainCategory === 'audit' ? 'audit' :
-                `fin-${finSubTab}`
-              }
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === 'audit') {
-                  setMainCategory('audit');
-                } else if (val === 'daily-bill') {
-                  setMainCategory('daily');
-                  setItemWise(false);
-                } else if (val === 'daily-item') {
-                  setMainCategory('daily');
-                  setItemWise(true);
-                } else if (val === 'gst' || val === 'gst_summary' || val === 'gst_input_dom' || val === 'gst_input_imp') {
-                  setMainCategory(val as any);
-                } else if (val.startsWith('inv-')) {
-                  setMainCategory('inv');
-                  setInvSubTab(val.replace('inv-', '') as any);
-                } else if (val.startsWith('reg-')) {
-                  setMainCategory('reg');
-                  setRegSubTab(val.replace('reg-', '') as any);
-                } else if (val.startsWith('fin-')) {
-                  setMainCategory('fin');
-                  setFinSubTab(val.replace('fin-', '') as any);
-                }
-                setShowReportCatalog(false);
-              }}
-              className="h-8 rounded-xl border border-indigo-200 bg-indigo-50/70 pl-2.5 pr-8 font-extrabold text-indigo-900 text-xs shadow-2xs outline-none hover:bg-indigo-100/70 focus:border-indigo-600 appearance-none cursor-pointer"
+          {/* Modern Searchable Multi-Column Report Switcher */}
+          <div ref={reportMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setIsReportMenuOpen(!isReportMenuOpen)}
+              className={`h-8 inline-flex items-center gap-2 rounded-xl border px-3 py-1 font-extrabold text-xs shadow-2xs transition-all cursor-pointer select-none ${
+                isReportMenuOpen
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-200'
+                  : 'border-indigo-200 bg-indigo-50/80 text-indigo-950 hover:bg-indigo-100 hover:border-indigo-300'
+              }`}
+              title="Click to switch report or search (Esc to close)"
             >
-              <optgroup label="Sales & Billing">
-                <option value="daily-bill">Daily Sales (Bill-wise)</option>
-                <option value="daily-item">Daily Sales (Item-wise)</option>
-              </optgroup>
-              <optgroup label="Registers & Day Book">
-                <option value="reg-vouchers">Accounting Voucher Register</option>
-                <option value="reg-sales">Sales Register</option>
-                <option value="reg-purchases">Purchase Register</option>
-                <option value="reg-quotations">Quotation Register</option>
-                <option value="reg-delivery_notes">Delivery Note Register</option>
-              </optgroup>
-              {showGst && (
-                <optgroup label="GST & Taxation">
-                  <option value="gst">GST Output (Sales)</option>
-                  {config.EnableGSTInputTax === 'true' && (
-                    <>
-                      <option value="gst_summary">Net GST Summary</option>
-                      <option value="gst_input_dom">GST Input (Domestic Purchase & Expenses)</option>
-                      <option value="gst_input_imp">GST Input (Import Purchase)</option>
-                    </>
-                  )}
-                </optgroup>
-              )}
-              <optgroup label="Inventory & Stock">
-                <option value="inv-summary">Stock Summary & Valuation</option>
-                <option value="inv-mov">Stock Movement (In / Out)</option>
-                <option value="inv-godown_summary">Godown & Store Wise Stock</option>
-                <option value="inv-variant_summary">Size & Color Wise</option>
-                <option value="inv-part_summary">Part Number Wise</option>
-                <option value="inv-serials">Serialwise Stock</option>
-                <option value="inv-batch_summary">Batch & Expiry Wise</option>
-                <option value="inv-prof">Item Profitability</option>
-                <option value="inv-top">Top 15 Sellers</option>
-              </optgroup>
-              <optgroup label="Financial Accounts">
-                <option value="fin-LED">Ledger Statement (Ctrl+L)</option>
-                <option value="fin-TB">Trial Balance</option>
-                <option value="fin-PNL">Profit & Loss Account</option>
-                <option value="fin-BS">Balance Sheet</option>
-                <option value="fin-REC">Receivables (Debtors)</option>
-                <option value="fin-PAY">Payables (Creditors)</option>
-              </optgroup>
-              {canViewAudit && (
-                <optgroup label="Compliance & Security">
-                  <option value="audit">Audit Trail & Activity Log</option>
-                </optgroup>
-              )}
-            </select>
-            <ChevronDown className="absolute right-2.5 top-2.5 h-3.5 w-3.5 text-indigo-600 pointer-events-none" />
+              <currentReportDisplay.Icon className={`h-3.5 w-3.5 ${isReportMenuOpen ? 'text-white' : 'text-indigo-600'}`} />
+              <span className="font-bold truncate max-w-[150px] sm:max-w-[220px]">
+                {currentReportDisplay.name}
+              </span>
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${isReportMenuOpen ? 'rotate-180 text-white' : 'text-indigo-600'}`} />
+            </button>
+
+            {/* Multi-Column Popover Card */}
+            {isReportMenuOpen && (
+              <div className="absolute left-0 top-full mt-1.5 z-50 w-[92vw] sm:w-[620px] md:w-[720px] lg:w-[840px] max-w-[860px] rounded-2xl border border-slate-200/90 bg-white/98 backdrop-blur-xl shadow-2xl p-3 sm:p-4 text-slate-800 animate-in fade-in slide-in-from-top-2 duration-150">
+                {/* Search Header */}
+                <div className="flex items-center gap-2 pb-3 mb-3 border-b border-slate-100">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      ref={reportSearchInputRef}
+                      type="text"
+                      placeholder="Search all reports (e.g. batch, ledger, pnl, stock, trial, gst)..."
+                      value={reportMenuSearch}
+                      onChange={e => setReportMenuSearch(e.target.value)}
+                      className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition"
+                    />
+                    {reportMenuSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setReportMenuSearch('')}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsReportMenuOpen(false)}
+                    className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                    title="Close menu (Esc)"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Grid of Categories and Reports */}
+                {filteredReportCategories.length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 space-y-1">
+                    <p className="text-xs font-semibold">No reports matching "{reportMenuSearch}"</p>
+                    <p className="text-[11px] text-slate-400">Try searching for "sales", "stock", "pnl", or "batch"</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-h-[62vh] overflow-y-auto pr-1">
+                    {filteredReportCategories.map(cat => {
+                      const CatIcon = cat.icon;
+                      return (
+                        <div key={cat.id} className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 space-y-1.5 flex flex-col">
+                          {/* Category Title */}
+                          <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/60 px-1">
+                            <div className="flex items-center gap-1.5 font-black text-slate-800 text-xs uppercase tracking-wide">
+                              <CatIcon className="h-3.5 w-3.5 text-indigo-600" />
+                              <span>{cat.name}</span>
+                            </div>
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-200/60 px-1.5 py-0.2 rounded-full">
+                              {cat.items.length}
+                            </span>
+                          </div>
+
+                          {/* Report Items in this Category */}
+                          <div className="flex flex-col gap-1 flex-1">
+                            {cat.items.map(item => {
+                              const isActive = item.id === currentActiveReportKey;
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => handleSelectReport(item.id)}
+                                  className={`group w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                                    isActive
+                                      ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                                      : 'bg-white hover:bg-indigo-50/80 text-slate-700 hover:text-indigo-900 border border-slate-200/60 shadow-2xs hover:border-indigo-200'
+                                  }`}
+                                >
+                                  <div className="truncate">
+                                    <div className={`truncate font-semibold ${isActive ? 'text-white' : 'text-slate-800'}`}>
+                                      {item.name}
+                                    </div>
+                                    {item.desc && (
+                                      <div className={`text-[10px] truncate ${isActive ? 'text-indigo-100' : 'text-slate-400 group-hover:text-slate-500'}`}>
+                                        {item.desc}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {isActive && (
+                                    <Check className="h-3.5 w-3.5 text-white shrink-0 stroke-[3]" />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Footer helper */}
+                <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 px-1">
+                  <span>💡 Click any report to switch immediately</span>
+                  <span className="font-mono text-[10px]">Esc to close</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Accounting Voucher Register contextual search & filters */}
@@ -2237,61 +2451,35 @@ export const Reports: React.FC<ReportsProps> = ({
           )}
 
           {/* Contextual Filter for Ledger Statement */}
-          {mainCategory === 'fin' && finSubTab === 'LED' && (() => {
-            const uniqueParties = reportData?.rows ? Array.from(new Set(reportData.rows.map((r: any) => r.Party).filter(Boolean))).sort() : [];
-            return (
-              <div className="flex items-center gap-1.5 pl-1">
-                <span className="font-semibold text-slate-500 text-[11px] whitespace-nowrap">Ledger:</span>
-                <button
-                  type="button"
-                  onClick={openLedgerSearch}
-                  className="h-8 rounded-xl border border-indigo-300 bg-indigo-50/90 hover:bg-indigo-100 px-2.5 font-bold text-xs text-indigo-950 flex items-center gap-1.5 transition-all shadow-2xs max-w-[180px] sm:max-w-[220px] truncate cursor-pointer"
-                  title="Click or press Ctrl+L to type and search ledger"
-                >
-                  <Search className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-                  <span className="truncate">{selectedLedger || 'Type / Search Ledger'}</span>
-                  <kbd className="hidden sm:inline-block text-[9px] bg-white border border-indigo-200 text-indigo-700 px-1 py-0.2 rounded font-mono font-bold shrink-0">Ctrl+L</kbd>
-                </button>
+          {mainCategory === 'fin' && finSubTab === 'LED' && (
+            <div className="flex items-center gap-1.5 pl-1">
+              <span className="font-semibold text-slate-500 text-[11px] whitespace-nowrap">Ledger:</span>
 
-                <select
-                  value={selectedLedger || ''}
-                  onChange={e => setSelectedLedger(e.target.value)}
-                  className="h-8 rounded-xl border border-slate-300 bg-white px-2 font-bold text-xs text-slate-800 outline-none w-[110px] sm:w-[150px] truncate"
-                >
-                  <option value="">Select Ledger</option>
-                  {ledgers.map(l => (
-                    <option key={l['Ledger Name']} value={l['Ledger Name']}>
-                      {l['Ledger Name']}
-                    </option>
-                  ))}
-                </select>
+              <select
+                value={selectedLedger || ''}
+                onChange={e => setSelectedLedger(e.target.value)}
+                className="h-8 rounded-xl border border-slate-300 bg-white px-2.5 font-bold text-xs text-slate-800 outline-none max-w-[180px] sm:max-w-[240px] truncate shadow-2xs hover:border-indigo-400 focus:border-indigo-600 transition"
+              >
+                <option value="">Select Ledger</option>
+                {ledgers.map(l => (
+                  <option key={l['Ledger Name']} value={l['Ledger Name']}>
+                    {l['Ledger Name']}
+                  </option>
+                ))}
+              </select>
 
-                {uniqueParties.length > 0 && (
-                  <select
-                    value={ledgerPartyFilter || 'ALL'}
-                    onChange={(e) => setLedgerPartyFilter(e.target.value)}
-                    className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[110px] sm:w-[140px] truncate"
-                  >
-                    <option value="ALL">All Parties</option>
-                    {(uniqueParties as string[]).map(p => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
-                )}
-
-                <div className="relative w-[130px] sm:w-[160px]">
-                  <Search className="absolute left-2.5 top-2.5 h-3 w-3 text-slate-400" />
-                  <input
-                    type="text"
-                    value={ledgerSearch || ''}
-                    onChange={(e) => setLedgerSearch(e.target.value)}
-                    placeholder="Search..."
-                    className="w-full h-8 rounded-xl border border-slate-300 bg-white pl-7 pr-2 text-xs focus:border-indigo-500 focus:outline-hidden"
-                  />
-                </div>
+              <div className="relative w-[130px] sm:w-[160px]">
+                <Search className="absolute left-2.5 top-2.5 h-3 w-3 text-slate-400" />
+                <input
+                  type="text"
+                  value={ledgerSearch || ''}
+                  onChange={(e) => setLedgerSearch(e.target.value)}
+                  placeholder="Search..."
+                  className="w-full h-8 rounded-xl border border-slate-300 bg-white pl-7 pr-2 text-xs focus:border-indigo-500 focus:outline-hidden"
+                />
               </div>
-            );
-          })()}
+            </div>
+          )}
 
           {/* Contextual Filter for Daily Sales and Sales/Purchase Registers */}
           {(mainCategory === 'daily' || (mainCategory === 'reg' && (regSubTab === 'sales' || regSubTab === 'purchases'))) && (
@@ -2724,13 +2912,22 @@ export const Reports: React.FC<ReportsProps> = ({
           if (regSubTab === 'purchases') reportTitle = 'Purchase Register';
         }
         if (mainCategory === 'inv') {
-           reportTitle = 'Inventory Report';
+          if (invSubTab === 'summary') reportTitle = 'Stock Summary & Valuation';
+          else if (invSubTab === 'mov') reportTitle = 'Stock Movement (In / Out)';
+          else if (invSubTab === 'godown_summary') reportTitle = 'Godown & Store Wise Stock';
+          else if (invSubTab === 'variant_summary') reportTitle = 'Size & Color Wise Stock';
+          else if (invSubTab === 'part_summary') reportTitle = 'Part Number Wise Stock';
+          else if (invSubTab === 'serials') reportTitle = 'Serialwise Stock';
+          else if (invSubTab === 'batch_summary') reportTitle = 'Batch & Expiry Wise Stock';
+          else if (invSubTab === 'prof') reportTitle = 'Item Profitability';
+          else if (invSubTab === 'top') reportTitle = 'Top 15 Sellers';
+          else reportTitle = 'Inventory & Stock Report';
         }
 
         return (
           <div className="bg-white border-y border-slate-200 shadow-xs -mx-3 sm:-mx-6 mb-[-1.5rem] lg:mb-[-2rem]">
             {!isTallyPrime && (
-              <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-4 sm:px-6 py-4 border-b border-indigo-500/30 rounded-t-xl shadow-lg relative overflow-hidden">
+              <div className="sticky top-0 z-40 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-4 sm:px-6 py-4 border-b border-indigo-500/30 rounded-t-xl shadow-lg relative overflow-hidden">
                 <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
                 
                 <div className="flex items-center gap-4 flex-wrap relative z-10">
@@ -3140,362 +3337,373 @@ export const Reports: React.FC<ReportsProps> = ({
 
             {/* Inventory Reports */}
             {mainCategory === 'inv' && (
-              <div>
-                <div className="bg-slate-100/90 p-2.5 border-b border-slate-200 flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-xs font-bold text-slate-600 mr-1">Stock View Mode:</span>
-                    <button
-                      type="button"
-                      onClick={() => setInvSubTab('summary')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'summary' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
-                    >
-                      📊 Item Summary
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setInvSubTab('mov')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'mov' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
-                    >
-                      📈 Stock Movement (In/Out)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setInvSubTab('godown_summary')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'godown_summary' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
-                    >
-                      🏢 Godown Wise Stock
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setInvSubTab('variant_summary')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'variant_summary' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
-                    >
-                      🎨 Size & Color Wise
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setInvSubTab('part_summary')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'part_summary' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
-                    >
-                      ⚙️ Part Number Wise
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setInvSubTab('serials')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'serials' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
-                    >
-                      🔢 Serialwise
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setInvSubTab('batch_summary')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'batch_summary' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
-                    >
-                      💊 Batch/Expiry Wise
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setInvSubTab('prof')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'prof' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
-                    >
-                      💰 Profitability
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setInvSubTab('top')}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${invSubTab === 'top' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
-                    >
-                      🏆 Top Sellers
-                    </button>
-                  </div>
-                </div>
+              <div className="space-y-3">
+                {invSubTab === 'summary' && Array.isArray(reportData) && (() => {
+                  const filteredItems = reportData.filter((i: any) => {
+                    if (stockFilters.group !== 'ALL' && i.group !== stockFilters.group) return false;
+                    if (stockFilters.category !== 'ALL' && i.category !== stockFilters.category) return false;
+                    if (stockFilters.item && stockFilters.item !== 'ALL' && !i.itemName?.toLowerCase().includes(stockFilters.item.toLowerCase()) && !i.itemCode?.toLowerCase().includes(stockFilters.item.toLowerCase())) return false;
+                    return true;
+                  });
+                  const totalStock = filteredItems.reduce((acc: number, i: any) => acc + (Number(i.currentStock) || 0), 0);
+                  const totalVal = filteredItems.reduce((acc: number, i: any) => acc + ((Number(i.currentStock) || 0) * (Number(i.purchaseRate) || 0)), 0);
 
-                {invSubTab === 'summary' && Array.isArray(reportData) && (
-                  <div className="flex flex-col">
-                    <div className="bg-slate-50 border-b border-slate-200 p-3 flex flex-wrap items-center gap-3">
-                      <div className="flex items-center gap-1.5 flex-1 min-w-[120px]">
-                        <Search className="h-3.5 w-3.5 text-slate-400" />
-                        <input
-                          type="text"
-                          placeholder="Search Itemwise..."
-                          value={stockFilters.item || ''}
-                          onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
-                          className="bg-transparent text-xs w-full focus:outline-none"
-                        />
-                      </div>
-                      <select
-                        value={stockFilters.group || 'ALL'}
-                        onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
-                        className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2"
-                      >
-                        <option value="ALL">All Groups</option>
-                        {Array.from(new Set(reportData.map((d:any) => d.group).filter(Boolean))).sort().map((g:any) => (
-                          <option key={g} value={g}>{g}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={stockFilters.category || 'ALL'}
-                        onChange={e => setStockFilters({ ...stockFilters, category: e.target.value })}
-                        className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2"
-                      >
-                        <option value="ALL">All Categories</option>
-                        {Array.from(new Set(reportData.map((d:any) => d.category).filter(Boolean))).sort().map((c:any) => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
-                      </select>
-                      <input
-                        type="text"
-                        placeholder="Supplier..."
-                        value={stockFilters.supplier || ''}
-                        onChange={e => setStockFilters({ ...stockFilters, supplier: e.target.value })}
-                        className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2 w-24"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Serial No..."
-                        value={stockFilters.serial || ''}
-                        onChange={e => setStockFilters({ ...stockFilters, serial: e.target.value })}
-                        className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2 w-24"
-                      />
-                      <input
-                        type="text"
-                        placeholder="User..."
-                        value={stockFilters.user || ''}
-                        onChange={e => setStockFilters({ ...stockFilters, user: e.target.value })}
-                        className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2 w-20"
-                      />
-                    </div>
-                  <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                    <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                      <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Group</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Unit</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Current Stock</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Sale Rate</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Stock Valuation</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {reportData.filter((i: any) => {
-                        if (stockFilters.group !== 'ALL' && i.group !== stockFilters.group) return false;
-                        if (stockFilters.category !== 'ALL' && i.category !== stockFilters.category) return false;
-                        if (stockFilters.item && stockFilters.item !== 'ALL' && !i.itemName?.toLowerCase().includes(stockFilters.item.toLowerCase())) return false;
-                        
-                        const itemStr = JSON.stringify(i).toLowerCase();
-                        if (stockFilters.supplier && !itemStr.includes(stockFilters.supplier.toLowerCase())) return false;
-                        if (stockFilters.serial && !itemStr.includes(stockFilters.serial.toLowerCase())) return false;
-                        if (stockFilters.user && !itemStr.includes(stockFilters.user.toLowerCase())) return false;
-                        
-                        return true;
-                      }).map((i: any) => (
-                        <tr
-                          key={i.itemCode}
-                          onClick={() => onDrillStock(i.itemCode, fromDate, toDate)}
-                          className="hover:bg-slate-50 cursor-pointer transition"
-                        >
-                          <td className="py-2 px-3 font-semibold text-slate-800">{i.itemName}</td>
-                          <td className="py-2 px-3 text-slate-600">{i.group}</td>
-                          <td className="py-2 px-3 text-center">{i.unit}</td>
-                          <td className="py-2 px-3 text-right font-bold">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-xs ${
-                                i.currentStock <= i.reorderLevel ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
-                              }`}
-                            >
-                              {i.currentStock}
-                            </span>
-                          </td>
-                          <td className="py-2 px-3 text-right font-mono">{fmt(i.saleRate)}</td>
-                          <td className="py-2 px-3 text-right font-mono font-bold">
-                            {fmt(i.currentStock * i.purchaseRate)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  </div>
-                )}
-
-                {invSubTab === 'variant_summary' && Array.isArray(reportData) && (
-                  <div className="flex flex-col">
-                    <div className="bg-slate-50 border-b border-slate-200 p-3 flex flex-wrap items-center gap-3">
-                      <div className="flex items-center gap-1.5 flex-1 min-w-[140px]">
-                        <Search className="h-3.5 w-3.5 text-slate-400" />
-                        <input
-                          type="text"
-                          placeholder="Search Item / Color / Size / Barcode..."
-                          value={stockFilters.item || ''}
-                          onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
-                          className="bg-transparent text-xs w-full focus:outline-none"
-                        />
-                      </div>
-                      <select
-                        value={stockFilters.color || 'ALL'}
-                        onChange={e => setStockFilters({ ...stockFilters, color: e.target.value })}
-                        className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2"
-                      >
-                        <option value="ALL">All Colors</option>
-                        {Array.from(new Set(reportData.map((d:any) => d.color).filter((c:any) => c && c !== '-'))).sort().map((col:any) => (
-                          <option key={col} value={col}>{col}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={stockFilters.size || 'ALL'}
-                        onChange={e => setStockFilters({ ...stockFilters, size: e.target.value })}
-                        className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2"
-                      >
-                        <option value="ALL">All Sizes</option>
-                        {Array.from(new Set(reportData.map((d:any) => d.size).filter((s:any) => s && s !== '-'))).sort().map((sz:any) => (
-                          <option key={sz} value={sz}>{sz}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={stockFilters.group || 'ALL'}
-                        onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
-                        className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2"
-                      >
-                        <option value="ALL">All Groups</option>
-                        {Array.from(new Set(reportData.map((d:any) => d.group).filter(Boolean))).sort().map((g:any) => (
-                          <option key={g} value={g}>{g}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                      <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                        <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
-                          <th className="py-2.5 px-3 text-left">Item Name</th>
-                          <th className="py-2.5 px-3 text-center">Color</th>
-                          <th className="py-2.5 px-3 text-center">Size</th>
-                          <th className="py-2.5 px-3 text-left">Barcode</th>
-                          <th className="py-2.5 px-3 text-left">Group</th>
-                          <th className="py-2.5 px-3 text-center">Unit</th>
-                          <th className="py-2.5 px-3 text-right">Op. Qty</th>
-                          <th className="py-2.5 px-3 text-right">Inward</th>
-                          <th className="py-2.5 px-3 text-right">Outward</th>
-                          <th className="py-2.5 px-3 text-right">Current Stock</th>
-                          <th className="py-2.5 px-3 text-right">Sale Rate</th>
-                          <th className="py-2.5 px-3 text-right">Stock Valuation</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {reportData.filter((i: any) => {
-                          if (stockFilters.group !== 'ALL' && i.group !== stockFilters.group) return false;
-                          if (stockFilters.color && stockFilters.color !== 'ALL' && i.color !== stockFilters.color) return false;
-                          if (stockFilters.size && stockFilters.size !== 'ALL' && i.size !== stockFilters.size) return false;
-                          if (stockFilters.item) {
-                            const query = stockFilters.item.toLowerCase();
-                            const matches = (i.itemName || '').toLowerCase().includes(query) ||
-                                            (i.color || '').toLowerCase().includes(query) ||
-                                            (i.size || '').toLowerCase().includes(query) ||
-                                            (i.barcode || '').toLowerCase().includes(query);
-                            if (!matches) return false;
-                          }
-                          return true;
-                        }).map((i: any, idx: number) => (
-                          <tr
-                            key={i.itemCode + '-' + (i.variantId || idx)}
-                            onClick={() => onDrillStock(i.itemCode, fromDate, toDate)}
-                            className="hover:bg-slate-50 cursor-pointer transition"
+                  return (
+                    <div className="space-y-2.5">
+                      {/* Sleek Filter & KPI Bar */}
+                      <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 min-w-[200px]">
+                            <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="text"
+                              placeholder="Search item name or code..."
+                              value={stockFilters.item || ''}
+                              onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
+                              className="text-xs w-full bg-transparent outline-none font-medium text-slate-800"
+                            />
+                          </div>
+                          <select
+                            value={stockFilters.group || 'ALL'}
+                            onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
                           >
-                            <td className="py-2 px-3 font-semibold text-slate-800">{i.itemName}</td>
-                            <td className="py-2 px-3 text-center font-semibold text-purple-700">{i.color !== '-' ? i.color : '-'}</td>
-                            <td className="py-2 px-3 text-center font-semibold text-indigo-700">{i.size !== '-' ? i.size : '-'}</td>
-                            <td className="py-2 px-3 font-mono text-slate-600">{i.barcode}</td>
-                            <td className="py-2 px-3 text-slate-600">{i.group}</td>
-                            <td className="py-2 px-3 text-center">{i.unit}</td>
-                            <td className="py-2 px-3 text-right font-mono text-slate-500">{i.openingStock}</td>
-                            <td className="py-2 px-3 text-right font-mono text-emerald-600 font-semibold">{i.inwardQty}</td>
-                            <td className="py-2 px-3 text-right font-mono text-amber-600 font-semibold">{i.outwardQty}</td>
-                            <td className="py-2 px-3 text-right font-bold">
-                              <span className={`px-2 py-0.5 rounded-full text-xs ${i.currentStock <= 0 ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                                {i.currentStock}
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-right font-mono">{fmt(i.saleRate)}</td>
-                            <td className="py-2 px-3 text-right font-mono font-bold">{fmt(i.stockValuation)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {invSubTab === 'part_summary' && Array.isArray(reportData) && (
-                  <div className="flex flex-col">
-                    <div className="bg-slate-50 border-b border-slate-200 p-3 flex flex-wrap items-center gap-3">
-                      <div className="flex items-center gap-1.5 flex-1 min-w-[140px]">
-                        <Search className="h-3.5 w-3.5 text-slate-400" />
-                        <input
-                          type="text"
-                          placeholder="Search Part No / Item / Alias / Barcode..."
-                          value={stockFilters.item || ''}
-                          onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
-                          className="bg-transparent text-xs w-full focus:outline-none"
-                        />
-                      </div>
-                      <select
-                        value={stockFilters.group || 'ALL'}
-                        onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
-                        className="bg-white border border-slate-200 rounded-md text-xs py-1 px-2"
-                      >
-                        <option value="ALL">All Groups</option>
-                        {Array.from(new Set(reportData.map((d:any) => d.group).filter(Boolean))).sort().map((g:any) => (
-                          <option key={g} value={g}>{g}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                      <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                        <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
-                          <th className="py-2.5 px-3 text-left">Part No. / OEM No.</th>
-                          <th className="py-2.5 px-3 text-left">Alias / HSN</th>
-                          <th className="py-2.5 px-3 text-left">Item Name</th>
-                          <th className="py-2.5 px-3 text-left">Group</th>
-                          <th className="py-2.5 px-3 text-center">Unit</th>
-                          <th className="py-2.5 px-3 text-right">Current Stock</th>
-                          <th className="py-2.5 px-3 text-right">Pur. Rate</th>
-                          <th className="py-2.5 px-3 text-right">Sale Rate</th>
-                          <th className="py-2.5 px-3 text-right">Stock Valuation</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {reportData.filter((i: any) => {
-                          if (stockFilters.group !== 'ALL' && i.group !== stockFilters.group) return false;
-                          if (stockFilters.item) {
-                            const query = stockFilters.item.toLowerCase();
-                            const matches = (i.partNumber || '').toLowerCase().includes(query) ||
-                                            (i.itemName || '').toLowerCase().includes(query) ||
-                                            (i.alias || '').toLowerCase().includes(query) ||
-                                            (i.barcode || '').toLowerCase().includes(query);
-                            if (!matches) return false;
-                          }
-                          return true;
-                        }).map((i: any, idx: number) => (
-                          <tr
-                            key={i.itemCode + '-' + idx}
-                            onClick={() => onDrillStock(i.itemCode, fromDate, toDate)}
-                            className="hover:bg-slate-50 cursor-pointer transition"
+                            <option value="ALL">All Groups</option>
+                            {Array.from(new Set(reportData.map((d:any) => d.group).filter(Boolean))).sort().map((g:any) => (
+                              <option key={g} value={g}>{g}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={stockFilters.category || 'ALL'}
+                            onChange={e => setStockFilters({ ...stockFilters, category: e.target.value })}
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
                           >
-                            <td className="py-2 px-3 font-mono font-bold text-indigo-900">{i.partNumber}</td>
-                            <td className="py-2 px-3 font-mono text-slate-600">{i.alias}</td>
-                            <td className="py-2 px-3 font-semibold text-slate-800">{i.itemName}</td>
-                            <td className="py-2 px-3 text-slate-600">{i.group}</td>
-                            <td className="py-2 px-3 text-center">{i.unit}</td>
-                            <td className="py-2 px-3 text-right font-bold">
-                              <span className={`px-2 py-0.5 rounded-full text-xs ${i.currentStock <= 0 ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}`}>
-                                {i.currentStock}
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 text-right font-mono">{fmt(i.purchaseRate)}</td>
-                            <td className="py-2 px-3 text-right font-mono">{fmt(i.saleRate)}</td>
-                            <td className="py-2 px-3 text-right font-mono font-bold">{fmt(i.stockValuation)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                            <option value="ALL">All Categories</option>
+                            {Array.from(new Set(reportData.map((d:any) => d.category).filter(Boolean))).sort().map((c:any) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Compact KPI Stats */}
+                        <div className="flex items-center gap-2 text-xs flex-wrap font-mono">
+                          <span className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 font-sans font-semibold text-[11px]">
+                            Items: <strong className="text-slate-900 font-mono">{filteredItems.length}</strong>
+                          </span>
+                          <span className="bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-800 font-sans font-semibold text-[11px]">
+                            Stock Qty: <strong className="text-emerald-900 font-mono">{totalStock}</strong>
+                          </span>
+                          <span className="bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-900 font-sans font-semibold text-[11px]">
+                            Valuation: <strong className="text-indigo-950 font-mono">Nu. {fmt(totalVal)}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+                        <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                            <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Group</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Unit</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Current Stock</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Sale Rate</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Stock Valuation</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredItems.map((i: any) => (
+                              <tr
+                                key={i.itemCode}
+                                onClick={() => onDrillStock(i.itemCode, fromDate, toDate)}
+                                className="hover:bg-indigo-50/40 cursor-pointer transition"
+                              >
+                                <td className="py-2 px-3 font-semibold text-slate-800">{i.itemName}</td>
+                                <td className="py-2 px-3 text-slate-600">{i.group}</td>
+                                <td className="py-2 px-3 text-center">{i.unit}</td>
+                                <td className="py-2 px-3 text-right font-bold">
+                                  <span
+                                    className={`px-2 py-0.5 rounded-full text-xs ${
+                                      i.currentStock <= i.reorderLevel ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                                    }`}
+                                  >
+                                    {i.currentStock}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono">{fmt(i.saleRate)}</td>
+                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                                  {fmt(i.currentStock * i.purchaseRate)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          {filteredItems.length > 0 && (
+                            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                              <tr>
+                                <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={3}>
+                                  Total ({filteredItems.length} Items)
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono text-emerald-800">{totalStock}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-slate-500">-</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-indigo-900 font-extrabold">{fmt(totalVal)}</td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {invSubTab === 'variant_summary' && Array.isArray(reportData) && (() => {
+                  const filteredVariants = reportData.filter((i: any) => {
+                    if (stockFilters.group !== 'ALL' && i.group !== stockFilters.group) return false;
+                    if (stockFilters.color && stockFilters.color !== 'ALL' && i.color !== stockFilters.color) return false;
+                    if (stockFilters.size && stockFilters.size !== 'ALL' && i.size !== stockFilters.size) return false;
+                    if (stockFilters.item) {
+                      const query = stockFilters.item.toLowerCase();
+                      const matches = (i.itemName || '').toLowerCase().includes(query) ||
+                                      (i.color || '').toLowerCase().includes(query) ||
+                                      (i.size || '').toLowerCase().includes(query) ||
+                                      (i.barcode || '').toLowerCase().includes(query);
+                      if (!matches) return false;
+                    }
+                    return true;
+                  });
+                  const totalStock = filteredVariants.reduce((acc: number, i: any) => acc + (Number(i.currentStock) || 0), 0);
+                  const totalVal = filteredVariants.reduce((acc: number, i: any) => acc + (Number(i.stockValuation) || 0), 0);
+
+                  return (
+                    <div className="space-y-2.5">
+                      <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 min-w-[180px]">
+                            <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="text"
+                              placeholder="Search Item / Color / Size / Barcode..."
+                              value={stockFilters.item || ''}
+                              onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
+                              className="bg-transparent text-xs w-full focus:outline-none font-medium text-slate-800"
+                            />
+                          </div>
+                          <select
+                            value={stockFilters.color || 'ALL'}
+                            onChange={e => setStockFilters({ ...stockFilters, color: e.target.value })}
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
+                          >
+                            <option value="ALL">All Colors</option>
+                            {Array.from(new Set(reportData.map((d:any) => d.color).filter((c:any) => c && c !== '-'))).sort().map((col:any) => (
+                              <option key={col} value={col}>{col}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={stockFilters.size || 'ALL'}
+                            onChange={e => setStockFilters({ ...stockFilters, size: e.target.value })}
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
+                          >
+                            <option value="ALL">All Sizes</option>
+                            {Array.from(new Set(reportData.map((d:any) => d.size).filter((s:any) => s && s !== '-'))).sort().map((sz:any) => (
+                              <option key={sz} value={sz}>{sz}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={stockFilters.group || 'ALL'}
+                            onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
+                          >
+                            <option value="ALL">All Groups</option>
+                            {Array.from(new Set(reportData.map((d:any) => d.group).filter(Boolean))).sort().map((g:any) => (
+                              <option key={g} value={g}>{g}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-xs flex-wrap font-mono">
+                          <span className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 font-sans font-semibold text-[11px]">
+                            Variants: <strong className="text-slate-900 font-mono">{filteredVariants.length}</strong>
+                          </span>
+                          <span className="bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-800 font-sans font-semibold text-[11px]">
+                            Stock: <strong className="text-emerald-900 font-mono">{totalStock}</strong>
+                          </span>
+                          <span className="bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-900 font-sans font-semibold text-[11px]">
+                            Valuation: <strong className="text-indigo-950 font-mono">Nu. {fmt(totalVal)}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+                        <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                            <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Color</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Size</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Barcode</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Group</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Unit</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Op. Qty</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Inward</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Outward</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Current Stock</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Sale Rate</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Stock Valuation</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredVariants.map((i: any, idx: number) => (
+                              <tr
+                                key={i.itemCode + '-' + (i.variantId || idx)}
+                                onClick={() => onDrillStock(i.itemCode, fromDate, toDate)}
+                                className="hover:bg-indigo-50/40 cursor-pointer transition"
+                              >
+                                <td className="py-2 px-3 font-semibold text-slate-800">{i.itemName}</td>
+                                <td className="py-2 px-3 text-center font-semibold text-purple-700">{i.color !== '-' ? i.color : '-'}</td>
+                                <td className="py-2 px-3 text-center font-semibold text-indigo-700">{i.size !== '-' ? i.size : '-'}</td>
+                                <td className="py-2 px-3 font-mono text-slate-600">{i.barcode}</td>
+                                <td className="py-2 px-3 text-slate-600">{i.group}</td>
+                                <td className="py-2 px-3 text-center">{i.unit}</td>
+                                <td className="py-2 px-3 text-right font-mono text-slate-500">{i.openingStock}</td>
+                                <td className="py-2 px-3 text-right font-mono text-emerald-600 font-semibold">{i.inwardQty}</td>
+                                <td className="py-2 px-3 text-right font-mono text-amber-600 font-semibold">{i.outwardQty}</td>
+                                <td className="py-2 px-3 text-right font-bold">
+                                  <span className={`px-2 py-0.5 rounded-full text-xs ${i.currentStock <= 0 ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                    {i.currentStock}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono">{fmt(i.saleRate)}</td>
+                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{fmt(i.stockValuation)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          {filteredVariants.length > 0 && (
+                            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                              <tr>
+                                <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={9}>
+                                  Total ({filteredVariants.length} Variants)
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono text-emerald-800">{totalStock}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-slate-500">-</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-indigo-900 font-extrabold">{fmt(totalVal)}</td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {invSubTab === 'part_summary' && Array.isArray(reportData) && (() => {
+                  const filteredParts = reportData.filter((i: any) => {
+                    if (stockFilters.group !== 'ALL' && i.group !== stockFilters.group) return false;
+                    if (stockFilters.item) {
+                      const query = stockFilters.item.toLowerCase();
+                      const matches = (i.partNumber || '').toLowerCase().includes(query) ||
+                                      (i.itemName || '').toLowerCase().includes(query) ||
+                                      (i.alias || '').toLowerCase().includes(query) ||
+                                      (i.barcode || '').toLowerCase().includes(query);
+                      if (!matches) return false;
+                    }
+                    return true;
+                  });
+                  const totalStock = filteredParts.reduce((acc: number, i: any) => acc + (Number(i.currentStock) || 0), 0);
+                  const totalVal = filteredParts.reduce((acc: number, i: any) => acc + (Number(i.stockValuation) || 0), 0);
+
+                  return (
+                    <div className="space-y-2.5">
+                      <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 min-w-[200px]">
+                            <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="text"
+                              placeholder="Search Part No / Item / Alias / Barcode..."
+                              value={stockFilters.item || ''}
+                              onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
+                              className="bg-transparent text-xs w-full focus:outline-none font-medium text-slate-800"
+                            />
+                          </div>
+                          <select
+                            value={stockFilters.group || 'ALL'}
+                            onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
+                          >
+                            <option value="ALL">All Groups</option>
+                            {Array.from(new Set(reportData.map((d:any) => d.group).filter(Boolean))).sort().map((g:any) => (
+                              <option key={g} value={g}>{g}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-xs flex-wrap font-mono">
+                          <span className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 font-sans font-semibold text-[11px]">
+                            Parts: <strong className="text-slate-900 font-mono">{filteredParts.length}</strong>
+                          </span>
+                          <span className="bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-800 font-sans font-semibold text-[11px]">
+                            Stock: <strong className="text-emerald-900 font-mono">{totalStock}</strong>
+                          </span>
+                          <span className="bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-900 font-sans font-semibold text-[11px]">
+                            Valuation: <strong className="text-indigo-950 font-mono">Nu. {fmt(totalVal)}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+                        <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                            <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Part No. / OEM No.</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Alias / HSN</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Group</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Unit</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Current Stock</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Pur. Rate</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Sale Rate</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Stock Valuation</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredParts.map((i: any, idx: number) => (
+                              <tr
+                                key={i.itemCode + '-' + idx}
+                                onClick={() => onDrillStock(i.itemCode, fromDate, toDate)}
+                                className="hover:bg-indigo-50/40 cursor-pointer transition"
+                              >
+                                <td className="py-2 px-3 font-mono font-bold text-indigo-900">{i.partNumber}</td>
+                                <td className="py-2 px-3 font-mono text-slate-600">{i.alias}</td>
+                                <td className="py-2 px-3 font-semibold text-slate-800">{i.itemName}</td>
+                                <td className="py-2 px-3 text-slate-600">{i.group}</td>
+                                <td className="py-2 px-3 text-center">{i.unit}</td>
+                                <td className="py-2 px-3 text-right font-bold">
+                                  <span className={`px-2 py-0.5 rounded-full text-xs ${i.currentStock <= 0 ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                    {i.currentStock}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-right font-mono">{fmt(i.purchaseRate)}</td>
+                                <td className="py-2 px-3 text-right font-mono">{fmt(i.saleRate)}</td>
+                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{fmt(i.stockValuation)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          {filteredParts.length > 0 && (
+                            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                              <tr>
+                                <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={5}>
+                                  Total ({filteredParts.length} Parts)
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono text-emerald-800">{totalStock}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-slate-500" colSpan={2}>-</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-indigo-900 font-extrabold">{fmt(totalVal)}</td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {invSubTab === 'mov' && reportData?.movement && (() => {
                   const filteredMovement = reportData.movement.filter((m: any) => {
@@ -3514,98 +3722,107 @@ export const Reports: React.FC<ReportsProps> = ({
                   const totCl = filteredMovement.reduce((acc: number, m: any) => acc + (Number(m.clQty) || 0), 0);
 
                   return (
-                    <div className="space-y-3">
-                      {/* Movement Filter Bar */}
-                      <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+                    <div className="space-y-2.5">
+                      {/* Movement Filter & KPI Bar */}
+                      <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 min-w-[180px]">
+                          <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 min-w-[200px]">
                             <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <input
                               type="text"
                               placeholder="Search item name or code..."
                               value={stockFilters.item || ''}
                               onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
-                              className="text-xs w-full bg-transparent outline-none font-medium"
+                              className="text-xs w-full bg-transparent outline-none font-medium text-slate-800"
                             />
                           </div>
 
                           <select
                             value={stockFilters.group || 'ALL'}
                             onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
-                            className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none"
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
                           >
                             <option value="ALL">All Groups</option>
                             {Array.from(new Set(reportData.movement.map((d: any) => d.group).filter(Boolean))).sort().map((g: any) => (
                               <option key={g} value={g}>{g}</option>
                             ))}
                           </select>
-
-                          <button
-                            type="button"
-                            onClick={() => setInvSubTab('godown_summary')}
-                            className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-lg border border-indigo-200 transition cursor-pointer"
-                          >
-                            <Warehouse className="w-3.5 h-3.5" />
-                            <span>View Godown Wise In/Out</span>
-                          </button>
                         </div>
-                        <div className="text-xs text-slate-500 font-medium">
-                          Showing {filteredMovement.length} item records
+
+                        {/* Movement KPI Badges */}
+                        <div className="flex items-center gap-2 text-xs flex-wrap font-mono">
+                          <span className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 font-sans font-semibold text-[11px]">
+                            Items: <strong className="text-slate-900 font-mono">{filteredMovement.length}</strong>
+                          </span>
+                          <span className="bg-slate-100 px-2 py-1 rounded-lg border border-slate-200 text-slate-700 font-sans font-semibold text-[11px]">
+                            Op: <strong className="text-slate-900 font-mono">{totOp}</strong>
+                          </span>
+                          <span className="bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200 text-emerald-800 font-sans font-semibold text-[11px]">
+                            In (+): <strong className="text-emerald-900 font-mono">{totIn}</strong>
+                          </span>
+                          <span className="bg-rose-50 px-2 py-1 rounded-lg border border-rose-200 text-rose-800 font-sans font-semibold text-[11px]">
+                            Out (-): <strong className="text-rose-900 font-mono">{totOut}</strong>
+                          </span>
+                          <span className="bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-900 font-sans font-semibold text-[11px]">
+                            Closing: <strong className="text-indigo-950 font-mono">{totCl}</strong>
+                          </span>
                         </div>
                       </div>
 
-                      <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                        <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                          <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Code</th>
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Group</th>
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Opening Qty</th>
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Qty In</th>
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Qty Out</th>
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Closing Qty</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {filteredMovement.length === 0 ? (
-                            <tr>
-                              <td colSpan={7} className="py-8 text-center text-slate-400 italic">
-                                No stock movement records found for the selected period
-                              </td>
+                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+                        <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                            <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Code</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Group</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Opening Qty</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Qty In (+)</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Qty Out (-)</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Closing Qty</th>
                             </tr>
-                          ) : (
-                            filteredMovement.map((m: any, idx: number) => (
-                              <tr key={idx} onClick={() => onDrillStock(m.code, fromDate, toDate)} className="hover:bg-indigo-50/50 cursor-pointer transition">
-                                <td className="py-2 px-3 font-semibold text-slate-800">
-                                  {m.name}
-                                  {m.unit && <span className="ml-1 text-[11px] text-slate-400 font-normal">({m.unit})</span>}
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredMovement.length === 0 ? (
+                              <tr>
+                                <td colSpan={7} className="py-8 text-center text-slate-400 italic">
+                                  No stock movement records found for the selected period
                                 </td>
-                                <td className="py-2 px-3 font-mono text-xs text-slate-500">{m.code}</td>
-                                <td className="py-2 px-3 text-slate-600 text-xs">{m.group || '-'}</td>
-                                <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700">{m.opQty}</td>
-                                <td className="py-2 px-3 text-right font-mono font-medium text-emerald-600">
-                                  {m.inQty > 0 ? `+${m.inQty}` : '0'}
-                                </td>
-                                <td className="py-2 px-3 text-right font-mono font-medium text-rose-600">
-                                  {m.outQty > 0 ? `-${m.outQty}` : '0'}
-                                </td>
-                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{m.clQty}</td>
                               </tr>
-                            ))
+                            ) : (
+                              filteredMovement.map((m: any, idx: number) => (
+                                <tr key={idx} onClick={() => onDrillStock(m.code, fromDate, toDate)} className="hover:bg-indigo-50/40 cursor-pointer transition">
+                                  <td className="py-2 px-3 font-semibold text-slate-800">
+                                    {m.name}
+                                    {m.unit && <span className="ml-1 text-[11px] text-slate-400 font-normal">({m.unit})</span>}
+                                  </td>
+                                  <td className="py-2 px-3 font-mono text-xs text-slate-500">{m.code}</td>
+                                  <td className="py-2 px-3 text-slate-600 text-xs">{m.group || '-'}</td>
+                                  <td className="py-2 px-3 text-right font-mono font-semibold text-slate-700">{m.opQty}</td>
+                                  <td className="py-2 px-3 text-right font-mono font-medium text-emerald-600">
+                                    {m.inQty > 0 ? `+${m.inQty}` : '0'}
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-mono font-medium text-rose-600">
+                                    {m.outQty > 0 ? `-${m.outQty}` : '0'}
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{m.clQty}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                          {filteredMovement.length > 0 && (
+                            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                              <tr>
+                                <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={3}>Total ({filteredMovement.length} Items)</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-slate-900">{totOp}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-emerald-700">+{totIn}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-rose-700">-{totOut}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-indigo-900 font-extrabold">{totCl}</td>
+                              </tr>
+                            </tfoot>
                           )}
-                        </tbody>
-                        {filteredMovement.length > 0 && (
-                          <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
-                            <tr>
-                              <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={3}>Total ({filteredMovement.length} Items)</td>
-                              <td className="py-2.5 px-3 text-right font-mono text-slate-900">{totOp}</td>
-                              <td className="py-2.5 px-3 text-right font-mono text-emerald-700">+{totIn}</td>
-                              <td className="py-2.5 px-3 text-right font-mono text-rose-700">-{totOut}</td>
-                              <td className="py-2.5 px-3 text-right font-mono text-indigo-900">{totCl}</td>
-                            </tr>
-                          </tfoot>
-                        )}
-                      </table>
+                        </table>
+                      </div>
                     </div>
                   );
                 })()}
@@ -3630,9 +3847,9 @@ export const Reports: React.FC<ReportsProps> = ({
                   const uniqueGodowns = Array.from(new Set(filteredGodownRows.map((r: any) => r.godownName))).filter(Boolean);
 
                   return (
-                    <div className="space-y-4">
-                      {/* Godown Filter Bar */}
-                      <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                    <div className="space-y-2.5">
+                      {/* Compact Godown Filter & KPI Bar */}
+                      <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1">
                             <Warehouse className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
@@ -3641,7 +3858,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               onChange={e => setStockFilters({ ...stockFilters, godownId: e.target.value })}
                               className="text-xs font-bold text-slate-800 bg-transparent outline-none cursor-pointer"
                             >
-                              <option value="ALL">🏢 All Godowns & Stores ({godowns.length})</option>
+                              <option value="ALL">🏢 All Godowns ({godowns.length})</option>
                               {godowns.map(g => (
                                 <option key={g.id} value={g.id}>
                                   {g.name} ({g.branchName || 'Branch'}) {g.isDefault ? '• Default' : ''}
@@ -3653,22 +3870,11 @@ export const Reports: React.FC<ReportsProps> = ({
                           <select
                             value={stockFilters.group || 'ALL'}
                             onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
-                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none"
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
                           >
                             <option value="ALL">All Groups</option>
                             {Array.from(new Set(reportData.map((d: any) => d.group).filter(Boolean))).sort().map((g: any) => (
                               <option key={g} value={g}>{g}</option>
-                            ))}
-                          </select>
-
-                          <select
-                            value={stockFilters.category || 'ALL'}
-                            onChange={e => setStockFilters({ ...stockFilters, category: e.target.value })}
-                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none"
-                          >
-                            <option value="ALL">All Brands / Categories</option>
-                            {Array.from(new Set(reportData.map((d: any) => d.category).filter(Boolean))).sort().map((c: any) => (
-                              <option key={c} value={c}>{c}</option>
                             ))}
                           </select>
 
@@ -3679,48 +3885,29 @@ export const Reports: React.FC<ReportsProps> = ({
                               placeholder="Search item name or code..."
                               value={stockFilters.item || ''}
                               onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
-                              className="text-xs w-full bg-transparent outline-none font-medium"
+                              className="text-xs w-full bg-transparent outline-none font-medium text-slate-800"
                             />
                           </div>
                         </div>
 
-                        <div className="text-xs text-slate-600 font-semibold">
-                          Showing <span className="text-indigo-600 font-bold">{filteredGodownRows.length}</span> records across <span className="text-indigo-600 font-bold">{uniqueGodowns.length}</span> godowns
-                        </div>
-                      </div>
-
-                      {/* Summary KPI Cards */}
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-                          <div className="text-[11px] font-semibold text-slate-500 uppercase">Active Godowns</div>
-                          <div className="text-base font-bold text-slate-800">{uniqueGodowns.length}</div>
-                        </div>
-                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-                          <div className="text-[11px] font-semibold text-slate-500 uppercase">Opening Qty</div>
-                          <div className="text-base font-bold text-slate-700 font-mono">{totOp}</div>
-                        </div>
-                        <div className="bg-emerald-50/60 border border-emerald-200 rounded-lg p-2.5">
-                          <div className="text-[11px] font-semibold text-emerald-700 uppercase">Inward Qty (+)</div>
-                          <div className="text-base font-bold text-emerald-700 font-mono">+{totIn}</div>
-                        </div>
-                        <div className="bg-rose-50/60 border border-rose-200 rounded-lg p-2.5">
-                          <div className="text-[11px] font-semibold text-rose-700 uppercase">Outward Qty (-)</div>
-                          <div className="text-base font-bold text-rose-700 font-mono">-{totOut}</div>
-                        </div>
-                        <div className="bg-indigo-50/60 border border-indigo-200 rounded-lg p-2.5">
-                          <div className="text-[11px] font-semibold text-indigo-700 uppercase">Closing Qty</div>
-                          <div className="text-base font-bold text-indigo-900 font-mono">{totCl}</div>
-                        </div>
-                        <div className="bg-amber-50/60 border border-amber-200 rounded-lg p-2.5">
-                          <div className="text-[11px] font-semibold text-amber-700 uppercase">Stock Valuation</div>
-                          <div className="text-base font-bold text-amber-900 font-mono">Nu. {fmt(totVal)}</div>
+                        {/* Compact Stats */}
+                        <div className="flex items-center gap-2 text-xs flex-wrap font-mono">
+                          <span className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 font-sans font-semibold text-[11px]">
+                            Locations: <strong className="text-slate-900 font-mono">{uniqueGodowns.length}</strong>
+                          </span>
+                          <span className="bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-800 font-sans font-semibold text-[11px]">
+                            Closing Qty: <strong className="text-emerald-900 font-mono">{totCl}</strong>
+                          </span>
+                          <span className="bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-900 font-sans font-semibold text-[11px]">
+                            Valuation: <strong className="text-indigo-950 font-mono">Nu. {fmt(totVal)}</strong>
+                          </span>
                         </div>
                       </div>
 
                       {/* Table */}
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Godown / Store</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Branch</th>
@@ -3732,7 +3919,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Outward (-)</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Closing Qty</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Pur. Rate</th>
-                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Valuation (Nu.)</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Valuation</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -3747,7 +3934,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                 <tr
                                   key={idx}
                                   onClick={() => onDrillStock(r.code, fromDate, toDate)}
-                                  className="hover:bg-indigo-50/50 cursor-pointer transition"
+                                  className="hover:bg-indigo-50/40 cursor-pointer transition"
                                 >
                                   <td className="py-2 px-3 font-semibold text-slate-800">
                                     <div className="flex items-center gap-1.5">
@@ -3785,7 +3972,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
                               <tr>
                                 <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={5}>
-                                  Total ({filteredGodownRows.length} Godown Allocations)
+                                  Total ({filteredGodownRows.length} Allocations)
                                 </td>
                                 <td className="py-2.5 px-3 text-right font-mono text-slate-900">{totOp}</td>
                                 <td className="py-2.5 px-3 text-right font-mono text-emerald-700">+{totIn}</td>
@@ -3809,117 +3996,152 @@ export const Reports: React.FC<ReportsProps> = ({
                     if (stockFilters.item && stockFilters.item !== 'ALL' && !p.name?.toLowerCase().includes(stockFilters.item.toLowerCase())) return false;
                     return true;
                   });
+                  const totalRevenue = filteredProfit.reduce((acc: number, p: any) => acc + (Number(p.saleAmt) || 0), 0);
+                  const totalCost = filteredProfit.reduce((acc: number, p: any) => acc + (Number(p.costAmt) || 0), 0);
+                  const totalProfit = filteredProfit.reduce((acc: number, p: any) => acc + (Number(p.profit) || 0), 0);
+                  const overallMargin = totalRevenue !== 0 ? (totalProfit / Math.abs(totalRevenue)) * 100 : 0;
+
                   return (
-                  <div className="flex flex-col space-y-3">
-                    <div className="bg-slate-50 border-b border-slate-200 p-3 flex flex-wrap items-center gap-3 rounded-xl border">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <select
-                          value={stockFilters.group || 'ALL'}
-                          onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
-                          className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[120px] truncate"
-                        >
-                          <option value="ALL">All Groups</option>
-                          {Array.from(new Set(reportData.profit.map((d:any) => d.group).filter(Boolean))).sort().map((g:any) => (
-                            <option key={g} value={g}>{g}</option>
-                          ))}
-                        </select>
-                        <select
-                          value={stockFilters.category || 'ALL'}
-                          onChange={e => setStockFilters({ ...stockFilters, category: e.target.value })}
-                          className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[120px] truncate"
-                        >
-                          <option value="ALL">All Brands</option>
-                          {Array.from(new Set(reportData.profit.map((d:any) => d.category).filter(Boolean))).sort().map((c:any) => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
+                    <div className="space-y-2.5">
+                      <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 min-w-[200px]">
+                            <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="text"
+                              placeholder="Search item name or code..."
+                              value={stockFilters.item || ''}
+                              onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
+                              className="bg-transparent text-xs w-full focus:outline-none font-medium text-slate-800"
+                            />
+                          </div>
+                          <select
+                            value={stockFilters.group || 'ALL'}
+                            onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
+                          >
+                            <option value="ALL">All Groups</option>
+                            {Array.from(new Set(reportData.profit.map((d:any) => d.group).filter(Boolean))).sort().map((g:any) => (
+                              <option key={g} value={g}>{g}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-2 text-xs flex-wrap font-mono">
+                          <span className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 font-sans font-semibold text-[11px]">
+                            Revenue: <strong className="text-slate-900 font-mono">Nu. {fmt(totalRevenue)}</strong>
+                          </span>
+                          <span className="bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-800 font-sans font-semibold text-[11px]">
+                            Gross Profit: <strong className="text-emerald-900 font-mono">Nu. {fmt(totalProfit)}</strong>
+                          </span>
+                          <span className="bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-900 font-sans font-semibold text-[11px]">
+                            Margin: <strong className="text-indigo-950 font-mono">{overallMargin.toFixed(1)}%</strong>
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5 flex-1 min-w-[180px] bg-white border border-slate-300 rounded-xl px-3 h-8">
-                        <Search className="h-3.5 w-3.5 text-slate-400" />
-                        <input
-                          type="text"
-                          placeholder="Search items..."
-                          value={stockFilters.item || ''}
-                          onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
-                          className="bg-transparent text-xs w-full focus:outline-none font-medium"
-                        />
+
+                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+                        <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                            <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Qty Sold</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Sales Revenue</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Cost Price</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Gross Profit</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Profit %</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredProfit.map((p: any, idx: number) => {
+                              const saleAmt = Number(p.saleAmt) || 0;
+                              const profitAmt = Number(p.profit) || 0;
+                              const pct = saleAmt !== 0 ? (profitAmt / Math.abs(saleAmt)) * 100 : 0;
+                              return (
+                              <tr key={idx} onClick={() => onDrillItemProfit ? onDrillItemProfit(p.code, fromDate, toDate) : onDrillStock(p.code, fromDate, toDate)} className="hover:bg-indigo-50/40 cursor-pointer transition">
+                                <td className="py-2 px-3 font-semibold text-slate-800">{p.name}</td>
+                                <td className="py-2 px-3 text-center font-mono">{p.qty}</td>
+                                <td className="py-2 px-3 text-right font-mono">{fmt(p.saleAmt)}</td>
+                                <td className="py-2 px-3 text-right font-mono">{fmt(p.costAmt)}</td>
+                                <td className={`py-2 px-3 text-right font-mono font-bold ${p.profit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                  {fmt(p.profit)}
+                                </td>
+                                <td className={`py-2 px-3 text-right font-mono font-bold ${pct >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                  {pct.toFixed(2)}%
+                                </td>
+                              </tr>
+                            )})}
+                          </tbody>
+                          {filteredProfit.length > 0 && (
+                            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                              <tr>
+                                <td className="py-2.5 px-3 uppercase text-xs text-slate-800">Total ({filteredProfit.length} Items)</td>
+                                <td className="py-2.5 px-3 text-center font-mono">-</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-slate-900">{fmt(totalRevenue)}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-slate-700">{fmt(totalCost)}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-emerald-800 font-extrabold">{fmt(totalProfit)}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-indigo-900">{overallMargin.toFixed(2)}%</td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
                       </div>
                     </div>
-                  <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                    <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                      <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Qty Sold</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Sales Revenue</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Cost Price</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Gross Profit</th>
-                        <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Profit %</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredProfit.map((p: any, idx: number) => {
-                        const saleAmt = Number(p.saleAmt) || 0;
-                        const profitAmt = Number(p.profit) || 0;
-                        const pct = saleAmt !== 0 ? (profitAmt / Math.abs(saleAmt)) * 100 : 0;
-                        return (
-                        <tr key={idx} onClick={() => onDrillItemProfit ? onDrillItemProfit(p.code, fromDate, toDate) : onDrillStock(p.code, fromDate, toDate)} className="hover:bg-slate-50 cursor-pointer">
-                          <td className="py-2 px-3 font-semibold text-slate-800">{p.name}</td>
-                          <td className="py-2 px-3 text-center font-mono">{p.qty}</td>
-                          <td className="py-2 px-3 text-right font-mono">{fmt(p.saleAmt)}</td>
-                          <td className="py-2 px-3 text-right font-mono">{fmt(p.costAmt)}</td>
-                          <td className={`py-2 px-3 text-right font-mono font-bold ${p.profit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                            {fmt(p.profit)}
-                          </td>
-                          <td className={`py-2 px-3 text-right font-mono font-bold ${pct >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                            {pct.toFixed(2)}%
-                          </td>
-                        </tr>
-                      )})}
-                    </tbody>
-                  </table>
-                  </div>
-                )})()}
+                  );
+                })()}
 
                 {invSubTab === 'top' && reportData?.topQty && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="border border-slate-200 rounded-xl p-3 bg-slate-50">
-                      <h3 className="font-bold text-slate-800 text-xs mb-2">Top 15 Sellers by Quantity</h3>
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                          <tr className="border-b border-slate-300 font-bold text-slate-600">
-                            <th className="bg-slate-100 bg-clip-padding py-1 text-left">Item</th>
-                            <th className="bg-slate-100 bg-clip-padding py-1 text-right">Qty</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {reportData.topQty.map((t: any, idx: number) => (
-                            <tr key={idx} className="border-b border-slate-200">
-                              <td className="py-1 font-medium">{t.name}</td>
-                              <td className="py-1 text-right font-mono font-bold">{t.qty}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="border border-slate-200 rounded-xl bg-white shadow-xs overflow-hidden">
+                        <div className="p-3 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 text-xs flex items-center justify-between">
+                          <span>🏆 Top 15 Sellers by Quantity</span>
+                          <span className="text-[11px] text-slate-500 font-normal">{reportData.topQty.length} items</span>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs border-separate border-spacing-0">
+                            <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                              <tr className="border-b border-slate-200 font-bold text-slate-700 uppercase text-[11px]">
+                                <th className="bg-slate-100 bg-clip-padding py-2 px-3 text-left">Item</th>
+                                <th className="bg-slate-100 bg-clip-padding py-2 px-3 text-right">Qty Sold</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {reportData.topQty.map((t: any, idx: number) => (
+                                <tr key={idx} className="hover:bg-slate-50 transition">
+                                  <td className="py-2 px-3 font-medium text-slate-800">{t.name}</td>
+                                  <td className="py-2 px-3 text-right font-mono font-bold text-indigo-700">{t.qty}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
 
-                    <div className="border border-slate-200 rounded-xl p-3 bg-slate-50">
-                      <h3 className="font-bold text-slate-800 text-xs mb-2">Top 15 Sellers by Revenue</h3>
-                      <table className="w-full text-xs">
-                        <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                          <tr className="border-b border-slate-300 font-bold text-slate-600">
-                            <th className="bg-slate-100 bg-clip-padding py-1 text-left">Item</th>
-                            <th className="bg-slate-100 bg-clip-padding py-1 text-right">Revenue</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {reportData.topAmt.map((t: any, idx: number) => (
-                            <tr key={idx} className="border-b border-slate-200">
-                              <td className="py-1 font-medium">{t.name}</td>
-                              <td className="py-1 text-right font-mono font-bold">{fmt(t.saleAmt)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <div className="border border-slate-200 rounded-xl bg-white shadow-xs overflow-hidden">
+                        <div className="p-3 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 text-xs flex items-center justify-between">
+                          <span>💰 Top 15 Sellers by Revenue</span>
+                          <span className="text-[11px] text-slate-500 font-normal">{reportData.topAmt.length} items</span>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs border-separate border-spacing-0">
+                            <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                              <tr className="border-b border-slate-200 font-bold text-slate-700 uppercase text-[11px]">
+                                <th className="bg-slate-100 bg-clip-padding py-2 px-3 text-left">Item</th>
+                                <th className="bg-slate-100 bg-clip-padding py-2 px-3 text-right">Revenue (Nu.)</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {reportData.topAmt.map((t: any, idx: number) => (
+                                <tr key={idx} className="hover:bg-slate-50 transition">
+                                  <td className="py-2 px-3 font-medium text-slate-800">{t.name}</td>
+                                  <td className="py-2 px-3 text-right font-mono font-bold text-emerald-700">{fmt(t.saleAmt)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -3938,135 +4160,118 @@ export const Reports: React.FC<ReportsProps> = ({
                     );
                   });
                   return (
-                  <div className="flex flex-col space-y-3">
-                    <div className="bg-slate-50 border-b border-slate-200 p-3 flex flex-wrap items-center gap-3 rounded-xl border">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <select
-                          value={stockFilters.group || 'ALL'}
-                          onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
-                          className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[120px] truncate"
-                        >
-                          <option value="ALL">All Groups</option>
-                          {Array.from(new Set(reportData.map((d:any) => d.group).filter(Boolean))).sort().map((g:any) => (
-                            <option key={g} value={g}>{g}</option>
-                          ))}
-                        </select>
-                        <select
-                          value={stockFilters.category || 'ALL'}
-                          onChange={e => setStockFilters({ ...stockFilters, category: e.target.value })}
-                          className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[120px] truncate"
-                        >
-                          <option value="ALL">All Brands</option>
-                          {Array.from(new Set(reportData.map((d:any) => d.category).filter(Boolean))).sort().map((c:any) => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
-                        <select
-                          value={stockFilters.item || 'ALL'}
-                          onChange={e => setStockFilters({ ...stockFilters, item: e.target.value })}
-                          className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[140px] truncate"
-                        >
-                          <option value="ALL">All Items</option>
-                          {Array.from(new Set(reportData.map((d:any) => d.itemName).filter(Boolean))).sort().map((i:any) => (
-                            <option key={i} value={i}>{i}</option>
-                          ))}
-                        </select>
-                        <select
-                          value={stockFilters.status || 'ALL'}
-                          onChange={e => setStockFilters({ ...stockFilters, status: e.target.value })}
-                          className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[120px] truncate"
-                        >
-                          <option value="ALL">All Status</option>
-                          <option value="In Stock">In Stock</option>
-                          <option value="Sold">Sold Out</option>
-                        </select>
+                    <div className="space-y-2.5">
+                      <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 min-w-[200px]">
+                            <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="text"
+                              placeholder="Filter serial no, item name, code..."
+                              value={stockFilters.serial || ''}
+                              onChange={e => setStockFilters({ ...stockFilters, serial: e.target.value })}
+                              className="bg-transparent text-xs w-full focus:outline-none font-medium text-slate-800"
+                            />
+                          </div>
+                          <select
+                            value={stockFilters.group || 'ALL'}
+                            onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
+                          >
+                            <option value="ALL">All Groups</option>
+                            {Array.from(new Set(reportData.map((d:any) => d.group).filter(Boolean))).sort().map((g:any) => (
+                              <option key={g} value={g}>{g}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={stockFilters.status || 'ALL'}
+                            onChange={e => setStockFilters({ ...stockFilters, status: e.target.value })}
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
+                          >
+                            <option value="ALL">All Status</option>
+                            <option value="In Stock">In Stock</option>
+                            <option value="Sold">Sold Out</option>
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs flex-wrap font-mono">
+                          <span className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 font-sans font-semibold text-[11px]">
+                            Total Serials: <strong className="text-slate-900 font-mono">{filteredSerials.length}</strong>
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1.5 flex-1 min-w-[180px] bg-white border border-slate-300 rounded-xl px-3 h-8">
-                        <Search className="h-3.5 w-3.5 text-slate-400" />
-                        <input
-                          type="text"
-                          placeholder="Filter by serial no, item name, or code..."
-                          value={stockFilters.serial || ''}
-                          onChange={e => setStockFilters({ ...stockFilters, serial: e.target.value })}
-                          className="bg-transparent text-xs w-full focus:outline-none font-medium"
-                        />
-                      </div>
-                      <div className="text-xs text-slate-500 font-semibold text-right">
-                        Showing {filteredSerials.length} serials
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
-                      <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                        <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
-                          <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Serial Number</th>
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Code</th>
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Group / Brand</th>
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Status</th>
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Acquisition</th>
-                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Sale / Out</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {filteredSerials.length === 0 ? (
-                            <tr>
-                              <td colSpan={7} className="py-10 text-center text-slate-400 italic">
-                                No serial numbers found matching filter.
-                              </td>
+
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-x-auto">
+                        <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                            <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Serial Number</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Code</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Group / Brand</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Status</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Acquisition</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Sale / Out</th>
                             </tr>
-                          ) : (
-                            filteredSerials.map((s: any, idx: number) => (
-                              <tr key={idx} className="hover:bg-slate-50 transition cursor-pointer" onClick={() => onDrillStock && onDrillStock(s.itemCode, fromDate, toDate)}>
-                                <td className="py-2 px-3 font-mono font-bold text-indigo-700">{s.serialNo}</td>
-                                <td className="py-2 px-3 font-mono text-slate-600">{s.itemCode}</td>
-                                <td className="py-2 px-3 font-semibold text-slate-900">{s.itemName}</td>
-                                <td className="py-2 px-3 text-slate-600">
-                                  <div className="text-xs font-semibold">{s.group || '-'}</div>
-                                  <div className="text-[10px] text-slate-400">{s.category || '-'}</div>
-                                </td>
-                                <td className="py-2 px-3 text-center">
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.status === 'In Stock' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>
-                                    {s.status}
-                                  </span>
-                                </td>
-                                <td className="py-2 px-3 text-slate-600 text-[11px]">
-                                  {s.date}
-                                  <br/>
-                                  <span 
-                                    className="text-indigo-500 font-mono font-bold hover:underline"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (s.refNo && s.refNo !== 'Opening' && onDrillVoucher) onDrillVoucher(s.refNo, fromDate, toDate);
-                                    }}
-                                  >
-                                    ({s.refNo})
-                                  </span>
-                                </td>
-                                <td className="py-2 px-3 text-slate-600 text-[11px]">
-                                  {s.soldDate ? (
-                                    <>
-                                      {s.soldDate}
-                                      <br/>
-                                      <span 
-                                        className="text-rose-500 font-mono font-bold hover:underline"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          if (s.soldRefNo && onDrillVoucher) onDrillVoucher(s.soldRefNo, fromDate, toDate);
-                                        }}
-                                      >
-                                        ({s.soldRefNo})
-                                      </span>
-                                    </>
-                                  ) : '-'}
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredSerials.length === 0 ? (
+                              <tr>
+                                <td colSpan={7} className="py-10 text-center text-slate-400 italic">
+                                  No serial numbers found matching filter.
                                 </td>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                            ) : (
+                              filteredSerials.map((s: any, idx: number) => (
+                                <tr key={idx} className="hover:bg-indigo-50/40 transition cursor-pointer" onClick={() => onDrillStock && onDrillStock(s.itemCode, fromDate, toDate)}>
+                                  <td className="py-2 px-3 font-mono font-bold text-indigo-700">{s.serialNo}</td>
+                                  <td className="py-2 px-3 font-mono text-slate-600">{s.itemCode}</td>
+                                  <td className="py-2 px-3 font-semibold text-slate-900">{s.itemName}</td>
+                                  <td className="py-2 px-3 text-slate-600">
+                                    <div className="text-xs font-semibold">{s.group || '-'}</div>
+                                    <div className="text-[10px] text-slate-400">{s.category || '-'}</div>
+                                  </td>
+                                  <td className="py-2 px-3 text-center">
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.status === 'In Stock' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>
+                                      {s.status}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-slate-600 text-[11px]">
+                                    {s.date}
+                                    <br/>
+                                    <span 
+                                      className="text-indigo-500 font-mono font-bold hover:underline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (s.refNo && s.refNo !== 'Opening' && onDrillVoucher) onDrillVoucher(s.refNo, fromDate, toDate);
+                                      }}
+                                    >
+                                      ({s.refNo})
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-3 text-slate-600 text-[11px]">
+                                    {s.soldDate ? (
+                                      <>
+                                        {s.soldDate}
+                                        <br/>
+                                        <span 
+                                          className="text-rose-500 font-mono font-bold hover:underline"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (s.soldRefNo && onDrillVoucher) onDrillVoucher(s.soldRefNo, fromDate, toDate);
+                                          }}
+                                        >
+                                          ({s.soldRefNo})
+                                        </span>
+                                      </>
+                                    ) : '-'}
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
                   );
                 })()}
 
@@ -4089,13 +4294,23 @@ export const Reports: React.FC<ReportsProps> = ({
                   const totalVal = filteredBatches.reduce((sum, x) => sum + (Number(x.stockValuation) || 0), 0);
 
                   return (
-                    <div className="flex flex-col space-y-3">
-                      <div className="bg-slate-50 border-b border-slate-200 p-3 flex flex-wrap items-center gap-3 rounded-xl border">
+                    <div className="space-y-2.5">
+                      <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
                         <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2.5 py-1 min-w-[200px]">
+                            <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <input
+                              type="text"
+                              placeholder="Filter batch no, item name, code..."
+                              value={stockFilters.serial || ''}
+                              onChange={e => setStockFilters({ ...stockFilters, serial: e.target.value })}
+                              className="bg-transparent text-xs w-full focus:outline-none font-medium text-slate-800"
+                            />
+                          </div>
                           <select
                             value={stockFilters.group || 'ALL'}
                             onChange={e => setStockFilters({ ...stockFilters, group: e.target.value })}
-                            className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[120px] truncate"
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
                           >
                             <option value="ALL">All Groups</option>
                             {Array.from(new Set(reportData.map((d:any) => d.group).filter(Boolean))).sort().map((g:any) => (
@@ -4103,19 +4318,9 @@ export const Reports: React.FC<ReportsProps> = ({
                             ))}
                           </select>
                           <select
-                            value={stockFilters.category || 'ALL'}
-                            onChange={e => setStockFilters({ ...stockFilters, category: e.target.value })}
-                            className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[120px] truncate"
-                          >
-                            <option value="ALL">All Brands</option>
-                            {Array.from(new Set(reportData.map((d:any) => d.category).filter(Boolean))).sort().map((c:any) => (
-                              <option key={c} value={c}>{c}</option>
-                            ))}
-                          </select>
-                          <select
                             value={stockFilters.status || 'ALL'}
                             onChange={e => setStockFilters({ ...stockFilters, status: e.target.value })}
-                            className="h-8 rounded-xl border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none w-[130px] truncate"
+                            className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-800 outline-none hover:border-indigo-400 transition cursor-pointer"
                           >
                             <option value="ALL">All Expiry Status</option>
                             <option value="Valid">Valid</option>
@@ -4123,34 +4328,34 @@ export const Reports: React.FC<ReportsProps> = ({
                             <option value="Expired">Expired</option>
                           </select>
                         </div>
-                        <div className="flex items-center gap-1.5 flex-1 min-w-[180px] bg-white border border-slate-300 rounded-xl px-3 h-8">
-                          <Search className="h-3.5 w-3.5 text-slate-400" />
-                          <input
-                            type="text"
-                            placeholder="Filter by batch no, item name, code, or barcode..."
-                            value={stockFilters.serial || ''}
-                            onChange={e => setStockFilters({ ...stockFilters, serial: e.target.value })}
-                            className="bg-transparent text-xs w-full focus:outline-none font-medium"
-                          />
-                        </div>
-                        <div className="text-xs text-slate-500 font-semibold text-right">
-                          Showing {filteredBatches.length} batches
+
+                        <div className="flex items-center gap-2 text-xs flex-wrap font-mono">
+                          <span className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 font-sans font-semibold text-[11px]">
+                            Batches: <strong className="text-slate-900 font-mono">{filteredBatches.length}</strong>
+                          </span>
+                          <span className="bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 text-emerald-800 font-sans font-semibold text-[11px]">
+                            Stock: <strong className="text-emerald-900 font-mono">{totalQty}</strong>
+                          </span>
+                          <span className="bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-900 font-sans font-semibold text-[11px]">
+                            Valuation: <strong className="text-indigo-950 font-mono">Nu. {fmt(totalVal)}</strong>
+                          </span>
                         </div>
                       </div>
+
                       <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-x-auto">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-0 z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
-                              <th className="py-2.5 px-3 text-left">Item Code</th>
-                              <th className="py-2.5 px-3 text-left">Item Name</th>
-                              <th className="py-2.5 px-3 text-left">Batch No</th>
-                              <th className="py-2.5 px-3 text-left">Expiry Date</th>
-                              <th className="py-2.5 px-3 text-center">Expiry Status</th>
-                              <th className="py-2.5 px-3 text-left">Barcode</th>
-                              <th className="py-2.5 px-3 text-right">Curr. Stock</th>
-                              <th className="py-2.5 px-3 text-right">Pur. Rate</th>
-                              <th className="py-2.5 px-3 text-right">Sale Rate</th>
-                              <th className="py-2.5 px-3 text-right">Stock Valuation</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Code</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Batch No</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Expiry Date</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Expiry Status</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Barcode</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Curr. Stock</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Pur. Rate</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Sale Rate</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Stock Valuation</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -4162,7 +4367,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               </tr>
                             ) : (
                               filteredBatches.map((b: any, idx: number) => (
-                                <tr key={idx} className="hover:bg-slate-50 transition cursor-pointer" onClick={() => onDrillStock && onDrillStock(b.itemCode, fromDate, toDate)}>
+                                <tr key={idx} className="hover:bg-indigo-50/40 transition cursor-pointer" onClick={() => onDrillStock && onDrillStock(b.itemCode, fromDate, toDate)}>
                                   <td className="py-2 px-3 font-mono text-slate-600">{b.itemCode}</td>
                                   <td className="py-2 px-3 font-semibold text-slate-900">{b.itemName}</td>
                                   <td className="py-2 px-3 font-mono font-bold text-emerald-800">{b.batchNo}</td>
@@ -4180,19 +4385,19 @@ export const Reports: React.FC<ReportsProps> = ({
                                   </td>
                                   <td className="py-2 px-3 font-mono text-xs text-slate-500">{b.barcode}</td>
                                   <td className="py-2 px-3 text-right font-bold text-slate-900">{b.currentStock} {b.unit}</td>
-                                  <td className="py-2 px-3 text-right font-mono text-slate-600">{(Number(b.purchaseRate) || 0).toFixed(2)}</td>
-                                  <td className="py-2 px-3 text-right font-mono font-semibold text-slate-800">{(Number(b.saleRate) || 0).toFixed(2)}</td>
-                                  <td className="py-2 px-3 text-right font-mono font-bold text-indigo-700">{(Number(b.stockValuation) || 0).toFixed(2)}</td>
+                                  <td className="py-2 px-3 text-right font-mono text-slate-600">{fmt(b.purchaseRate)}</td>
+                                  <td className="py-2 px-3 text-right font-mono font-semibold text-slate-800">{fmt(b.saleRate)}</td>
+                                  <td className="py-2 px-3 text-right font-mono font-bold text-indigo-700">{fmt(b.stockValuation)}</td>
                                 </tr>
                               ))
                             )}
                           </tbody>
-                          <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-300 text-xs">
+                          <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300 text-xs">
                             <tr>
-                              <td colSpan={6} className="py-2 px-3 text-right text-slate-700 uppercase">Total:</td>
-                              <td className="py-2 px-3 text-right text-slate-900 font-mono">{totalQty}</td>
+                              <td colSpan={6} className="py-2.5 px-3 text-right text-slate-700 uppercase">Total ({filteredBatches.length} Batches):</td>
+                              <td className="py-2.5 px-3 text-right text-emerald-800 font-mono">{totalQty}</td>
                               <td colSpan={2}></td>
-                              <td className="py-2 px-3 text-right text-indigo-900 font-mono">{(Number(totalVal) || 0).toFixed(2)}</td>
+                              <td className="py-2.5 px-3 text-right text-indigo-900 font-mono font-extrabold">{fmt(totalVal)}</td>
                             </tr>
                           </tfoot>
                         </table>
@@ -5268,42 +5473,10 @@ export const Reports: React.FC<ReportsProps> = ({
 
                   return (
                     <div className="space-y-2.5">
-                      {/* Compact Header & Metrics Strip */}
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2.5 bg-slate-900 text-white px-3.5 py-2.5 rounded-xl text-xs">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <BookOpen className="h-4 w-4 text-indigo-400 shrink-0" />
-                          <span className="font-bold text-sm text-white">{selectedLedger}</span>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-800 text-indigo-200 border border-slate-700">
-                            {groupName}
-                          </span>
-                          <span className="text-[11px] text-slate-400">({processedRows.length} txns)</span>
-                        </div>
-
-                        {/* Fast inline KPI Metrics */}
-                        <div className="flex items-center gap-2 sm:gap-3 flex-wrap font-mono text-[11px]">
-                          <div className="bg-slate-800/90 px-2 py-1 rounded-md">
-                            <span className="text-slate-400 mr-1 font-sans text-[10px]">Op Bal:</span>
-                            <span className="font-bold text-slate-200">Nu. {fmt(Math.abs(opBal))} {opBal >= 0 ? 'Dr' : 'Cr'}</span>
-                          </div>
-                          <div className="bg-slate-800/90 px-2 py-1 rounded-md">
-                            <span className="text-emerald-400 mr-1 font-sans text-[10px]">Dr:</span>
-                            <span className="font-bold text-emerald-300">Nu. {fmt(totalDr)}</span>
-                          </div>
-                          <div className="bg-slate-800/90 px-2 py-1 rounded-md">
-                            <span className="text-rose-400 mr-1 font-sans text-[10px]">Cr:</span>
-                            <span className="font-bold text-rose-300">Nu. {fmt(totalCr)}</span>
-                          </div>
-                          <div className={`px-2 py-1 rounded-md font-bold ${finalBal >= 0 ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800' : 'bg-rose-950/80 text-rose-300 border border-rose-800'}`}>
-                            <span className="mr-1 font-sans text-[10px]">Closing:</span>
-                            <span>Nu. {fmt(Math.abs(finalBal))} {finalBal >= 0 ? 'Dr' : 'Cr'}</span>
-                          </div>
-                        </div>
-                      </div>
-
                       {/* Ledger Table */}
                       <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                          <thead className="sticky top-[73px] sm:top-[73px] z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center w-24">Date</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left w-24">Type</th>

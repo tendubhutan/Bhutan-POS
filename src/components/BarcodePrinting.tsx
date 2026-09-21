@@ -177,14 +177,16 @@ const StickerPreviewCard: React.FC<{
 
   const itemFontSize = getItemNameFontSize(sample.itemName, fontNm, widthMm);
 
+  const effectiveBarcode = sample.barcode || (sample.batchNo ? `${sample.itemCode}-${sample.batchNo}` : '100001');
+
   useEffect(() => {
-    if (svgRef.current && sample.barcode) {
+    if (svgRef.current && effectiveBarcode) {
       try {
         const targetBcMm = barcodeHeightMm > 0 ? barcodeHeightMm : (heightMm <= 22 ? 7 : (heightMm <= 25 ? 8 : 11));
         const bcHeight = Math.max(12, Math.min(46, Math.round(targetBcMm * 2.6)));
         const bcWidth = Math.max(0.60, Math.min(1.15, widthMm * 0.024));
 
-        JsBarcode(svgRef.current, sample.barcode, {
+        JsBarcode(svgRef.current, effectiveBarcode, {
           format: 'CODE128',
           displayValue: false,
           height: bcHeight,
@@ -195,7 +197,7 @@ const StickerPreviewCard: React.FC<{
         console.error('JsBarcode preview error', e);
       }
     }
-  }, [sample.barcode, widthMm, heightMm, barcodeHeightMm, cardHeightPx]);
+  }, [effectiveBarcode, widthMm, heightMm, barcodeHeightMm, cardHeightPx]);
 
   const salePriceText = formatPriceDisplay(
     showWholesalePrice ? (priceLabel === 'Sale Price' ? 'Sale' : priceLabel) : priceLabel,
@@ -273,7 +275,7 @@ const StickerPreviewCard: React.FC<{
       </div>
       {showCodeTxt && (
         <div style={{ fontSize: `${fontBc}px` }} className="font-mono font-bold text-slate-700 leading-none tracking-tight mt-0.5">
-          {sample.barcode}
+          {effectiveBarcode}
         </div>
       )}
       {(showPrice || showWholesalePrice) && (
@@ -380,13 +382,15 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
       setQueue(initialQueue.map(q => {
         const matchedItem = items.find(i => i['Item Code'] === q.itemCode);
         const matchedBatch = matchedItem?.batches?.find(b => b.id === q.batchId || b.batchNo === q.batchNo);
+        const resolvedBatchNo = q.batchNo || matchedBatch?.batchNo;
+        const effectiveBatchBarcode = matchedBatch?.barcode || (resolvedBatchNo ? (matchedItem?.Barcode ? `${matchedItem.Barcode}-${resolvedBatchNo}` : `${q.itemCode}-${resolvedBatchNo}`) : '');
         return {
           ...q,
-          barcode: q.barcode || matchedBatch?.barcode || matchedItem?.Barcode || '100001',
+          barcode: q.barcode || effectiveBatchBarcode || matchedItem?.Barcode || '100001',
           wholesaleRate: (q.wholesaleRate !== undefined && q.wholesaleRate > 0)
             ? q.wholesaleRate
             : Number(matchedBatch?.wholesaleRate || matchedItem?.['Wholesale Rate'] || (matchedItem as any)?.wholesaleRate || (matchedItem as any)?.wholesalePrice || 0),
-          batchNo: q.batchNo || matchedBatch?.batchNo,
+          batchNo: resolvedBatchNo,
           expDate: q.expDate || matchedBatch?.expDate,
           mfgDate: q.mfgDate || matchedBatch?.mfgDate,
           batchId: q.batchId || matchedBatch?.id
@@ -416,15 +420,17 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
 
     for (const item of items) {
       const hasBatches = item.batches && item.batches.length > 0;
+      const isBatchItem = item.maintainBatch === 'Y' || item.isPharmacy === 'Y';
       const hasVariants = item.variants && item.variants.length > 0;
 
       if (hasBatches) {
         // Expand each batch of the product
         for (const b of (item.batches || [])) {
-          const batchBc = b.barcode || (item.Barcode ? `${item.Barcode}-${b.batchNo}` : `${item['Item Code']}-${b.batchNo}`);
+          const cleanBatchNo = (b.batchNo || 'B-101').trim();
+          const batchBc = b.barcode || (item.Barcode ? `${item.Barcode}-${cleanBatchNo}` : `${item['Item Code']}-${cleanBatchNo}`);
           result.push({
             ...item,
-            batchNo: b.batchNo,
+            batchNo: cleanBatchNo,
             expDate: b.expDate,
             mfgDate: b.mfgDate,
             batchId: b.id,
@@ -436,6 +442,20 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             'Current Stock': b.currentStock !== undefined ? b.currentStock : item['Current Stock']
           });
         }
+      } else if (isBatchItem) {
+        // Item has Batch-Wise enabled but no batch array entries yet -> Create ready batch item
+        const defaultBatchNo = 'B-101';
+        const batchBc = item.Barcode ? `${item.Barcode}-${defaultBatchNo}` : `${item['Item Code']}-${defaultBatchNo}`;
+        result.push({
+          ...item,
+          batchNo: defaultBatchNo,
+          Barcode: batchBc,
+          'Purchase Rate': item['Purchase Rate'],
+          'Sale Rate': item['Sale Rate'],
+          'Wholesale Rate': (item as any)['Wholesale Rate'] || (item as any)['wholesaleRate'],
+          MRP: item.MRP || item['Sale Rate'],
+          'Current Stock': item['Current Stock']
+        });
       } else if (hasVariants) {
         // Expand each size/color variant
         for (const v of (item.variants || [])) {
@@ -481,13 +501,30 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
     );
   }, [expandedItems, filterType, search]);
 
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  // Close search dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setIsSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const addItemToQueue = (item: (Item & { batchNo?: string; expDate?: string; mfgDate?: string; batchId?: string })) => {
+    const cleanBatchNo = item.batchNo ? item.batchNo.trim() : undefined;
+    const effectiveBarcode = item.Barcode || (cleanBatchNo ? `${item['Item Code']}-${cleanBatchNo}` : '100001');
+
     const existingIndex = queue.findIndex(q =>
       q.itemCode === item['Item Code'] &&
       (q.size || '') === (item.size || '') &&
       (q.color || '') === (item.color || '') &&
-      (q.batchNo || '') === (item.batchNo || '') &&
-      (q.barcode || '') === (item.Barcode || '')
+      (q.batchNo || '') === (cleanBatchNo || '') &&
+      (q.barcode || '') === effectiveBarcode
     );
 
     const wholesaleVal = Number(item['Wholesale Rate'] || (item as any)['wholesaleRate'] || (item as any)['wholesalePrice'] || 0);
@@ -500,7 +537,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
         {
           itemCode: item['Item Code'],
           itemName: item['Item Name'],
-          barcode: item.Barcode || '100001',
+          barcode: effectiveBarcode,
           rate: item['Sale Rate'] || 0,
           wholesaleRate: wholesaleVal,
           mrp: item.MRP || item['Sale Rate'] || 0,
@@ -508,7 +545,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
           qty: 1,
           size: item.size,
           color: item.color,
-          batchNo: item.batchNo,
+          batchNo: cleanBatchNo,
           expDate: item.expDate,
           mfgDate: item.mfgDate,
           batchId: item.batchId
@@ -516,6 +553,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
       ]);
     }
     setSearch('');
+    setIsSearchOpen(false);
   };
 
   const addAllItemsToQueue = () => {
@@ -828,11 +866,13 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
           html += `<div class="batch-line">${batchPieces}</div>`;
         }
 
+        const barcodeVal = x.barcode || (x.batchNo ? `${x.itemCode}-${x.batchNo}` : '100001');
+
         html += `<div class="barcode-wrapper">`;
-        html += `<svg id="bc_${x.barcode}_${randId}" style="max-width: 98%; height: ${barcodeH}px; display: block; margin: 0 auto;"></svg>`;
+        html += `<svg class="barcode-render-svg" data-barcode="${encodeURIComponent(barcodeVal)}" style="max-width: 98%; height: ${barcodeH}px; display: block; margin: 0 auto;"></svg>`;
         html += `</div>`;
         if (showCodeTxt) {
-          html += `<div class="barcode-txt">${x.barcode}</div>`;
+          html += `<div class="barcode-txt">${barcodeVal}</div>`;
         }
         if (showPrice || showWholesalePrice) {
           html += `<div class="price-tag">`;
@@ -868,12 +908,14 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
         </div>
         <script>
           setTimeout(() => {
-            document.querySelectorAll('svg').forEach(el => {
-              const parts = el.id.split('_');
-              const code = parts[1] || '100001';
+            document.querySelectorAll('.barcode-render-svg').forEach(el => {
+              const rawCode = el.getAttribute('data-barcode');
+              const code = rawCode ? decodeURIComponent(rawCode) : '100001';
               try {
                 JsBarcode(el, code, { format: "CODE128", displayValue: false, height: ${barcodeH}, width: ${barcodeW}, margin: 0 });
-              } catch(e){}
+              } catch(e){
+                console.error('JsBarcode render error for code:', code, e);
+              }
             });
           }, 60);
         </script>
@@ -984,7 +1026,10 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             <div className="flex items-center gap-1.5 mb-2 overflow-x-auto pb-1">
               <button
                 type="button"
-                onClick={() => setFilterType('all')}
+                onClick={() => {
+                  setFilterType('all');
+                  setIsSearchOpen(true);
+                }}
                 className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
                   filterType === 'all'
                     ? 'bg-indigo-600 text-white shadow-xs'
@@ -995,7 +1040,10 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
               </button>
               <button
                 type="button"
-                onClick={() => setFilterType('batches')}
+                onClick={() => {
+                  setFilterType('batches');
+                  setIsSearchOpen(true);
+                }}
                 className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
                   filterType === 'batches'
                     ? 'bg-emerald-600 text-white shadow-xs'
@@ -1006,7 +1054,10 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
               </button>
               <button
                 type="button"
-                onClick={() => setFilterType('variants')}
+                onClick={() => {
+                  setFilterType('variants');
+                  setIsSearchOpen(true);
+                }}
                 className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
                   filterType === 'variants'
                     ? 'bg-purple-600 text-white shadow-xs'
@@ -1018,21 +1069,37 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             </div>
 
             {/* Search Input */}
-            <div className="relative mb-3">
+            <div ref={searchRef} className="relative mb-3">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 type="text"
                 placeholder="Search product name, batch no (e.g. B-101), or barcode to add to queue..."
                 value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none focus:border-indigo-500"
+                onFocus={() => setIsSearchOpen(true)}
+                onChange={e => {
+                  setSearch(e.target.value);
+                  setIsSearchOpen(true);
+                }}
+                className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-300 text-xs font-medium outline-none focus:border-indigo-500"
               />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch('');
+                    setIsSearchOpen(false);
+                  }}
+                  className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
 
-              {search.trim() && (
-                <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+              {isSearchOpen && (search.trim() || filterType !== 'all') && (
+                <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
                   {filteredItems.length === 0 ? (
                     <div className="p-3 text-xs text-slate-400 text-center italic">
-                      No matching products or batches found for "{search}"
+                      No matching products or batches found {search ? `for "${search}"` : ''}
                     </div>
                   ) : (
                     filteredItems.map((item, idx) => (
@@ -1079,7 +1146,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
                         </div>
                         <div className="text-right">
                           <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                            BC: {item.Barcode || '100001'}
+                            BC: {item.Barcode || (item.batchNo ? `${item['Item Code']}-${item.batchNo}` : '100001')}
                           </span>
                         </div>
                       </div>
