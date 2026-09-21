@@ -1074,7 +1074,42 @@ export function loadJson<T>(key: string, fallback: T, customCompanyId?: string):
     }
 
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(effectiveKey) : null;
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+
+      // Auto-heal & sanitize: non-demo tenant ledgers must NEVER retain contaminated demo balances
+      if (!isDemo && key === STORAGE_KEYS.LEDGERS && Array.isArray(parsed)) {
+        const sKey = getTenantStorageKey(STORAGE_KEYS.SALES_INVOICES, cId);
+        const pKey = getTenantStorageKey(STORAGE_KEYS.PURCHASE_INVOICES, cId);
+        const vKey = getTenantStorageKey(STORAGE_KEYS.VOUCHERS, cId);
+        const sRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(sKey) : null;
+        const pRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(pKey) : null;
+        const vRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(vKey) : null;
+        const hasTransactions = 
+          (sRaw && sRaw !== '[]' && JSON.parse(sRaw).length > 0) ||
+          (pRaw && pRaw !== '[]' && JSON.parse(pRaw).length > 0) ||
+          (vRaw && vRaw !== '[]' && JSON.parse(vRaw).length > 0);
+
+        if (!hasTransactions) {
+          let sanitized = false;
+          parsed.forEach((l: any) => {
+            const cur = Number(l['Current Balance']) || 0;
+            const op = Number(l['Opening Balance']) || 0;
+            // Any non-zero current balance without transactions or demo opening balance is phantom
+            if (cur !== 0 || [10000, 50000, 25000, 85000].includes(op)) {
+              l['Opening Balance'] = 0;
+              l['Current Balance'] = 0;
+              sanitized = true;
+            }
+          });
+          if (sanitized && typeof localStorage !== 'undefined') {
+            localStorage.setItem(effectiveKey, JSON.stringify(parsed));
+          }
+        }
+      }
+
+      return parsed;
+    }
 
     // If new or non-demo company has no custom config/vouchers/items yet, provide clean defaults
     if (!isDemo) {
@@ -1136,6 +1171,8 @@ export function loadJson<T>(key: string, fallback: T, customCompanyId?: string):
         let compName = 'Client Enterprise';
         let tpn = '';
         let phone = '';
+        let email = '';
+        let license = '';
         let address = '';
         let currency = 'Nu.';
         try {
@@ -1147,6 +1184,8 @@ export function loadJson<T>(key: string, fallback: T, customCompanyId?: string):
               compName = found.company_name || compName;
               tpn = found.tax_payer_id || '';
               phone = found.phone || '';
+              email = found.email || '';
+              license = found.trade_license_no || '';
               address = found.address || '';
               currency = found.currency_symbol || currency;
             }
@@ -1154,10 +1193,15 @@ export function loadJson<T>(key: string, fallback: T, customCompanyId?: string):
         } catch {}
         return ({
           CompanyName: compName,
+          CompanyTPNNo: tpn,
+          CompanyGSTNo: license,
+          CompanyPhone: phone,
+          CompanyEmail: email,
           TaxId: tpn,
           Phone: phone,
           Address: address,
           Currency: currency,
+          CurrencySymbol: currency,
           ShowTax: true,
           PaperSize: '3inch',
           FooterMessage: 'Thank you for your business!'
@@ -1305,6 +1349,24 @@ export function getLedgers(): Ledger[] {
       ledgersUpdated = true;
     }
   });
+
+  // Non-demo tenant safety: ensure zero starting balance if no transactions exist
+  if (!isDefaultDemoCompany) {
+    const sList = loadJson<any[]>(STORAGE_KEYS.SALES_INVOICES, []);
+    const pList = loadJson<any[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+    const vList = loadJson<any[]>(STORAGE_KEYS.VOUCHERS, []);
+    if (sList.length === 0 && pList.length === 0 && vList.length === 0) {
+      leds.forEach(l => {
+        const cur = Number(l['Current Balance']) || 0;
+        const op = Number(l['Opening Balance']) || 0;
+        if (cur !== 0 || [10000, 50000, 25000, 85000].includes(op)) {
+          l['Opening Balance'] = 0;
+          l['Current Balance'] = 0;
+          ledgersUpdated = true;
+        }
+      });
+    }
+  }
 
   leds = sanitizeLedgers(leds);
   saveJson(STORAGE_KEYS.LEDGERS, leds);
@@ -3887,6 +3949,15 @@ export function recalculateLedgerBalances() {
   const cancelledVouchers = new Set<string>();
   vouchers.filter(v => (v.status as string) === 'Cancelled').forEach(v => cancelledVouchers.add(v.voucherNo));
 
+  // Build lookup of active document numbers to purge orphaned phantom logs
+  const activeVoucherNos = new Set(vouchers.map(v => (v.voucherNo || '').trim()).filter(Boolean));
+  const activeSaleNos = new Set(sales.map(s => (s.invoiceNo || '').trim()).filter(Boolean));
+  const activePurchNos = new Set<string>();
+  purchases.forEach(p => {
+    if (p.billNo) activePurchNos.add(p.billNo.trim());
+    if (p.invoiceNo) activePurchNos.add(p.invoiceNo.trim());
+  });
+
   const cleanLogs = logs.filter(l => {
     const ref = (l['Ref No'] || '').trim();
     const type = l.Type || '';
@@ -3897,15 +3968,21 @@ export function recalculateLedgerBalances() {
       if (cancelledSales.has(ref)) return false;
       if (ref.startsWith('REV-') && cancelledSales.has(ref.substring(4))) return false;
       if (ref.startsWith('DEL-') && cancelledSales.has(ref.substring(4))) return false;
+      // If sale no longer exists at all, drop orphaned phantom log
+      if (!activeSaleNos.has(ref) && !ref.startsWith('REV-') && !ref.startsWith('DEL-')) return false;
     } else if (type === 'Purchase' || type === 'Purchase Return') {
       if (cancelledPurchases.has(ref)) return false;
       if (ref.startsWith('REV-') && cancelledPurchases.has(ref.substring(4))) return false;
       if (ref.startsWith('DEL-') && cancelledPurchases.has(ref.substring(4))) return false;
+      // If purchase no longer exists at all, drop orphaned phantom log
+      if (!activePurchNos.has(ref) && !ref.startsWith('REV-') && !ref.startsWith('DEL-')) return false;
     } else {
       // Vouchers or other types
       if (cancelledVouchers.has(ref)) return false;
       if (ref.startsWith('REV-') && cancelledVouchers.has(ref.substring(4))) return false;
       if (ref.startsWith('DEL-') && cancelledVouchers.has(ref.substring(4))) return false;
+      // If voucher no longer exists at all, drop orphaned phantom log!
+      if (!activeVoucherNos.has(ref) && !ref.startsWith('REV-') && !ref.startsWith('DEL-') && !ref.startsWith('PR-') && !ref.startsWith('ADV-')) return false;
     }
     
     return true;
@@ -4021,6 +4098,19 @@ export function recalculateLedgerBalances() {
       l['Balance Type (Dr/Cr)'] = entry.current >= 0 ? 'Dr' : 'Cr';
     }
   });
+
+  const cId = getActiveCompanyId();
+  const isDemo = !cId || cId === DEFAULT_TENANT_COMPANY.id;
+  if (!isDemo && sales.length === 0 && purchases.length === 0 && vouchers.length === 0) {
+    healedLedgers.forEach(l => {
+      const cur = Number(l['Current Balance']) || 0;
+      const op = Number(l['Opening Balance']) || 0;
+      if (cur !== 0 || [10000, 50000, 25000, 85000].includes(op)) {
+        l['Opening Balance'] = 0;
+        l['Current Balance'] = 0;
+      }
+    });
+  }
 
   saveJson(STORAGE_KEYS.LEDGERS, healedLedgers);
   return healedLedgers;

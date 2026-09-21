@@ -292,18 +292,17 @@ export default function App() {
       const currentC = comps.find(c => c.id === cId) || comps[0];
       if (currentC) {
         setActiveCompany(currentC);
-        // Automatically sync company profile to config if company name differs
-        if (currentC.company_name && currentC.company_name !== config.CompanyName) {
-          setConfig(prev => ({
-            ...prev,
-            CompanyName: currentC.company_name,
-            Address: currentC.address || prev.Address,
-            CompanyTPNNo: currentC.tax_payer_id || prev.CompanyTPNNo,
-            CompanyGSTNo: currentC.trade_license_no || prev.CompanyGSTNo,
-            CompanyPhone: currentC.phone || prev.CompanyPhone,
-            CurrencySymbol: currentC.currency_symbol || prev.CurrencySymbol
-          }));
-        }
+        // Automatically sync company profile to config
+        setConfig(prev => ({
+          ...prev,
+          CompanyName: currentC.company_name || prev.CompanyName,
+          Address: currentC.address || prev.Address,
+          CompanyTPNNo: currentC.tax_payer_id || prev.CompanyTPNNo,
+          CompanyGSTNo: currentC.trade_license_no || prev.CompanyGSTNo,
+          CompanyPhone: currentC.phone || prev.CompanyPhone,
+          CompanyEmail: currentC.email || prev.CompanyEmail,
+          CurrencySymbol: currentC.currency_symbol || prev.CurrencySymbol
+        }));
         const { financialYears: fys } = await fetchFinancialYears(currentC.id);
         const currentF = fys.find(f => f.id === fyId) || fys[0];
         if (currentF) setActiveFY(currentF);
@@ -877,6 +876,7 @@ export default function App() {
                   CompanyTPNNo: c.tax_payer_id || prev.CompanyTPNNo,
                   CompanyGSTNo: c.trade_license_no || prev.CompanyGSTNo,
                   CompanyPhone: c.phone || prev.CompanyPhone,
+                  CompanyEmail: c.email || prev.CompanyEmail,
                   CurrencySymbol: c.currency_symbol || prev.CurrencySymbol
                 }));
                 refreshData();
@@ -1008,6 +1008,7 @@ export default function App() {
             CompanyTPNNo: c.tax_payer_id || prev.CompanyTPNNo,
             CompanyGSTNo: c.trade_license_no || prev.CompanyGSTNo,
             CompanyPhone: c.phone || prev.CompanyPhone,
+            CompanyEmail: c.email || prev.CompanyEmail,
             CurrencySymbol: c.currency_symbol || prev.CurrencySymbol
           }));
           refreshData();

@@ -22,6 +22,7 @@ export interface Config {
   CompanyTPNNo: string;
   CompanyAddress?: string;
   CompanyPhone?: string;
+  CompanyEmail?: string;
   GSTIN?: string;
   GSTRate: string; // e.g. "5"
   CurrencySymbol: string; // e.g. "Nu."

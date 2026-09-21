@@ -80,7 +80,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   useEffect(() => {
     const data = getAdvancedDashboardData(fromDate, toDate);
     setDashData(data as any);
-  }, [items, fromDate, toDate]);
+  }, [items, ledgers, config?.CompanyName, fromDate, toDate]);
 
   // Handle Alt+D / Alt+F2 / app:dashboard-open-change-period and Escape back
   useEffect(() => {

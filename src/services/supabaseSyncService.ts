@@ -573,6 +573,13 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         console.warn('[Supabase Staff Users Pull Notice]:', uErr);
       }
 
+      // If a non-demo tenant has 0 remote vouchers, 0 sales, and 0 purchases,
+      // guarantee that local ledger logs and stock logs are purged of any legacy phantom entries
+      if (companyId !== DEFAULT_TENANT_COMPANY.id && (!sbVouchers || sbVouchers.length === 0) && (!sbSales || sbSales.length === 0) && (!sbPurchases || sbPurchases.length === 0)) {
+        saveLocalArray(STORAGE_KEYS.LEDGER_LOG, [], companyId);
+        saveLocalArray(STORAGE_KEYS.STOCK_LEDGER, [], companyId);
+      }
+
       if (isSubscribed) {
         updateStatus('connected', 'Supabase Cloud Connected & Synced');
         onDataLoaded?.();
