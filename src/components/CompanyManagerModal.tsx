@@ -269,12 +269,13 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
     setSubmitting(true);
     setError(null);
     try {
+      const trimmedEmail = newEmail.trim();
       const { company, error: updateErr } = await updateCompany(editingCompany.id, {
         company_name: newCompanyName.trim(),
         trade_license_no: newTradeLicense.trim(),
         tax_payer_id: newTPN.trim(),
         phone: newPhone.trim(),
-        email: newEmail.trim(),
+        email: trimmedEmail,
         address: newAddress.trim(),
         currency_symbol: newCurrency.trim() || 'Nu.',
         admin_username: newAdminUsername.trim().toLowerCase() || 'admin',
@@ -288,6 +289,21 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         setSubmitting(false);
         return;
       }
+
+      setCompanies(prev => prev.map(c => c.id === editingCompany.id ? {
+        ...c,
+        company_name: newCompanyName.trim(),
+        trade_license_no: newTradeLicense.trim(),
+        tax_payer_id: newTPN.trim(),
+        phone: newPhone.trim(),
+        email: trimmedEmail,
+        address: newAddress.trim(),
+        currency_symbol: newCurrency.trim() || 'Nu.',
+        admin_username: newAdminUsername.trim().toLowerCase() || 'admin',
+        admin_name: newAdminName.trim() || 'Administrator',
+        admin_pin: newAdminPin.trim() || '1234',
+        admin_password: newAdminPassword.trim() || newAdminPin.trim() || 'ClientPass@123'
+      } : c));
 
       await loadData();
       setViewMode('list');

@@ -539,6 +539,22 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         }
       }
 
+      // 5. Pull Staff Users from tenant_settings
+      try {
+        const { data: userSettings, error: uErr } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_staff_users')
+          .maybeSingle();
+
+        if (!uErr && userSettings?.data?.users && Array.isArray(userSettings.data.users) && userSettings.data.users.length > 0) {
+          saveLocalArray(STORAGE_KEYS.USERS, userSettings.data.users, companyId);
+        }
+      } catch (uErr) {
+        console.warn('[Supabase Staff Users Pull Notice]:', uErr);
+      }
+
       if (isSubscribed) {
         updateStatus('connected', 'Supabase Cloud Connected & Synced');
         onDataLoaded?.();

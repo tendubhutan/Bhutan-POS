@@ -328,6 +328,7 @@ export default function App() {
       });
     };
     window.addEventListener('supabase:tenant_changed', handleTenantChange);
+    window.addEventListener('supabase:company_updated', handleTenantChange);
     window.addEventListener('supabase:fy_changed', handleTenantChange);
     window.addEventListener('popstate', handleTenantChange);
 
@@ -346,6 +347,7 @@ export default function App() {
 
     return () => {
       window.removeEventListener('supabase:tenant_changed', handleTenantChange);
+      window.removeEventListener('supabase:company_updated', handleTenantChange);
       window.removeEventListener('supabase:fy_changed', handleTenantChange);
       window.removeEventListener('popstate', handleTenantChange);
       unsubSession();

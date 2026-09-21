@@ -26,7 +26,8 @@ import {
   getUsers, 
   saveUsers, 
   getActiveUser, 
-  setActiveUser 
+  setActiveUser,
+  syncUsersFromSupabase 
 } from '../services/storageService';
 import { 
   supabase, 
@@ -37,6 +38,7 @@ import {
   clearSupabaseCredentials
 } from '../lib/supabase';
 import { getActiveCompanyId, fetchUserCompanies, SupabaseCompany } from '../services/supabaseTenantService';
+import { loginWithSupabaseAuth } from '../services/authTenantContext';
 
 interface UserAuthModalProps {
   isOpen: boolean;
@@ -102,13 +104,25 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
   };
 
   const loadData = async () => {
-    const list = getUsers();
+    let list = getUsers();
     setUsers(list);
     const curr = getActiveUser();
     setCurrentUser(curr);
 
-    // Check Supabase session
+    // Sync latest staff users from Supabase cloud
     if (isSupabaseConfigured) {
+      try {
+        const cId = getActiveCompanyId();
+        const cloudUsers = await syncUsersFromSupabase(cId);
+        if (cloudUsers && cloudUsers.length > 0) {
+          setUsers(cloudUsers);
+          const updatedCurr = getActiveUser();
+          setCurrentUser(updatedCurr);
+        }
+      } catch (e) {
+        console.warn('Failed to sync users from Supabase:', e);
+      }
+
       const { data } = await supabase.auth.getSession();
       if (data?.session?.user) {
         setSessionEmail(data.session.user.email || null);
@@ -268,6 +282,39 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
           password: cleanPassword
         });
         if (error) {
+          // If Supabase Auth fails, attempt tenant workspace authentication (e.g. client administrator credentials)
+          const tenantResult = await loginWithSupabaseAuth(cleanEmail, cleanPassword);
+          if (tenantResult.session) {
+            const userEmail = (tenantResult.session.email || cleanEmail).toLowerCase().trim();
+            setSessionEmail(userEmail);
+            setSuccessMsg(`Signed in to ${tenantResult.session.fullName || 'workspace'} successfully!`);
+            const appUser: AppUser = {
+              id: tenantResult.session.uid,
+              username: tenantResult.session.email?.split('@')[0] || 'admin',
+              fullName: tenantResult.session.fullName || 'Client Administrator',
+              pinCode: '1234',
+              role: tenantResult.session.role === 'admin' ? 'Administrator' : 'Cashier',
+              status: 'Active',
+              permissions: [
+                { module: 'pos', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'purchase', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'vouchers', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'masters', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'barcode', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'payroll', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'reports', display: true, create: true, edit: true, delete: true, print: true },
+                { module: 'settings', display: true, create: true, edit: true, delete: true, print: true }
+              ]
+            };
+            setActiveUser(appUser.id);
+            setCurrentUser(appUser);
+            onUserChanged(appUser);
+            window.dispatchEvent(new Event('supabase:tenant_changed'));
+            setTimeout(() => {
+              onClose();
+            }, 800);
+            return;
+          }
           setErrorMsg(error.message);
         } else if (data.session) {
           const userEmail = (data.session.user.email || '').toLowerCase().trim();

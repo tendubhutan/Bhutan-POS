@@ -15,7 +15,7 @@ import {
   LogIn
 } from 'lucide-react';
 import { AppUser, UserPermission } from '../types';
-import { SupabaseCompany, SupabaseFinancialYear } from '../services/supabaseTenantService';
+import { SupabaseCompany, SupabaseFinancialYear, fetchUserCompanies } from '../services/supabaseTenantService';
 import { 
   loginWithSupabaseAuth, 
   tenantSessionToAppUser, 
@@ -88,7 +88,7 @@ export const LoginGate: React.FC<LoginGateProps> = ({
     const cleanPassword = password.trim();
 
     if (!cleanEmail) {
-      setErrorMsg('Please enter your email address.');
+      setErrorMsg('Please enter your username or email address.');
       return;
     }
     if (!cleanPassword) {
@@ -112,10 +112,15 @@ export const LoginGate: React.FC<LoginGateProps> = ({
         return;
       }
 
-      if (session.role !== 'superadmin' && activeCompany && activeCompany.is_active === false) {
-        setErrorMsg('Commercial Account Locked: This store subscription is currently inactive. Please contact your platform superadmin to renew access.');
-        setIsLoading(false);
-        return;
+      // Verify subscription status for the authenticated company
+      if (session.role !== 'superadmin' && session.assignedCompanyId) {
+        const { companies } = await fetchUserCompanies(true);
+        const authComp = companies.find(c => c.id === session.assignedCompanyId);
+        if (authComp && authComp.is_active === false) {
+          setErrorMsg('Commercial Account Locked: This store subscription is currently inactive. Please contact your platform superadmin to renew access.');
+          setIsLoading(false);
+          return;
+        }
       }
 
       setIsSuccess(true);
@@ -243,19 +248,19 @@ export const LoginGate: React.FC<LoginGateProps> = ({
         <form onSubmit={handleLoginSubmit} className="space-y-3.5">
           <div>
             <label className="block text-xs font-bold text-slate-300 mb-1 text-left">
-              Email Address
+              Email, Username, or Store Name
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
                 <Mail className="h-4 w-4" />
               </div>
               <input
-                type="email"
+                type="text"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="your.name@company.bt"
-                autoComplete="email"
+                placeholder="e.g. panglungenterprise@gmail.com, admin, or store name"
+                autoComplete="username"
                 disabled={isLoading || isSuccess}
                 className="w-full pl-9 pr-3 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               />
@@ -265,7 +270,7 @@ export const LoginGate: React.FC<LoginGateProps> = ({
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-xs font-bold text-slate-300 text-left">
-                Password
+                Password or PIN
               </label>
             </div>
             <div className="relative">
@@ -277,7 +282,7 @@ export const LoginGate: React.FC<LoginGateProps> = ({
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
+                placeholder="Password or 4-digit PIN"
                 autoComplete="current-password"
                 disabled={isLoading || isSuccess}
                 className="w-full pl-9 pr-9 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"

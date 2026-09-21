@@ -69,6 +69,7 @@ import {
   deleteVoucherFromSupabase as deleteVoucherFromFirestore
 } from './supabaseSyncService';
 import { getActiveCompanyId, DEFAULT_TENANT_COMPANY } from './supabaseTenantService';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 
 export const STORAGE_KEYS = {
@@ -8664,6 +8665,43 @@ export function getUsers(targetCompanyId?: string): AppUser[] {
 export function saveUsers(users: AppUser[], targetCompanyId?: string): void {
   const cId = targetCompanyId || getActiveCompanyId();
   saveJson(STORAGE_KEYS.USERS, users, cId);
+
+  // Cross-PC sync: Save to Supabase tenant_settings so staff accounts appear on all computers
+  if (isSupabaseConfigured && cId) {
+    Promise.resolve(
+      supabase
+        .from('tenant_settings')
+        .upsert({
+          company_id: cId,
+          record_id: 'company_staff_users',
+          data: { users, updated_at: new Date().toISOString() }
+        }, { onConflict: 'company_id,record_id' })
+    ).catch((err) => {
+      console.warn('[Supabase saveUsers cloud sync error]:', err);
+    });
+  }
+}
+
+export async function syncUsersFromSupabase(targetCompanyId?: string): Promise<AppUser[]> {
+  const cId = targetCompanyId || getActiveCompanyId();
+  if (!isSupabaseConfigured || !cId) return getUsers(cId);
+
+  try {
+    const { data, error } = await supabase
+      .from('tenant_settings')
+      .select('data')
+      .eq('company_id', cId)
+      .eq('record_id', 'company_staff_users')
+      .maybeSingle();
+
+    if (!error && data?.data?.users && Array.isArray(data.data.users) && data.data.users.length > 0) {
+      saveJson(STORAGE_KEYS.USERS, data.data.users, cId);
+      return data.data.users;
+    }
+  } catch (err) {
+    console.warn('[Supabase syncUsersFromSupabase notice]:', err);
+  }
+  return getUsers(cId);
 }
 
 export function getActiveUser(targetCompanyId?: string): AppUser {

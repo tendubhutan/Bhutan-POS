@@ -64,10 +64,8 @@ export const PRODUCTION_BASE_URL = 'https://bhutan-pos.tendubhutan.workers.dev';
  */
 export function getCompanyDedicatedUrl(companyId: string, forceCurrentOrigin: boolean = false): string {
   if (typeof window !== 'undefined' && window.location.origin) {
-    if (forceCurrentOrigin || (!window.location.origin.includes('localhost') && !window.location.origin.includes('127.0.0.1') && !window.location.origin.includes('ais-dev-'))) {
-      const cleanPath = window.location.pathname.replace(/\/+$/, '');
-      return `${window.location.origin}${cleanPath}/?company=${companyId}`;
-    }
+    const cleanPath = window.location.pathname.replace(/\/+$/, '');
+    return `${window.location.origin}${cleanPath}/?company=${companyId}`;
   }
   return `${PRODUCTION_BASE_URL}/?company=${companyId}`;
 }
@@ -143,17 +141,49 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
     const assignedCompanyId = typeof localStorage !== 'undefined' ? localStorage.getItem('deep_pos_auth_assigned_company') : null;
     const isSuperadmin = role === 'superadmin';
 
-    // 1. Fetch from Supabase
+    // 1. Fetch from Supabase companies table and attach credentials from tenant_settings
     if (isSupabaseConfigured) {
       try {
         let query = supabase.from('companies').select('*');
-        if (!isSuperadmin && assignedCompanyId) {
+        if (!includeAll && !isSuperadmin && assignedCompanyId) {
           query = query.eq('id', assignedCompanyId);
         }
         const { data: sbCompanies, error: sbErr } = await query;
         if (sbCompanies && sbCompanies.length > 0 && !sbErr) {
           sbCompanies.forEach(c => {
-            if (c && c.id) mergedMap.set(c.id, c);
+            if (c && c.id) mergedMap.set(c.id, { ...c });
+          });
+        }
+
+        // Fetch all admin_credentials from tenant_settings so every company has its admin username, pin, password, and email across all PCs!
+        let credsQuery = supabase.from('tenant_settings').select('company_id, data').eq('record_id', 'admin_credentials');
+        if (!includeAll && !isSuperadmin && assignedCompanyId) {
+          credsQuery = credsQuery.eq('company_id', assignedCompanyId);
+        }
+        const { data: credsList } = await credsQuery;
+        if (credsList && credsList.length > 0) {
+          credsList.forEach(row => {
+            if (row.company_id && row.data) {
+              const existing: SupabaseCompany = mergedMap.get(row.company_id) || {
+                id: row.company_id,
+                company_name: row.data.company_name || 'Client Company',
+                currency_symbol: 'Nu.'
+              };
+              mergedMap.set(row.company_id, {
+                ...existing,
+                company_name: existing.company_name || row.data.company_name || 'Client Company',
+                email: existing.email || row.data.email || '',
+                phone: existing.phone || row.data.phone || '',
+                trade_license_no: existing.trade_license_no || row.data.trade_license_no || '',
+                tax_payer_id: existing.tax_payer_id || row.data.tax_payer_id || '',
+                address: existing.address || row.data.address || '',
+                admin_username: row.data.admin_username || existing.admin_username || 'admin',
+                admin_name: row.data.admin_name || existing.admin_name,
+                admin_pin: row.data.admin_pin || existing.admin_pin || '1234',
+                admin_password: row.data.admin_password || existing.admin_password || 'ClientPass@123',
+                is_active: row.data.is_active !== undefined ? row.data.is_active : (existing.is_active ?? true)
+              });
+            }
           });
         }
       } catch (e) {
@@ -161,8 +191,39 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
       }
     }
 
-    // If client user, strictly return only assigned company
-    if (!isSuperadmin && assignedCompanyId) {
+    // 2. Dedicated URL company lookup check (e.g. ?company=uuid)
+    const dedicatedId = getDedicatedCompanyIdFromUrl();
+    if (dedicatedId && isSupabaseConfigured) {
+      const existingComp = mergedMap.get(dedicatedId);
+      if (!existingComp || !existingComp.admin_password) {
+        try {
+          const { data: dedicatedComp } = await supabase.from('companies').select('*').eq('id', dedicatedId).maybeSingle();
+          const { data: dedicatedCreds } = await supabase.from('tenant_settings').select('data').eq('company_id', dedicatedId).eq('record_id', 'admin_credentials').maybeSingle();
+          if (dedicatedComp) {
+            const creds = dedicatedCreds?.data || {};
+            mergedMap.set(dedicatedId, {
+              ...(existingComp || {}),
+              ...dedicatedComp,
+              email: dedicatedComp.email || creds.email || existingComp?.email || '',
+              phone: dedicatedComp.phone || creds.phone || existingComp?.phone || '',
+              address: dedicatedComp.address || creds.address || existingComp?.address || '',
+              trade_license_no: dedicatedComp.trade_license_no || creds.trade_license_no || existingComp?.trade_license_no || '',
+              tax_payer_id: dedicatedComp.tax_payer_id || creds.tax_payer_id || existingComp?.tax_payer_id || '',
+              admin_username: creds.admin_username || existingComp?.admin_username,
+              admin_name: creds.admin_name || existingComp?.admin_name,
+              admin_pin: creds.admin_pin || existingComp?.admin_pin,
+              admin_password: creds.admin_password || existingComp?.admin_password,
+              is_active: creds.is_active !== undefined ? creds.is_active : (existingComp?.is_active ?? true)
+            });
+          }
+        } catch (e) {
+          console.warn('Dedicated company Supabase lookup warning:', e);
+        }
+      }
+    }
+
+    // If client user and not requesting all companies, strictly return only assigned company
+    if (!includeAll && !isSuperadmin && assignedCompanyId) {
       const clientComp = mergedMap.get(assignedCompanyId);
       if (clientComp) {
         return { companies: [clientComp] };
@@ -184,14 +245,33 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
       };
     }
 
-    // Load locally cached companies
+    // 3. Load locally cached companies
     const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES) : null;
     if (cached) {
       try {
         const localList: SupabaseCompany[] = JSON.parse(cached);
-        localList.forEach(c => {
-          if (c && c.id) mergedMap.set(c.id, c);
-        });
+        for (const c of localList) {
+          if (c && c.id) {
+            const existing = mergedMap.get(c.id);
+            if (existing) {
+              // Supabase cloud data is authoritative! Do NOT let empty or stale local fields overwrite real Supabase data.
+              mergedMap.set(c.id, {
+                ...c,
+                ...existing,
+                // Supabase fields take precedence, but if Supabase is empty while local has value, retain local non-empty value
+                email: (existing.email && existing.email.trim()) ? existing.email.trim() : (c.email && c.email.trim() ? c.email.trim() : ''),
+                phone: (existing.phone && existing.phone.trim()) ? existing.phone.trim() : (c.phone && c.phone.trim() ? c.phone.trim() : ''),
+                address: (existing.address && existing.address.trim()) ? existing.address.trim() : (c.address && c.address.trim() ? c.address.trim() : ''),
+                trade_license_no: (existing.trade_license_no && existing.trade_license_no.trim()) ? existing.trade_license_no.trim() : (c.trade_license_no && c.trade_license_no.trim() ? c.trade_license_no.trim() : ''),
+                tax_payer_id: (existing.tax_payer_id && existing.tax_payer_id.trim()) ? existing.tax_payer_id.trim() : (c.tax_payer_id && c.tax_payer_id.trim() ? c.tax_payer_id.trim() : ''),
+                currency_symbol: existing.currency_symbol || c.currency_symbol || 'Nu.',
+                company_name: (existing.company_name && existing.company_name.trim()) ? existing.company_name.trim() : (c.company_name || 'Company')
+              });
+            } else {
+              mergedMap.set(c.id, c);
+            }
+          }
+        }
       } catch {}
     }
 
@@ -206,7 +286,6 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
     const rawList = [demoCompany, ...others];
 
     // Deduplicate companies by normalized company name to prevent duplicate entries
-    // caused by different IDs generated across Supabase, Firestore or local cache
     const seenNames = new Set<string>();
     const seenIds = new Set<string>();
     const allList: SupabaseCompany[] = [];
@@ -265,7 +344,6 @@ export async function ensureCompanyExists(companyId: string): Promise<void> {
         email: compInfo.email || '',
         address: compInfo.address || '',
         currency_symbol: compInfo.currency_symbol || 'Nu.',
-        is_active: true,
         created_at: new Date().toISOString()
       }, { onConflict: 'id' });
     }
@@ -274,7 +352,7 @@ export async function ensureCompanyExists(companyId: string): Promise<void> {
   }
 }
 
-// Create new company in Supabase and local storage
+// Create new company in Supabase, Firestore, and local storage
 export async function createCompany(
   companyData: Omit<SupabaseCompany, 'id' | 'created_at'> & {
     initialFeatures?: Record<string, boolean>;
@@ -295,10 +373,11 @@ export async function createCompany(
       admin_name: adminFullName,
       admin_pin: adminPin,
       admin_password: adminPassword,
+      is_active: true,
       created_at: new Date().toISOString()
     };
 
-    // 1. Insert into Supabase companies table
+    // 1. Insert into Supabase companies table (sanitized columns to match PostgreSQL schema)
     if (isSupabaseConfigured) {
       try {
         await supabase.from('companies').upsert({
@@ -310,11 +389,28 @@ export async function createCompany(
           email: newComp.email || '',
           address: newComp.address || '',
           currency_symbol: newComp.currency_symbol || 'Nu.',
-          is_active: true,
           created_at: newComp.created_at
         }, { onConflict: 'id' });
       } catch (sbCompErr) {
         console.warn('Supabase company table insert warning:', sbCompErr);
+      }
+
+      // Also persist admin credentials in Supabase tenant_settings table
+      try {
+        await supabase.from('tenant_settings').upsert({
+          company_id: newId,
+          record_id: 'admin_credentials',
+          data: {
+            admin_username: adminUsername,
+            admin_name: adminFullName,
+            admin_pin: adminPin,
+            admin_password: adminPassword,
+            company_name: newComp.company_name,
+            email: newComp.email || ''
+          }
+        }, { onConflict: 'company_id,record_id' });
+      } catch (tsErr) {
+        console.warn('Supabase tenant_settings insert notice:', tsErr);
       }
     }
 
@@ -536,6 +632,16 @@ export async function deleteCompany(companyId: string): Promise<{ success: boole
       return { success: false, error: 'Cannot delete the only registered company. Create another company first.' };
     }
 
+    // Delete from Supabase companies and tenant_settings tables
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('companies').delete().eq('id', companyId);
+        await supabase.from('tenant_settings').delete().eq('company_id', companyId);
+      } catch (sbDelErr) {
+        console.warn('Supabase company deletion warning:', sbDelErr);
+      }
+    }
+
     list = list.filter(c => c.id !== companyId);
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(list));
@@ -736,32 +842,85 @@ export async function updateCompany(
 
     // 1. Clean update payload
     const cleanedUpdates: Partial<SupabaseCompany> = { ...updates };
-    if (cleanedUpdates.admin_username) {
+    if (cleanedUpdates.admin_username !== undefined) {
       cleanedUpdates.admin_username = cleanedUpdates.admin_username.trim().toLowerCase();
     }
-    if (cleanedUpdates.admin_pin) {
+    if (cleanedUpdates.admin_pin !== undefined) {
       cleanedUpdates.admin_pin = cleanedUpdates.admin_pin.trim();
     }
-    if (cleanedUpdates.admin_password) {
+    if (cleanedUpdates.admin_password !== undefined) {
       cleanedUpdates.admin_password = cleanedUpdates.admin_password.trim();
     }
-    if (cleanedUpdates.email) {
+    if (cleanedUpdates.email !== undefined) {
       cleanedUpdates.email = cleanedUpdates.email.trim();
     }
-    if (cleanedUpdates.company_name) {
+    if (cleanedUpdates.company_name !== undefined) {
       cleanedUpdates.company_name = cleanedUpdates.company_name.trim();
+    }
+    if (cleanedUpdates.phone !== undefined) {
+      cleanedUpdates.phone = cleanedUpdates.phone.trim();
+    }
+    if (cleanedUpdates.address !== undefined) {
+      cleanedUpdates.address = cleanedUpdates.address.trim();
+    }
+    if (cleanedUpdates.trade_license_no !== undefined) {
+      cleanedUpdates.trade_license_no = cleanedUpdates.trade_license_no.trim();
+    }
+    if (cleanedUpdates.tax_payer_id !== undefined) {
+      cleanedUpdates.tax_payer_id = cleanedUpdates.tax_payer_id.trim();
     }
 
     // 2. Update in Supabase
     if (isSupabaseConfigured) {
       try {
-        const { error: sbErr } = await supabase
-          .from('companies')
-          .update(cleanedUpdates)
-          .eq('id', companyId);
-        if (sbErr) {
-          console.warn('Supabase update company warning:', sbErr.message);
+        const sbPayload: any = {};
+        if (cleanedUpdates.company_name !== undefined) sbPayload.company_name = cleanedUpdates.company_name;
+        if (cleanedUpdates.trade_license_no !== undefined) sbPayload.trade_license_no = cleanedUpdates.trade_license_no;
+        if (cleanedUpdates.tax_payer_id !== undefined) sbPayload.tax_payer_id = cleanedUpdates.tax_payer_id;
+        if (cleanedUpdates.phone !== undefined) sbPayload.phone = cleanedUpdates.phone;
+        if (cleanedUpdates.email !== undefined) sbPayload.email = cleanedUpdates.email;
+        if (cleanedUpdates.address !== undefined) sbPayload.address = cleanedUpdates.address;
+        if (cleanedUpdates.currency_symbol !== undefined) sbPayload.currency_symbol = cleanedUpdates.currency_symbol;
+        if (cleanedUpdates.logo_url !== undefined) sbPayload.logo_url = cleanedUpdates.logo_url;
+
+        if (Object.keys(sbPayload).length > 0) {
+          const { error: sbErr } = await supabase
+            .from('companies')
+            .update(sbPayload)
+            .eq('id', companyId);
+          if (sbErr) {
+            console.warn('Supabase update company warning:', sbErr.message);
+          }
         }
+
+        // Always sync credentials and profile metadata to tenant_settings for cross-device backup
+        const { data: existingCreds } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'admin_credentials')
+          .maybeSingle();
+
+        const credsPayload: any = {
+          ...(existingCreds?.data || {}),
+          updated_at: new Date().toISOString()
+        };
+        if (cleanedUpdates.admin_username !== undefined) credsPayload.admin_username = cleanedUpdates.admin_username;
+        if (cleanedUpdates.admin_password !== undefined) credsPayload.admin_password = cleanedUpdates.admin_password;
+        if (cleanedUpdates.admin_pin !== undefined) credsPayload.admin_pin = cleanedUpdates.admin_pin;
+        if (cleanedUpdates.admin_name !== undefined) credsPayload.admin_name = cleanedUpdates.admin_name;
+        if (cleanedUpdates.company_name !== undefined) credsPayload.company_name = cleanedUpdates.company_name;
+        if (cleanedUpdates.email !== undefined) credsPayload.email = cleanedUpdates.email;
+        if (cleanedUpdates.phone !== undefined) credsPayload.phone = cleanedUpdates.phone;
+        if (cleanedUpdates.trade_license_no !== undefined) credsPayload.trade_license_no = cleanedUpdates.trade_license_no;
+        if (cleanedUpdates.tax_payer_id !== undefined) credsPayload.tax_payer_id = cleanedUpdates.tax_payer_id;
+        if (cleanedUpdates.address !== undefined) credsPayload.address = cleanedUpdates.address;
+
+        await supabase.from('tenant_settings').upsert({
+          company_id: companyId,
+          record_id: 'admin_credentials',
+          data: credsPayload
+        }, { onConflict: 'company_id,record_id' });
       } catch (sbE: any) {
         console.warn('Supabase exception on updateCompany:', sbE);
       }
@@ -770,22 +929,33 @@ export async function updateCompany(
     // 3. Update in Local Storage Cache
     let updatedCompany: SupabaseCompany | undefined;
     if (typeof localStorage !== 'undefined') {
+      let list: SupabaseCompany[] = [];
       const cached = localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES);
       if (cached) {
         try {
-          const list: SupabaseCompany[] = JSON.parse(cached);
-          const updated = list.map(c => {
-            if (c.id === companyId) {
-              updatedCompany = { ...c, ...cleanedUpdates };
-              return updatedCompany;
-            }
-            return c;
-          });
-          localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(updated));
+          list = JSON.parse(cached);
         } catch (cacheErr) {
-          console.warn('Failed to update company in local cache:', cacheErr);
+          list = [];
         }
       }
+      let found = false;
+      const updated = list.map(c => {
+        if (c.id === companyId) {
+          found = true;
+          updatedCompany = { ...c, ...cleanedUpdates };
+          return updatedCompany;
+        }
+        return c;
+      });
+      if (!found) {
+        updatedCompany = {
+          id: companyId,
+          company_name: cleanedUpdates.company_name || 'Company Workspace',
+          ...cleanedUpdates
+        } as SupabaseCompany;
+        updated.push(updatedCompany);
+      }
+      localStorage.setItem(STORAGE_KEYS.LOCAL_COMPANIES, JSON.stringify(updated));
     }
 
     // 5. Update dedicated client admin user in tenant storage if admin info was modified
@@ -822,6 +992,7 @@ export async function updateCompany(
     // 6. Broadcast event
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('supabase:company_updated', { detail: { companyId, updates: cleanedUpdates } }));
+      window.dispatchEvent(new CustomEvent('supabase:tenant_changed', { detail: { companyId } }));
     }
 
     return { company: updatedCompany };

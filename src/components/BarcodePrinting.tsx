@@ -751,8 +751,10 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
             margin: 0;
             margin-right: ${actualGapMm}mm;
             background: #fff;
-            border-radius: 1mm;
-            border: ${showBorder ? '0.75px solid #475569' : 'none'};
+            border-radius: 0;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
             page-break-inside: avoid;
             break-inside: avoid;
             flex-shrink: 0;
@@ -847,7 +849,7 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
         const printedWholesalePrice = getPrintedWholesalePrice(x);
         const randId = Math.random().toString(36).substring(2, 7);
 
-        html += `<div class="label-box">`;
+        html += `<div class="label-box" style="border: none !important; outline: none !important; box-shadow: none !important;">`;
         if (showCompany && config.CompanyName) {
           html += `<div class="comp-title">${config.CompanyName}</div>`;
         }
