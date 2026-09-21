@@ -48,9 +48,14 @@ function loadLocalArray<T>(key: string, companyId?: string): T[] {
   try {
     const cId = companyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
     const effectiveKey = `${key}_${cId}`;
-    const raw = localStorage.getItem(effectiveKey) || localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
+    const raw = localStorage.getItem(effectiveKey);
+    // Strict isolation: Only allow legacy un-prefixed fallback for the default demo tenant (Bhutan Retail Enterprise)
+    // Non-demo tenants (like new client companies) must strictly be isolated and never inherit un-scoped data
+    const isDefaultDemo = cId === DEFAULT_TENANT_COMPANY.id;
+    const fallbackRaw = isDefaultDemo ? localStorage.getItem(key) : null;
+    const finalRaw = raw || fallbackRaw;
+    if (!finalRaw) return [];
+    const parsed = JSON.parse(finalRaw);
     return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
     console.warn(`[SupabaseSync] Failed to read localStorage key "${key}":`, err);
@@ -430,6 +435,11 @@ export async function seedInitialLocalDataToSupabase(): Promise<void> {
   if (!isSupabaseConfigured) return;
   const companyId = getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
 
+  // Strict tenant isolation: NEVER seed default demo data into new non-demo client companies!
+  if (companyId !== DEFAULT_TENANT_COMPANY.id) {
+    return;
+  }
+
   try {
     // Check if remote items already exist
     const { data: remoteItems } = await supabase
@@ -490,14 +500,15 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         .select('data')
         .eq('company_id', companyId);
 
-      if (!itErr && sbItems && sbItems.length > 0) {
-        const loadedItems: Item[] = sbItems.map(row => row.data).filter(Boolean);
-        if (loadedItems.length > 0) {
+      if (!itErr) {
+        if (sbItems && sbItems.length > 0) {
+          const loadedItems: Item[] = sbItems.map(row => row.data).filter(Boolean);
           saveLocalArray(STORAGE_KEYS.ITEMS, loadedItems, companyId);
+        } else if (companyId === DEFAULT_TENANT_COMPANY.id) {
+          await seedInitialLocalDataToSupabase();
+        } else {
+          saveLocalArray(STORAGE_KEYS.ITEMS, [], companyId);
         }
-      } else {
-        // If remote is empty, seed from local
-        await seedInitialLocalDataToSupabase();
       }
 
       // 2. Pull Ledgers
@@ -519,11 +530,9 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         .select('data')
         .eq('company_id', companyId);
 
-      if (!vchErr && sbVouchers && sbVouchers.length > 0) {
-        const loadedVouchers: Voucher[] = sbVouchers.map(row => row.data).filter(Boolean);
-        if (loadedVouchers.length > 0) {
-          saveLocalArray(STORAGE_KEYS.VOUCHERS, loadedVouchers, companyId);
-        }
+      if (!vchErr) {
+        const loadedVouchers: Voucher[] = (sbVouchers || []).map(row => row.data).filter(Boolean);
+        saveLocalArray(STORAGE_KEYS.VOUCHERS, loadedVouchers, companyId);
       }
 
       // 4. Pull Sales Invoices
@@ -532,14 +541,23 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         .select('data')
         .eq('company_id', companyId);
 
-      if (!sErr && sbSales && sbSales.length > 0) {
-        const loadedSales: SalesInvoice[] = sbSales.map(row => row.data).filter(Boolean);
-        if (loadedSales.length > 0) {
-          saveLocalArray(STORAGE_KEYS.SALES_INVOICES, loadedSales, companyId);
-        }
+      if (!sErr) {
+        const loadedSales: SalesInvoice[] = (sbSales || []).map(row => row.data).filter(Boolean);
+        saveLocalArray(STORAGE_KEYS.SALES_INVOICES, loadedSales, companyId);
       }
 
-      // 5. Pull Staff Users from tenant_settings
+      // 5. Pull Purchase Invoices
+      const { data: sbPurchases, error: pErr } = await supabase
+        .from('purchase_invoices')
+        .select('data')
+        .eq('company_id', companyId);
+
+      if (!pErr) {
+        const loadedPurchases: PurchaseInvoice[] = (sbPurchases || []).map(row => row.data).filter(Boolean);
+        saveLocalArray(STORAGE_KEYS.PURCHASE_INVOICES, loadedPurchases, companyId);
+      }
+
+      // 6. Pull Staff Users from tenant_settings
       try {
         const { data: userSettings, error: uErr } = await supabase
           .from('tenant_settings')
