@@ -828,7 +828,9 @@ export const BarcodePrinting: React.FC<BarcodePrintingProps> = ({ config, items,
           }
           @media print {
             .label-box {
-              border: ${showBorder ? '0.75px solid #475569' : 'none'} !important;
+              border: none !important;
+              box-shadow: none !important;
+              outline: none !important;
             }
             html, body { margin: 0 !important; padding: 0 !important; }
           }

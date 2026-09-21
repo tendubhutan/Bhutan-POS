@@ -6,7 +6,7 @@ import {
 } from '../services/storageService';
 import XLSX from 'xlsx-js-style';
 import {
-  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, Warehouse, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History
+  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, Warehouse, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History, Plus, Minus
 } from 'lucide-react';
 import { PrintReportModal } from './PrintReportModal';
 import { generateReportPDF, shareOrDownloadPDF } from '../utils/pdfExport';
@@ -169,6 +169,23 @@ export const Reports: React.FC<ReportsProps> = ({
   const [selectedLedger, setSelectedLedger] = useState('');
   const [selectedBranchId, setSelectedBranchId] = useState<string>('ALL');
   const availableBranches = useMemo(() => getBranches(), [config]);
+
+  // Measured Sticky Header Height for dynamic sub-header & table header docking
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [headerHeight, setHeaderHeight] = useState<number>(92);
+
+  useEffect(() => {
+    if (!headerRef.current) return;
+    const updateHeight = () => {
+      if (headerRef.current) {
+        setHeaderHeight(headerRef.current.offsetHeight);
+      }
+    };
+    updateHeight();
+    const ro = new ResizeObserver(updateHeight);
+    ro.observe(headerRef.current);
+    return () => ro.disconnect();
+  }, [isControlsCollapsed, mainCategory, finSubTab, invSubTab, regSubTab]);
 
   // Report View Navigation History (for strict sequential Escape key back navigation)
   const [reportHistory, setReportHistory] = useState<ReportViewState[]>([]);
@@ -423,11 +440,14 @@ export const Reports: React.FC<ReportsProps> = ({
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [showReportCatalog, setShowReportCatalog] = useState(false);
 
-  // Searchable Multi-Column Report Selector Popover State
+  // Searchable Vertical Collapsible Accordion Report Menu State
   const [isReportMenuOpen, setIsReportMenuOpen] = useState(false);
   const [reportMenuSearch, setReportMenuSearch] = useState('');
+  const [expandedReportCategories, setExpandedReportCategories] = useState<Record<string, boolean>>({ stock_inventory: true });
   const reportMenuRef = useRef<HTMLDivElement>(null);
   const reportSearchInputRef = useRef<HTMLInputElement>(null);
+  const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const accordionScrollRef = useRef<HTMLDivElement>(null);
 
   // Close report popover on click outside or Esc key
   useEffect(() => {
@@ -466,61 +486,93 @@ export const Reports: React.FC<ReportsProps> = ({
 
   const showGst = String(config.EnableGST) !== 'false';
 
-  // All structured report categories
+  // All structured report categories arranged in exact sequence:
+  // 1. Daily Sales Report, 2. Stock & Inventory, 3. GST & Taxation, 4. Final Account & Audit Log, 5. Voucher Register
   const allReportCategories = useMemo(() => {
     return [
       {
-        id: 'sales_registers',
-        name: 'Sales & Registers',
+        id: 'daily_sales',
+        name: '1. Daily Sales Report',
+        shortName: 'Daily Sales',
+        badge: 'Sales',
         icon: Receipt,
+        color: 'indigo',
         items: [
-          { id: 'daily-bill', name: 'Daily Sales (Bill-wise)', group: 'Sales & Billing', desc: 'Columnar cash/bank/credit breakdown', keywords: ['bill', 'sales', 'cash', 'credit', 'bank', 'daily', 'pos'] },
-          { id: 'daily-item', name: 'Daily Sales (Item-wise)', group: 'Sales & Billing', desc: 'Item-by-item sales quantity and revenue', keywords: ['item', 'products', 'sold', 'itemwise'] },
+          { id: 'daily-bill', name: 'Daily Sales (Bill-wise)', group: 'Daily Sales', desc: 'Columnar cash, bank & credit breakdown', keywords: ['bill', 'sales', 'cash', 'credit', 'bank', 'daily', 'pos', 'columnar'] },
+          { id: 'daily-item', name: 'Daily Sales (Item-wise)', group: 'Daily Sales', desc: 'Item-by-item sales quantity & revenue', keywords: ['item', 'products', 'sold', 'itemwise', 'quantity'] }
+        ]
+      },
+      {
+        id: 'stock_inventory',
+        name: '2. Stock & Inventory',
+        shortName: 'Inventory',
+        badge: 'Stock',
+        icon: Package,
+        color: 'emerald',
+        items: [
+          { id: 'inv-summary', name: 'Stock Summary & Valuation', group: 'Inventory', desc: 'Opening, closing, rate & asset value', keywords: ['stock', 'inventory', 'valuation', 'assets', 'balance'] },
+          { id: 'inv-mov', name: 'Stock Movement (In / Out)', group: 'Inventory', desc: 'Purchase inflows & sales outflows', keywords: ['movement', 'inflow', 'outflow', 'in out', 'transfers'] },
+          { id: 'inv-godown_summary', name: 'Godown & Store Wise Stock', group: 'Inventory', desc: 'Multi-location warehouse balances', keywords: ['godown', 'store', 'warehouse', 'location'] },
+          { id: 'inv-variant_summary', name: 'Size & Color Wise Stock', group: 'Inventory', desc: 'Matrix breakdown of apparel & variants', keywords: ['size', 'color', 'matrix', 'apparel', 'variants'] },
+          { id: 'inv-part_summary', name: 'Part Number Wise Stock', group: 'Inventory', desc: 'Stock filtered by OEM / part numbers', keywords: ['part number', 'parts', 'oem', 'automotive'] },
+          { id: 'inv-serials', name: 'Serialwise Stock', group: 'Inventory', desc: 'Tracked by individual serial / IMEI', keywords: ['serial', 'imei', 'barcode', 'device'] },
+          { id: 'inv-batch_summary', name: 'Batch & Expiry Wise Stock', group: 'Inventory', desc: 'Pharmaceutical batch lots & expiry dates', keywords: ['batch', 'expiry', 'exp', 'mfg', 'lot', 'pharma'] },
+          { id: 'inv-prof', name: 'Item Profitability', group: 'Inventory', desc: 'Gross margin & markup percentage', keywords: ['profit', 'margin', 'markup', 'profitability'] },
+          { id: 'inv-top', name: 'Top 15 Sellers', group: 'Inventory', desc: 'Fastest-moving high volume products', keywords: ['top', 'sellers', 'best', 'fast moving'] }
+        ]
+      },
+      {
+        id: 'gst_taxation',
+        name: '3. GST & Taxation',
+        shortName: 'GST & Tax',
+        badge: 'Tax',
+        icon: CircleDollarSign,
+        color: 'amber',
+        items: [
+          ...(showGst ? [
+            { id: 'gst', name: 'GST Output (Sales)', group: 'Taxation', desc: 'Output sales tax collections', keywords: ['gst', 'tax', 'output', 'sales tax'] },
+            ...(config.EnableGSTInputTax === 'true' ? [
+              { id: 'gst_summary', name: 'Net GST Summary', group: 'Taxation', desc: 'Net tax liability (Output minus Input)', keywords: ['net gst', 'tax liability', 'tax summary'] },
+              { id: 'gst_input_dom', name: 'GST Input (Domestic & Exp)', group: 'Taxation', desc: 'ITC claimable on domestic purchases', keywords: ['gst input', 'domestic', 'itc', 'claim', 'expenses'] },
+              { id: 'gst_input_imp', name: 'GST Input (Import Purchase)', group: 'Taxation', desc: 'Customs and import purchase tax claims', keywords: ['gst input import', 'import', 'customs'] }
+            ] : [])
+          ] : [
+            { id: 'gst', name: 'GST / Tax Report', group: 'Taxation', desc: 'Taxable amounts & collections', keywords: ['tax', 'gst'] }
+          ])
+        ]
+      },
+      {
+        id: 'final_accounts',
+        name: '4. Final Account & Audit Log',
+        shortName: 'Accounts & Audit',
+        badge: 'Financials',
+        icon: Calendar,
+        color: 'blue',
+        items: [
+          { id: 'fin-LED', name: 'Ledger Statement (Ctrl+L)', group: 'Final Accounts', desc: 'Full debit/credit party statement', keywords: ['ledger', 'statement', 'customer', 'supplier', 'account'] },
+          { id: 'fin-TB', name: 'Trial Balance', group: 'Final Accounts', desc: 'Summary debit/credit ledger balance audit', keywords: ['trial balance', 'tb', 'balances'] },
+          { id: 'fin-PNL', name: 'Profit & Loss Account', group: 'Final Accounts', desc: 'Revenue, direct/indirect expenses & net profit', keywords: ['pnl', 'profit and loss', 'income', 'net profit'] },
+          { id: 'fin-BS', name: 'Balance Sheet', group: 'Final Accounts', desc: 'Assets, liabilities, capital & net worth', keywords: ['balance sheet', 'bs', 'assets', 'liabilities'] },
+          { id: 'fin-REC', name: 'Receivables (Debtors)', group: 'Final Accounts', desc: 'Customer outstanding overdue balances', keywords: ['receivables', 'debtors', 'unpaid', 'customer balance'] },
+          { id: 'fin-PAY', name: 'Payables (Creditors)', group: 'Final Accounts', desc: 'Supplier bills due for payment', keywords: ['payables', 'creditors', 'vendor balance', 'bills due'] },
+          ...(canViewAudit ? [
+            { id: 'audit', name: 'Audit Trail & Activity Log', group: 'Audit', desc: 'Tamper-evident system activity history', keywords: ['audit', 'trail', 'security', 'logs', 'history'] }
+          ] : [])
+        ]
+      },
+      {
+        id: 'voucher_registers',
+        name: '5. Voucher Register',
+        shortName: 'Voucher Register',
+        badge: 'Registers',
+        icon: FileSpreadsheet,
+        color: 'purple',
+        items: [
           { id: 'reg-vouchers', name: 'Accounting Voucher Register', group: 'Registers', desc: 'All journal, payment, receipt vouchers', keywords: ['voucher', 'journal', 'payment', 'receipt', 'contra'] },
           { id: 'reg-sales', name: 'Sales Register', group: 'Registers', desc: 'Detailed sales invoice logbook', keywords: ['sales register', 'invoices', 'billed'] },
           { id: 'reg-purchases', name: 'Purchase Register', group: 'Registers', desc: 'Supplier purchase invoice register', keywords: ['purchase register', 'vendor', 'bills'] },
           { id: 'reg-quotations', name: 'Quotation Register', group: 'Registers', desc: 'Proforma and sales quotations', keywords: ['quote', 'estimate', 'quotation'] },
           { id: 'reg-delivery_notes', name: 'Delivery Note Register', group: 'Registers', desc: 'Goods dispatch and delivery challans', keywords: ['delivery', 'challan', 'dispatch', 'dc'] }
-        ]
-      },
-      {
-        id: 'inventory_stock',
-        name: 'Inventory & Stock',
-        icon: Package,
-        items: [
-          { id: 'inv-summary', name: 'Stock Summary & Valuation', group: 'Inventory', desc: 'Opening, closing, rate & asset value', keywords: ['stock', 'inventory', 'valuation', 'assets', 'balance'] },
-          { id: 'inv-mov', name: 'Stock Movement (In / Out)', group: 'Inventory', desc: 'Purchase inflows and sales outflows', keywords: ['movement', 'inflow', 'outflow', 'in out', 'transfers'] },
-          { id: 'inv-godown_summary', name: 'Godown & Store Wise Stock', group: 'Inventory', desc: 'Multi-location warehouse balances', keywords: ['godown', 'store', 'warehouse', 'location'] },
-          { id: 'inv-variant_summary', name: 'Size & Color Wise', group: 'Inventory', desc: 'Matrix breakdown of apparel & variants', keywords: ['size', 'color', 'matrix', 'apparel', 'variants'] },
-          { id: 'inv-part_summary', name: 'Part Number Wise', group: 'Inventory', desc: 'Stock filtered by OEM / part numbers', keywords: ['part number', 'parts', 'oem', 'automotive'] },
-          { id: 'inv-serials', name: 'Serialwise Stock', group: 'Inventory', desc: 'Tracked by individual serial / IMEI', keywords: ['serial', 'imei', 'barcode', 'device'] },
-          { id: 'inv-batch_summary', name: 'Batch & Expiry Wise', group: 'Inventory', desc: 'Pharmaceutical batch lots & expiry dates', keywords: ['batch', 'expiry', 'exp', 'mfg', 'lot', 'pharma'] },
-          { id: 'inv-prof', name: 'Item Profitability', group: 'Inventory', desc: 'Gross margin & markup percentage per item', keywords: ['profit', 'margin', 'markup', 'profitability'] },
-          { id: 'inv-top', name: 'Top 15 Sellers', group: 'Inventory', desc: 'Fastest-moving high volume products', keywords: ['top', 'sellers', 'best', 'fast moving'] }
-        ]
-      },
-      {
-        id: 'financial_accounts',
-        name: 'Financial Accounts & Tax',
-        icon: FileSpreadsheet,
-        items: [
-          { id: 'fin-LED', name: 'Ledger Statement (Ctrl+L)', group: 'Financials', desc: 'Full debit/credit party transaction statement', keywords: ['ledger', 'statement', 'customer', 'supplier', 'account'] },
-          { id: 'fin-TB', name: 'Trial Balance', group: 'Financials', desc: 'Summary debit/credit ledger balance audit', keywords: ['trial balance', 'tb', 'balances'] },
-          { id: 'fin-PNL', name: 'Profit & Loss Account', group: 'Financials', desc: 'Revenue, direct/indirect expense & net profit', keywords: ['pnl', 'profit and loss', 'income', 'net profit'] },
-          { id: 'fin-BS', name: 'Balance Sheet', group: 'Financials', desc: 'Assets, liabilities, capital & net worth', keywords: ['balance sheet', 'bs', 'assets', 'liabilities'] },
-          { id: 'fin-REC', name: 'Receivables (Debtors)', group: 'Financials', desc: 'Customer outstanding overdue balances', keywords: ['receivables', 'debtors', 'unpaid', 'customer balance'] },
-          { id: 'fin-PAY', name: 'Payables (Creditors)', group: 'Financials', desc: 'Supplier bills due for payment', keywords: ['payables', 'creditors', 'vendor balance', 'bills due'] },
-          ...(showGst ? [
-            { id: 'gst', name: 'GST Output (Sales)', group: 'Taxation', desc: 'Output sales tax collections', keywords: ['gst', 'tax', 'output', 'sales tax'] },
-            ...(config.EnableGSTInputTax === 'true' ? [
-              { id: 'gst_summary', name: 'Net GST Summary', group: 'Taxation', desc: 'Net tax liability (Output minus Input)', keywords: ['net gst', 'tax liability', 'tax summary'] },
-              { id: 'gst_input_dom', name: 'GST Input (Domestic)', group: 'Taxation', desc: 'ITC claimable on local purchases & expenses', keywords: ['gst input', 'domestic', 'itc', 'claim'] },
-              { id: 'gst_input_imp', name: 'GST Input (Import)', group: 'Taxation', desc: 'Customs and import purchase tax claims', keywords: ['gst input import', 'import', 'customs'] }
-            ] : [])
-          ] : []),
-          ...(canViewAudit ? [
-            { id: 'audit', name: 'Audit Trail & Logs', group: 'Compliance', desc: 'Tamper-evident system activity history', keywords: ['audit', 'trail', 'security', 'logs', 'history'] }
-          ] : [])
         ]
       }
     ];
@@ -578,6 +630,75 @@ export const Reports: React.FC<ReportsProps> = ({
       };
     }).filter(cat => cat.items.length > 0);
   }, [allReportCategories, reportMenuSearch]);
+
+  // Identify which category contains the active report
+  const activeCategoryId = useMemo(() => {
+    for (const cat of allReportCategories) {
+      if (cat.items.some(i => i.id === currentActiveReportKey)) {
+        return cat.id;
+      }
+    }
+    return 'daily_sales';
+  }, [allReportCategories, currentActiveReportKey]);
+
+  // Ensure active category is expanded on menu open and auto-scrolled to
+  useEffect(() => {
+    if (isReportMenuOpen) {
+      setExpandedReportCategories(prev => {
+        if (!prev[activeCategoryId]) {
+          return { ...prev, [activeCategoryId]: true };
+        }
+        return prev;
+      });
+      setTimeout(() => {
+        reportSearchInputRef.current?.focus();
+        const el = categoryRefs.current[activeCategoryId];
+        if (el && accordionScrollRef.current) {
+          const container = accordionScrollRef.current;
+          const elTop = el.offsetTop;
+          container.scrollTo({
+            top: Math.max(0, elTop - 8),
+            behavior: 'smooth'
+          });
+        }
+      }, 100);
+    } else {
+      setReportMenuSearch('');
+    }
+  }, [isReportMenuOpen, activeCategoryId]);
+
+  const toggleCategory = (catId: string) => {
+    const nextState = !expandedReportCategories[catId];
+    setExpandedReportCategories(prev => ({
+      ...prev,
+      [catId]: nextState
+    }));
+
+    // Auto-scroll expanded category into full view
+    if (nextState) {
+      setTimeout(() => {
+        const el = categoryRefs.current[catId];
+        if (el && accordionScrollRef.current) {
+          const container = accordionScrollRef.current;
+          const elTop = el.offsetTop;
+          container.scrollTo({
+            top: Math.max(0, elTop - 8),
+            behavior: 'smooth'
+          });
+        }
+      }, 70);
+    }
+  };
+
+  const expandAllCategories = () => {
+    const all: Record<string, boolean> = {};
+    allReportCategories.forEach(c => { all[c.id] = true; });
+    setExpandedReportCategories(all);
+  };
+
+  const collapseAllCategories = () => {
+    setExpandedReportCategories({});
+  };
 
   const handleSelectReport = (val: string) => {
     if (val === 'audit') {
@@ -2224,8 +2345,41 @@ export const Reports: React.FC<ReportsProps> = ({
 
   const currentPayload = getReportDataExportPayload();
 
+  const isTallyPrime = mainCategory === 'fin' && (finSubTab === 'TB' || finSubTab === 'PNL' || finSubTab === 'BS');
+
+  let currentActiveReportTitle = 'Report View';
+  if (mainCategory === 'daily') currentActiveReportTitle = 'Daily Sales Report';
+  if (mainCategory === 'gst') currentActiveReportTitle = 'GST/Tax Report';
+  if (mainCategory === 'gst_summary') currentActiveReportTitle = 'Net GST Summary Statement';
+  if (mainCategory === 'gst_input_dom') currentActiveReportTitle = 'GST Input - Domestic Purchase & Expenses';
+  if (mainCategory === 'gst_input_imp') currentActiveReportTitle = 'GST Input - Import Purchase';
+  if (mainCategory === 'fin') {
+    if (finSubTab === 'TB') currentActiveReportTitle = 'Trial Balance Statement';
+    if (finSubTab === 'PNL') currentActiveReportTitle = 'Profit & Loss Account';
+    if (finSubTab === 'BS') currentActiveReportTitle = 'Balance Sheet Statement';
+    if (finSubTab === 'REC') currentActiveReportTitle = 'Outstanding Receivables Report';
+    if (finSubTab === 'PAY') currentActiveReportTitle = 'Outstanding Payables Report';
+    if (finSubTab === 'LED') currentActiveReportTitle = `Ledger Statement - ${selectedLedger || ''}`;
+  }
+  if (mainCategory === 'reg') {
+    if (regSubTab === 'sales') currentActiveReportTitle = 'Sales Register';
+    if (regSubTab === 'purchases') currentActiveReportTitle = 'Purchase Register';
+  }
+  if (mainCategory === 'inv') {
+    if (invSubTab === 'summary') currentActiveReportTitle = 'Stock Summary & Valuation';
+    else if (invSubTab === 'mov') currentActiveReportTitle = 'Stock Movement (In / Out)';
+    else if (invSubTab === 'godown_summary') currentActiveReportTitle = 'Godown & Store Wise Stock';
+    else if (invSubTab === 'variant_summary') currentActiveReportTitle = 'Size & Color Wise Stock';
+    else if (invSubTab === 'part_summary') currentActiveReportTitle = 'Part Number Wise Stock';
+    else if (invSubTab === 'serials') currentActiveReportTitle = 'Serialwise Stock';
+    else if (invSubTab === 'batch_summary') currentActiveReportTitle = 'Batch & Expiry Wise Stock';
+    else if (invSubTab === 'prof') currentActiveReportTitle = 'Item Profitability';
+    else if (invSubTab === 'top') currentActiveReportTitle = 'Top 15 Sellers';
+    else currentActiveReportTitle = 'Inventory & Stock Report';
+  }
+
   return (
-    <div className="space-y-4 p-3 sm:p-6 pb-6 lg:pb-8">
+    <div className="space-y-3 p-3 sm:p-6 pb-6 lg:pb-8 pt-0 sm:pt-0">
       {/* Print Preview Modal */}
       {currentPayload && (
         <PrintReportModal
@@ -2245,11 +2399,11 @@ export const Reports: React.FC<ReportsProps> = ({
         />
       )}
 
-      {/* Filter and Content Sections below Header */}
-      <div className={`space-y-4 transition-all duration-300 ${isControlsCollapsed ? 'hidden' : 'block'}`}>
+      {/* Unified Sticky Header Area (Filter Toolbar + Compact Black Banner) */}
+      <div ref={headerRef} className="sticky top-0 z-40 bg-slate-100/95 backdrop-blur-md pt-2 sm:pt-3 pb-2 -mx-3 sm:-mx-6 px-3 sm:px-6 shadow-xs border-b border-slate-200/80 space-y-2">
         {/* Universal Compact Report Navigation & Filter Bar */}
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-2.5 sm:p-3 shadow-xs flex flex-wrap items-center justify-between gap-2.5 text-xs">
+        <div className={`transition-all duration-300 ${isControlsCollapsed ? 'hidden' : 'block'}`}>
+          <div className="rounded-xl border border-slate-200 bg-white p-2 sm:p-2.5 shadow-xs flex flex-wrap items-center justify-between gap-2 text-xs">
         {/* Left Section: Back Button, Report Switcher & Direct Dropdown */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
@@ -2269,20 +2423,7 @@ export const Reports: React.FC<ReportsProps> = ({
             <span>Back</span>
           </button>
 
-          <button
-            onClick={() => setShowReportCatalog(!showReportCatalog)}
-            className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 font-bold transition shadow-2xs ${
-              showReportCatalog
-                ? 'bg-indigo-600 text-white border-indigo-600'
-                : 'bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200'
-            }`}
-            title="Browse full catalog of report categories and options"
-          >
-            <LayoutGrid className="h-4 w-4" />
-            <span className="hidden sm:inline">All Reports</span>
-          </button>
-
-          {/* Modern Searchable Multi-Column Report Switcher */}
+          {/* Modern Searchable Multi-Column Report Switcher anchored to left */}
           <div ref={reportMenuRef} className="relative">
             <button
               type="button"
@@ -2301,19 +2442,29 @@ export const Reports: React.FC<ReportsProps> = ({
               <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${isReportMenuOpen ? 'rotate-180 text-white' : 'text-indigo-600'}`} />
             </button>
 
-            {/* Multi-Column Popover Card */}
+            {/* Vertical Collapsible (+) Popover Card */}
             {isReportMenuOpen && (
-              <div className="absolute left-0 top-full mt-1.5 z-50 w-[92vw] sm:w-[620px] md:w-[720px] lg:w-[840px] max-w-[860px] rounded-2xl border border-slate-200/90 bg-white/98 backdrop-blur-xl shadow-2xl p-3 sm:p-4 text-slate-800 animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="absolute left-0 top-full mt-2 z-50 w-[94vw] sm:w-[440px] md:w-[460px] max-w-[480px] rounded-2xl border border-slate-200/90 bg-white shadow-2xl p-3 sm:p-4 text-slate-800 animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col max-h-[82vh]">
                 {/* Search Header */}
-                <div className="flex items-center gap-2 pb-3 mb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2 pb-2.5 mb-2.5 border-b border-slate-100">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                     <input
                       ref={reportSearchInputRef}
                       type="text"
-                      placeholder="Search all reports (e.g. batch, ledger, pnl, stock, trial, gst)..."
+                      placeholder="🔍 Search report (e.g. batch, profit, gst, ledger, pnl)..."
                       value={reportMenuSearch}
                       onChange={e => setReportMenuSearch(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          for (const cat of filteredReportCategories) {
+                            if (cat.items.length > 0) {
+                              handleSelectReport(cat.items[0].id);
+                              break;
+                            }
+                          }
+                        }
+                      }}
                       className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition"
                     />
                     {reportMenuSearch && (
@@ -2321,11 +2472,13 @@ export const Reports: React.FC<ReportsProps> = ({
                         type="button"
                         onClick={() => setReportMenuSearch('')}
                         className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title="Clear search"
                       >
                         <X className="w-4 h-4" />
                       </button>
                     )}
                   </div>
+
                   <button
                     type="button"
                     onClick={() => setIsReportMenuOpen(false)}
@@ -2336,61 +2489,149 @@ export const Reports: React.FC<ReportsProps> = ({
                   </button>
                 </div>
 
-                {/* Grid of Categories and Reports */}
+                {/* Quick actions row */}
+                <div className="flex items-center justify-between px-1 pb-2 text-[11px] text-slate-500 font-medium">
+                  {reportMenuSearch ? (
+                    <span className="font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-lg">
+                      {filteredReportCategories.reduce((acc, c) => acc + c.items.length, 0)} results found
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">Select category below to expand:</span>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={expandAllCategories}
+                      className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold text-[10px] cursor-pointer"
+                    >
+                      Expand All
+                    </button>
+                    <span className="text-slate-300">•</span>
+                    <button
+                      type="button"
+                      onClick={collapseAllCategories}
+                      className="text-slate-500 hover:text-slate-700 hover:underline font-bold text-[10px] cursor-pointer"
+                    >
+                      Collapse All
+                    </button>
+                  </div>
+                </div>
+
+                {/* Vertical Collapsible Accordion List: Sequence 1 to 5 */}
                 {filteredReportCategories.length === 0 ? (
                   <div className="py-8 text-center text-slate-400 space-y-1">
                     <p className="text-xs font-semibold">No reports matching "{reportMenuSearch}"</p>
-                    <p className="text-[11px] text-slate-400">Try searching for "sales", "stock", "pnl", or "batch"</p>
+                    <p className="text-[11px] text-slate-400">Try searching for "batch", "profit", "gst", "stock", or "pnl"</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-h-[62vh] overflow-y-auto pr-1">
+                  <div ref={accordionScrollRef} className="overflow-y-auto pr-1 space-y-2 flex-1 max-h-[58vh] scroll-smooth">
                     {filteredReportCategories.map(cat => {
                       const CatIcon = cat.icon;
-                      return (
-                        <div key={cat.id} className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 space-y-1.5 flex flex-col">
-                          {/* Category Title */}
-                          <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/60 px-1">
-                            <div className="flex items-center gap-1.5 font-black text-slate-800 text-xs uppercase tracking-wide">
-                              <CatIcon className="h-3.5 w-3.5 text-indigo-600" />
-                              <span>{cat.name}</span>
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-400 bg-slate-200/60 px-1.5 py-0.2 rounded-full">
-                              {cat.items.length}
-                            </span>
-                          </div>
+                      const isSearching = reportMenuSearch.trim().length > 0;
+                      const isExpanded = isSearching || !!expandedReportCategories[cat.id];
+                      const isCurrentCat = cat.id === activeCategoryId;
 
-                          {/* Report Items in this Category */}
-                          <div className="flex flex-col gap-1 flex-1">
-                            {cat.items.map(item => {
-                              const isActive = item.id === currentActiveReportKey;
-                              return (
-                                <button
-                                  key={item.id}
-                                  type="button"
-                                  onClick={() => handleSelectReport(item.id)}
-                                  className={`group w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center justify-between gap-2 cursor-pointer ${
-                                    isActive
-                                      ? 'bg-indigo-600 text-white font-bold shadow-xs'
-                                      : 'bg-white hover:bg-indigo-50/80 text-slate-700 hover:text-indigo-900 border border-slate-200/60 shadow-2xs hover:border-indigo-200'
-                                  }`}
-                                >
-                                  <div className="truncate">
-                                    <div className={`truncate font-semibold ${isActive ? 'text-white' : 'text-slate-800'}`}>
-                                      {item.name}
+                      return (
+                        <div
+                          key={cat.id}
+                          ref={el => { categoryRefs.current[cat.id] = el; }}
+                          className={`rounded-xl border transition-all overflow-hidden ${
+                            isCurrentCat
+                              ? 'border-indigo-200 bg-indigo-50/20 shadow-2xs'
+                              : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          {/* Accordion Category Header */}
+                          <button
+                            type="button"
+                            onClick={() => toggleCategory(cat.id)}
+                            className={`w-full flex items-center justify-between p-2.5 text-left transition-colors cursor-pointer select-none ${
+                              isExpanded
+                                ? 'bg-slate-100/80 text-slate-900 border-b border-slate-200/70'
+                                : 'bg-white hover:bg-slate-50 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+                              <div className={`p-1.5 rounded-lg shrink-0 ${
+                                cat.color === 'indigo' ? 'bg-indigo-100 text-indigo-700' :
+                                cat.color === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
+                                cat.color === 'amber' ? 'bg-amber-100 text-amber-700' :
+                                cat.color === 'blue' ? 'bg-blue-100 text-blue-700' :
+                                'bg-purple-100 text-purple-700'
+                              }`}>
+                                <CatIcon className="h-4 w-4" />
+                              </div>
+
+                              <div className="flex items-center gap-1.5 truncate">
+                                <span className="font-bold text-xs sm:text-sm text-slate-900 truncate">
+                                  {cat.name}
+                                </span>
+                                {isCurrentCat && (
+                                  <span className="text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-md shrink-0">
+                                    Current
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[10px] font-bold text-slate-500 bg-slate-200/80 px-2 py-0.5 rounded-full">
+                                {cat.items.length} {cat.items.length === 1 ? 'report' : 'reports'}
+                              </span>
+                              <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
+                                isExpanded
+                                  ? 'bg-indigo-600 text-white font-bold shadow-2xs'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}>
+                                {isExpanded ? (
+                                  <Minus className="h-3.5 w-3.5 stroke-[2.5]" />
+                                ) : (
+                                  <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
+                                )}
+                              </div>
+                            </div>
+                          </button>
+
+                          {/* Collapsible List of Reports */}
+                          {isExpanded && (
+                            <div className="p-1.5 sm:p-2 bg-slate-50/70 space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                              {cat.items.map(item => {
+                                const isActive = item.id === currentActiveReportKey;
+                                return (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => handleSelectReport(item.id)}
+                                    className={`group w-full text-left px-3 py-2 rounded-lg text-xs transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                                      isActive
+                                        ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                                        : 'bg-white hover:bg-indigo-50/90 text-slate-700 hover:text-indigo-900 border border-slate-200/70 shadow-2xs hover:border-indigo-200'
+                                    }`}
+                                  >
+                                    <div className="truncate min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? 'bg-white' : 'bg-slate-300 group-hover:bg-indigo-500'}`} />
+                                        <span className={`truncate font-semibold text-xs ${isActive ? 'text-white' : 'text-slate-800'}`}>
+                                          {item.name}
+                                        </span>
+                                      </div>
+                                      {item.desc && (
+                                        <div className={`text-[10px] pl-3 truncate ${isActive ? 'text-indigo-100' : 'text-slate-400 group-hover:text-slate-500'}`}>
+                                          {item.desc}
+                                        </div>
+                                      )}
                                     </div>
-                                    {item.desc && (
-                                      <div className={`text-[10px] truncate ${isActive ? 'text-indigo-100' : 'text-slate-400 group-hover:text-slate-500'}`}>
-                                        {item.desc}
+                                    {isActive && (
+                                      <div className="shrink-0 flex items-center gap-1 text-[9px] font-black uppercase tracking-wider bg-white/20 text-white px-1.5 py-0.5 rounded">
+                                        <span>Active</span>
+                                        <Check className="h-3.5 w-3.5 stroke-[3]" />
                                       </div>
                                     )}
-                                  </div>
-                                  {isActive && (
-                                    <Check className="h-3.5 w-3.5 text-white shrink-0 stroke-[3]" />
-                                  )}
-                                </button>
-                              );
-                            })}
-                          </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -2398,13 +2639,26 @@ export const Reports: React.FC<ReportsProps> = ({
                 )}
 
                 {/* Footer helper */}
-                <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 px-1">
-                  <span>💡 Click any report to switch immediately</span>
+                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 px-1">
+                  <span>💡 Click [+] to expand category • Click report to open</span>
                   <span className="font-mono text-[10px]">Esc to close</span>
                 </div>
               </div>
             )}
           </div>
+
+          <button
+            onClick={() => setShowReportCatalog(!showReportCatalog)}
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 font-bold transition shadow-2xs ${
+              showReportCatalog
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-slate-100 text-slate-800 border-slate-200 hover:bg-slate-200'
+            }`}
+            title="Browse full catalog of report categories and options"
+          >
+            <LayoutGrid className="h-4 w-4" />
+            <span className="hidden sm:inline">All Reports</span>
+          </button>
 
           {/* Accounting Voucher Register contextual search & filters */}
           {mainCategory === 'reg' && regSubTab === 'vouchers' && (
@@ -2878,7 +3132,49 @@ export const Reports: React.FC<ReportsProps> = ({
         </div>
       )}
 
-      
+        </div>
+
+        {/* Compact Black Box Header Banner (Reduced Height) */}
+        {!isTallyPrime && mainCategory !== 'audit' && (
+          <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-3 sm:px-4 py-1.5 sm:py-2 border border-indigo-500/30 rounded-xl shadow-md relative overflow-hidden">
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
+            
+            <div className="flex items-center gap-2.5 flex-wrap relative z-10 min-w-0">
+              <div className="p-1.5 rounded-lg bg-white/10 border border-white/20 backdrop-blur-md shadow-xs shrink-0">
+                <FileText className="h-4 w-4 text-indigo-300" />
+              </div>
+              <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap min-w-0">
+                <h2 className="font-extrabold text-xs sm:text-sm text-white tracking-wide uppercase drop-shadow-xs truncate">{currentActiveReportTitle}</h2>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-bold text-indigo-200 bg-black/30 px-1.5 py-0.5 rounded border border-white/10 uppercase tracking-wider">
+                    Period
+                  </span>
+                  <span className="text-[11px] text-slate-300 font-mono tracking-tight">{fromDate} <span className="text-indigo-400">to</span> {toDate}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="relative z-10 flex items-center shrink-0">
+              {!isControlsCollapsed ? (
+                <button 
+                    onClick={() => setIsControlsCollapsed(true)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-colors shadow-xs text-[10px] font-bold uppercase tracking-wider backdrop-blur-xs cursor-pointer"
+                    title="Collapse Filters & Expand Table"
+                >
+                    <span>Collapse</span> <ChevronUp className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                <button 
+                    onClick={() => setIsControlsCollapsed(false)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-white/20 bg-indigo-500 text-white hover:bg-indigo-400 transition-colors shadow-xs text-[10px] font-bold uppercase tracking-wider backdrop-blur-xs cursor-pointer"
+                    title="Expand Filters"
+                >
+                    <span>Expand</span> <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Report Container */}
@@ -2891,81 +3187,8 @@ export const Reports: React.FC<ReportsProps> = ({
           );
         }
 
-        const isTallyPrime = mainCategory === 'fin' && (finSubTab === 'TB' || finSubTab === 'PNL' || finSubTab === 'BS');
-        
-        let reportTitle = 'Report View';
-        if (mainCategory === 'daily') reportTitle = 'Daily Sales Report';
-        if (mainCategory === 'gst') reportTitle = 'GST/Tax Report';
-        if (mainCategory === 'gst_summary') reportTitle = 'Net GST Summary Statement';
-        if (mainCategory === 'gst_input_dom') reportTitle = 'GST Input - Domestic Purchase & Expenses';
-        if (mainCategory === 'gst_input_imp') reportTitle = 'GST Input - Import Purchase';
-        if (mainCategory === 'fin') {
-          if (finSubTab === 'TB') reportTitle = 'Trial Balance Statement';
-          if (finSubTab === 'PNL') reportTitle = 'Profit & Loss Account';
-          if (finSubTab === 'BS') reportTitle = 'Balance Sheet Statement';
-          if (finSubTab === 'REC') reportTitle = 'Outstanding Receivables Report';
-          if (finSubTab === 'PAY') reportTitle = 'Outstanding Payables Report';
-          if (finSubTab === 'LED') reportTitle = `Ledger Statement - ${selectedLedger || ''}`;
-        }
-        if (mainCategory === 'reg') {
-          if (regSubTab === 'sales') reportTitle = 'Sales Register';
-          if (regSubTab === 'purchases') reportTitle = 'Purchase Register';
-        }
-        if (mainCategory === 'inv') {
-          if (invSubTab === 'summary') reportTitle = 'Stock Summary & Valuation';
-          else if (invSubTab === 'mov') reportTitle = 'Stock Movement (In / Out)';
-          else if (invSubTab === 'godown_summary') reportTitle = 'Godown & Store Wise Stock';
-          else if (invSubTab === 'variant_summary') reportTitle = 'Size & Color Wise Stock';
-          else if (invSubTab === 'part_summary') reportTitle = 'Part Number Wise Stock';
-          else if (invSubTab === 'serials') reportTitle = 'Serialwise Stock';
-          else if (invSubTab === 'batch_summary') reportTitle = 'Batch & Expiry Wise Stock';
-          else if (invSubTab === 'prof') reportTitle = 'Item Profitability';
-          else if (invSubTab === 'top') reportTitle = 'Top 15 Sellers';
-          else reportTitle = 'Inventory & Stock Report';
-        }
-
         return (
           <div className="bg-white border-y border-slate-200 shadow-xs -mx-3 sm:-mx-6 mb-[-1.5rem] lg:mb-[-2rem]">
-            {!isTallyPrime && (
-              <div className="sticky top-0 z-40 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-4 sm:px-6 py-4 border-b border-indigo-500/30 rounded-t-xl shadow-lg relative overflow-hidden">
-                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
-                
-                <div className="flex items-center gap-4 flex-wrap relative z-10">
-                  <div className="p-2.5 rounded-xl bg-white/10 border border-white/20 backdrop-blur-md shadow-sm">
-                    <FileText className="h-6 w-6 text-indigo-300" />
-                  </div>
-                  <div>
-                    <h2 className="font-black text-lg sm:text-xl text-white tracking-wider uppercase drop-shadow-sm">{reportTitle}</h2>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] font-bold text-indigo-200 bg-black/20 px-2.5 py-0.5 rounded-full border border-white/10 uppercase tracking-widest">
-                        Period
-                      </span>
-                      <span className="text-[11px] text-slate-300 font-mono tracking-wide">{fromDate} <span className="text-indigo-400">to</span> {toDate}</span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="relative z-10 flex items-center">
-                  {!isControlsCollapsed ? (
-                    <button 
-                        onClick={() => setIsControlsCollapsed(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm"
-                        title="Collapse Filters & Expand Table"
-                    >
-                        Collapse <ChevronUp className="h-4 w-4" />
-                    </button>
-                  ) : (
-                    <button 
-                        onClick={() => setIsControlsCollapsed(false)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-indigo-500 text-white hover:bg-indigo-400 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm"
-                        title="Expand Filters"
-                    >
-                        Expand <ChevronDown className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
             <div className="p-0">
             {loading ? (
           <div className="py-12 text-center text-slate-400">Loading report data...</div>
@@ -2977,7 +3200,7 @@ export const Reports: React.FC<ReportsProps> = ({
             {mainCategory === 'daily' && (
               <div>
                 <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                  <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                  <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                     <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                       {reportData.mode === 'itemwise' ? (
                         <>
@@ -3006,7 +3229,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       ? (reportData.rows || []).map((r: any, idx: number) => {
                           const isNegative = Number(r.total) < 0 || Number(r.qty) < 0;
                           return (
-                            <tr key={idx} className={`hover:bg-slate-50 transition ${isNegative ? 'bg-rose-50/40' : ''}`}>
+                            <tr key={`daily-item-${r.itemCode || r.itemName || idx}-${idx}`} className={`hover:bg-slate-50 transition ${isNegative ? 'bg-rose-50/40' : ''}`}>
                               <td className="py-2 px-3 font-semibold text-slate-800 text-left">
                                 {r.itemName}
                                 {isNegative && <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-1 py-0.5 rounded ml-2">NET RETURN</span>}
@@ -3022,7 +3245,7 @@ export const Reports: React.FC<ReportsProps> = ({
                           const isCN = r.type === 'CN' || Number(r.total) < 0;
                           return (
                             <tr
-                              key={idx}
+                              key={`daily-bill-${r.invoiceNo || r.billNumber || idx}-${idx}`}
                               onClick={() => onDrillVoucher(r.invoiceNo, fromDate, toDate)}
                               className={`hover:bg-slate-50 cursor-pointer transition ${isCN ? 'bg-rose-50/40' : ''}`}
                             >
@@ -3083,7 +3306,7 @@ export const Reports: React.FC<ReportsProps> = ({
             {/* GST Report */}
             {mainCategory === 'gst' && (
               <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                   <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                     <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Date</th>
                     <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Customer</th>
@@ -3099,7 +3322,7 @@ export const Reports: React.FC<ReportsProps> = ({
                   {(reportData.rows || []).map((r: any, idx: number) => {
                     const isReturn = r.type === 'CN' || Number(r.gstAmount) < 0 || Number(r.taxable) < 0;
                     return (
-                      <tr key={idx} onClick={() => onDrillVoucher(r.billNumber, fromDate, toDate)} className={`hover:bg-slate-50 cursor-pointer transition ${isReturn ? 'bg-rose-50/40' : ''}`}>
+                      <tr key={`gst-out-${r.billNumber || r.invoiceNo || idx}-${idx}`} onClick={() => onDrillVoucher(r.billNumber, fromDate, toDate)} className={`hover:bg-slate-50 cursor-pointer transition ${isReturn ? 'bg-rose-50/40' : ''}`}>
                         <td className="py-2 px-3 text-center font-mono">{formatDateStr(r.billDate)}</td>
                         <td className="py-2 px-3 font-semibold text-slate-800">
                           {r.isCancelled && typeof r.customerName === 'string' && r.customerName.includes(' (Cancelled)') ? (
@@ -3136,7 +3359,7 @@ export const Reports: React.FC<ReportsProps> = ({
             {/* Net GST Summary Report */}
             {mainCategory === 'gst_summary' && reportData.totals && (
               <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                   <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                     <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Description</th>
                     <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Taxable Amount (Nu.)</th>
@@ -3194,7 +3417,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
               return (
                 <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                  <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                  <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                     <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                       <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{supplierLabel}</th>
                       <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{supplierGstLabel}</th>
@@ -3219,7 +3442,7 @@ export const Reports: React.FC<ReportsProps> = ({
                         const totalRowVal = (Number(r.taxable) || 0) + (Number(r.exempted) || 0) + (Number(r.gstAmount) || 0);
                         return (
                           <tr
-                            key={idx}
+                            key={`gst-dom-${r.voucherNo || r.invoiceNo || r.referenceNo || idx}-${idx}`}
                             onClick={() => onDrillVoucher(r.voucherNo || r.invoiceNo || r.referenceNo, fromDate, toDate)}
                             className="hover:bg-slate-50 cursor-pointer transition"
                           >
@@ -3272,7 +3495,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
               return (
                 <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                  <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                  <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                     <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                       <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{supplierLabelImp}</th>
                       <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">{invDateLabelImp}</th>
@@ -3298,7 +3521,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       const totalRowVal = (Number(r.totalImportAmount) || 0) + (Number(r.gstAmount) || 0);
                       return (
                         <tr
-                          key={idx}
+                          key={`gst-imp-${r.voucherNo || r.declarationNo || idx}-${idx}`}
                           onClick={() => onDrillVoucher(r.voucherNo || r.declarationNo, fromDate, toDate)}
                           className="hover:bg-slate-50 cursor-pointer transition"
                         >
@@ -3401,7 +3624,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
                       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Group</th>
@@ -3534,7 +3757,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
                       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Color</th>
@@ -3651,7 +3874,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
                       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Part No. / OEM No.</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Alias / HSN</th>
@@ -3771,7 +3994,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
                       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Code</th>
@@ -3907,7 +4130,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       {/* Table */}
                       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Godown / Store</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Branch</th>
@@ -3932,7 +4155,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             ) : (
                               filteredGodownRows.map((r: any, idx: number) => (
                                 <tr
-                                  key={idx}
+                                  key={`godown-${r.godownName || ''}-${r.code || idx}-${idx}`}
                                   onClick={() => onDrillStock(r.code, fromDate, toDate)}
                                   className="hover:bg-indigo-50/40 cursor-pointer transition"
                                 >
@@ -4042,7 +4265,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
                       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Qty Sold</th>
@@ -4058,7 +4281,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               const profitAmt = Number(p.profit) || 0;
                               const pct = saleAmt !== 0 ? (profitAmt / Math.abs(saleAmt)) * 100 : 0;
                               return (
-                              <tr key={idx} onClick={() => onDrillItemProfit ? onDrillItemProfit(p.code, fromDate, toDate) : onDrillStock(p.code, fromDate, toDate)} className="hover:bg-indigo-50/40 cursor-pointer transition">
+                              <tr key={`prof-${p.code || p.name || idx}-${idx}`} onClick={() => onDrillItemProfit ? onDrillItemProfit(p.code, fromDate, toDate) : onDrillStock(p.code, fromDate, toDate)} className="hover:bg-indigo-50/40 cursor-pointer transition">
                                 <td className="py-2 px-3 font-semibold text-slate-800">{p.name}</td>
                                 <td className="py-2 px-3 text-center font-mono">{p.qty}</td>
                                 <td className="py-2 px-3 text-right font-mono">{fmt(p.saleAmt)}</td>
@@ -4100,7 +4323,7 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
                         <div className="overflow-x-auto">
                           <table className="w-full text-xs border-separate border-spacing-0">
-                            <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                            <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                               <tr className="border-b border-slate-200 font-bold text-slate-700 uppercase text-[11px]">
                                 <th className="bg-slate-100 bg-clip-padding py-2 px-3 text-left">Item</th>
                                 <th className="bg-slate-100 bg-clip-padding py-2 px-3 text-right">Qty Sold</th>
@@ -4108,7 +4331,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                               {reportData.topQty.map((t: any, idx: number) => (
-                                <tr key={idx} className="hover:bg-slate-50 transition">
+                                <tr key={`top-qty-${t.name || idx}-${idx}`} className="hover:bg-slate-50 transition">
                                   <td className="py-2 px-3 font-medium text-slate-800">{t.name}</td>
                                   <td className="py-2 px-3 text-right font-mono font-bold text-indigo-700">{t.qty}</td>
                                 </tr>
@@ -4125,7 +4348,7 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
                         <div className="overflow-x-auto">
                           <table className="w-full text-xs border-separate border-spacing-0">
-                            <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                            <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                               <tr className="border-b border-slate-200 font-bold text-slate-700 uppercase text-[11px]">
                                 <th className="bg-slate-100 bg-clip-padding py-2 px-3 text-left">Item</th>
                                 <th className="bg-slate-100 bg-clip-padding py-2 px-3 text-right">Revenue (Nu.)</th>
@@ -4133,7 +4356,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                               {reportData.topAmt.map((t: any, idx: number) => (
-                                <tr key={idx} className="hover:bg-slate-50 transition">
+                                <tr key={`top-amt-${t.name || idx}-${idx}`} className="hover:bg-slate-50 transition">
                                   <td className="py-2 px-3 font-medium text-slate-800">{t.name}</td>
                                   <td className="py-2 px-3 text-right font-mono font-bold text-emerald-700">{fmt(t.saleAmt)}</td>
                                 </tr>
@@ -4202,7 +4425,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
                       <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-x-auto">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Serial Number</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Code</th>
@@ -4222,7 +4445,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               </tr>
                             ) : (
                               filteredSerials.map((s: any, idx: number) => (
-                                <tr key={idx} className="hover:bg-indigo-50/40 transition cursor-pointer" onClick={() => onDrillStock && onDrillStock(s.itemCode, fromDate, toDate)}>
+                                <tr key={`serial-${s.serialNo || s.itemCode || idx}-${idx}`} className="hover:bg-indigo-50/40 transition cursor-pointer" onClick={() => onDrillStock && onDrillStock(s.itemCode, fromDate, toDate)}>
                                   <td className="py-2 px-3 font-mono font-bold text-indigo-700">{s.serialNo}</td>
                                   <td className="py-2 px-3 font-mono text-slate-600">{s.itemCode}</td>
                                   <td className="py-2 px-3 font-semibold text-slate-900">{s.itemName}</td>
@@ -4344,7 +4567,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
                       <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-x-auto">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-[60px] sm:top-[64px] z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Code</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
@@ -4367,7 +4590,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               </tr>
                             ) : (
                               filteredBatches.map((b: any, idx: number) => (
-                                <tr key={idx} className="hover:bg-indigo-50/40 transition cursor-pointer" onClick={() => onDrillStock && onDrillStock(b.itemCode, fromDate, toDate)}>
+                                <tr key={`batch-${b.batchNo || b.itemCode || idx}-${idx}`} className="hover:bg-indigo-50/40 transition cursor-pointer" onClick={() => onDrillStock && onDrillStock(b.itemCode, fromDate, toDate)}>
                                   <td className="py-2 px-3 font-mono text-slate-600">{b.itemCode}</td>
                                   <td className="py-2 px-3 font-semibold text-slate-900">{b.itemName}</td>
                                   <td className="py-2 px-3 font-mono font-bold text-emerald-800">{b.batchNo}</td>
@@ -4446,7 +4669,7 @@ export const Reports: React.FC<ReportsProps> = ({
                   return (
                     <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
                       <table className="w-full border-separate border-spacing-0 text-xs">
-                        <thead className="sticky top-0 z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200">
+                        <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                           <tr className="bg-slate-50 border-b border-slate-200">
                             <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Date</th>
                             <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Voucher No</th>
@@ -4561,7 +4784,7 @@ export const Reports: React.FC<ReportsProps> = ({
                           {itemWise ? (
                             /* ITEM-WISE SALES TABLE */
                             <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                              <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                              <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                                 <tr className="bg-slate-50 border-b border-slate-200">
                                   <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Date</th>
                                   <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Ref No</th>
@@ -4651,7 +4874,7 @@ export const Reports: React.FC<ReportsProps> = ({
                           ) : (
                             /* BILL-WISE SALES TABLE */
                             <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                              <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                              <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                                 <tr className="bg-slate-50 border-b border-slate-200">
                                   <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Date</th>
                                   <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Type / Ref No</th>
@@ -4667,7 +4890,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                   const isCN = inv.type === 'CN' || inv.invoiceNo?.startsWith('CN');
                                   const amt = Number(inv.totalAmount) || 0;
                                   return (
-                                    <tr key={i} className={`cursor-pointer transition ${isCN ? 'bg-rose-50/30 hover:bg-rose-50/60' : 'hover:bg-indigo-50/60'} ${inv.isCancelled ? 'opacity-50 bg-red-50/20' : ''}`} onClick={() => inv.invoiceNo && onDrillVoucher(inv.invoiceNo, fromDate, toDate)}>
+                                    <tr key={`sale-${inv.invoiceNo || inv.id || i}-${i}`} className={`cursor-pointer transition ${isCN ? 'bg-rose-50/30 hover:bg-rose-50/60' : 'hover:bg-indigo-50/60'} ${inv.isCancelled ? 'opacity-50 bg-red-50/20' : ''}`} onClick={() => inv.invoiceNo && onDrillVoucher(inv.invoiceNo, fromDate, toDate)}>
                                       <td className="py-3 px-4 text-slate-700">{formatDateStr(inv.date)}</td>
                                       <td className="py-3 px-4 font-semibold text-slate-800 flex items-center gap-2">
                                         <span>{inv.invoiceNo}</span>
@@ -4748,7 +4971,7 @@ export const Reports: React.FC<ReportsProps> = ({
                           {itemWise ? (
                             /* ITEM-WISE PURCHASE TABLE */
                             <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                              <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                              <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                                 <tr className="bg-slate-50 border-b border-slate-200">
                                   <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Date</th>
                                   <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Bill No</th>
@@ -4838,7 +5061,7 @@ export const Reports: React.FC<ReportsProps> = ({
                           ) : (
                             /* BILL-WISE PURCHASE TABLE */
                             <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                              <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                              <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                                 <tr className="bg-slate-50 border-b border-slate-200">
                                   <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Date</th>
                                   <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Type / Bill No</th>
@@ -4854,7 +5077,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                   const isDN = inv.type === 'DN' || inv.billNo?.startsWith('DN') || inv.supplierBillNo?.startsWith('DN');
                                   const amt = Number(inv.totalAmount) || 0;
                                   return (
-                                    <tr key={i} className={`cursor-pointer transition ${isDN ? 'bg-rose-50/30 hover:bg-rose-50/60' : 'hover:bg-indigo-50/60'} ${inv.isCancelled ? 'opacity-50 bg-red-50/20' : ''}`} onClick={() => (inv.supplierBillNo || inv.billNo) && onDrillVoucher(inv.supplierBillNo || inv.billNo, fromDate, toDate)}>
+                                    <tr key={`pur-${inv.supplierBillNo || inv.billNo || inv.id || i}-${i}`} className={`cursor-pointer transition ${isDN ? 'bg-rose-50/30 hover:bg-rose-50/60' : 'hover:bg-indigo-50/60'} ${inv.isCancelled ? 'opacity-50 bg-red-50/20' : ''}`} onClick={() => (inv.supplierBillNo || inv.billNo) && onDrillVoucher(inv.supplierBillNo || inv.billNo, fromDate, toDate)}>
                                       <td className="py-3 px-4 text-slate-700">{formatDateStr(inv.date)}</td>
                                       <td className="py-3 px-4 font-semibold text-slate-800 flex items-center gap-2">
                                         <span>{inv.supplierBillNo || inv.billNo}</span>
@@ -4920,7 +5143,7 @@ export const Reports: React.FC<ReportsProps> = ({
                 {regSubTab === 'quotations' && Array.isArray(reportData) && (
                   <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
                     <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                      <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                      <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                         <tr className="bg-slate-50 border-b border-slate-200">
                           <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Date</th>
                           <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Quotation No</th>
@@ -4935,7 +5158,7 @@ export const Reports: React.FC<ReportsProps> = ({
                         {reportData.map((q: any, i) => {
                           const isCancelled = (q.status as string) === 'Cancelled' || q.isCancelled;
                           return (
-                            <tr key={i} className={`cursor-pointer transition hover:bg-indigo-50/60 ${isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
+                            <tr key={`quot-${q.quotationNo || q.id || i}-${i}`} className={`cursor-pointer transition hover:bg-indigo-50/60 ${isCancelled ? 'opacity-60 bg-red-50/20' : ''}`} onClick={() => {
                               if (q.quotationNo) {
                                 onDrillVoucher(q.quotationNo, fromDate, toDate);
                               }
@@ -4979,7 +5202,7 @@ export const Reports: React.FC<ReportsProps> = ({
                 {regSubTab === 'delivery_notes' && Array.isArray(reportData) && (
                   <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
                     <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                      <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                      <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                         <tr className="bg-slate-50 border-b border-slate-200">
                           <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Date</th>
                           <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Note No</th>
@@ -4992,7 +5215,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {reportData.map((n: any, i) => (
-                          <tr key={i} className="cursor-pointer transition hover:bg-indigo-50/60" onClick={() => {
+                          <tr key={`dn-${n.noteNo || n.id || i}-${i}`} className="cursor-pointer transition hover:bg-indigo-50/60" onClick={() => {
                             if (n.noteNo) {
                               onDrillVoucher(n.noteNo, fromDate, toDate);
                             }
@@ -5045,6 +5268,7 @@ export const Reports: React.FC<ReportsProps> = ({
                     onDrillLedger={onDrillLedger}
                     onDrillGroup={onDrillGroup}
                     config={config}
+                    headerHeight={headerHeight}
                   />
                 )}
 
@@ -5060,6 +5284,7 @@ export const Reports: React.FC<ReportsProps> = ({
                     onDrillLedger={onDrillLedger}
                     onDrillGroup={onDrillGroup}
                     config={config}
+                    headerHeight={headerHeight}
                   />
                 )}
 
@@ -5075,6 +5300,7 @@ export const Reports: React.FC<ReportsProps> = ({
                     onDrillLedger={onDrillLedger}
                     onDrillGroup={onDrillGroup}
                     config={config}
+                    headerHeight={headerHeight}
                   />
                 )}
 
@@ -5134,7 +5360,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       {/* Receivables Table */}
                       <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                          <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Debtor / Customer Name</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Unpaid Invoices</th>
@@ -5146,7 +5372,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               const partyBills = getPartyOutstandingBills(r.name, 'debtor');
 
                               return (
-                                <React.Fragment key={idx}>
+                                <React.Fragment key={`rec-${r.name || idx}-${idx}`}>
                                   <tr
                                     className="hover:bg-emerald-50/40 transition cursor-pointer"
                                     onClick={() => onDrillLedger(r.name, fromDate, toDate)}
@@ -5200,7 +5426,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                                   const daysOverdue = bDate ? Math.max(0, Math.floor((Date.now() - bDate.getTime()) / (86400 * 1000))) : 0;
 
                                                   return (
-                                                    <tr key={bIdx} className="hover:bg-slate-50">
+                                                    <tr key={`rec-bill-${b.billNo || bIdx}-${bIdx}`} className="hover:bg-slate-50">
                                                       <td className="py-1.5 px-2 font-bold text-indigo-900">{b.billNo}</td>
                                                       <td className="py-1.5 px-2 font-sans text-slate-600">{bDate ? bDate.toLocaleDateString() : '-'}</td>
                                                       <td className="py-1.5 px-2 font-sans">
@@ -5301,7 +5527,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       {/* Payables Table */}
                       <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-0 sm:top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                          <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Creditor / Supplier Name</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Unpaid Bills</th>
@@ -5313,7 +5539,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               const partyBills = getPartyOutstandingBills(p.name, 'creditor');
 
                               return (
-                                <React.Fragment key={idx}>
+                                <React.Fragment key={`pay-${p.name || idx}-${idx}`}>
                                   <tr
                                     className="hover:bg-rose-50/40 transition cursor-pointer"
                                     onClick={() => onDrillLedger(p.name, fromDate, toDate)}
@@ -5366,7 +5592,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                                   const daysOverdue = bDate ? Math.max(0, Math.floor((Date.now() - bDate.getTime()) / (86400 * 1000))) : 0;
 
                                                   return (
-                                                    <tr key={bIdx} className="hover:bg-slate-50">
+                                                    <tr key={`pay-bill-${b.billNo || bIdx}-${bIdx}`} className="hover:bg-slate-50">
                                                       <td className="py-1.5 px-2 font-bold text-indigo-900">{b.billNo}</td>
                                                       <td className="py-1.5 px-2 font-sans text-slate-600">{bDate ? bDate.toLocaleDateString() : '-'}</td>
                                                       <td className="py-1.5 px-2 font-sans">
@@ -5476,7 +5702,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       {/* Ledger Table */}
                       <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky top-[73px] sm:top-[73px] z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+                          <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center w-24">Date</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left w-24">Type</th>
@@ -5506,7 +5732,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             {/* Transaction Rows */}
                             {filteredRows.map((r: any, idx: number) => (
                               <tr
-                                key={idx}
+                                key={`led-row-${r['Ref No'] || r.VoucherNo || r.DateIso || idx}-${idx}`}
                                 onClick={() => r['Ref No'] && onDrillVoucher(r['Ref No'], fromDate, toDate)}
                                 className={`cursor-pointer transition hover:bg-indigo-50/60 ${r.isCancelled ? 'bg-red-50/30' : ''}`}
                               >
@@ -5648,7 +5874,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
                   return (
                     <div
-                      key={ledgerName || idx}
+                      key={`quick-led-${ledgerName}-${idx}`}
                       onClick={() => {
                         setSelectedLedger(ledgerName);
                         setMainCategory('fin');

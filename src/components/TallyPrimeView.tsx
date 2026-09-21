@@ -17,6 +17,7 @@ interface FinancialStatementViewProps {
   config?: any;
   isControlsCollapsed?: boolean;
   onToggleControls?: () => void;
+  headerHeight?: number;
 }
 
 interface GroupNode {
@@ -46,7 +47,8 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
   onDrillGroup,
   config,
   isControlsCollapsed,
-  onToggleControls
+  onToggleControls,
+  headerHeight
 }) => {
   const [depth, setDepth] = useState<ReportDetailDepth>(initialDepth);
   const [searchTerm, setSearchTerm] = useState('');
@@ -465,7 +467,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
           {/* Full Screen Table */}
           <div className="w-full bg-white">
             <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-              <thead className="sticky top-0 z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+              <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: headerHeight ? `${headerHeight}px` : 0 }}>
                 <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                   <th className="bg-slate-100 bg-clip-padding py-3 px-4 sm:px-6 text-left">Particulars / Account Head</th>
                   <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left w-56 hidden md:table-cell">Account Group</th>
@@ -706,7 +708,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
           <div className="w-full bg-white">
             {/* 2.1 TRADING ACCOUNT SECTION */}
             <div className="border-b-2 border-slate-300">
-              <div className="sticky top-0 z-30 bg-slate-100 px-4 sm:px-6 py-2 text-slate-800 font-extrabold text-xs uppercase tracking-wider border-b border-slate-200 flex items-center justify-between shadow-sm">
+              <div className="sticky z-30 bg-slate-100 px-4 sm:px-6 py-2 text-slate-800 font-extrabold text-xs uppercase tracking-wider border-b border-slate-200 flex items-center justify-between shadow-sm" style={{ top: headerHeight ? `${headerHeight}px` : 0 }}>
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
                   1. Trading Account (Gross Margin)
@@ -752,7 +754,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                         </div>
                         {depth !== 'summary' && pnlData.purchLedgers.map((l: any, i: number) => (
                           <div
-                            key={i}
+                            key={`pnl-pur-${l.name || i}-${i}`}
                             onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                             className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                           >
@@ -770,7 +772,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                         </div>
                         {depth !== 'summary' && pnlData.directExpLedgers.map((l: any, i: number) => (
                           <div
-                            key={i}
+                            key={`pnl-de-${l.name || i}-${i}`}
                             onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                             className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                           >
@@ -818,7 +820,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                         </div>
                         {depth !== 'summary' && pnlData.salesLedgers.map((l: any, i: number) => (
                           <div
-                            key={i}
+                            key={`pnl-sales-${l.name || i}-${i}`}
                             onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                             className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                           >
@@ -883,7 +885,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
 
             {/* 2.2 PROFIT & LOSS SECTION */}
             <div>
-              <div className="sticky top-0 z-30 bg-slate-100 px-4 sm:px-6 py-2 text-slate-800 font-extrabold text-xs uppercase tracking-wider border-b border-slate-200 flex items-center justify-between shadow-sm">
+              <div className="sticky z-30 bg-slate-100 px-4 sm:px-6 py-2 text-slate-800 font-extrabold text-xs uppercase tracking-wider border-b border-slate-200 flex items-center justify-between shadow-sm" style={{ top: headerHeight ? `${headerHeight}px` : 0 }}>
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
                   2. Operating & Net Profit / Loss Statement
@@ -911,7 +913,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                       </div>
                       {depth !== 'summary' && pnlData.indirectExpLedgers.map((l: any, i: number) => (
                         <div
-                          key={i}
+                          key={`pnl-ie-${l.name || i}-${i}`}
                           onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                           className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                         >
@@ -961,7 +963,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                         </div>
                         {depth !== 'summary' && pnlData.indirectIncLedgers.map((l: any, i: number) => (
                           <div
-                            key={i}
+                            key={`pnl-ii-${l.name || i}-${i}`}
                             onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                             className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                           >
@@ -1107,7 +1109,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                           )}
                           {bsData.capitalLedgers.map((l: any, i: number) => (
                             <div
-                              key={i}
+                              key={`bs-cap-${l.name || i}-${i}`}
                               onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                               className="flex justify-between items-center hover:text-indigo-600 cursor-pointer transition"
                             >
@@ -1127,7 +1129,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                       </div>
                       {depth !== 'summary' && bsData.loanLedgers.map((l: any, i: number) => (
                         <div
-                          key={i}
+                          key={`bs-loan-${l.name || i}-${i}`}
                           onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                           className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                         >
@@ -1145,7 +1147,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                       </div>
                       {depth !== 'summary' && bsData.currentLiabLedgers.map((l: any, i: number) => (
                         <div
-                          key={i}
+                          key={`bs-cl-${l.name || i}-${i}`}
                           onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                           className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                         >
@@ -1307,7 +1309,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                           </div>
                           {bsData.currentAssetLedgers.map((l: any, i: number) => (
                             <div
-                              key={i}
+                              key={`bs-ca-${l.name || i}-${i}`}
                               onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
                               className="flex justify-between items-center hover:text-indigo-600 cursor-pointer transition"
                             >
