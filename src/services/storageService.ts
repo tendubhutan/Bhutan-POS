@@ -2137,17 +2137,78 @@ export function setDeviceCounterId(counterId: string): void {
   } catch {}
 }
 
-export function getEffectiveVoucherPrefix(basePrefix: string, isForcedOnline?: boolean): string {
-  const online = isForcedOnline !== undefined ? isForcedOnline : isSystemOnline();
-  if (online) {
-    return basePrefix;
-  }
-  const counterId = getDeviceCounterId();
-  if (!counterId) return basePrefix;
+export function getDesignatedOfflineCounter(customCompanyId?: string): string {
+  try {
+    const cId = customCompanyId || getActiveCompanyId();
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem(`designated_offline_counter_${cId}`) || localStorage.getItem('designated_offline_counter');
+      if (stored && stored.trim()) return stored.trim().toUpperCase();
+    }
+  } catch {}
+  return 'C1';
+}
 
-  // Format clean offline prefix: e.g., 'POS-' + 'C1' -> 'POS-C1-' or 'INV-' + 'C1' -> 'INV-C1-'
-  const cleanBase = (basePrefix || 'POS-').replace(/[-_]+$/, '');
-  return `${cleanBase}-${counterId}-`;
+export function setDesignatedOfflineCounter(counterId: string, customCompanyId?: string): void {
+  try {
+    const cId = customCompanyId || getActiveCompanyId();
+    const clean = (counterId || 'C1').trim().toUpperCase();
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(`designated_offline_counter_${cId}`, clean);
+      localStorage.setItem('designated_offline_counter', clean);
+      window.dispatchEvent(new CustomEvent('designated_offline_counter_changed', { detail: { counterId: clean, companyId: cId } }));
+    }
+  } catch {}
+}
+
+export function canCurrentDeviceBillOffline(customCompanyId?: string): {
+  allowed: boolean;
+  isOnline: boolean;
+  currentCounter: string;
+  designatedCounter: string;
+  designatedCounterName: string;
+  reason?: string;
+} {
+  const isOnline = isSystemOnline();
+  const currentCounter = getDeviceCounterId();
+  const designatedCounter = getDesignatedOfflineCounter(customCompanyId);
+  const terminals = getTerminalsConfig(customCompanyId);
+  const matchedTerm = terminals.find(t => (t.code || t.id).toUpperCase() === designatedCounter.toUpperCase());
+  const designatedCounterName = matchedTerm?.name || `Counter ${designatedCounter}`;
+
+  if (isOnline) {
+    return {
+      allowed: true,
+      isOnline: true,
+      currentCounter,
+      designatedCounter,
+      designatedCounterName
+    };
+  }
+
+  const isMatch = currentCounter.toUpperCase() === designatedCounter.toUpperCase();
+  if (isMatch) {
+    return {
+      allowed: true,
+      isOnline: false,
+      currentCounter,
+      designatedCounter,
+      designatedCounterName
+    };
+  }
+
+  return {
+    allowed: false,
+    isOnline: false,
+    currentCounter,
+    designatedCounter,
+    designatedCounterName,
+    reason: `Offline Billing Restricted: Only the designated Master Counter (${designatedCounterName}) can finalize sales while offline to maintain a strict continuous invoice series without numbering gaps. This counter is currently available for price checking and stock lookups.`
+  };
+}
+
+export function getEffectiveVoucherPrefix(basePrefix: string, isForcedOnline?: boolean): string {
+  // Always return unified continuous series prefix (e.g., 'POS-', 'SAL-') without counter suffixes
+  return basePrefix || 'POS-';
 }
 
 // ----------------- TERMINALS MANAGEMENT & LICENSING -----------------
@@ -3536,9 +3597,7 @@ export function saveSalesInvoice(payload: {
   const invPrefix = getEffectiveVoucherPrefix(rawPrefix, isOnline);
   const counterKey = matchedVt 
     ? `Voucher_${matchedVt.id}` 
-    : (isPOS 
-        ? (isOnline ? 'POSInvoice' : `POSInvoice_${getDeviceCounterId()}`) 
-        : (isOnline ? 'SalesInvoice' : `SalesInvoice_${getDeviceCounterId()}`));
+    : (isPOS ? 'POSInvoice' : 'SalesInvoice');
 
   let iNo = (originalInvoiceNo || invoiceNo)?.trim();
   if (!iNo) {
@@ -4152,9 +4211,7 @@ export function peekNextInvoiceNumber(isPOS: boolean = false, voucherTypeId?: st
   const invPrefix = getEffectiveVoucherPrefix(rawPrefix, isOnline);
   const counterKey = matchedVt 
     ? `Voucher_${matchedVt.id}` 
-    : (isPOS 
-        ? (isOnline ? 'POSInvoice' : `POSInvoice_${getDeviceCounterId()}`) 
-        : (isOnline ? 'SalesInvoice' : `SalesInvoice_${getDeviceCounterId()}`));
+    : (isPOS ? 'POSInvoice' : 'SalesInvoice');
 
   const counters = loadJson<Record<string, number>>(STORAGE_KEYS.COUNTERS, {
     InternalBarcode: 5,

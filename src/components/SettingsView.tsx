@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Config, Ledger, AppUser, ModuleId, UserPermission } from '../types';
-import { saveConfig, getUsers, saveUsers, setActiveUser, getActiveUser, loadJson, saveJson, STORAGE_KEYS, canUserViewAuditTrail, getBranches, getTerminalBranchId, setTerminalBranchId, getDeviceCounterId, setDeviceCounterId, isSystemOnline, getEffectiveVoucherPrefix, getTerminalsConfig } from '../services/storageService';
+import { saveConfig, getUsers, saveUsers, setActiveUser, getActiveUser, loadJson, saveJson, STORAGE_KEYS, canUserViewAuditTrail, getBranches, getTerminalBranchId, setTerminalBranchId, getDeviceCounterId, setDeviceCounterId, getDesignatedOfflineCounter, setDesignatedOfflineCounter, isSystemOnline, getEffectiveVoucherPrefix, getTerminalsConfig } from '../services/storageService';
 import { POSSettings, loadPOSSettings, savePOSSettings, DEFAULT_POS_SETTINGS } from '../types/posSettings';
 import { playSaveSound } from '../utils/audio';
 import { AcceptModal } from './AcceptModal';
@@ -81,6 +81,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [activeTab, setActiveTab] = useState<'company' | 'features' | 'vouchers' | 'pos' | 'inventory' | 'invoice' | 'security' | 'backup'>('company');
   const [terminalBranchId, setLocalTerminalBranchId] = useState<string>(() => getTerminalBranchId(config));
   const [deviceCounterId, setLocalDeviceCounterId] = useState<string>(() => getDeviceCounterId());
+  const [designatedOfflineCounter, setLocalDesignatedOfflineCounter] = useState<string>(() => getDesignatedOfflineCounter());
+
+  useEffect(() => {
+    const handleCounterChange = (e: any) => {
+      if (e.detail?.counterId) setLocalDesignatedOfflineCounter(e.detail.counterId);
+    };
+    window.addEventListener('designated_offline_counter_changed', handleCounterChange);
+    return () => window.removeEventListener('designated_offline_counter_changed', handleCounterChange);
+  }, []);
 
   // Security Users State
   const [usersList, setUsersList] = useState<AppUser[]>([]);
@@ -1879,92 +1888,148 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="block font-bold text-slate-800 text-xs">
-                    This PC / Device Counter Identifier:
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={deviceCounterId}
-                      onChange={e => {
-                        const val = e.target.value.toUpperCase();
-                        setLocalDeviceCounterId(val);
-                        setDeviceCounterId(val);
-                      }}
-                      placeholder="C1, C2, ACC, MOB..."
-                      maxLength={8}
-                      className="w-32 h-9 rounded-xl border border-indigo-300 px-3 font-mono font-bold text-indigo-900 bg-white shadow-xs outline-none focus:border-indigo-600"
-                    />
-                    <div className="text-[11px] text-slate-600 font-medium">
-                      (Configures this specific computer/terminal)
+                <div className="space-y-3">
+                  {/* Designated Offline Master Billing Counter */}
+                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1.5">
+                    <label className="block font-bold text-amber-950 text-xs flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <ShieldCheck className="h-4 w-4 text-amber-600" />
+                        Designated Offline Master Billing Counter:
+                      </span>
+                      <span className="text-[10px] font-mono font-bold bg-amber-200/70 text-amber-900 px-2 py-0.5 rounded">
+                        Continuous Series Mode
+                      </span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={designatedOfflineCounter}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setLocalDesignatedOfflineCounter(val);
+                          setDesignatedOfflineCounter(val);
+                        }}
+                        className="w-full h-9 rounded-xl border border-amber-300 px-3 font-semibold text-amber-950 bg-white shadow-xs outline-none focus:border-amber-600 cursor-pointer text-xs"
+                      >
+                        {getTerminalsConfig().filter(t => t.isActive).map(p => (
+                          <option key={p.id || p.code} value={p.code || p.id}>
+                            {p.name} ({p.code || p.id}) - {p.role}
+                          </option>
+                        ))}
+                      </select>
                     </div>
+                    <p className="text-[10px] text-amber-800 leading-relaxed">
+                      ⚡ When the internet or cloud is offline, <strong>only this designated master counter</strong> will generate continuous sales invoices to prevent duplicate numbers or audit gaps. Other counters will automatically switch to <strong>Price & Stock Lookup Mode</strong>.
+                    </p>
                   </div>
 
-                  {/* Preset quick buttons */}
-                  <div className="space-y-1.5 pt-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Configured Terminals:</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          window.dispatchEvent(new CustomEvent('open_client_link_modal', { detail: { tab: 'manage' } }));
+                  {/* This Device Identifier */}
+                  <div className="space-y-2">
+                    <label className="block font-bold text-slate-800 text-xs">
+                      This PC / Device Counter Identifier:
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={deviceCounterId}
+                        onChange={e => {
+                          const val = e.target.value.toUpperCase();
+                          setLocalDeviceCounterId(val);
+                          setDeviceCounterId(val);
                         }}
-                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <span>⚙️ Manage & Rename Terminals / Plan Limits</span>
-                      </button>
+                        placeholder="C1, C2, ACC, MOB..."
+                        maxLength={8}
+                        className="w-32 h-9 rounded-xl border border-indigo-300 px-3 font-mono font-bold text-indigo-900 bg-white shadow-xs outline-none focus:border-indigo-600"
+                      />
+                      <div className="text-[11px] text-slate-600 font-medium">
+                        (Current computer terminal)
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {getTerminalsConfig().filter(t => t.isActive).map(p => (
+
+                    {/* Preset quick buttons */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Switch Current Terminal:</span>
                         <button
-                          key={p.id || p.code}
                           type="button"
                           onClick={() => {
-                            const targetId = p.code || p.id;
-                            setLocalDeviceCounterId(targetId);
-                            setDeviceCounterId(targetId);
+                            window.dispatchEvent(new CustomEvent('open_client_link_modal', { detail: { tab: 'manage' } }));
                           }}
-                          className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${deviceCounterId === (p.code || p.id) ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer"
                         >
-                          {p.name} ({p.code || p.id})
+                          <span>⚙️ Manage & Rename Terminals</span>
                         </button>
-                      ))}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {getTerminalsConfig().filter(t => t.isActive).map(p => (
+                          <button
+                            key={p.id || p.code}
+                            type="button"
+                            onClick={() => {
+                              const targetId = p.code || p.id;
+                              setLocalDeviceCounterId(targetId);
+                              setDeviceCounterId(targetId);
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${deviceCounterId === (p.code || p.id) ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+                          >
+                            {p.name} ({p.code || p.id})
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Live simulation comparison */}
-                <div className="bg-white/90 p-3 rounded-xl border border-indigo-100 space-y-2 text-xs">
-                  <div className="font-bold text-slate-800 flex items-center justify-between">
-                    <span>Live Invoice Format Preview:</span>
-                    <span className="text-[10px] text-indigo-600 font-mono">Terminal: {deviceCounterId || 'C1'}</span>
+                <div className="bg-white/90 p-3.5 rounded-xl border border-indigo-100 space-y-3 text-xs flex flex-col justify-between">
+                  <div>
+                    <div className="font-bold text-slate-800 flex items-center justify-between pb-2 border-b border-slate-100">
+                      <span>Continuous Numbering & Mode Status:</span>
+                      <span className="text-[10px] text-indigo-600 font-mono font-bold">This Device: {deviceCounterId || 'C1'}</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2.5">
+                      <div className="p-2.5 bg-emerald-50/70 rounded-lg border border-emerald-200 space-y-1">
+                        <div className="text-[10px] font-bold text-emerald-800 flex items-center gap-1">
+                          <span>🌐 Online Mode (All Terminals)</span>
+                        </div>
+                        <div className="font-mono font-black text-sm text-emerald-950">
+                          {(form.POSInvoicePrefix || 'POS-')}{(counters['POSInvoice'] || 0) + 1}
+                        </div>
+                        <div className="text-[9px] text-emerald-700">
+                          Single continuous sequence across all counters with instant cloud synchronization.
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 bg-indigo-50/70 rounded-lg border border-indigo-200 space-y-1">
+                        <div className="text-[10px] font-bold text-indigo-800 flex items-center gap-1">
+                          <span>🔌 Offline Mode (Single Master)</span>
+                        </div>
+                        <div className="font-mono font-black text-sm text-indigo-950">
+                          {(form.POSInvoicePrefix || 'POS-')}{(counters['POSInvoice'] || 0) + 1}
+                        </div>
+                        <div className="text-[9px] text-indigo-700">
+                          Master Counter: <strong>{designatedOfflineCounter}</strong>. Continuous single sequence without gaps or suffixes.
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="p-2 bg-emerald-50/70 rounded-lg border border-emerald-200 space-y-1">
-                      <div className="text-[10px] font-bold text-emerald-800 flex items-center gap-1">
-                        <span>🌐 Online Global Mode</span>
-                      </div>
-                      <div className="font-mono font-black text-xs text-emerald-950">
-                        {(form.POSInvoicePrefix || 'POS-')}{(counters['POSInvoice'] || 0) + 1}
-                      </div>
-                      <div className="text-[9px] text-emerald-700">
-                        Unified sequence across all 4 counters & accountants for 100% clean GST reports.
-                      </div>
-                    </div>
-
-                    <div className="p-2 bg-amber-50/70 rounded-lg border border-amber-200 space-y-1">
-                      <div className="text-[10px] font-bold text-amber-800 flex items-center gap-1">
-                        <span>🔌 Offline Safety Mode</span>
-                      </div>
-                      <div className="font-mono font-black text-xs text-amber-950">
-                        {(form.POSInvoicePrefix || 'POS-').replace(/[-_]+$/, '')}-{deviceCounterId || 'C1'}-{(counters['POSInvoice'] || 0) + 1}
-                      </div>
-                      <div className="text-[9px] text-amber-700">
-                        Auto-appends counter ID so simultaneous offline bills never collide.
-                      </div>
-                    </div>
+                  <div className={`p-2 rounded-lg border text-[11px] font-semibold flex items-center gap-2 ${
+                    (deviceCounterId || 'C1').toUpperCase() === (designatedOfflineCounter || 'C1').toUpperCase()
+                      ? 'bg-emerald-100/60 border-emerald-300 text-emerald-900'
+                      : 'bg-blue-50 border-blue-200 text-blue-900'
+                  }`}>
+                    {(deviceCounterId || 'C1').toUpperCase() === (designatedOfflineCounter || 'C1').toUpperCase() ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <span>This device is the <strong>Designated Offline Master Counter</strong>. Full billing is permitted online and offline.</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="h-4 w-4 text-blue-600 shrink-0" />
+                        <span>This device is a <strong>Secondary Counter</strong>. When offline, it operates in <strong>Price Check & Stock Lookup Mode</strong>.</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

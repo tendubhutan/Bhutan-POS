@@ -56,6 +56,7 @@ import {
   setMaxTerminalLimit
 } from '../services/storageService';
 import { isSupportAccessAllowed } from '../services/tenantFeatureService';
+import { purgeRemoteCompanyData } from '../services/supabaseSyncService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { GlowButton } from './common/GlowButton';
 import { getCurrentTenantSession } from '../services/authTenantContext';
@@ -448,9 +449,10 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
     }
   };
 
-  const handleConfirmReset = (comp: SupabaseCompany) => {
+  const handleConfirmReset = async (comp: SupabaseCompany) => {
     resetCompanyToBlank(comp.id);
     initializeBlankTenantStorage(comp.id);
+    await purgeRemoteCompanyData(comp.id);
     setConfirmResetCompany(null);
     showToast(`Company "${comp.company_name}" was successfully reset to a blank slate.`);
     if (comp.id === activeCompanyId) {

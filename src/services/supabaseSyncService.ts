@@ -293,10 +293,8 @@ export async function deleteSalesInvoiceFromSupabase(invoiceNo: string, targetCo
   if (!cleanNo) return;
 
   try {
-    await supabase
-      .from('sales_invoices')
-      .delete()
-      .match({ company_id: companyId, record_id: cleanNo });
+    await supabase.from('sales_invoices').delete().eq('company_id', companyId).eq('record_id', cleanNo);
+    await supabase.from('sales_invoices').delete().eq('company_id', companyId).eq('invoice_no', cleanNo);
   } catch (err: any) {
     console.warn('[Supabase Delete Sales Invoice Error]:', err?.message || err);
   }
@@ -343,10 +341,8 @@ export async function deletePurchaseInvoiceFromSupabase(billNo: string, targetCo
   if (!cleanNo) return;
 
   try {
-    await supabase
-      .from('purchase_invoices')
-      .delete()
-      .match({ company_id: companyId, record_id: cleanNo });
+    await supabase.from('purchase_invoices').delete().eq('company_id', companyId).eq('record_id', cleanNo);
+    await supabase.from('purchase_invoices').delete().eq('company_id', companyId).eq('invoice_no', cleanNo);
   } catch (err: any) {
     console.warn('[Supabase Delete Purchase Invoice Error]:', err?.message || err);
   }
@@ -395,10 +391,8 @@ export async function deleteVoucherFromSupabase(voucherNo: string, targetCompany
   if (!cleanNo) return;
 
   try {
-    await supabase
-      .from('vouchers')
-      .delete()
-      .match({ company_id: companyId, record_id: cleanNo });
+    await supabase.from('vouchers').delete().eq('company_id', companyId).eq('record_id', cleanNo);
+    await supabase.from('vouchers').delete().eq('company_id', companyId).eq('voucher_no', cleanNo);
   } catch (err: any) {
     console.warn('[Supabase Delete Voucher Error]:', err?.message || err);
   }
@@ -407,6 +401,18 @@ export async function deleteVoucherFromSupabase(voucherNo: string, targetCompany
 // ----------------------------------------------------------------------------
 // CONFIG / SETTINGS SYNC
 // ----------------------------------------------------------------------------
+
+export async function purgeRemoteCompanyData(companyId: string): Promise<void> {
+  if (!companyId || companyId === DEFAULT_TENANT_COMPANY.id || !isSupabaseConfigured) return;
+  try {
+    const tables = ['sales_invoices', 'purchase_invoices', 'vouchers', 'items', 'ledgers'];
+    for (const tbl of tables) {
+      await supabase.from(tbl).delete().eq('company_id', companyId);
+    }
+  } catch (err: any) {
+    console.warn('[Purge Remote Data Warning]:', err?.message || err);
+  }
+}
 
 export async function syncConfigToSupabase(config?: Config, targetCompanyId?: string): Promise<{ count: number }> {
   if (!isSupabaseConfigured) return { count: 1 };
@@ -494,6 +500,12 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
 
   const pullTenantData = async () => {
     try {
+      const isDemo = companyId === DEFAULT_TENANT_COMPANY.id;
+      const deletedSales = new Set(loadLocalArray<string>(STORAGE_KEYS.DELETED_SALES_INVOICES, companyId).map(d => (d || '').trim().toLowerCase()));
+      const deletedPurchases = new Set(loadLocalArray<string>(STORAGE_KEYS.DELETED_PURCHASE_INVOICES, companyId).map(d => (d || '').trim().toLowerCase()));
+      const deletedVouchers = new Set(loadLocalArray<string>(STORAGE_KEYS.DELETED_VOUCHERS, companyId).map(d => (d || '').trim().toLowerCase()));
+      const deletedItems = new Set(loadLocalArray<string>(STORAGE_KEYS.DELETED_ITEMS, companyId).map(d => (d || '').trim().toLowerCase()));
+
       // 1. Pull Items
       const { data: sbItems, error: itErr } = await supabase
         .from('items')
@@ -502,9 +514,23 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
 
       if (!itErr) {
         if (sbItems && sbItems.length > 0) {
-          const loadedItems: Item[] = sbItems.map(row => row.data).filter(Boolean);
+          const loadedItems: Item[] = sbItems
+            .map(row => row.data)
+            .filter(Boolean)
+            .filter(it => {
+              const code = (it['Item Code'] || it.itemCode || '').trim().toLowerCase();
+              if (deletedItems.has(code)) {
+                deleteItemFromSupabase(it['Item Code'] || it.itemCode, companyId);
+                return false;
+              }
+              if (!isDemo && (it['Item Code']?.startsWith('ITM260812') || it['Item Name']?.includes('Wireless Mouse') || it['Item Name']?.includes('Pendrive'))) {
+                deleteItemFromSupabase(it['Item Code'] || it.itemCode, companyId);
+                return false;
+              }
+              return true;
+            });
           saveLocalArray(STORAGE_KEYS.ITEMS, loadedItems, companyId);
-        } else if (companyId === DEFAULT_TENANT_COMPANY.id) {
+        } else if (isDemo) {
           await seedInitialLocalDataToSupabase();
         } else {
           saveLocalArray(STORAGE_KEYS.ITEMS, [], companyId);
@@ -531,7 +557,17 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         .eq('company_id', companyId);
 
       if (!vchErr) {
-        const loadedVouchers: Voucher[] = (sbVouchers || []).map(row => row.data).filter(Boolean);
+        const loadedVouchers: Voucher[] = (sbVouchers || [])
+          .map(row => row.data)
+          .filter(Boolean)
+          .filter(v => {
+            const vNo = (v.voucherNo || '').trim().toLowerCase();
+            if (deletedVouchers.has(vNo)) {
+              deleteVoucherFromSupabase(v.voucherNo, companyId);
+              return false;
+            }
+            return true;
+          });
         saveLocalArray(STORAGE_KEYS.VOUCHERS, loadedVouchers, companyId);
       }
 
@@ -542,7 +578,26 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         .eq('company_id', companyId);
 
       if (!sErr) {
-        const loadedSales: SalesInvoice[] = (sbSales || []).map(row => row.data).filter(Boolean);
+        const loadedSales: SalesInvoice[] = (sbSales || [])
+          .map(row => row.data)
+          .filter(Boolean)
+          .filter(s => {
+            const invNo = (s.invoiceNo || '').trim().toLowerCase();
+            if (deletedSales.has(invNo)) {
+              deleteSalesInvoiceFromSupabase(s.invoiceNo, companyId);
+              return false;
+            }
+            if (!isDemo) {
+              const hasDemoItems = Array.isArray(s.items) && s.items.some((it: any) => 
+                it['Item Name']?.includes('Wireless Mouse') || it['Item Name']?.includes('Pendrive') || it['Item Code']?.startsWith('ITM260812')
+              );
+              if (hasDemoItems) {
+                deleteSalesInvoiceFromSupabase(s.invoiceNo, companyId);
+                return false;
+              }
+            }
+            return true;
+          });
         saveLocalArray(STORAGE_KEYS.SALES_INVOICES, loadedSales, companyId);
       }
 
@@ -553,7 +608,26 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         .eq('company_id', companyId);
 
       if (!pErr) {
-        const loadedPurchases: PurchaseInvoice[] = (sbPurchases || []).map(row => row.data).filter(Boolean);
+        const loadedPurchases: PurchaseInvoice[] = (sbPurchases || [])
+          .map(row => row.data)
+          .filter(Boolean)
+          .filter(p => {
+            const bNo = (p.billNo || p.invoiceNo || '').trim().toLowerCase();
+            if (deletedPurchases.has(bNo)) {
+              deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
+              return false;
+            }
+            if (!isDemo) {
+              const hasDemoItems = Array.isArray(p.items) && p.items.some((it: any) => 
+                it['Item Name']?.includes('Wireless Mouse') || it['Item Name']?.includes('Pendrive') || it['Item Code']?.startsWith('ITM260812')
+              );
+              if (hasDemoItems) {
+                deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
+                return false;
+              }
+            }
+            return true;
+          });
         saveLocalArray(STORAGE_KEYS.PURCHASE_INVOICES, loadedPurchases, companyId);
       }
 

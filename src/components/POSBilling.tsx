@@ -36,6 +36,8 @@ import {
   peekNextInvoiceNumber,
   getDeviceCounterId,
   setDeviceCounterId,
+  getDesignatedOfflineCounter,
+  canCurrentDeviceBillOffline,
   isSystemOnline
 } from '../services/storageService';
 import {
@@ -1836,6 +1838,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   };
 
   const [showAcceptModal, setShowAcceptModal] = useState<'print' | 'whatsapp' | 'email' | 'save_only' | 'share_pdf' | 'download_pdf' | false>(false);
+  const [showOfflineRestrictedModal, setShowOfflineRestrictedModal] = useState(false);
+  const [offlineRestrictedReason, setOfflineRestrictedReason] = useState('');
 
   // Checkout Handler
   const handleCheckout = async (
@@ -1843,6 +1847,14 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     bypassConfirm: boolean = false
   ) => {
     if (cart.length === 0 || isSubmitting) return;
+
+    // Single Master Offline Billing Enforcement
+    const offlineCheck = canCurrentDeviceBillOffline();
+    if (!offlineCheck.allowed) {
+      setOfflineRestrictedReason(offlineCheck.reason || 'Offline billing is restricted to the designated Master Counter.');
+      setShowOfflineRestrictedModal(true);
+      return;
+    }
 
     if (!bypassConfirm) {
       setShowAcceptModal(actionType);
@@ -2150,6 +2162,19 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 <option value="ACC2">Accountant 2 (ACC2)</option>
                 <option value="MOB">Owner Mobile (MOB)</option>
               </select>
+              {!isSystemOnline() && (
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg flex items-center gap-1 border ${
+                  canCurrentDeviceBillOffline().allowed
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : 'bg-indigo-100 text-indigo-950 border-indigo-300'
+                }`}>
+                  {canCurrentDeviceBillOffline().allowed ? (
+                    <span>⚡ Offline Master</span>
+                  ) : (
+                    <span>🔍 Price Check Only</span>
+                  )}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1.5">
               <Calendar className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
@@ -3782,6 +3807,47 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         }}
         onCancel={() => setShowAcceptModal(false)}
       />
+
+      {/* Single Master Offline Restriction Modal */}
+      {showOfflineRestrictedModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl border border-amber-200">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Offline Billing Restricted</h3>
+                <p className="text-xs text-slate-500 font-medium">Single Master Counter Policy</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs text-slate-700 leading-relaxed space-y-2">
+              <p>
+                During offline operations, only the designated <strong>Master Counter ({canCurrentDeviceBillOffline().designatedCounterName || getDesignatedOfflineCounter()})</strong> is permitted to finalize sales. This ensures a 100% continuous invoice series without numbering gaps or DRC audit flags.
+              </p>
+              <p className="font-semibold text-indigo-700">
+                🔍 This terminal remains fully active for:
+              </p>
+              <ul className="list-disc pl-4 space-y-1 text-slate-600 text-[11px]">
+                <li>Barcode scanning & instant price check</li>
+                <li>Item stock quantity & rack/bin verification</li>
+                <li>Customer & wholesale discount calculation</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowOfflineRestrictedModal(false)}
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md transition cursor-pointer text-xs"
+              >
+                Understood (Continue Price Check)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <QuitConfirmModal
         isOpen={showQuitModal}

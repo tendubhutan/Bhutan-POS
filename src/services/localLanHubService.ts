@@ -3,7 +3,8 @@
  * Enables consecutive sequential number dispatching across multiple offline counters on the same WiFi router.
  */
 
-import { STORAGE_KEYS, loadJson, saveJson, nextCounter, formatVoucherNumber, getVoucherTypes } from './storageService';
+import { STORAGE_KEYS, loadJson, saveJson, nextCounter, formatVoucherNumber, getVoucherTypes, canCurrentDeviceBillOffline } from './storageService';
+import { getActiveCompanyId } from './supabaseTenantService';
 
 export interface LanTerminal {
   id: string;
@@ -23,6 +24,7 @@ export interface DispatchedNumberLog {
   terminalName: string;
   timestamp: string;
   type: 'pos' | 'sales' | 'voucher';
+  companyId?: string;
 }
 
 export interface LanHubConfig {
@@ -46,16 +48,25 @@ export const DEFAULT_LAN_CONFIG: LanHubConfig = {
 
 // In-memory runtime state for Hub
 let activeBroadcastChannel: BroadcastChannel | null = null;
+let activeChannelCompanyId: string = '';
 let registeredTerminals: Map<string, LanTerminal> = new Map();
 let dispatchedLogs: DispatchedNumberLog[] = [];
 
 // Initialize BroadcastChannel for same-network / same-host inter-tab / inter-window sync
 export function initLanBroadcastChannel() {
   if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return;
-  if (activeBroadcastChannel) return;
+  const currentCompanyId = getActiveCompanyId();
+  
+  if (activeBroadcastChannel && activeChannelCompanyId === currentCompanyId) return;
 
   try {
-    activeBroadcastChannel = new BroadcastChannel('shop_wifi_lan_hub_channel');
+    if (activeBroadcastChannel) {
+      try { activeBroadcastChannel.close(); } catch {}
+      activeBroadcastChannel = null;
+    }
+    const channelName = `shop_wifi_lan_hub_${currentCompanyId}`;
+    activeChannelCompanyId = currentCompanyId;
+    activeBroadcastChannel = new BroadcastChannel(channelName);
     activeBroadcastChannel.onmessage = (event) => {
       handleLanBroadcastMessage(event.data);
     };
@@ -79,12 +90,16 @@ export function saveLanHubConfig(cfg: Partial<LanHubConfig>): LanHubConfig {
 }
 
 export function getDispatchedLogs(): DispatchedNumberLog[] {
-  return loadJson<DispatchedNumberLog[]>(STORAGE_DISPATCHED_LOGS, []);
+  const cId = getActiveCompanyId();
+  const list = loadJson<DispatchedNumberLog[]>(STORAGE_DISPATCHED_LOGS, []);
+  return list.filter(l => !l.companyId || l.companyId === cId);
 }
 
 function saveDispatchedLog(log: DispatchedNumberLog) {
+  const cId = getActiveCompanyId();
+  const logWithTenant = { ...log, companyId: cId };
   const list = getDispatchedLogs();
-  list.unshift(log);
+  list.unshift(logWithTenant);
   // Keep last 100 records
   if (list.length > 100) list.length = 100;
   saveJson(STORAGE_DISPATCHED_LOGS, list);
@@ -96,6 +111,10 @@ function saveDispatchedLog(log: DispatchedNumberLog) {
  */
 function handleLanBroadcastMessage(msg: any) {
   if (!msg || !msg.type) return;
+  const currentCompanyId = getActiveCompanyId();
+  if (msg.companyId && msg.companyId !== currentCompanyId) {
+    return; // Strict tenant isolation guard
+  }
 
   const config = getLanHubConfig();
   const isHost = config.role === 'host' || (config.role === 'auto' && typeof window !== 'undefined' && !config.hostUrl);
@@ -119,6 +138,7 @@ function handleLanBroadcastMessage(msg: any) {
       activeBroadcastChannel.postMessage({
         type: 'ASSIGN_NUMBER',
         reqId,
+        companyId: currentCompanyId,
         dispatched
       });
     }
@@ -155,6 +175,7 @@ export function generateCentralNextNumber(
     invoiceNo: formattedNo,
     terminalId,
     terminalName,
+    companyId: getActiveCompanyId(),
     timestamp: new Date().toISOString(),
     type: isPOS ? 'pos' : 'sales'
   };
@@ -172,11 +193,13 @@ export async function requestLanConsecutiveNumber(params: {
   prefix?: string;
   terminalId?: string;
   terminalName?: string;
-}): Promise<{ ok: boolean; invoiceNo: string; number?: number; mode: 'lan_hub' | 'fallback_local' }> {
+}): Promise<{ ok: boolean; invoiceNo: string; number?: number; mode: 'lan_hub' | 'fallback_local' | 'restricted_offline'; error?: string }> {
+  initLanBroadcastChannel();
   const config = getLanHubConfig();
   const terminalId = params.terminalId || 'C1';
   const terminalName = params.terminalName || `Counter ${terminalId}`;
   const isPOS = params.isPOS !== false;
+  const currentCompanyId = getActiveCompanyId();
 
   // 1. Try local HTTP server endpoint if hostUrl is configured or on same origin
   const targetHost = config.hostUrl ? config.hostUrl.replace(/\/+$/, '') : '';
@@ -195,7 +218,8 @@ export async function requestLanConsecutiveNumber(params: {
         prefix: params.prefix,
         terminalId,
         terminalName,
-        shopRoomCode: config.shopRoomCode
+        shopRoomCode: config.shopRoomCode,
+        companyId: currentCompanyId
       }),
       signal: controller.signal
     });
@@ -210,6 +234,7 @@ export async function requestLanConsecutiveNumber(params: {
           invoiceNo: data.invoiceNo,
           terminalId,
           terminalName,
+          companyId: currentCompanyId,
           timestamp: new Date().toISOString(),
           type: isPOS ? 'pos' : 'sales'
         });
@@ -250,6 +275,7 @@ export async function requestLanConsecutiveNumber(params: {
         activeBroadcastChannel?.postMessage({
           type: 'REQUEST_NUMBER',
           reqId,
+          companyId: currentCompanyId,
           isPOS,
           voucherTypeId: params.voucherTypeId,
           prefix: params.prefix,
@@ -264,7 +290,18 @@ export async function requestLanConsecutiveNumber(params: {
     } catch {}
   }
 
-  // 3. If Hub is not reachable, generate locally with smart counter
+  // 3. Offline Single Master Check
+  const offlineCheck = canCurrentDeviceBillOffline();
+  if (!offlineCheck.allowed) {
+    return {
+      ok: false,
+      invoiceNo: '',
+      mode: 'restricted_offline',
+      error: offlineCheck.reason
+    };
+  }
+
+  // 4. If current device is the designated Master Offline Counter, generate sequentially
   const localDispatched = generateCentralNextNumber(isPOS, params.voucherTypeId, params.prefix, terminalId, terminalName);
   return {
     ok: true,
@@ -289,6 +326,7 @@ export function getActiveTerminalsList(): LanTerminal[] {
 
 export function broadcastTerminalHeartbeat(terminalId: string, terminalName: string, role: string) {
   initLanBroadcastChannel();
+  const currentCompanyId = getActiveCompanyId();
   const terminal: LanTerminal = {
     id: terminalId,
     name: terminalName,
@@ -301,6 +339,7 @@ export function broadcastTerminalHeartbeat(terminalId: string, terminalName: str
   if (activeBroadcastChannel) {
     activeBroadcastChannel.postMessage({
       type: 'HEARTBEAT',
+      companyId: currentCompanyId,
       terminal
     });
   }
