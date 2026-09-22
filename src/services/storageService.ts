@@ -2294,7 +2294,15 @@ export const DEFAULT_TERMINALS: TerminalConfig[] = [
 ];
 
 export function getTerminalsConfig(customCompanyId?: string): TerminalConfig[] {
-  return loadJson<TerminalConfig[]>(STORAGE_KEYS.TERMINALS, DEFAULT_TERMINALS, customCompanyId);
+  const cId = customCompanyId || getActiveCompanyId();
+  const limit = getMaxTerminalLimit(cId);
+  const defaultList: TerminalConfig[] = limit === 1 ? [DEFAULT_TERMINALS[0]] : DEFAULT_TERMINALS;
+  const list = loadJson<TerminalConfig[]>(STORAGE_KEYS.TERMINALS, defaultList, cId);
+  if (limit === 1) {
+    const active = list.find(t => t.isActive) || list[0] || DEFAULT_TERMINALS[0];
+    return [{ ...active, isActive: true }];
+  }
+  return list;
 }
 
 export function saveTerminalsConfig(terminals: TerminalConfig[], customCompanyId?: string): void {
@@ -2403,6 +2411,13 @@ export function saveTerminalConfig(terminal: TerminalConfig): { ok: boolean; err
   } else {
     // Adding brand new terminal
     const activeCount = terminals.filter(t => t.isActive).length;
+    if (limit === 1 && terminals.length >= 1) {
+      return {
+        ok: false,
+        error: 'Subscription restricted to 1 terminal only. Please contact Superadmin to upgrade your plan for additional terminals.',
+        terminals
+      };
+    }
     if (updatedTerminal.isActive && limit > 0 && activeCount >= limit) {
       return {
         ok: false,
@@ -2427,9 +2442,12 @@ export function deleteTerminalConfig(terminalId: string): { ok: boolean; error?:
   return { ok: true, terminals: filtered };
 }
 
-export function resetTerminalsToDefault(): TerminalConfig[] {
-  saveTerminalsConfig(DEFAULT_TERMINALS);
-  return DEFAULT_TERMINALS;
+export function resetTerminalsToDefault(customCompanyId?: string): TerminalConfig[] {
+  const cId = customCompanyId || getActiveCompanyId();
+  const limit = getMaxTerminalLimit(cId);
+  const defaults = limit === 1 ? [DEFAULT_TERMINALS[0]] : DEFAULT_TERMINALS;
+  saveTerminalsConfig(defaults, cId);
+  return defaults;
 }
 
 export function getActiveBranch(config?: Config): Branch {

@@ -26,7 +26,8 @@ import {
   Store,
   AlertCircle,
   RotateCcw,
-  Building2
+  Building2,
+  Lock
 } from 'lucide-react';
 import {
   getDeviceCounterId,
@@ -86,6 +87,7 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
   });
   const [formError, setFormError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [showRestrictedNotice, setShowRestrictedNotice] = useState<boolean>(false);
 
   const currentDeviceId = getDeviceCounterId();
 
@@ -195,8 +197,12 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
 
   // Open Create Terminal Modal
   const handleOpenCreate = () => {
+    if (isAtLimit && !isSuperAdmin()) {
+      setShowRestrictedNotice(true);
+      return;
+    }
     if (isAtLimit) {
-      setFormError(`Subscription limit reached (${maxLimit} allowed). Increase limit or deactivate an existing terminal first.`);
+      setFormError(`Subscription limit reached (${maxLimit} allowed). Increase limit as Superadmin or deactivate an existing terminal first.`);
     } else {
       setFormError(null);
     }
@@ -1100,6 +1106,39 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Terminal Plan Limit Restriction Modal */}
+      {showRestrictedNotice && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-5 sm:p-6 shadow-2xl border border-slate-200 text-center space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="mx-auto w-12 h-12 rounded-2xl bg-amber-100 border border-amber-200 text-amber-700 flex items-center justify-center shadow-2xs">
+              <Lock className="h-6 w-6" />
+            </div>
+            
+            <div className="space-y-1.5">
+              <h3 className="text-base font-black text-slate-900 tracking-tight">
+                Terminal Restricted to 1 Only
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                Your organization's current subscription plan is restricted to <strong>1 active terminal only</strong> ({terminals[0]?.name || 'Counter 1'}).
+              </p>
+              <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200 text-[11px] text-amber-900 font-normal leading-relaxed text-left">
+                To connect additional cash counters, accountant terminals, or mobile client links, please contact your <strong>Superadmin</strong> to upgrade your subscription plan quota.
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowRestrictedNotice(false)}
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-xs"
+              >
+                OK, Understood
+              </button>
+            </div>
           </div>
         </div>
       )}
