@@ -33,11 +33,13 @@ import { AppUser } from './types';
 import { 
   fetchUserCompanies, 
   fetchFinancialYears, 
+  fetchTenantRemoteConfig,
   getActiveCompanyId, 
   getActiveFYId, 
   SupabaseCompany, 
   SupabaseFinancialYear 
 } from './services/supabaseTenantService';
+import { isFeatureAllowed } from './services/tenantFeatureService';
 import { 
   isSuperAdmin, 
   getCurrentTenantSession, 
@@ -293,17 +295,23 @@ export default function App() {
       const currentC = comps.find(c => c.id === cId) || comps[0];
       if (currentC) {
         setActiveCompany(currentC);
-        // Automatically sync company profile to config
-        setConfig(prev => ({
-          ...prev,
-          CompanyName: currentC.company_name || prev.CompanyName,
-          Address: currentC.address || prev.Address,
-          CompanyTPNNo: currentC.tax_payer_id || prev.CompanyTPNNo,
-          CompanyGSTNo: currentC.trade_license_no || prev.CompanyGSTNo,
-          CompanyPhone: currentC.phone || prev.CompanyPhone,
-          CompanyEmail: currentC.email || prev.CompanyEmail,
-          CurrencySymbol: currentC.currency_symbol || prev.CurrencySymbol
-        }));
+        // Automatically sync company profile and remote config
+        const remoteCfg = await fetchTenantRemoteConfig(currentC.id);
+        const data = getInitialData();
+        const merged: Config = {
+          ...data.config,
+          ...(remoteCfg || {}),
+          CompanyName: currentC.company_name || data.config.CompanyName,
+          Address: currentC.address || data.config.Address,
+          CompanyTPNNo: currentC.tax_payer_id || data.config.CompanyTPNNo,
+          CompanyGSTNo: currentC.trade_license_no || data.config.CompanyGSTNo,
+          CompanyPhone: currentC.phone || data.config.CompanyPhone,
+          CompanyEmail: currentC.email || data.config.CompanyEmail,
+          CurrencySymbol: currentC.currency_symbol || data.config.CurrencySymbol
+        };
+        saveConfig(merged);
+        setConfig(merged);
+
         const { financialYears: fys } = await fetchFinancialYears(currentC.id);
         const currentF = fys.find(f => f.id === fyId) || fys[0];
         if (currentF) setActiveFY(currentF);
@@ -852,11 +860,11 @@ export default function App() {
             <BarcodePrinting config={config} items={items} initialQueue={barcodeQueueInitial} />
           )}
 
-          {currentView === 'payroll' && config.EnablePayroll !== 'false' && (
+          {currentView === 'payroll' && isFeatureAllowed(config, 'EnablePayroll') && config.EnablePayroll !== 'false' && (
             <Payroll key={activeCompany?.id || 'default_payroll'} config={config} ledgers={ledgers} onDataRefresh={refreshData} />
           )}
 
-          {currentView === 'assets' && config.EnableAssetManagement !== 'false' && (
+          {currentView === 'assets' && isFeatureAllowed(config, 'EnableAssetManagement') && config.EnableAssetManagement !== 'false' && (
             <AssetManagementModule 
               key={activeCompany?.id || 'default_assets'}
               config={config} 

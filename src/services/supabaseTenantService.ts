@@ -1037,4 +1037,26 @@ export async function updateCompany(
   }
 }
 
+/**
+ * Fetch remote main_config (including feature flags & superadminFeatures) from Supabase tenant_settings
+ */
+export async function fetchTenantRemoteConfig(companyId: string): Promise<Config | null> {
+  if (!isSupabaseConfigured || !companyId) return null;
+  try {
+    const { data: cfgRow, error } = await supabase
+      .from('tenant_settings')
+      .select('data')
+      .eq('company_id', companyId)
+      .eq('record_id', 'main_config')
+      .maybeSingle();
+
+    if (!error && cfgRow?.data && typeof cfgRow.data === 'object') {
+      return cfgRow.data as Config;
+    }
+  } catch (e) {
+    console.warn('fetchTenantRemoteConfig notice:', e);
+  }
+  return null;
+}
+
 

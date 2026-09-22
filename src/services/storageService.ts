@@ -489,10 +489,10 @@ const DEFAULT_LEDGER_GROUPS: LedgerGroup[] = [
 ];
 
 export const DEFAULT_LEDGERS: Ledger[] = [
-  { 'Ledger Name': 'Cash', Group: 'Cash-in-Hand', 'Opening Balance': 10000, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 10000 },
-  { 'Ledger Name': 'BOB Account', Group: 'Bank Accounts', 'Bank Name': 'Bank of Bhutan', Branch: 'Main Branch', 'Account No': '1029384756', 'Opening Balance': 50000, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 50000 },
-  { 'Ledger Name': 'BNBL Account', Group: 'Bank Accounts', 'Bank Name': 'Bhutan National Bank', Branch: 'Phuntsholing', 'Account No': '9876543210', 'Opening Balance': 25000, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 25000 },
-  { 'Ledger Name': 'Capital Account', Group: 'Capital Account', 'Opening Balance': 85000, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 85000 },
+  { 'Ledger Name': 'Cash', Group: 'Cash-in-Hand', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'BOB Account', Group: 'Bank Accounts', 'Bank Name': 'Bank of Bhutan', Branch: 'Main Branch', 'Account No': '1029384756', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'BNBL Account', Group: 'Bank Accounts', 'Bank Name': 'Bhutan National Bank', Branch: 'Phuntsholing', 'Account No': '9876543210', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'Capital Account', Group: 'Capital Account', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'Cash Customer', Group: 'Sundry Debtors', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
   { 'Ledger Name': 'Walk-in Customer', Group: 'Sundry Debtors', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
   { 'Ledger Name': 'Dorji Traders', Group: 'Sundry Creditors', 'GST No': '30BBBBB1111B1Z2', 'TPN No': 'TPN-998877', Address: 'Main Street, Thimphu', 'Contact No': '17112233', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
@@ -8151,7 +8151,7 @@ export function getAdvancedDashboardData(from: string, to: string) {
   
   const sales = getDeduplicatedSales();
   const items = loadJson<any[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
-  const ledgers = sanitizeLedgers(loadJson<any[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
+  const ledgers = getLedgers();
   
   const sls = sales.filter(r => {
     const d = new Date(r.date).getTime();

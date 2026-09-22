@@ -511,18 +511,15 @@ export function saveCompanyFeatures(companyId: string, featureMap: Record<string
 }
 
 /**
- * Checks whether a feature is permitted and visible for the current user.
- * - Superadmin ALWAYS has full access to view and toggle everything.
- * - For normal clients, if Superadmin turned off the feature (either in superadminFeatures or config[key] === 'false'),
- *   the feature is COMPLETELY HIDDEN from the client's UI.
+ * Checks whether a feature is permitted and visible for the current workspace.
+ * - If Superadmin turned off the feature (either in superadminFeatures or config[key] === 'false'),
+ *   the feature is COMPLETELY HIDDEN from the workspace and sidebar.
  */
 export function isFeatureAllowed(
   config: Config | undefined | null,
   featureKey: string,
-  isSuperadminUser: boolean = false
+  _isSuperadminUser: boolean = false
 ): boolean {
-  // Superadmin can see and access everything
-  if (isSuperadminUser) return true;
   if (!config) return true;
 
   // 1. Explicit check against superadminFeatures record if set
@@ -532,7 +529,15 @@ export function isFeatureAllowed(
 
   // 2. Fallback check against top-level config string flags
   const val = (config as any)[featureKey];
-  if (featureKey === 'EnableSpareParts' || featureKey === 'EnableGarmentsAndFootwear' || featureKey === 'EnableBillDiscount') {
+  if (
+    featureKey === 'EnableSpareParts' ||
+    featureKey === 'EnableGarmentsAndFootwear' ||
+    featureKey === 'EnableBillDiscount' ||
+    featureKey === 'EnableAdvancedAI' ||
+    featureKey === 'EnableMultiBranch' ||
+    featureKey === 'EnableMultiGodown' ||
+    featureKey === 'EnableGSTInputTax'
+  ) {
     return val === 'true';
   }
   return val !== 'false';

@@ -5,7 +5,7 @@ import {
   pullCollectionFromSupabase,
   getActiveTenantId
 } from './tenantAuthService';
-import { STORAGE_KEYS } from './storageService';
+import { STORAGE_KEYS, getTenantStorageKey, DEFAULT_CONFIG } from './storageService';
 import { Item, Ledger, SalesInvoice, PurchaseInvoice, Voucher, Config } from '../types';
 import { getActiveCompanyId, DEFAULT_TENANT_COMPANY, ensureCompanyExists } from './supabaseTenantService';
 
@@ -571,6 +571,33 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         }
       } catch (uErr) {
         console.warn('[Supabase Staff Users Pull Notice]:', uErr);
+      }
+
+      // 7. Pull main_config / feature settings from tenant_settings
+      try {
+        const { data: cfgRow, error: cErr } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'main_config')
+          .maybeSingle();
+
+        if (!cErr && cfgRow?.data && typeof cfgRow.data === 'object') {
+          const remoteConfig = cfgRow.data;
+          const localKey = getTenantStorageKey(STORAGE_KEYS.CONFIG, companyId);
+          const localRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(localKey) : null;
+          const localParsed = localRaw ? JSON.parse(localRaw) : {};
+          const mergedConfig = { ...DEFAULT_CONFIG, ...localParsed, ...remoteConfig };
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(localKey, JSON.stringify(mergedConfig));
+            if (companyId === getActiveCompanyId()) {
+              localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(mergedConfig));
+              window.dispatchEvent(new CustomEvent('app:updateConfig', { detail: mergedConfig }));
+            }
+          }
+        }
+      } catch (cfgPullErr) {
+        console.warn('[SupabaseSync] Pull config notice:', cfgPullErr);
       }
 
       // If a non-demo tenant has 0 remote vouchers, 0 sales, and 0 purchases,
