@@ -68,7 +68,13 @@ import {
   syncVoucherToSupabase as syncVoucherToFirestore,
   deleteVoucherFromSupabase as deleteVoucherFromFirestore
 } from './supabaseSyncService';
-import { getActiveCompanyId, DEFAULT_TENANT_COMPANY } from './supabaseTenantService';
+import { 
+  getActiveCompanyId, 
+  DEFAULT_TENANT_COMPANY,
+  createFinancialYear,
+  createCompany,
+  setActiveFYId
+} from './supabaseTenantService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 
@@ -266,6 +272,7 @@ export const DEFAULT_CONFIG: Config = {
   EnableItemDescription: 'true',
   EnableAuditTrail: 'true',
   PrintAuditStamp: 'false',
+  AllowSupportAccess: 'false',
   BarcodePrefix: '20',
   ReceiptHeaderImage: '',
   ReceiptSignatureImage: '',
@@ -1893,6 +1900,56 @@ export function setTerminalBranchId(branchId: string): void {
   } catch {}
 }
 
+export function isSystemOnline(): boolean {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return false;
+  }
+  return true;
+}
+
+export function getDeviceCounterId(): string {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const stored = localStorage.getItem('device_counter_id');
+      if (stored && stored.trim()) return stored.trim().toUpperCase();
+    }
+  } catch {}
+
+  // Smart auto-detection based on active user or screen width
+  try {
+    const activeUser = getActiveUser();
+    const roleStr = String(activeUser?.role || '').toLowerCase();
+    if (roleStr === 'cashier') return 'C1';
+    if (roleStr === 'accountant') return 'ACC';
+    if (typeof window !== 'undefined' && window.innerWidth < 768) return 'MOB';
+  } catch {}
+
+  return 'C1';
+}
+
+export function setDeviceCounterId(counterId: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const clean = (counterId || '').trim().toUpperCase();
+      localStorage.setItem('device_counter_id', clean);
+      window.dispatchEvent(new CustomEvent('device_counter_id_changed', { detail: { counterId: clean } }));
+    }
+  } catch {}
+}
+
+export function getEffectiveVoucherPrefix(basePrefix: string, isForcedOnline?: boolean): string {
+  const online = isForcedOnline !== undefined ? isForcedOnline : isSystemOnline();
+  if (online) {
+    return basePrefix;
+  }
+  const counterId = getDeviceCounterId();
+  if (!counterId) return basePrefix;
+
+  // Format clean offline prefix: e.g., 'POS-' + 'C1' -> 'POS-C1-' or 'INV-' + 'C1' -> 'INV-C1-'
+  const cleanBase = (basePrefix || 'POS-').replace(/[-_]+$/, '');
+  return `${cleanBase}-${counterId}-`;
+}
+
 export function getActiveBranch(config?: Config): Branch {
   const branches = getBranches();
   const terminalId = getTerminalBranchId(config);
@@ -3053,8 +3110,14 @@ export function saveSalesInvoice(payload: {
   const allVTypes = getVoucherTypes();
   const matchedVt = voucherTypeId ? allVTypes.find(v => v.id === voucherTypeId) : null;
   const defaultPrefix = isPOS ? (cfg.POSInvoicePrefix || 'POS-') : (cfg.SalesInvoicePrefix || 'SAL-');
-  const invPrefix = matchedVt?.prefix || defaultPrefix;
-  const counterKey = matchedVt ? `Voucher_${matchedVt.id}` : (isPOS ? 'POSInvoice' : 'SalesInvoice');
+  const rawPrefix = matchedVt?.prefix || defaultPrefix;
+  const isOnline = isSystemOnline();
+  const invPrefix = getEffectiveVoucherPrefix(rawPrefix, isOnline);
+  const counterKey = matchedVt 
+    ? `Voucher_${matchedVt.id}` 
+    : (isPOS 
+        ? (isOnline ? 'POSInvoice' : `POSInvoice_${getDeviceCounterId()}`) 
+        : (isOnline ? 'SalesInvoice' : `SalesInvoice_${getDeviceCounterId()}`));
 
   let iNo = (originalInvoiceNo || invoiceNo)?.trim();
   if (!iNo) {
@@ -3658,13 +3721,20 @@ export function peekNextVoucherNo(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'C
   return `${px}${val}`;
 }
 
-export function peekNextInvoiceNumber(isPOS: boolean = false, voucherTypeId?: string): string {
+export function peekNextInvoiceNumber(isPOS: boolean = false, voucherTypeId?: string, forceOnline?: boolean): string {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const allVTypes = getVoucherTypes();
   const matchedVt = voucherTypeId ? allVTypes.find(v => v.id === voucherTypeId) : null;
   const defaultPrefix = isPOS ? (cfg.POSInvoicePrefix || 'POS-') : (cfg.SalesInvoicePrefix || 'SAL-');
-  const invPrefix = matchedVt?.prefix !== undefined ? matchedVt.prefix : defaultPrefix;
-  const counterKey = matchedVt ? `Voucher_${matchedVt.id}` : (isPOS ? 'POSInvoice' : 'SalesInvoice');
+  const rawPrefix = matchedVt?.prefix !== undefined ? matchedVt.prefix : defaultPrefix;
+  const isOnline = forceOnline !== undefined ? forceOnline : isSystemOnline();
+  const invPrefix = getEffectiveVoucherPrefix(rawPrefix, isOnline);
+  const counterKey = matchedVt 
+    ? `Voucher_${matchedVt.id}` 
+    : (isPOS 
+        ? (isOnline ? 'POSInvoice' : `POSInvoice_${getDeviceCounterId()}`) 
+        : (isOnline ? 'SalesInvoice' : `SalesInvoice_${getDeviceCounterId()}`));
+
   const counters = loadJson<Record<string, number>>(STORAGE_KEYS.COUNTERS, {
     InternalBarcode: 5,
     SalesInvoice: 32,
@@ -3672,7 +3742,7 @@ export function peekNextInvoiceNumber(isPOS: boolean = false, voucherTypeId?: st
     PurchaseInvoice: 12
   });
 
-  let currentCount = counters[counterKey] || 0;
+  let currentCount = counters[counterKey] || counters[isPOS ? 'POSInvoice' : 'SalesInvoice'] || 0;
 
   // Scan existing sales invoices to prevent backward collision
   const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
@@ -9818,5 +9888,248 @@ export function getItemTransactionHistory(itemCode: string, itemName?: string): 
   }
 
   return result;
+}
+
+export interface YearEndCarryForwardParams {
+  companyId: string;
+  fromFYName: string;
+  toFYName: string;
+  targetStartDate: string;
+  targetEndDate: string;
+  mode: 'same_company' | 'split_new_company';
+}
+
+export interface YearEndCarryForwardResult {
+  success: boolean;
+  fromFYName: string;
+  toFYName: string;
+  targetStartDate: string;
+  targetEndDate: string;
+  mode: 'same_company' | 'split_new_company';
+  netProfitLoss: number;
+  carriedLedgersCount: number;
+  carriedItemsCount: number;
+  newCompanyId?: string;
+  newCompanyName?: string;
+  error?: string;
+}
+
+export async function executeYearEndCarryForward(params: YearEndCarryForwardParams): Promise<YearEndCarryForwardResult> {
+  try {
+    const { companyId, fromFYName, toFYName, targetStartDate, targetEndDate, mode } = params;
+    
+    // 1. Recalculate ledger balances first to ensure complete up-to-date figures
+    recalculateLedgerBalances();
+
+    // 2. Fetch all ledgers and items for current company
+    const currentLedgers = getLedgers();
+    const currentItems = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+
+    // 3. Define P&L groups vs Balance Sheet groups
+    const plGroups = new Set([
+      'Sales Accounts',
+      'Purchase Accounts',
+      'Direct Incomes',
+      'Indirect Incomes',
+      'Direct Expenses',
+      'Indirect Expenses'
+    ]);
+
+    // 4. Calculate Net Profit / Loss
+    let totalIncome = 0;
+    let totalExpense = 0;
+
+    currentLedgers.forEach(l => {
+      const grp = (l['Parent Group'] || '').trim();
+      const bal = Number(l['Current Balance']) || 0;
+      if (grp === 'Sales Accounts' || grp === 'Direct Incomes' || grp === 'Indirect Incomes') {
+        totalIncome += bal;
+      } else if (grp === 'Purchase Accounts' || grp === 'Direct Expenses' || grp === 'Indirect Expenses') {
+        totalExpense += bal;
+      }
+    });
+
+    const netProfitLoss = round2(totalIncome - totalExpense);
+
+    // 5. Prepare carried-over ledgers
+    const carriedLedgers: Ledger[] = currentLedgers.map(l => {
+      const grp = (l['Parent Group'] || '').trim();
+      const name = (l['Ledger Name'] || '').trim();
+      const isPL = plGroups.has(grp);
+
+      if (isPL) {
+        return {
+          ...l,
+          'Opening Balance': 0,
+          'Current Balance': 0,
+          'Balance Type (Dr/Cr)': (grp.includes('Income') || grp === 'Sales Accounts') ? 'Cr' : 'Dr'
+        };
+      }
+
+      if (name.toLowerCase() === 'capital account' || grp === 'Capital Account') {
+        const curBal = Number(l['Current Balance']) || 0;
+        const curType = l['Balance Type (Dr/Cr)'] || 'Cr';
+        let netVal = curType === 'Cr' ? curBal : -curBal;
+        netVal += netProfitLoss; // Add Net Profit (or deduct Net Loss)
+
+        return {
+          ...l,
+          'Opening Balance': Math.abs(round2(netVal)),
+          'Current Balance': Math.abs(round2(netVal)),
+          'Balance Type (Dr/Cr)': netVal >= 0 ? 'Cr' : 'Dr'
+        };
+      }
+
+      // Balance Sheet accounts: carry forward current balance as opening balance
+      const curBal = Number(l['Current Balance']) || 0;
+      return {
+        ...l,
+        'Opening Balance': curBal,
+        'Current Balance': curBal,
+        'Balance Type (Dr/Cr)': l['Balance Type (Dr/Cr)'] || 'Dr'
+      };
+    });
+
+    // 6. Prepare carried-over items (current stock becomes opening stock)
+    const carriedItems: Item[] = currentItems.map(item => {
+      const curStock = Number(item['Current Stock']) || Number(item['Stock Qty']) || Number(item['Opening Stock']) || 0;
+      return {
+        ...item,
+        'Opening Stock': curStock,
+        'Current Stock': curStock,
+        'Stock Qty': curStock
+      };
+    });
+
+    if (mode === 'same_company') {
+      // Create new FY
+      const { financialYear: newFY, error: fyErr } = await createFinancialYear({
+        company_id: companyId,
+        fy_name: toFYName,
+        start_date: targetStartDate,
+        end_date: targetEndDate,
+        is_active: true,
+        is_locked: false
+      });
+
+      if (fyErr || !newFY) {
+        return {
+          success: false,
+          fromFYName,
+          toFYName,
+          targetStartDate,
+          targetEndDate,
+          mode,
+          netProfitLoss,
+          carriedLedgersCount: 0,
+          carriedItemsCount: 0,
+          error: fyErr || 'Failed to create financial year'
+        };
+      }
+
+      setActiveFYId(newFY.id);
+
+      // Update ledgers and items for same company
+      saveJson(STORAGE_KEYS.LEDGERS, carriedLedgers);
+      saveJson(STORAGE_KEYS.ITEMS, carriedItems);
+
+      addAuditLog({
+        action: 'ENTERED',
+        module: 'Financial Year',
+        recordId: toFYName,
+        details: `Year-End Roll-over executed from ${fromFYName} to ${toFYName}. Net Profit/Loss of Nu. ${netProfitLoss.toFixed(2)} transferred to Capital Account.`
+      });
+
+      return {
+        success: true,
+        fromFYName,
+        toFYName,
+        targetStartDate,
+        targetEndDate,
+        mode,
+        netProfitLoss,
+        carriedLedgersCount: carriedLedgers.length,
+        carriedItemsCount: carriedItems.length
+      };
+    } else {
+      // Split to new company
+      const currentCfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
+      const newCompanyName = `${currentCfg.CompanyName || 'Company'} (${toFYName})`;
+
+      const { company: newComp, error: compErr } = await createCompany({
+        company_name: newCompanyName,
+        trade_license_no: currentCfg.CompanyTPNNo || '',
+        tax_payer_id: currentCfg.CompanyGSTNo || '',
+        phone: currentCfg.CompanyPhone || '',
+        email: currentCfg.CompanyEmail || '',
+        address: currentCfg.Address || '',
+        currency_symbol: currentCfg.CurrencySymbol || 'Nu.',
+        admin_username: 'admin',
+        admin_pin: '0000'
+      });
+
+      if (compErr || !newComp) {
+        return {
+          success: false,
+          fromFYName,
+          toFYName,
+          targetStartDate,
+          targetEndDate,
+          mode,
+          netProfitLoss,
+          carriedLedgersCount: 0,
+          carriedItemsCount: 0,
+          error: compErr || 'Failed to initialize new company'
+        };
+      }
+
+      // Save carried-over ledgers, items, and config to new company tenant keys
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(`deep_pos_ledgers_${newComp.id}`, JSON.stringify(carriedLedgers));
+        localStorage.setItem(`deep_pos_items_${newComp.id}`, JSON.stringify(carriedItems));
+        localStorage.setItem(`deep_pos_config_${newComp.id}`, JSON.stringify({
+          ...currentCfg,
+          CompanyName: newCompanyName
+        }));
+      }
+
+      // Create target FY in the new company
+      await createFinancialYear({
+        company_id: newComp.id,
+        fy_name: toFYName,
+        start_date: targetStartDate,
+        end_date: targetEndDate,
+        is_active: true,
+        is_locked: false
+      });
+
+      return {
+        success: true,
+        fromFYName,
+        toFYName,
+        targetStartDate,
+        targetEndDate,
+        mode,
+        netProfitLoss,
+        carriedLedgersCount: carriedLedgers.length,
+        carriedItemsCount: carriedItems.length,
+        newCompanyId: newComp.id,
+        newCompanyName: newCompanyName
+      };
+    }
+  } catch (err: any) {
+    return {
+      success: false,
+      fromFYName: params.fromFYName,
+      toFYName: params.toFYName,
+      targetStartDate: params.targetStartDate,
+      targetEndDate: params.targetEndDate,
+      mode: params.mode,
+      netProfitLoss: 0,
+      carriedLedgersCount: 0,
+      carriedItemsCount: 0,
+      error: err?.message || 'Unexpected error during year-end roll-over'
+    };
+  }
 }
 

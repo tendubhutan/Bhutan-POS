@@ -537,3 +537,15 @@ export function isFeatureAllowed(
   }
   return val !== 'false';
 }
+
+/**
+ * Checks if platform support access is granted by the company owner.
+ * Returns true for the default/demo company, or if company config has AllowSupportAccess === 'true'.
+ */
+export function isSupportAccessAllowed(companyId: string): boolean {
+  if (!companyId) return true;
+  if (companyId === DEFAULT_TENANT_COMPANY.id) return true;
+  const cfg = getCompanyConfig(companyId);
+  return cfg.AllowSupportAccess === 'true';
+}
+

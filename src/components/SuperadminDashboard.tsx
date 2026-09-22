@@ -61,7 +61,8 @@ import {
   FeaturePreset,
   FeatureDefinition,
   getCompanyConfig, 
-  saveCompanyFeatures 
+  saveCompanyFeatures,
+  isSupportAccessAllowed 
 } from '../services/tenantFeatureService';
 
 export interface SubscriptionPlanDetails {
@@ -252,6 +253,9 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   const [planFormCurrency, setPlanFormCurrency] = useState<string>('USD');
   const [planFormCycle, setPlanFormCycle] = useState<'monthly' | 'yearly' | 'quarterly' | 'one-time'>('monthly');
   const [planFormExpiresAt, setPlanFormExpiresAt] = useState<string>('');
+
+  // Privacy Protection Modal state
+  const [privacyBlockedCompany, setPrivacyBlockedCompany] = useState<SupabaseCompany | null>(null);
   const [planFormNotes, setPlanFormNotes] = useState<string>('');
   const [isSavingPlan, setIsSavingPlan] = useState<boolean>(false);
 
@@ -352,6 +356,12 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
   // Switch workspace to selected company
   const handleEnterClientWorkspace = (company: SupabaseCompany) => {
+    // Privacy check for client companies (allow default demo company)
+    if (company.id !== DEFAULT_TENANT_COMPANY.id && !isSupportAccessAllowed(company.id)) {
+      setPrivacyBlockedCompany(company);
+      return;
+    }
+
     setActiveCompanyId(company.id);
     if (onSwitchCompany) {
       onSwitchCompany(company);
@@ -1896,6 +1906,62 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Privacy Protection Shield Modal */}
+      {privacyBlockedCompany && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-200 text-left">
+            <div className="flex items-center gap-3.5 mb-4">
+              <div className="h-12 w-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                <Lock className="h-6 w-6" />
+              </div>
+              <div>
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                  Client Data Privacy Active
+                </span>
+                <h3 className="font-bold text-lg text-white mt-1">Platform Support Access is OFF</h3>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed mb-4">
+              The owner of <strong className="text-white">"{privacyBlockedCompany.company_name}"</strong> has set Platform Support Access to <span className="text-amber-400 font-bold">OFF</span> to protect confidential business books, daily sales, and customer ledger balances.
+            </p>
+
+            <div className="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs text-slate-300 space-y-2 mb-5">
+              <div className="flex items-start gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                <span>Client records, day books, and financial transactions are protected from unauthorized observation.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <Clock className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+                <span>If this client requires remote assistance, request their Company Admin to toggle on <strong>"Allow Platform Support Access"</strong> in <span className="text-white font-semibold">Settings → Security & Permissions</span>.</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setPrivacyBlockedCompany(null)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const comp = privacyBlockedCompany;
+                  setPrivacyBlockedCompany(null);
+                  handleOpenFeaturesModal(comp);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md"
+              >
+                <Sliders className="h-3.5 w-3.5" />
+                <span>Manage Features & Tier</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

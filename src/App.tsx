@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getInitialData, getVoucherTypes, saveLedger, getVoucherDetails, migrateExistingItemsOpeningAmount, saveConfig } from './services/storageService';
+import { getInitialData, getVoucherTypes, saveLedger, getVoucherDetails, migrateExistingItemsOpeningAmount, saveConfig, setDeviceCounterId, setTerminalBranchId } from './services/storageService';
 import { initSupabaseSync, subscribeSupabaseStatus, seedInitialLocalDataToSupabase } from './services/supabaseSyncService';
+import { initAutoBackupScheduler } from './services/backupService';
 import { Config, Item, Unit, UnitGroup, ItemGroup, Ledger, LedgerGroup, HeldBill, BarcodeQueueItem, VoucherType } from './types';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -314,6 +315,33 @@ export default function App() {
 
   const supabaseUnsubRef = useRef<(() => void) | null>(null);
 
+  // Dedicated Client Link URL Query Parameter Auto-Initializer
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const counterParam = urlParams.get('counter') || urlParams.get('terminal');
+      const branchParam = urlParams.get('branch');
+      const viewParam = urlParams.get('view');
+
+      if (counterParam) {
+        const cleanCounter = counterParam.trim().toUpperCase();
+        setDeviceCounterId(cleanCounter);
+      }
+      if (branchParam) {
+        setTerminalBranchId(branchParam.trim());
+      }
+      if (viewParam) {
+        const cleanView = viewParam.trim().toLowerCase();
+        if (['pos', 'normalsale', 'sales', 'reports', 'masters', 'vouchers', 'dashboard'].includes(cleanView)) {
+          setCurrentView(cleanView);
+        }
+      }
+    } catch (err) {
+      console.warn('[Dedicated Client Link Init Error]:', err);
+    }
+  }, []);
+
   useEffect(() => {
     loadTenantDetails();
     const handleTenantChange = () => {
@@ -422,6 +450,9 @@ export default function App() {
 
     // Seed local items & ledgers to Supabase on initial load
     seedInitialLocalDataToSupabase().catch(() => {});
+
+    // Initialize background auto-backup timer & scheduler
+    initAutoBackupScheduler();
 
     const handleAppNavigate = (e: any) => {
       if (e.detail?.view) {

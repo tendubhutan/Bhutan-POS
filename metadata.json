@@ -1,6 +1,6 @@
 {
-  "name": "Deep POS",
-  "description": "A modern, mobile-friendly Deep POS billing and inventory management system with Tally-style continuous loop entry, full voucher suite (Payment, Receipt, Journal, Contra, Debit/Credit Notes, Delivery Challans, Physical Stock Audits, Quotations), Bank Reconciliation with Transaction ID capture and drill-down details, accounting reports, thermal receipt printing, PDF sharing, and barcode generation.",
+  "name": "Ezee ERP",
+  "description": "Ezee ERP - Everything Your Business Needs, in One Place. High-performance multi-counter retail POS billing, Tally-style continuous loop accounting entry, full voucher suite, inventory management, reports, thermal printing, and offline LAN shop dispatcher.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

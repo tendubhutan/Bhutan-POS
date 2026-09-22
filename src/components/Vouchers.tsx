@@ -444,9 +444,16 @@ export const Vouchers: React.FC<VouchersProps> = ({
       let derivedGst = gstAmt > 0 ? gstAmt.toString() : (expenseAmt > 0 && gstInputType !== 'Import Customs GST Payment' ? (expenseAmt * 0.05).toFixed(2) : '');
       
       if (gstInputType === 'Import Customs GST Payment') {
-        const currentGst = gstAmt > 0 ? gstAmt : (Number(amount) || 0);
+        const currentGst = gstAmt > 0 ? gstAmt : (Number(amount) || (typeof gstAmount === 'number' && gstAmount > 0 ? gstAmount : 0));
         derivedGst = currentGst > 0 ? currentGst.toString() : '';
-        derivedTaxable = currentGst > 0 ? (currentGst * 100).toString() : '';
+        const fields = getGstFieldsForType(config.gstInputConfigs, gstInputType);
+        const taxField = fields.find(f => f.id === 'taxableAmount');
+        if (taxField && taxField.sourceType === 'formula' && taxField.sourceValue) {
+          const calc = evaluateGstFormula(taxField.sourceValue, { gstAmount: currentGst, amount: Number(amount) || expenseAmt || 0 });
+          derivedTaxable = currentGst > 0 ? (Math.round((calc + Number.EPSILON) * 100) / 100).toString() : '';
+        } else {
+          derivedTaxable = currentGst > 0 ? (Math.round((currentGst * 20 + Number.EPSILON) * 100) / 100).toString() : '';
+        }
       }
       
       const derivedRef = transactionId || '';
@@ -2856,12 +2863,16 @@ export const Vouchers: React.FC<VouchersProps> = ({
                           setGstAmount(num);
                           if (typeof num === 'number') {
                             const taxField = activeFields.find(f => f.id === 'taxableAmount');
+                            let calc = 0;
                             if (taxField && taxField.sourceType === 'formula' && taxField.sourceValue) {
-                              const calc = evaluateGstFormula(taxField.sourceValue, { gstAmount: num, amount: Number(amount) || totalDr || 0 });
-                              setTaxableAmount(calc);
+                              calc = evaluateGstFormula(taxField.sourceValue, { gstAmount: num, amount: Number(amount) || totalDr || 0 });
                             } else if (!taxField || taxField.sourceType === 'formula') {
-                              setTaxableAmount(num * 20);
+                              calc = num * 20;
                             }
+                            const rounded = Math.round((calc + Number.EPSILON) * 100) / 100;
+                            setTaxableAmount(rounded);
+                            lastDerivedGst.current.taxableAmount = rounded.toString();
+                            lastDerivedGst.current.gstAmount = num.toString();
                           }
                         };
                       } else if (field.id === 'totalImportAmount') {

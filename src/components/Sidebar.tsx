@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -15,11 +15,18 @@ import {
   Landmark,
   History,
   ShieldCheck,
-  Tags
+  Tags,
+  Download,
+  Monitor,
+  CheckCircle2,
+  Sparkles,
+  ExternalLink
 } from 'lucide-react';
 import { Config, AppUser } from "../types";
 import { isSuperAdmin, getCurrentTenantSession } from '../services/authTenantContext';
 import { isFeatureAllowed } from '../services/tenantFeatureService';
+import { promptPwaInstall, isPwaInstalled, subscribePwaState, canInstallPwa } from '../services/pwaService';
+import { ClientLinkAndPwaModal } from './ClientLinkAndPwaModal';
 
 interface SidebarProps {
   currentView: string;
@@ -40,6 +47,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
   config,
   currentUser
 }) => {
+  const [isInstalled, setIsInstalled] = useState<boolean>(() => isPwaInstalled());
+  const [hasPrompt, setHasPrompt] = useState<boolean>(() => canInstallPwa());
+  const [showPwaModal, setShowPwaModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    setIsInstalled(isPwaInstalled());
+    setHasPrompt(canInstallPwa());
+    const unsub = subscribePwaState(() => {
+      setIsInstalled(isPwaInstalled());
+      setHasPrompt(canInstallPwa());
+    });
+    return unsub;
+  }, []);
+
+  const handleInstallDesktopApp = async () => {
+    if (canInstallPwa()) {
+      const result = await promptPwaInstall();
+      if (result === 'accepted') {
+        setIsInstalled(true);
+      }
+    } else {
+      // If browser doesn't have an active synthetic prompt (e.g. running in an iframe or Safari/Firefox),
+      // open the modal with guidance & direct installation steps
+      setShowPwaModal(true);
+    }
+  };
+
   const isCashier = currentUser?.role === 'Cashier';
   const session = getCurrentTenantSession();
   const rawRole = (
@@ -144,11 +178,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center justify-between px-2 py-3 mb-3 border-b border-slate-800">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center font-black text-white text-base shadow-sm">
-              D
+              E
             </div>
             <div>
-              <div className="font-black text-base tracking-wide text-white">Deep POS</div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-blue-400">High Density System</div>
+              <div className="font-black text-base tracking-wide text-white">Ezee ERP</div>
+              <div className="text-[10px] font-medium text-blue-300 leading-tight">Everything Your Business Needs, in One Place.</div>
             </div>
           </div>
 
@@ -226,12 +260,53 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
+        {/* PWA Install Desktop App Button */}
+        <div className="pt-2 pb-1">
+          {isInstalled ? (
+            <div className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs font-bold">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                <span className="truncate">Desktop App Active</span>
+              </div>
+              <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 bg-emerald-500/20 text-emerald-200 rounded shrink-0">
+                OFFLINE
+              </span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              id="sidebar-install-desktop-app"
+              onClick={handleInstallDesktopApp}
+              className="w-full group relative flex items-center justify-between px-3 py-2.5 rounded-xl bg-gradient-to-r from-blue-600/90 via-indigo-600/90 to-blue-700/90 hover:from-blue-600 hover:to-indigo-600 border border-blue-400/40 hover:border-blue-300 text-white font-bold text-xs shadow-md transition-all active:scale-98 cursor-pointer"
+              title="Install Ezee ERP to Windows Desktop (Offline Ready)"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-1 rounded-lg bg-white/20 text-white group-hover:bg-white/30 transition">
+                  <Download className="h-4 w-4 stroke-[2.5]" />
+                </div>
+                <div className="text-left">
+                  <div className="text-xs font-black tracking-tight leading-none text-white">Install Desktop App</div>
+                  <div className="text-[10px] text-blue-100 font-medium leading-tight mt-0.5">Windows & Mac PWA</div>
+                </div>
+              </div>
+              <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded bg-emerald-400 text-slate-950 shadow-xs shrink-0">
+                OFFLINE
+              </span>
+            </button>
+          )}
+        </div>
+
         {/* Footer Build info */}
         <div className="pt-3 border-t border-slate-800 px-2 text-[11px] font-mono text-slate-400 flex justify-between items-center">
           <span>v2026.08 [HD]</span>
           <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
         </div>
       </aside>
+
+      <ClientLinkAndPwaModal
+        isOpen={showPwaModal}
+        onClose={() => setShowPwaModal(false)}
+      />
     </>
   );
 };

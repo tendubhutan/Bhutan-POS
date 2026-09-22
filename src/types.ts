@@ -87,6 +87,7 @@ export interface Config {
   EnableAdvancedAI?: string; // "true" | "false"
   EnableAuditTrail?: string; // "true" | "false"
   PrintAuditStamp?: string; // "true" | "false"
+  AllowSupportAccess?: string; // "true" | "false"
   EnableSpareParts?: string; // "true" | "false"
   EnableRackBin?: string; // "true" | "false"
   EnableCompatibility?: string; // "true" | "false"

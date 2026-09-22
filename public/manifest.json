@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Ezee ERP - Everything Your Business Needs, in One Place",
+  "short_name": "Ezee ERP",
+  "description": "Everything Your Business Needs, in One Place. High-performance retail POS, multi-counter shop LAN dispatcher, and accounting ERP.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1e293b",
+  "theme_color": "#1d4ed8",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

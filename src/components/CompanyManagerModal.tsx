@@ -25,7 +25,11 @@ import {
   Sparkles,
   Phone,
   MapPin,
-  Coins
+  Coins,
+  ArrowRight,
+  Sliders,
+  Layers,
+  FileText
 } from 'lucide-react';
 import { 
   SupabaseCompany, 
@@ -44,7 +48,12 @@ import {
   initializeBlankTenantStorage,
   DEFAULT_TENANT_COMPANY
 } from '../services/supabaseTenantService';
-import { resetCompanyToBlank } from '../services/storageService';
+import { 
+  resetCompanyToBlank, 
+  executeYearEndCarryForward, 
+  YearEndCarryForwardResult 
+} from '../services/storageService';
+import { isSupportAccessAllowed } from '../services/tenantFeatureService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { GlowButton } from './common/GlowButton';
 import { getCurrentTenantSession } from '../services/authTenantContext';
@@ -110,6 +119,19 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
   const [newFYStart, setNewFYStart] = useState(`${currentYr}-01-01`);
   const [newFYEnd, setNewFYEnd] = useState(`${currentYr}-12-31`);
 
+  // Privacy blocked company modal state
+  const [privacyBlockedCompany, setPrivacyBlockedCompany] = useState<SupabaseCompany | null>(null);
+
+  // Year-End Closing / Roll-Over & Split FY states
+  const [showRollOverModal, setShowRollOverModal] = useState<boolean>(false);
+  const [rollOverFromFY, setRollOverFromFY] = useState<SupabaseFinancialYear | null>(null);
+  const [rollOverToFYName, setRollOverToFYName] = useState<string>('FY 2027');
+  const [rollOverStartDate, setRollOverStartDate] = useState<string>('2027-01-01');
+  const [rollOverEndDate, setRollOverEndDate] = useState<string>('2027-12-31');
+  const [rollOverMode, setRollOverMode] = useState<'same_company' | 'split_new_company'>('same_company');
+  const [rollOverResult, setRollOverResult] = useState<YearEndCarryForwardResult | null>(null);
+  const [isProcessingRollOver, setIsProcessingRollOver] = useState<boolean>(false);
+
   const showToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 4500);
@@ -167,6 +189,12 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
       return;
     }
 
+    // Platform Support Access check for Superadmin on client companies
+    if (isSuperAdmin && company.id !== DEFAULT_TENANT_COMPANY.id && !isSupportAccessAllowed(company.id)) {
+      setPrivacyBlockedCompany(company);
+      return;
+    }
+
     setActiveCompanyId(company.id);
     setActiveCompId(company.id);
     
@@ -182,6 +210,65 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
       onCompanySelected(company);
     }
     onClose();
+  };
+
+  const handleOpenRollOverModal = () => {
+    const currentFY = financialYears.find(f => f.id === activeFYId) || financialYears[0] || null;
+    setRollOverFromFY(currentFY);
+    
+    let nextYear = 2027;
+    if (currentFY?.end_date) {
+      const parts = currentFY.end_date.split('-');
+      if (parts.length > 0) {
+        const y = parseInt(parts[0], 10);
+        if (!isNaN(y)) nextYear = y + 1;
+      }
+    } else {
+      nextYear = new Date().getFullYear() + 1;
+    }
+
+    setRollOverToFYName(`FY ${nextYear}`);
+    setRollOverStartDate(`${nextYear}-01-01`);
+    setRollOverEndDate(`${nextYear}-12-31`);
+    setRollOverMode('same_company');
+    setRollOverResult(null);
+    setShowRollOverModal(true);
+  };
+
+  const handleExecuteRollOver = async () => {
+    if (!activeCompanyId) return;
+    setIsProcessingRollOver(true);
+    try {
+      const res = await executeYearEndCarryForward({
+        companyId: activeCompanyId,
+        fromFYName: rollOverFromFY?.fy_name || 'Previous FY',
+        toFYName: rollOverToFYName,
+        targetStartDate: rollOverStartDate,
+        targetEndDate: rollOverEndDate,
+        mode: rollOverMode
+      });
+
+      setRollOverResult(res);
+      if (res.success) {
+        await loadData();
+        showToast(`Year-End Closing successful! Balances carried forward to ${rollOverToFYName}.`);
+      }
+    } catch (err: any) {
+      setRollOverResult({
+        success: false,
+        fromFYName: rollOverFromFY?.fy_name || '',
+        toFYName: rollOverToFYName,
+        targetStartDate: rollOverStartDate,
+        targetEndDate: rollOverEndDate,
+        mode: rollOverMode,
+        netProfitLoss: 0,
+        carriedLedgersCount: 0,
+        carriedItemsCount: 0,
+        error: err?.message || 'Error executing year-end carry forward'
+      });
+    } finally {
+      setIsProcessingRollOver(false);
+    }
   };
 
   const handleSelectFY = (fy: SupabaseFinancialYear) => {
@@ -615,18 +702,30 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
 
               {/* Financial Year Section */}
               <div className="pt-4 border-t border-slate-800">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                   <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                     <Calendar className="h-4 w-4 text-emerald-400" />
                     Financial Years for Active Company
                   </span>
-                  <button
-                    onClick={() => setViewMode('create_fy')}
-                    className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition shadow-xs cursor-pointer"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>Add Financial Year</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleOpenRollOverModal}
+                      className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition shadow-xs cursor-pointer"
+                      title="Year-End Closing & Balance Carry Forward to New Financial Year"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span>Year-End Close & Split FY</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('create_fy')}
+                      className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition shadow-xs cursor-pointer"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Add Financial Year</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -1545,6 +1644,259 @@ POS Quick Unlock PIN: ${shareCompany.admin_pin || '1234'}`;
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 <span>Delete Company</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* YEAR-END CLOSING & BALANCE CARRY-FORWARD MODAL */}
+      {showRollOverModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-blue-500/50 w-full max-w-xl rounded-3xl shadow-2xl p-6 space-y-4 max-h-[92vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-2xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                  <RotateCcw className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">Year-End Closing & Split FY</h3>
+                  <p className="text-xs text-slate-400">
+                    Carry forward balances from <strong className="text-blue-300">{rollOverFromFY?.fy_name || 'Active FY'}</strong> to next Financial Year
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRollOverModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* If result is ready */}
+            {rollOverResult ? (
+              <div className="space-y-4 py-2">
+                {rollOverResult.success ? (
+                  <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/50 space-y-3">
+                    <div className="flex items-center gap-2.5 text-emerald-400 font-bold text-sm">
+                      <CheckCircle2 className="h-5 w-5" />
+                      <span>Year-End Closing Completed Successfully!</span>
+                    </div>
+                    <p className="text-xs text-emerald-200/90 leading-relaxed">
+                      Balances and closing inventory stock were transferred seamlessly into <strong className="text-white">{rollOverResult.toFYName}</strong> ({rollOverResult.targetStartDate} to {rollOverResult.targetEndDate}).
+                    </p>
+                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-emerald-500/20 text-center">
+                      <div className="bg-slate-900/60 p-2 rounded-xl">
+                        <span className="text-[10px] text-slate-400 block uppercase">Net Profit/Loss</span>
+                        <span className={`text-xs font-bold font-mono ${rollOverResult.netProfitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          Nu. {rollOverResult.netProfitLoss.toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="bg-slate-900/60 p-2 rounded-xl">
+                        <span className="text-[10px] text-slate-400 block uppercase">Ledgers Carried</span>
+                        <span className="text-xs font-bold text-white font-mono">{rollOverResult.carriedLedgersCount}</span>
+                      </div>
+                      <div className="bg-slate-900/60 p-2 rounded-xl">
+                        <span className="text-[10px] text-slate-400 block uppercase">Stock Items</span>
+                        <span className="text-xs font-bold text-white font-mono">{rollOverResult.carriedItemsCount}</span>
+                      </div>
+                    </div>
+                    {rollOverResult.mode === 'split_new_company' && rollOverResult.newCompanyName && (
+                      <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/40 text-xs text-blue-200">
+                        ✨ Created new split company workspace: <strong className="text-white">{rollOverResult.newCompanyName}</strong>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/50 space-y-2">
+                    <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
+                      <AlertCircle className="h-5 w-5" />
+                      <span>Year-End Closing Failed</span>
+                    </div>
+                    <p className="text-xs text-rose-200">{rollOverResult.error || 'An unexpected error occurred.'}</p>
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRollOverModal(false);
+                      setRollOverResult(null);
+                    }}
+                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md transition cursor-pointer"
+                  >
+                    Done & Close
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Configuration Form */
+              <div className="space-y-4">
+                {/* Standard Accounting Rules Explanatory Box */}
+                <div className="p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80 text-xs text-slate-300 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-amber-300">
+                    <Sparkles className="h-4 w-4" />
+                    <span>How Standard Year-End Roll-Over Works</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-400">
+                    <li><strong className="text-slate-200">Profit & Loss (Income & Expense)</strong> accounts are reset to Nu. 0.00 for the new period.</li>
+                    <li><strong className="text-slate-200">Net Profit / Loss</strong> is calculated and automatically transferred into your <strong className="text-slate-200">Capital Account</strong>.</li>
+                    <li><strong className="text-slate-200">Balance Sheet</strong> accounts (Bank, Cash, Customers, Vendors, Assets, Liabilities) carry forward their exact closing balances as opening balances.</li>
+                    <li><strong className="text-slate-200">Inventory Stock</strong> carries forward current closing quantities as Opening Stock for the new year.</li>
+                  </ul>
+                </div>
+
+                {/* Form Fields */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1">Select Roll-Over Method</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <label className={`p-3 rounded-xl border cursor-pointer flex flex-col gap-1 transition ${
+                        rollOverMode === 'same_company' 
+                          ? 'bg-blue-950/40 border-blue-500 text-white ring-1 ring-blue-500/50' 
+                          : 'bg-slate-800/40 border-slate-700 text-slate-400 hover:bg-slate-800/70'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-white">Same Company (Recommended)</span>
+                          <input
+                            type="radio"
+                            name="rollOverMode"
+                            value="same_company"
+                            checked={rollOverMode === 'same_company'}
+                            onChange={() => setRollOverMode('same_company')}
+                            className="text-blue-500 cursor-pointer"
+                          />
+                        </div>
+                        <span className="text-[10px] text-slate-400 leading-snug">
+                          Adds the new financial year inside this company. Carries forward balances & updates active FY.
+                        </span>
+                      </label>
+
+                      <label className={`p-3 rounded-xl border cursor-pointer flex flex-col gap-1 transition ${
+                        rollOverMode === 'split_new_company' 
+                          ? 'bg-blue-950/40 border-blue-500 text-white ring-1 ring-blue-500/50' 
+                          : 'bg-slate-800/40 border-slate-700 text-slate-400 hover:bg-slate-800/70'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs text-white">Split into New Company</span>
+                          <input
+                            type="radio"
+                            name="rollOverMode"
+                            value="split_new_company"
+                            checked={rollOverMode === 'split_new_company'}
+                            onChange={() => setRollOverMode('split_new_company')}
+                            className="text-blue-500 cursor-pointer"
+                          />
+                        </div>
+                        <span className="text-[10px] text-slate-400 leading-snug">
+                          Creates a brand new company record (e.g. "Company (FY 2027)") with only opening balances.
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">New FY Label</label>
+                      <input
+                        type="text"
+                        value={rollOverToFYName}
+                        onChange={(e) => setRollOverToFYName(e.target.value)}
+                        placeholder="FY 2027"
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        value={rollOverStartDate}
+                        onChange={(e) => setRollOverStartDate(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 mb-1">End Date</label>
+                      <input
+                        type="date"
+                        value={rollOverEndDate}
+                        onChange={(e) => setRollOverEndDate(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowRollOverModal(false)}
+                    disabled={isProcessingRollOver}
+                    className="px-4 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 text-xs font-semibold transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExecuteRollOver}
+                    disabled={isProcessingRollOver || !rollOverToFYName.trim()}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isProcessingRollOver ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        <span>Processing Roll-Over...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        <span>Execute Year-End Close</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SUPERADMIN PRIVACY SHIELD MODAL */}
+      {privacyBlockedCompany && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-150 text-left">
+          <div className="bg-slate-900 border border-amber-500/50 w-full max-w-md rounded-3xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3.5">
+              <div className="h-12 w-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                <Lock className="h-6 w-6" />
+              </div>
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                  Client Privacy Protected
+                </span>
+                <h3 className="font-bold text-base text-white mt-1">Platform Support Access is OFF</h3>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              The owner of <strong className="text-white">"{privacyBlockedCompany.company_name}"</strong> has disabled Platform Support Access. Their day book, invoices, and accounting balances cannot be viewed.
+            </p>
+
+            <div className="p-3 rounded-xl bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-400 space-y-1.5">
+              <p>💡 <strong className="text-slate-200">How to unlock:</strong> Ask the company's administrator to log in and turn on <strong>"Allow Platform Support Access"</strong> in <span className="text-white">Settings → Security & Permissions</span>.</p>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPrivacyBlockedCompany(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>

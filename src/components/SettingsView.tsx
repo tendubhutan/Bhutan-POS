@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Config, Ledger, AppUser, ModuleId, UserPermission } from '../types';
-import { saveConfig, getUsers, saveUsers, setActiveUser, getActiveUser, loadJson, saveJson, STORAGE_KEYS, canUserViewAuditTrail, getBranches, getTerminalBranchId, setTerminalBranchId } from '../services/storageService';
+import { saveConfig, getUsers, saveUsers, setActiveUser, getActiveUser, loadJson, saveJson, STORAGE_KEYS, canUserViewAuditTrail, getBranches, getTerminalBranchId, setTerminalBranchId, getDeviceCounterId, setDeviceCounterId, isSystemOnline, getEffectiveVoucherPrefix } from '../services/storageService';
 import { POSSettings, loadPOSSettings, savePOSSettings, DEFAULT_POS_SETTINGS } from '../types/posSettings';
 import { playSaveSound } from '../utils/audio';
 import { AcceptModal } from './AcceptModal';
@@ -13,8 +13,9 @@ import {
   Save, CheckCircle2, Shield, FileText, Image as ImageIcon, PenTool, Plus, Lock, UserCheck, RefreshCw, 
   ShoppingCart, Zap, SlidersHorizontal, AlertTriangle, Keyboard, Percent, CreditCard, RotateCcw,
   Building2, Hash, Layers, Store, Check, Sparkles, Sliders, ShieldCheck, Trash2, History, Eye, Settings as SettingsIcon,
-  Cloud, CloudUpload, Database, Wrench, Shirt
+  Cloud, CloudUpload, Database, Wrench, Shirt, HardDrive
 } from 'lucide-react';
+import { BackupManagerView } from './BackupManagerView';
 import { handleMasterCloudSync, MasterSyncResult } from '../services/supabaseSyncService';
 import { isFeatureAllowed } from '../services/tenantFeatureService';
 import { getCurrentTenantSession, isSuperAdmin as checkIsSuperAdmin } from '../services/authTenantContext';
@@ -77,8 +78,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [justSavedSection, setJustSavedSection] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'company' | 'features' | 'vouchers' | 'pos' | 'inventory' | 'invoice' | 'security'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'features' | 'vouchers' | 'pos' | 'inventory' | 'invoice' | 'security' | 'backup'>('company');
   const [terminalBranchId, setLocalTerminalBranchId] = useState<string>(() => getTerminalBranchId(config));
+  const [deviceCounterId, setLocalDeviceCounterId] = useState<string>(() => getDeviceCounterId());
 
   // Security Users State
   const [usersList, setUsersList] = useState<AppUser[]>([]);
@@ -149,7 +151,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     ...(isPosPermitted ? [{ id: 'pos', label: 'POS Settings', icon: ShoppingCart, desc: 'Billing & Shortcuts' } as const] : []),
     { id: 'inventory', label: 'Inventory Rules', icon: Layers, desc: 'Units, Serials & Stock' },
     { id: 'invoice', label: 'Invoice & Print', icon: PenTool, desc: 'Logo, Signature & Terms' },
-    { id: 'security', label: 'User Roles', icon: ShieldCheck, desc: 'Permissions & Security' }
+    { id: 'security', label: 'User Roles', icon: ShieldCheck, desc: 'Permissions & Security' },
+    { id: 'backup', label: 'Backup & Restore', icon: HardDrive, desc: 'Auto & Manual Backups' }
   ] as const;
 
   const tabButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -289,6 +292,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSavingSection(sectionKey);
     try {
       saveConfig(form);
+      if (deviceCounterId) {
+        setDeviceCounterId(deviceCounterId);
+      }
       onDataRefresh();
       playSaveSound();
       setSavingSection(null);
@@ -549,7 +555,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div 
         role="tablist"
         aria-label="Settings navigation tabs"
-        className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 bg-slate-100/90 p-2 rounded-2xl border border-slate-200/90 shadow-2xs"
+        className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-2 bg-slate-100/90 p-2 rounded-2xl border border-slate-200/90 shadow-2xs"
       >
         {tabs.map((tab, idx) => {
           const Icon = tab.icon;
@@ -606,7 +612,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="text"
                   value={form.CompanyName || ''}
                   onChange={e => setForm({ ...form, CompanyName: e.target.value })}
-                  placeholder="e.g. Deep POS Superstore"
+                  placeholder="e.g. Ezee ERP Superstore"
                   className="w-full h-9 rounded-xl border border-slate-300 px-3 font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
                 />
               </div>
@@ -1850,6 +1856,113 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
 
+            {/* Smart Multi-Counter Hybrid Numbering Card */}
+            <div className="p-4 bg-gradient-to-br from-indigo-50/70 via-slate-50 to-blue-50/70 rounded-2xl border border-indigo-200/80 shadow-xs space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-indigo-100">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-indigo-600 text-white rounded-lg">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-sm">Smart Multi-Counter & Multi-Device Hybrid Numbering</h3>
+                    <p className="text-[11px] text-slate-500">
+                      Seamless single global series when online, automatic collision-free counter identifier when offline.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${isSystemOnline() ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${isSystemOnline() ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                    {isSystemOnline() ? 'Cloud Online (Global Series)' : 'Offline (Counter Series)'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="block font-bold text-slate-800 text-xs">
+                    This PC / Device Counter Identifier:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={deviceCounterId}
+                      onChange={e => {
+                        const val = e.target.value.toUpperCase();
+                        setLocalDeviceCounterId(val);
+                        setDeviceCounterId(val);
+                      }}
+                      placeholder="C1, C2, ACC, MOB..."
+                      maxLength={8}
+                      className="w-32 h-9 rounded-xl border border-indigo-300 px-3 font-mono font-bold text-indigo-900 bg-white shadow-xs outline-none focus:border-indigo-600"
+                    />
+                    <div className="text-[11px] text-slate-600 font-medium">
+                      (Configures this specific computer/terminal)
+                    </div>
+                  </div>
+
+                  {/* Preset quick buttons */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mr-1">Quick Presets:</span>
+                    {[
+                      { label: 'Counter 1', id: 'C1' },
+                      { label: 'Counter 2', id: 'C2' },
+                      { label: 'Counter 3', id: 'C3' },
+                      { label: 'Counter 4', id: 'C4' },
+                      { label: 'Accountant', id: 'ACC' },
+                      { label: 'Owner Mobile', id: 'MOB' }
+                    ].map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setLocalDeviceCounterId(p.id);
+                          setDeviceCounterId(p.id);
+                        }}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${deviceCounterId === p.id ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+                      >
+                        {p.label} ({p.id})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live simulation comparison */}
+                <div className="bg-white/90 p-3 rounded-xl border border-indigo-100 space-y-2 text-xs">
+                  <div className="font-bold text-slate-800 flex items-center justify-between">
+                    <span>Live Invoice Format Preview:</span>
+                    <span className="text-[10px] text-indigo-600 font-mono">Terminal: {deviceCounterId || 'C1'}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="p-2 bg-emerald-50/70 rounded-lg border border-emerald-200 space-y-1">
+                      <div className="text-[10px] font-bold text-emerald-800 flex items-center gap-1">
+                        <span>🌐 Online Global Mode</span>
+                      </div>
+                      <div className="font-mono font-black text-xs text-emerald-950">
+                        {(form.POSInvoicePrefix || 'POS-')}{(counters['POSInvoice'] || 0) + 1}
+                      </div>
+                      <div className="text-[9px] text-emerald-700">
+                        Unified sequence across all 4 counters & accountants for 100% clean GST reports.
+                      </div>
+                    </div>
+
+                    <div className="p-2 bg-amber-50/70 rounded-lg border border-amber-200 space-y-1">
+                      <div className="text-[10px] font-bold text-amber-800 flex items-center gap-1">
+                        <span>🔌 Offline Safety Mode</span>
+                      </div>
+                      <div className="font-mono font-black text-xs text-amber-950">
+                        {(form.POSInvoicePrefix || 'POS-').replace(/[-_]+$/, '')}-{deviceCounterId || 'C1'}-{(counters['POSInvoice'] || 0) + 1}
+                      </div>
+                      <div className="text-[9px] text-amber-700">
+                        Auto-appends counter ID so simultaneous offline bills never collide.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {renderSaveButton('vouchers', 'Voucher Numbering', true, 'lg')}
           </div>
         )}
@@ -2356,6 +2469,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </p>
                     </div>
                   </label>
+
+                  {/* Toggle 3: Allow Platform Support Access (ON/OFF) */}
+                  <label className={`p-3.5 border rounded-xl flex items-start gap-3 cursor-pointer transition ${
+                    form.AllowSupportAccess === 'true' 
+                      ? 'bg-amber-50/70 border-amber-300 ring-1 ring-amber-400/50' 
+                      : 'bg-white border-slate-200 hover:bg-slate-50/80'
+                  }`}>
+                    <div className="pt-0.5">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                        checked={form.AllowSupportAccess === 'true'}
+                        onChange={e => setForm({ ...form, AllowSupportAccess: e.target.checked ? 'true' : 'false' })}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold text-slate-900 text-xs">Allow Platform Support Access (ON / OFF)</span>
+                        {form.AllowSupportAccess === 'true' ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200/80 text-amber-900 border border-amber-400/50 flex items-center gap-1">
+                            🔓 Support Mode Active (ON)
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                            🔒 Privacy Protected (OFF)
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                        When <strong className="text-slate-700">OFF (Default & Recommended)</strong>, platform administrators cannot open your company's operational records, vouchers, or books. Turn this <strong className="text-amber-800">ON temporarily</strong> only when you require remote technical assistance from support.
+                      </p>
+                    </div>
+                  </label>
                 </div>
               </div>
             )}
@@ -2733,6 +2879,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {renderSaveButton('pos', 'POS Preferences', true, 'lg')}
           </div>
+        )}
+
+        {/* Backup & Restore Manager Tab */}
+        {activeTab === 'backup' && (
+          <BackupManagerView
+            config={form}
+            onDataRefresh={onDataRefresh}
+          />
         )}
       </div>
 

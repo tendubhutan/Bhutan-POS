@@ -71,6 +71,7 @@ export interface SupabaseCompany {
   currency_symbol?: string;
   logo_url?: string;
   is_active?: boolean;
+  allow_support_access?: boolean;
   subscription_plan?: string;
   subscription_expires_at?: string;
   created_at?: string;

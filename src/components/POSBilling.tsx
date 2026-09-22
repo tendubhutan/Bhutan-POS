@@ -33,7 +33,10 @@ import {
   getVoucherTypes,
   getSerialNumbersStockReport,
   getActiveUser,
-  peekNextInvoiceNumber
+  peekNextInvoiceNumber,
+  getDeviceCounterId,
+  setDeviceCounterId,
+  isSystemOnline
 } from '../services/storageService';
 import {
   findBestItemScheme,
@@ -200,6 +203,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   const [activeNoteIdx, setActiveNoteIdx] = useState<number | null>(null);
   const [batchSelectModalIdx, setBatchSelectModalIdx] = useState<number | null>(null);
 
+  const [deviceCounterId, setLocalDeviceCounterId] = useState<string>(() => getDeviceCounterId());
+
   // Keep posBillNo and posBillDate synchronized with editing state and active voucher series
   useEffect(() => {
     if (editingInvoiceNo) {
@@ -217,6 +222,24 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         setPosBillNo(peekNextInvoiceNumber(true, activeVoucherType?.id));
       } catch {}
     }
+
+    const refreshBillNo = () => {
+      setLocalDeviceCounterId(getDeviceCounterId());
+      if (!editingInvoiceNo) {
+        try {
+          setPosBillNo(peekNextInvoiceNumber(true, activeVoucherType?.id));
+        } catch {}
+      }
+    };
+
+    window.addEventListener('online', refreshBillNo);
+    window.addEventListener('offline', refreshBillNo);
+    window.addEventListener('device_counter_id_changed', refreshBillNo);
+    return () => {
+      window.removeEventListener('online', refreshBillNo);
+      window.removeEventListener('offline', refreshBillNo);
+      window.removeEventListener('device_counter_id_changed', refreshBillNo);
+    };
   }, [editingInvoiceNo, editingInvoiceDate, activeVoucherType]);
 
   useEffect(() => {
@@ -2106,6 +2129,27 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               <span className="font-mono text-xs font-black text-slate-900 bg-white px-1.5 py-0.5 rounded border border-slate-200 shadow-2xs">
                 {editingInvoiceNo || posBillNo || 'Auto'}
               </span>
+            </div>
+            <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
+              <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Terminal</span>
+              <select
+                value={deviceCounterId}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setLocalDeviceCounterId(val);
+                  setDeviceCounterId(val);
+                }}
+                className="bg-white border border-indigo-200 text-indigo-900 text-xs font-bold font-mono rounded px-1.5 py-0.5 outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
+                title="Local Terminal / Counter Identifier (For offline multi-device safety without creating extra voucher types)"
+              >
+                <option value="C1">Counter 1 (C1)</option>
+                <option value="C2">Counter 2 (C2)</option>
+                <option value="C3">Counter 3 (C3)</option>
+                <option value="C4">Counter 4 (C4)</option>
+                <option value="ACC1">Accountant 1 (ACC1)</option>
+                <option value="ACC2">Accountant 2 (ACC2)</option>
+                <option value="MOB">Owner Mobile (MOB)</option>
+              </select>
             </div>
             <div className="flex items-center gap-1.5">
               <Calendar className="h-3.5 w-3.5 text-indigo-600 shrink-0" />

@@ -223,6 +223,23 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         setBillNo(peekNextInvoiceNumber(false));
       } catch {}
     }
+
+    const refreshBillNo = () => {
+      if (!editingBillNo) {
+        try {
+          setBillNo(peekNextInvoiceNumber(false));
+        } catch {}
+      }
+    };
+
+    window.addEventListener('online', refreshBillNo);
+    window.addEventListener('offline', refreshBillNo);
+    window.addEventListener('device_counter_id_changed', refreshBillNo);
+    return () => {
+      window.removeEventListener('online', refreshBillNo);
+      window.removeEventListener('offline', refreshBillNo);
+      window.removeEventListener('device_counter_id_changed', refreshBillNo);
+    };
   }, [editingBillNo]);
   const [orderNo, setOrderNo] = useState("");
   const [orderDate, setOrderDate] = useState(() => new Date().toISOString().split("T")[0]);

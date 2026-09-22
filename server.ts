@@ -96,6 +96,89 @@ Format your response using Markdown.
     }
   });
 
+  // ==========================================
+  // LOCAL WIFI HUB (SHOP LAN MODE) DISPATCHER
+  // ==========================================
+  const hubCounters: Record<string, number> = {
+    POSInvoice: 1000,
+    SalesInvoice: 1000
+  };
+  const hubTerminals = new Map<string, { id: string; name: string; ip: string; lastSeen: number; role: string }>();
+  const hubDispatchedLogs: Array<{ id: string; number: number; invoiceNo: string; terminalId: string; terminalName: string; timestamp: string }> = [];
+
+  // 1. Get Hub Status and Info
+  app.get("/api/lan-hub/info", (req, res) => {
+    res.json({
+      status: "online",
+      role: "host",
+      mode: "shop_wifi_lan_hub",
+      counters: hubCounters,
+      terminalsCount: hubTerminals.size,
+      recentLogs: hubDispatchedLogs.slice(0, 20),
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  // 2. Heartbeat registration from connected counters (PC1, PC2, ACC, Mobile)
+  app.post("/api/lan-hub/heartbeat", (req, res) => {
+    const { terminalId, terminalName, role } = req.body;
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const id = terminalId || 'C1';
+    hubTerminals.set(id, {
+      id,
+      name: terminalName || `Counter ${id}`,
+      ip,
+      role: role || 'Cashier',
+      lastSeen: Date.now()
+    });
+    res.json({ ok: true, registered: id, totalActive: hubTerminals.size });
+  });
+
+  // 3. Atomically Request Next Consecutive Number Over Shop WiFi (Solution 2)
+  app.post("/api/lan-hub/request-number", (req, res) => {
+    const { isPOS = true, prefix = 'POS-', terminalId = 'C1', terminalName = 'Counter 1' } = req.body;
+    const counterKey = isPOS ? 'POSInvoice' : 'SalesInvoice';
+    
+    // Atomically increment central consecutive counter
+    const current = (hubCounters[counterKey] || 1000) + 1;
+    hubCounters[counterKey] = current;
+
+    const cleanPrefix = prefix || (isPOS ? 'POS-' : 'SAL-');
+    const invoiceNo = `${cleanPrefix}${current}`;
+
+    const logEntry = {
+      id: `hub_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      number: current,
+      invoiceNo,
+      terminalId,
+      terminalName,
+      timestamp: new Date().toISOString()
+    };
+
+    hubDispatchedLogs.unshift(logEntry);
+    if (hubDispatchedLogs.length > 100) hubDispatchedLogs.length = 100;
+
+    console.log(`[Shop WiFi Hub] Dispatched #${current} (${invoiceNo}) to ${terminalName} [${terminalId}]`);
+
+    res.json({
+      ok: true,
+      number: current,
+      invoiceNo,
+      dispatchedTo: terminalId,
+      timestamp: logEntry.timestamp
+    });
+  });
+
+  // 4. List Active Terminals and Live Logs
+  app.get("/api/lan-hub/terminals", (req, res) => {
+    const now = Date.now();
+    const active = Array.from(hubTerminals.values()).map(t => ({
+      ...t,
+      status: (now - t.lastSeen < 35000) ? 'active' : 'offline'
+    }));
+    res.json({ terminals: active, logs: hubDispatchedLogs });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

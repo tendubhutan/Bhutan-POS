@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown, UserCircle, Lock, Shield } from 'lucide-react';
+import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown, UserCircle, Lock, Shield, Radio, Wifi, Laptop, Download, Share2 } from 'lucide-react';
 import { Config, AppUser } from '../types';
 import { AIAssistant } from './AIAssistant';
 import { getCurrentTenantSession, isSuperAdmin as checkIsSuperAdmin } from '../services/authTenantContext';
 import { getBranches, getTerminalBranchId, setTerminalBranchId } from '../services/storageService';
+import { LocalLanHubModal } from './LocalLanHubModal';
+import { ClientLinkAndPwaModal } from './ClientLinkAndPwaModal';
 
 interface HeaderProps {
   config: Config;
@@ -63,6 +65,8 @@ export const Header: React.FC<HeaderProps> = ({
     : (currentUser?.role === 'Administrator' ? 'ADMIN' : (currentUser?.role?.toUpperCase() || 'STAFF'));
 
   const [terminalBranchId, setLocalTerminalBranchId] = useState<string>(() => getTerminalBranchId(config));
+  const [isLanHubModalOpen, setIsLanHubModalOpen] = useState<boolean>(false);
+  const [isClientLinkModalOpen, setIsClientLinkModalOpen] = useState<boolean>(false);
   const branches = getBranches();
 
   useEffect(() => {
@@ -113,7 +117,7 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex flex-col">
               <div className="flex items-center gap-1">
                 <span className="font-extrabold text-xs sm:text-sm text-white tracking-wide leading-tight">
-                  {activeCompanyName || config.CompanyName || 'Deep POS'}
+                  {activeCompanyName || config.CompanyName || 'Ezee ERP'}
                 </span>
                 <ChevronDown className="h-3 w-3 text-purple-300 group-hover:text-white transition" />
               </div>
@@ -132,7 +136,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
             <div className="flex flex-col">
               <span className="font-extrabold text-xs sm:text-sm text-white tracking-wide block leading-tight">
-                {activeCompanyName || config.CompanyName || 'Deep POS'}
+                {activeCompanyName || config.CompanyName || 'Ezee ERP'}
               </span>
               <span className="text-[10px] text-emerald-300 font-medium font-mono leading-tight flex items-center gap-1">
                 <span>{activeFYName || 'FY 2026'}</span>
@@ -230,6 +234,28 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
+        {/* Dedicated Client Link & PWA App Button */}
+        <button
+          type="button"
+          onClick={() => setIsClientLinkModalOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 border border-emerald-400/50 text-emerald-100 hover:text-white text-xs font-bold shadow-xs transition cursor-pointer"
+          title="Dedicated Client Link & Install PWA Desktop App"
+        >
+          <Laptop className="h-3.5 w-3.5 text-emerald-300" />
+          <span className="hidden md:inline text-[11px]">Client Link & App</span>
+        </button>
+
+        {/* Shop WiFi Hub (LAN Mode) Button */}
+        <button
+          type="button"
+          onClick={() => setIsLanHubModalOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-900/80 hover:bg-indigo-800 border border-indigo-400/50 text-indigo-100 hover:text-white text-xs font-bold shadow-xs transition cursor-pointer"
+          title="Shop WiFi Hub (LAN Mode) - Solution 2 Consecutive Number Dispatcher"
+        >
+          <Radio className="h-3.5 w-3.5 text-indigo-300 animate-pulse" />
+          <span className="hidden lg:inline text-[11px]">WiFi Hub</span>
+        </button>
+
         {/* Lock Terminal Button */}
         {onLockTerminal && (
           <button
@@ -254,6 +280,17 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Global AI Assistant Button */}
         <AIAssistant />
       </div>
+
+      <LocalLanHubModal
+        isOpen={isLanHubModalOpen}
+        onClose={() => setIsLanHubModalOpen(false)}
+      />
+
+      <ClientLinkAndPwaModal
+        isOpen={isClientLinkModalOpen}
+        onClose={() => setIsClientLinkModalOpen(false)}
+        activeCompanyName={activeCompanyName}
+      />
     </header>
   );
 };
