@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Config, Ledger, AppUser, ModuleId, UserPermission } from '../types';
-import { saveConfig, getUsers, saveUsers, setActiveUser, getActiveUser, loadJson, saveJson, STORAGE_KEYS, canUserViewAuditTrail, getBranches, getTerminalBranchId, setTerminalBranchId, getDeviceCounterId, setDeviceCounterId, isSystemOnline, getEffectiveVoucherPrefix } from '../services/storageService';
+import { saveConfig, getUsers, saveUsers, setActiveUser, getActiveUser, loadJson, saveJson, STORAGE_KEYS, canUserViewAuditTrail, getBranches, getTerminalBranchId, setTerminalBranchId, getDeviceCounterId, setDeviceCounterId, isSystemOnline, getEffectiveVoucherPrefix, getTerminalsConfig } from '../services/storageService';
 import { POSSettings, loadPOSSettings, savePOSSettings, DEFAULT_POS_SETTINGS } from '../types/posSettings';
 import { playSaveSound } from '../utils/audio';
 import { AcceptModal } from './AcceptModal';
@@ -1902,28 +1902,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
 
                   {/* Preset quick buttons */}
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mr-1">Quick Presets:</span>
-                    {[
-                      { label: 'Counter 1', id: 'C1' },
-                      { label: 'Counter 2', id: 'C2' },
-                      { label: 'Counter 3', id: 'C3' },
-                      { label: 'Counter 4', id: 'C4' },
-                      { label: 'Accountant', id: 'ACC' },
-                      { label: 'Owner Mobile', id: 'MOB' }
-                    ].map(p => (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Configured Terminals:</span>
                       <button
-                        key={p.id}
                         type="button"
                         onClick={() => {
-                          setLocalDeviceCounterId(p.id);
-                          setDeviceCounterId(p.id);
+                          window.dispatchEvent(new CustomEvent('open_client_link_modal', { detail: { tab: 'manage' } }));
                         }}
-                        className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${deviceCounterId === p.id ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer"
                       >
-                        {p.label} ({p.id})
+                        <span>⚙️ Manage & Rename Terminals / Plan Limits</span>
                       </button>
-                    ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {getTerminalsConfig().filter(t => t.isActive).map(p => (
+                        <button
+                          key={p.id || p.code}
+                          type="button"
+                          onClick={() => {
+                            const targetId = p.code || p.id;
+                            setLocalDeviceCounterId(targetId);
+                            setDeviceCounterId(targetId);
+                          }}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${deviceCounterId === (p.code || p.id) ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+                        >
+                          {p.name} ({p.code || p.id})
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 

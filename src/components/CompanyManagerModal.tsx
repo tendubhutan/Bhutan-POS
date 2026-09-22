@@ -51,7 +51,9 @@ import {
 import { 
   resetCompanyToBlank, 
   executeYearEndCarryForward, 
-  YearEndCarryForwardResult 
+  YearEndCarryForwardResult,
+  getMaxTerminalLimit,
+  setMaxTerminalLimit
 } from '../services/storageService';
 import { isSupportAccessAllowed } from '../services/tenantFeatureService';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -110,6 +112,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
   const [newAdminName, setNewAdminName] = useState('Administrator');
   const [newAdminPin, setNewAdminPin] = useState('1234');
   const [newAdminPassword, setNewAdminPassword] = useState('ClientPass@123');
+  const [newAllowedCounters, setNewAllowedCounters] = useState<number>(1);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -292,6 +295,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         email: newEmail.trim(),
         address: newAddress.trim(),
         currency_symbol: newCurrency.trim() || 'Nu.',
+        allowed_counters: newAllowedCounters,
         admin_username: newAdminUsername.trim().toLowerCase() || 'admin',
         admin_name: newAdminName.trim() || 'Administrator',
         admin_pin: newAdminPin.trim() || '1234',
@@ -307,6 +311,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
       // Guarantee clean blank slate for newly created client company
       resetCompanyToBlank(company.id);
       initializeBlankTenantStorage(company.id);
+      setMaxTerminalLimit(newAllowedCounters, company.id);
 
       // Reset form
       setNewCompanyName('');
@@ -315,6 +320,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
       setNewPhone('');
       setNewEmail('');
       setNewAddress('');
+      setNewAllowedCounters(1);
       setNewAdminUsername('admin');
       setNewAdminName('Administrator');
       setNewAdminPin('1234');
@@ -341,6 +347,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
     setNewEmail(comp.email || '');
     setNewAddress(comp.address || '');
     setNewCurrency(comp.currency_symbol || 'Nu.');
+    setNewAllowedCounters(typeof comp.allowed_counters === 'number' ? comp.allowed_counters : (getMaxTerminalLimit(comp.id) || 1));
     setNewAdminUsername(comp.admin_username || 'admin');
     setNewAdminName(comp.admin_name || 'Administrator');
     setNewAdminPin(comp.admin_pin || '1234');
@@ -365,6 +372,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         email: trimmedEmail,
         address: newAddress.trim(),
         currency_symbol: newCurrency.trim() || 'Nu.',
+        allowed_counters: newAllowedCounters,
         admin_username: newAdminUsername.trim().toLowerCase() || 'admin',
         admin_name: newAdminName.trim() || 'Administrator',
         admin_pin: newAdminPin.trim() || '1234',
@@ -377,6 +385,9 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         return;
       }
 
+      // Persist terminal limit to company storage
+      setMaxTerminalLimit(newAllowedCounters, editingCompany.id);
+
       setCompanies(prev => prev.map(c => c.id === editingCompany.id ? {
         ...c,
         company_name: newCompanyName.trim(),
@@ -386,6 +397,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         email: trimmedEmail,
         address: newAddress.trim(),
         currency_symbol: newCurrency.trim() || 'Nu.',
+        allowed_counters: newAllowedCounters,
         admin_username: newAdminUsername.trim().toLowerCase() || 'admin',
         admin_name: newAdminName.trim() || 'Administrator',
         admin_pin: newAdminPin.trim() || '1234',
@@ -395,7 +407,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
       await loadData();
       setViewMode('list');
       setEditingCompany(null);
-      showToast(`Company "${newCompanyName.trim()}" login & details updated successfully.`);
+      showToast(`Company "${newCompanyName.trim()}" login, plan & details updated successfully.`);
     } catch (err: any) {
       setError(err?.message || 'Unexpected error updating company');
     } finally {
@@ -600,11 +612,17 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                                     </span>
                                   )}
                                 </div>
-                <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
-                  {comp.trade_license_no && <span>GST: {comp.trade_license_no}</span>}
-                  {comp.tax_payer_id && <span>TPN: {comp.tax_payer_id}</span>}
-                  {!comp.trade_license_no && !comp.tax_payer_id && <span>Clean Client Workspace</span>}
-                </p>
+                                <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                                  {comp.trade_license_no && <span>GST: {comp.trade_license_no}</span>}
+                                  {comp.tax_payer_id && <span>TPN: {comp.tax_payer_id}</span>}
+                                  {!comp.trade_license_no && !comp.tax_payer_id && <span>Clean Client Workspace</span>}
+                                </p>
+                                <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                  <span className="text-[10px] bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 px-2 py-0.5 rounded font-mono font-semibold flex items-center gap-1">
+                                    <Sliders className="h-2.5 w-2.5 text-indigo-400" />
+                                    <span>{comp.allowed_counters === 0 ? 'Unlimited Counters' : `${comp.allowed_counters || 1} Counter${(comp.allowed_counters || 1) > 1 ? 's' : ''} Allowed`}</span>
+                                  </span>
+                                </div>
                                 {comp.address && (
                                   <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">{comp.address}</p>
                                 )}
@@ -890,6 +908,29 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                         className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
                       />
                     </div>
+
+                    {/* Allowed POS Counters Limit (Superadmin Control) */}
+                    <div className="pt-2 border-t border-slate-800/80">
+                      <label className="block text-[11px] font-semibold text-indigo-300 mb-1 flex items-center gap-1">
+                        <Sliders className="h-3 w-3 text-indigo-400" />
+                        <span>Allowed Active Counters Limit (Superadmin Control)</span>
+                      </label>
+                      <select
+                        value={newAllowedCounters}
+                        onChange={(e) => setNewAllowedCounters(parseInt(e.target.value, 10))}
+                        className="w-full bg-slate-900 border border-indigo-500/40 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-indigo-400 focus:outline-hidden font-semibold"
+                      >
+                        <option value={1}>1 Terminal (Single Counter Plan - Default)</option>
+                        <option value={2}>2 Terminals (Dual Cashier Counters)</option>
+                        <option value={3}>3 Terminals (3-Desk Setup)</option>
+                        <option value={4}>4 Terminals (4-Desk Setup)</option>
+                        <option value={5}>5 Terminals (5-Desk Setup)</option>
+                        <option value={0}>Unlimited Terminals (Enterprise Tier)</option>
+                      </select>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Enforces how many POS billing counters this client can simultaneously activate.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -1165,6 +1206,29 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                         onChange={(e) => setNewAddress(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-700/90 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-blue-500 focus:outline-hidden"
                       />
+                    </div>
+
+                    {/* Allowed POS Counters Limit (Superadmin Control) */}
+                    <div className="pt-2 border-t border-slate-800/80">
+                      <label className="block text-[11px] font-semibold text-indigo-300 mb-1 flex items-center gap-1">
+                        <Sliders className="h-3 w-3 text-indigo-400" />
+                        <span>Allowed Active Counters Limit (Superadmin Control)</span>
+                      </label>
+                      <select
+                        value={newAllowedCounters}
+                        onChange={(e) => setNewAllowedCounters(parseInt(e.target.value, 10))}
+                        className="w-full bg-slate-900 border border-indigo-500/40 rounded-lg px-3 py-1.5 sm:py-2 text-white text-xs focus:border-indigo-400 focus:outline-hidden font-semibold"
+                      >
+                        <option value={1}>1 Terminal (Single Counter Plan - Default)</option>
+                        <option value={2}>2 Terminals (Dual Cashier Counters)</option>
+                        <option value={3}>3 Terminals (3-Desk Setup)</option>
+                        <option value={4}>4 Terminals (4-Desk Setup)</option>
+                        <option value={5}>5 Terminals (5-Desk Setup)</option>
+                        <option value={0}>Unlimited Terminals (Enterprise Tier)</option>
+                      </select>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Enforces how many POS billing counters this client can simultaneously activate.
+                      </p>
                     </div>
                   </div>
                 </div>

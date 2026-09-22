@@ -67,6 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [terminalBranchId, setLocalTerminalBranchId] = useState<string>(() => getTerminalBranchId(config));
   const [isLanHubModalOpen, setIsLanHubModalOpen] = useState<boolean>(false);
   const [isClientLinkModalOpen, setIsClientLinkModalOpen] = useState<boolean>(false);
+  const [clientLinkModalTab, setClientLinkModalTab] = useState<'links' | 'manage' | 'pwa'>('links');
   const branches = getBranches();
 
   useEffect(() => {
@@ -75,8 +76,18 @@ export const Header: React.FC<HeaderProps> = ({
         setLocalTerminalBranchId(e.detail.branchId);
       }
     };
+    const handleOpenClientLink = (e: any) => {
+      const tab = e.detail?.tab || 'links';
+      setClientLinkModalTab(tab);
+      setIsClientLinkModalOpen(true);
+    };
+
     window.addEventListener('terminal:branch_changed', handleBranchChanged);
-    return () => window.removeEventListener('terminal:branch_changed', handleBranchChanged);
+    window.addEventListener('open_client_link_modal', handleOpenClientLink);
+    return () => {
+      window.removeEventListener('terminal:branch_changed', handleBranchChanged);
+      window.removeEventListener('open_client_link_modal', handleOpenClientLink);
+    };
   }, []);
 
   return (
@@ -237,7 +248,10 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Dedicated Client Link & PWA App Button */}
         <button
           type="button"
-          onClick={() => setIsClientLinkModalOpen(true)}
+          onClick={() => {
+            setClientLinkModalTab('links');
+            setIsClientLinkModalOpen(true);
+          }}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 border border-emerald-400/50 text-emerald-100 hover:text-white text-xs font-bold shadow-xs transition cursor-pointer"
           title="Dedicated Client Link & Install PWA Desktop App"
         >
@@ -290,6 +304,7 @@ export const Header: React.FC<HeaderProps> = ({
         isOpen={isClientLinkModalOpen}
         onClose={() => setIsClientLinkModalOpen(false)}
         activeCompanyName={activeCompanyName}
+        initialTab={clientLinkModalTab}
       />
     </header>
   );

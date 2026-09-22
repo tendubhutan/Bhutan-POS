@@ -55,6 +55,7 @@ import {
 } from '../services/authTenantContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { AppUser } from '../types';
+import { getMaxTerminalLimit, setMaxTerminalLimit } from '../services/storageService';
 import { 
   ALL_SYSTEM_FEATURES, 
   FEATURE_PRESETS, 
@@ -220,6 +221,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   const [newPhone, setNewPhone] = useState<string>('');
   const [newAddress, setNewAddress] = useState<string>('');
   const [newCurrency, setNewCurrency] = useState<string>('Nu.');
+  const [newAllowedCounters, setNewAllowedCounters] = useState<number>(1);
   const [newAdminUsername, setNewAdminUsername] = useState<string>('admin');
   const [newAdminPin, setNewAdminPin] = useState<string>('1234');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -233,6 +235,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
   // Feature Management for Existing Company
   const [managingCompany, setManagingCompany] = useState<SupabaseCompany | null>(null);
+  const [managingAllowedCounters, setManagingAllowedCounters] = useState<number>(1);
   const [editingFeatures, setEditingFeatures] = useState<Record<string, boolean>>({});
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [isSavingFeatures, setIsSavingFeatures] = useState<boolean>(false);
@@ -247,6 +250,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   // Tenant Plan Edit Modal state
   const [showPlanModal, setShowPlanModal] = useState<boolean>(false);
   const [editingPlanCompany, setEditingPlanCompany] = useState<SupabaseCompany | null>(null);
+  const [planFormAllowedCounters, setPlanFormAllowedCounters] = useState<number>(1);
   const [planFormTier, setPlanFormTier] = useState<string>('commercial');
   const [planFormName, setPlanFormName] = useState<string>('Commercial');
   const [planFormPrice, setPlanFormPrice] = useState<number | string>(25);
@@ -394,18 +398,28 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
     setEditingFeatures(initialMap);
     setEditingPresetId(matchingPreset ? matchingPreset.id : null);
+    setManagingAllowedCounters(company.allowed_counters !== undefined ? company.allowed_counters : getMaxTerminalLimit(company.id));
     setManagingCompany(company);
   };
 
   // Save features for existing company
-  const handleSaveExistingFeatures = () => {
+  const handleSaveExistingFeatures = async () => {
     if (!managingCompany) return;
     setIsSavingFeatures(true);
     try {
       saveCompanyFeatures(managingCompany.id, editingFeatures);
+      setMaxTerminalLimit(managingAllowedCounters, managingCompany.id);
+      await updateCompany(managingCompany.id, { allowed_counters: managingAllowedCounters });
+      setCompanies(prev =>
+        prev.map(c =>
+          c.id === managingCompany.id
+            ? { ...c, allowed_counters: managingAllowedCounters }
+            : c
+        )
+      );
       setFeedbackMsg({
         type: 'success',
-        text: `Features and permissions for "${managingCompany.company_name}" have been updated successfully and applied immediately.`
+        text: `Features and terminal limits for "${managingCompany.company_name}" have been updated successfully and applied immediately.`
       });
       setManagingCompany(null);
     } catch (err: any) {
@@ -479,6 +493,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
         phone: newPhone.trim() || undefined,
         address: newAddress.trim() || undefined,
         currency_symbol: newCurrency.trim() || 'Nu.',
+        allowed_counters: newAllowedCounters,
         admin_username: newAdminUsername.trim() || 'admin',
         admin_name: `${newCompanyName.trim()} Administrator`,
         admin_pin: newAdminPin.trim() || '1234',
@@ -487,9 +502,10 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
       });
 
       if (res.company) {
+        setMaxTerminalLimit(newAllowedCounters, res.company.id);
         setFeedbackMsg({
           type: 'success',
-          text: `Successfully provisioned client workspace "${res.company.company_name}" with configured features.`
+          text: `Successfully provisioned client workspace "${res.company.company_name}" with configured features and terminal limits.`
         });
         setShowAddModal(false);
         // Reset form
@@ -499,6 +515,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
         setNewEmail('');
         setNewPhone('');
         setNewAddress('');
+        setNewAllowedCounters(1);
         const retailPreset = FEATURE_PRESETS.find(p => p.id === 'retail');
         setNewFeatures(retailPreset ? { ...retailPreset.features } : {});
         setNewSelectedPresetId('retail');
@@ -524,6 +541,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     setPlanFormCycle(plan.billingCycle);
     setPlanFormExpiresAt(company.subscription_expires_at || plan.expiresAt || '');
     setPlanFormNotes(plan.notes || '');
+    setPlanFormAllowedCounters(company.allowed_counters !== undefined ? company.allowed_counters : getMaxTerminalLimit(company.id));
 
     if (plan.price === 0) {
       setPlanFormTier('free');
@@ -548,18 +566,22 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
       setPlanFormName('Free Trial');
       setPlanFormPrice(0);
       setPlanFormCycle('monthly');
+      setPlanFormAllowedCounters(1);
     } else if (presetKey === 'starter') {
       setPlanFormName('Starter Tier');
       setPlanFormPrice(isNu ? 1000 : 15);
       setPlanFormCycle('monthly');
+      setPlanFormAllowedCounters(1);
     } else if (presetKey === 'commercial') {
       setPlanFormName('Commercial Plan');
       setPlanFormPrice(isNu ? 1800 : 25);
       setPlanFormCycle('monthly');
+      setPlanFormAllowedCounters(2);
     } else if (presetKey === 'enterprise') {
       setPlanFormName('Enterprise Tier');
       setPlanFormPrice(isNu ? 3500 : 50);
       setPlanFormCycle('monthly');
+      setPlanFormAllowedCounters(0);
     }
   };
 
@@ -583,9 +605,11 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
       const serializedPlan = JSON.stringify(planDetails);
       const updates: Partial<SupabaseCompany> = {
         subscription_plan: serializedPlan,
-        subscription_expires_at: planFormExpiresAt || undefined
+        subscription_expires_at: planFormExpiresAt || undefined,
+        allowed_counters: planFormAllowedCounters
       };
 
+      setMaxTerminalLimit(planFormAllowedCounters, editingPlanCompany.id);
       const res = await updateCompany(editingPlanCompany.id, updates);
       if (res.error) {
         setFeedbackMsg({ type: 'error', text: res.error });
@@ -593,14 +617,14 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
         setCompanies(prev =>
           prev.map(c =>
             c.id === editingPlanCompany.id
-              ? { ...c, subscription_plan: serializedPlan, subscription_expires_at: planFormExpiresAt || undefined }
+              ? { ...c, subscription_plan: serializedPlan, subscription_expires_at: planFormExpiresAt || undefined, allowed_counters: planFormAllowedCounters }
               : c
           )
         );
         const formatted = formatPlanBadge(planDetails);
         setFeedbackMsg({
           type: 'success',
-          text: `Updated "${editingPlanCompany.company_name}" subscription plan to ${formatted.label}.`
+          text: `Updated "${editingPlanCompany.company_name}" subscription plan to ${formatted.label} (Counters limit: ${planFormAllowedCounters === 0 ? 'Unlimited' : planFormAllowedCounters}).`
         });
         setShowPlanModal(false);
       }
@@ -1230,17 +1254,24 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                         {(() => {
                           const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing);
                           const badge = formatPlanBadge(plan);
+                          const limit = company.allowed_counters !== undefined ? company.allowed_counters : getMaxTerminalLimit(company.id);
                           return (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenPlanModal(company)}
-                              className="group inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-800/60 hover:border-indigo-500 text-indigo-300 hover:text-white text-[11px] font-medium font-mono transition-all cursor-pointer shadow-xs"
-                              title="Click to edit Commercial Plan, pricing & billing details"
-                            >
-                              <CreditCard className="h-3 w-3 text-indigo-400 group-hover:text-indigo-200 shrink-0" />
-                              <span className="font-semibold">{badge.label}</span>
-                              <Pencil className="h-2.5 w-2.5 text-indigo-400/60 group-hover:text-indigo-200 ml-0.5" />
-                            </button>
+                            <div className="flex flex-col items-start gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPlanModal(company)}
+                                className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-800/60 hover:border-indigo-500 text-indigo-300 hover:text-white text-[11px] font-medium font-mono transition-all cursor-pointer shadow-xs"
+                                title="Click to edit Commercial Plan, pricing & billing details"
+                              >
+                                <CreditCard className="h-3 w-3 text-indigo-400 group-hover:text-indigo-200 shrink-0" />
+                                <span className="font-semibold">{badge.label}</span>
+                                <Pencil className="h-2.5 w-2.5 text-indigo-400/60 group-hover:text-indigo-200 ml-0.5" />
+                              </button>
+                              <span className="text-[10px] bg-slate-800/90 text-slate-300 border border-slate-700/70 px-2 py-0.2 rounded font-mono flex items-center gap-1">
+                                <Sliders className="h-2.5 w-2.5 text-indigo-400" />
+                                <span>{limit === 0 ? 'Unlimited Counters' : `${limit} Counter${limit > 1 ? 's' : ''}`}</span>
+                              </span>
+                            </div>
                           );
                         })()}
                       </td>
@@ -1442,6 +1473,34 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                     />
                   </div>
 
+                  {/* Allowed Active POS Counters Limit */}
+                  <div className="p-3.5 bg-slate-800/80 border border-indigo-500/30 rounded-xl space-y-1.5">
+                    <label className="block text-xs font-bold text-indigo-300 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Sliders className="h-3.5 w-3.5 text-indigo-400" />
+                        <span>Allowed Active Counters Limit (Superadmin Control)</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-indigo-400">
+                        {newAllowedCounters === 0 ? 'Unlimited' : `${newAllowedCounters} Counter${newAllowedCounters > 1 ? 's' : ''}`}
+                      </span>
+                    </label>
+                    <select
+                      value={newAllowedCounters}
+                      onChange={e => setNewAllowedCounters(parseInt(e.target.value, 10))}
+                      className="w-full bg-slate-900 border border-indigo-500/40 rounded-lg px-3 py-2 text-white font-semibold text-xs focus:border-indigo-400 focus:outline-none"
+                    >
+                      <option value={1}>1 Terminal (Single Counter Plan - Default)</option>
+                      <option value={2}>2 Terminals (Dual Cashier Counters)</option>
+                      <option value={3}>3 Terminals (3-Desk Setup)</option>
+                      <option value={4}>4 Terminals (4-Desk Setup)</option>
+                      <option value={5}>5 Terminals (5-Desk Setup)</option>
+                      <option value={0}>Unlimited Terminals (Enterprise Tier)</option>
+                    </select>
+                    <p className="text-[10px] text-slate-400">
+                      Enforces how many POS billing counters this client can simultaneously activate on their system.
+                    </p>
+                  </div>
+
                   <div className="p-3.5 bg-indigo-950/30 border border-indigo-800/40 rounded-xl space-y-2">
                     <span className="text-[11px] font-bold text-indigo-300 block">Initial Store Admin Login Setup</span>
                     <div className="grid grid-cols-2 gap-3">
@@ -1562,6 +1621,35 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
             {/* Notice */}
             <div className="py-2.5 px-3 bg-amber-500/10 border border-amber-500/20 rounded-xl my-3 text-[11px] text-amber-300/90 leading-relaxed shrink-0">
               <span className="font-bold">Superadmin Policy:</span> Modules turned <span className="font-bold text-rose-400">OFF</span> are completely hidden from the client's screen, sidebar, and settings menu. Whatever modules are left <span className="font-bold text-emerald-400">ON</span>, the client can use freely.
+            </div>
+
+            {/* Allowed Active POS Counters Limit */}
+            <div className="p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-2xl mb-3 shrink-0">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
+                    <Sliders className="h-3.5 w-3.5 text-indigo-400" />
+                    <span>Authorized POS Billing Counters Limit</span>
+                  </label>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Maximum number of active cashier desks/terminals this client can run concurrently.
+                  </p>
+                </div>
+                <div className="min-w-[200px]">
+                  <select
+                    value={managingAllowedCounters}
+                    onChange={e => setManagingAllowedCounters(parseInt(e.target.value, 10))}
+                    className="w-full bg-slate-900 border border-indigo-500/50 rounded-xl px-3 py-1.5 text-white font-semibold text-xs focus:border-indigo-400 focus:outline-none"
+                  >
+                    <option value={1}>1 Terminal (Single Counter)</option>
+                    <option value={2}>2 Terminals (Dual Cashier)</option>
+                    <option value={3}>3 Terminals (3-Desk Setup)</option>
+                    <option value={4}>4 Terminals (4-Desk Setup)</option>
+                    <option value={5}>5 Terminals (5-Desk Setup)</option>
+                    <option value={0}>Unlimited (Enterprise Tier)</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
             {/* Scrollable Checklist Body */}
@@ -1746,6 +1834,34 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
+              </div>
+
+              {/* Allowed POS Counters / Terminal Licenses */}
+              <div className="p-3 bg-slate-950/60 border border-indigo-500/40 rounded-xl space-y-1.5">
+                <label className="block text-slate-300 font-bold mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-indigo-300">
+                    <Sliders className="h-3.5 w-3.5 text-indigo-400" />
+                    <span>Authorized POS Billing Counters Limit (Superadmin Control)</span>
+                  </span>
+                  <span className="text-indigo-400 font-mono text-[10px]">
+                    {planFormAllowedCounters === 0 ? 'Unlimited Desks' : `${planFormAllowedCounters} Counter${planFormAllowedCounters > 1 ? 's' : ''}`}
+                  </span>
+                </label>
+                <select
+                  value={planFormAllowedCounters}
+                  onChange={e => setPlanFormAllowedCounters(parseInt(e.target.value, 10))}
+                  className="w-full bg-slate-800 border border-indigo-500/50 rounded-xl px-3 py-2 text-white font-semibold focus:outline-none focus:border-indigo-400"
+                >
+                  <option value={1}>1 Terminal (Single Counter Plan - Default)</option>
+                  <option value={2}>2 Terminals (Dual Cashier Counters)</option>
+                  <option value={3}>3 Terminals (3-Desk Setup)</option>
+                  <option value={4}>4 Terminals (4-Desk Setup)</option>
+                  <option value={5}>5 Terminals (5-Desk Setup)</option>
+                  <option value={0}>Unlimited Terminals (Enterprise Unlimited)</option>
+                </select>
+                <p className="text-[10px] text-slate-400">
+                  Controls how many active billing counters or client terminals this company can register and run simultaneously.
+                </p>
               </div>
 
               {/* Live Preview Box */}

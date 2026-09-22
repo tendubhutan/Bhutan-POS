@@ -74,6 +74,7 @@ export interface SupabaseCompany {
   allow_support_access?: boolean;
   subscription_plan?: string;
   subscription_expires_at?: string;
+  allowed_counters?: number;
   created_at?: string;
   admin_username?: string;
   admin_name?: string;

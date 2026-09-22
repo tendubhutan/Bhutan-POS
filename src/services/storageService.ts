@@ -16,6 +16,7 @@ import {
   LedgerLogEntry,
   Voucher,
   VoucherType,
+  VoucherGroupType,
   Quotation,
   QuotationItem,
   SalesOrder,
@@ -42,6 +43,7 @@ import {
   AuditActionType,
   Branch,
   Godown,
+  TerminalConfig,
   StockTransferVoucher,
   StockTransferItem
 } from '../types';
@@ -121,7 +123,8 @@ export const STORAGE_KEYS = {
   SCHEMES: 'deep_pos_schemes',
   BRANCHES: 'deep_pos_branches',
   GODOWNS: 'deep_pos_godowns',
-  STOCK_TRANSFERS: 'deep_pos_stock_transfers'
+  STOCK_TRANSFERS: 'deep_pos_stock_transfers',
+  TERMINALS: 'deep_pos_terminals'
 };
 
 export const DEFAULT_BRANCHES: Branch[] = [
@@ -1499,13 +1502,16 @@ export function normalizeVoucherTypes(list: any[]): VoucherType[] {
       isDefault: Boolean(item.isDefault),
       description: (item.description || '').trim(),
       isActive,
-      status
+      status,
+      branchId: item.branchId || undefined,
+      branchCode: item.branchCode || undefined,
+      branchName: item.branchName || undefined
     } as VoucherType;
   });
 
   // Ensure every existing default voucher type is preserved or merged if missing
   DEFAULT_VOUCHER_TYPES.forEach(def => {
-    const exists = normalized.some(n => n.id === def.id || (n.name === def.name && n.parentType === def.parentType));
+    const exists = normalized.some(n => n.id === def.id || (n.name === def.name && n.parentType === def.parentType && !n.branchId));
     if (!exists) {
       normalized.push(def);
     }
@@ -1519,6 +1525,18 @@ export function getVoucherTypes(): VoucherType[] {
   const normalized = normalizeVoucherTypes(loaded);
   saveJson(STORAGE_KEYS.VOUCHER_TYPES, normalized);
   return normalized;
+}
+
+export function getVoucherTypesForBranch(branchId?: string, voucherGroup?: VoucherGroupType): VoucherType[] {
+  const all = getVoucherTypes();
+  let list = all;
+  if (branchId) {
+    list = all.filter(v => !v.branchId || v.branchId === branchId);
+  }
+  if (voucherGroup) {
+    list = list.filter(v => v.parentType === voucherGroup || v.type === voucherGroup);
+  }
+  return list;
 }
 
 export function peekNextVoucherNumber(vt: VoucherType): string {
@@ -1584,7 +1602,10 @@ export function saveVoucherType(vt: Partial<VoucherType>) {
     isDefault: Boolean(vt.isDefault),
     description: (vt.description || '').trim(),
     isActive,
-    status
+    status,
+    branchId: vt.branchId || undefined,
+    branchCode: vt.branchCode || undefined,
+    branchName: vt.branchName || undefined
   };
 
   // If marked as default, ensure it is active and unset other defaults in the same group
@@ -1852,11 +1873,66 @@ export function deleteColor(colorName: string) {
 // ==========================================
 // MULTI-BRANCH & GODOWN / LOCATION SERVICES
 // ==========================================
+export interface BranchVoucherTemplate {
+  key: string;
+  name: string;
+  parentType: VoucherGroupType;
+  typeCode: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'QUOTATION' | 'PHYSICAL_STOCK' | 'SALES_ORDER' | 'PURCHASE_ORDER' | 'RECEIPT_NOTE';
+  prefixSuffix: string;
+  defaultStartingNumber: number;
+  zeroPadding: number;
+  description: string;
+}
+
+export const STANDARD_BRANCH_VOUCHER_TEMPLATES: BranchVoucherTemplate[] = [
+  { key: 'pos', name: 'POS Cash Sale', parentType: 'Sale', typeCode: 'S', prefixSuffix: 'POS-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Fast retail counter POS billing' },
+  { key: 'b2b', name: 'B2B / Credit Sale', parentType: 'Sale', typeCode: 'S', prefixSuffix: 'B2B-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Credit customer sales invoices' },
+  { key: 'pur', name: 'Purchase Invoice', parentType: 'Purchase', typeCode: 'PUR', prefixSuffix: 'PUR-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Supplier inward bills & inventory purchase' },
+  { key: 'pmt', name: 'Payment Voucher', parentType: 'Payment', typeCode: 'P', prefixSuffix: 'PMT-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Vendor, expense, and cash/bank payments' },
+  { key: 'rct', name: 'Receipt Voucher', parentType: 'Receipt', typeCode: 'R', prefixSuffix: 'RCT-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Customer collections and cash/bank receipts' },
+  { key: 'jrn', name: 'Journal Voucher', parentType: 'Journal', typeCode: 'J', prefixSuffix: 'JRN-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Adjusting entries, payroll & year-end entries' },
+  { key: 'ctr', name: 'Contra Voucher', parentType: 'Contra', typeCode: 'C', prefixSuffix: 'CTR-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Cash-Bank & Bank-Bank internal fund transfers' },
+  { key: 'dn', name: 'Debit Note', parentType: 'Debit Note', typeCode: 'DN', prefixSuffix: 'DN-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Purchase returns & debit charges to suppliers' },
+  { key: 'cn', name: 'Credit Note', parentType: 'Credit Note', typeCode: 'CN', prefixSuffix: 'CN-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Sales returns & credit discounts to customers' },
+  { key: 'dlv', name: 'Delivery Note', parentType: 'Delivery Note', typeCode: 'DEL_NOTE', prefixSuffix: 'DLV-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Goods dispatch delivery challan' },
+  { key: 'grn', name: 'Receipt Note (GRN)', parentType: 'Receipt Note', typeCode: 'RECEIPT_NOTE', prefixSuffix: 'GRN-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Inward goods receipt notes' },
+  { key: 'qtn', name: 'Quotation / Proforma', parentType: 'Quotation', typeCode: 'QUOTATION', prefixSuffix: 'QTN-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Price estimates and proforma invoices' },
+  { key: 'so', name: 'Sales Order', parentType: 'Sales Order', typeCode: 'SALES_ORDER', prefixSuffix: 'SO-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Customer sales orders' },
+  { key: 'po', name: 'Purchase Order', parentType: 'Purchase Order', typeCode: 'PURCHASE_ORDER', prefixSuffix: 'PO-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Supplier purchase orders' },
+  { key: 'phy', name: 'Physical Stock Audit', parentType: 'Physical Stock', typeCode: 'PHYSICAL_STOCK', prefixSuffix: 'PHY-', defaultStartingNumber: 1, zeroPadding: 4, description: 'Stocktaking and inventory reconciliation' }
+];
+
+export function generateStandardBranchVoucherSeries(branchCode: string, branchName: string, branchId: string): VoucherType[] {
+  const code = (branchCode || 'BR').trim().toUpperCase();
+  const bName = (branchName || 'Branch').trim();
+  
+  return STANDARD_BRANCH_VOUCHER_TEMPLATES.map(tmpl => {
+    return {
+      id: `vt_${branchId}_${tmpl.key}`,
+      name: `${bName} ${tmpl.name}`,
+      parentType: tmpl.parentType,
+      type: tmpl.parentType,
+      typeCode: tmpl.typeCode,
+      prefix: `${code}-${tmpl.prefixSuffix}`,
+      numberingMode: 'auto',
+      startingNumber: tmpl.defaultStartingNumber,
+      zeroPadding: tmpl.zeroPadding,
+      isDefault: false,
+      isActive: true,
+      status: 'Active',
+      description: `${tmpl.description} for ${bName} (${code})`,
+      branchId: branchId,
+      branchCode: code,
+      branchName: bName
+    };
+  });
+}
+
 export function getBranches(): Branch[] {
   return loadJson<Branch[]>(STORAGE_KEYS.BRANCHES, DEFAULT_BRANCHES);
 }
 
-export function saveBranch(branch: Branch) {
+export function saveBranch(branch: Branch, autoCreateVouchers: boolean = true) {
   const list = getBranches();
   const cleanName = (branch.name || '').trim();
   if (!cleanName) return { ok: false, error: 'Branch Name is required.', branches: list };
@@ -1864,6 +1940,7 @@ export function saveBranch(branch: Branch) {
   const dup = list.find(b => b.name.trim().toLowerCase() === cleanName.toLowerCase() && b.id !== branch.id);
   if (dup) return { ok: false, error: `Duplicate Branch: A branch named "${cleanName}" already exists.`, branches: list };
 
+  const isNew = !list.some(b => b.id === branch.id);
   const idx = list.findIndex(b => b.id === branch.id);
   if (idx > -1) {
     list[idx] = { ...list[idx], ...branch };
@@ -1871,7 +1948,96 @@ export function saveBranch(branch: Branch) {
     list.push(branch);
   }
   saveJson(STORAGE_KEYS.BRANCHES, list);
-  return { ok: true, branches: list };
+
+  let createdVoucherCount = 0;
+  if (autoCreateVouchers) {
+    try {
+      let allVTypes = getVoucherTypes();
+      const generated = generateStandardBranchVoucherSeries(branch.code, branch.name, branch.id);
+      generated.forEach(vt => {
+        const existingIdx = allVTypes.findIndex(v => v.id === vt.id || (v.branchId === branch.id && v.parentType === vt.parentType && v.typeCode === vt.typeCode));
+        if (existingIdx > -1) {
+          allVTypes[existingIdx] = {
+            ...allVTypes[existingIdx],
+            branchId: branch.id,
+            branchCode: branch.code,
+            branchName: branch.name,
+            name: allVTypes[existingIdx].name || vt.name
+          };
+        } else {
+          allVTypes.push(vt);
+          createdVoucherCount++;
+        }
+      });
+      saveJson(STORAGE_KEYS.VOUCHER_TYPES, allVTypes);
+    } catch (e) {
+      console.error('Failed to auto-create branch voucher types:', e);
+    }
+  }
+
+  return { ok: true, branches: list, isNew, createdVoucherCount };
+}
+
+export function saveBranchWithCustomVouchers(
+  branch: Branch,
+  voucherSeriesList: Partial<VoucherType>[]
+) {
+  const list = getBranches();
+  const cleanName = (branch.name || '').trim();
+  if (!cleanName) return { ok: false, error: 'Branch Name is required.', branches: list };
+
+  const dup = list.find(b => b.name.trim().toLowerCase() === cleanName.toLowerCase() && b.id !== branch.id);
+  if (dup) return { ok: false, error: `Duplicate Branch: A branch named "${cleanName}" already exists.`, branches: list };
+
+  const isNew = !list.some(b => b.id === branch.id);
+  const idx = list.findIndex(b => b.id === branch.id);
+  if (idx > -1) {
+    list[idx] = { ...list[idx], ...branch };
+  } else {
+    list.push(branch);
+  }
+  saveJson(STORAGE_KEYS.BRANCHES, list);
+
+  let allVTypes = getVoucherTypes();
+  let createdVoucherCount = 0;
+
+  voucherSeriesList.forEach(v => {
+    const id = v.id || `vt_${branch.id}_${(v.prefix || 'VCH').replace(/[^a-zA-Z0-9]/g, '').toLowerCase()}_${Date.now()}`;
+    const itemToSave: VoucherType = {
+      id,
+      name: (v.name || `${branch.name} ${v.parentType || 'Voucher'}`).trim(),
+      parentType: (v.parentType || v.type || 'Payment') as any,
+      type: (v.parentType || v.type || 'Payment') as any,
+      typeCode: v.typeCode || 'P',
+      prefix: (v.prefix || '').trim().toUpperCase(),
+      suffix: (v.suffix || '').trim(),
+      numberingMode: v.numberingMode === 'manual' ? 'manual' : 'auto',
+      startingNumber: Number(v.startingNumber) || 1,
+      zeroPadding: v.zeroPadding !== undefined ? Number(v.zeroPadding) : 4,
+      defaultDebitLedger: v.defaultDebitLedger || '',
+      defaultCreditLedger: v.defaultCreditLedger || '',
+      defaultNarration: v.defaultNarration || '',
+      isDefault: false,
+      description: (v.description || '').trim(),
+      isActive: v.isActive !== false,
+      status: v.isActive !== false ? 'Active' : 'Inactive',
+      branchId: branch.id,
+      branchCode: branch.code,
+      branchName: branch.name
+    };
+
+    const existingIdx = allVTypes.findIndex(existing => existing.id === id || (existing.branchId === branch.id && existing.parentType === itemToSave.parentType && existing.typeCode === itemToSave.typeCode));
+    if (existingIdx > -1) {
+      allVTypes[existingIdx] = { ...allVTypes[existingIdx], ...itemToSave };
+    } else {
+      allVTypes.push(itemToSave);
+      createdVoucherCount++;
+    }
+  });
+
+  saveJson(STORAGE_KEYS.VOUCHER_TYPES, allVTypes);
+
+  return { ok: true, branches: list, isNew, createdVoucherCount, voucherTypes: allVTypes };
 }
 
 export function deleteBranch(branchId: string) {
@@ -1882,6 +2048,14 @@ export function deleteBranch(branchId: string) {
   }
   const filtered = list.filter(b => b.id !== branchId);
   saveJson(STORAGE_KEYS.BRANCHES, filtered);
+
+  // Clean up branch-specific voucher series
+  try {
+    let allVTypes = getVoucherTypes();
+    const remaining = allVTypes.filter(v => v.branchId !== branchId);
+    saveJson(STORAGE_KEYS.VOUCHER_TYPES, remaining);
+  } catch {}
+
   return { ok: true, branches: filtered };
 }
 
@@ -1948,6 +2122,227 @@ export function getEffectiveVoucherPrefix(basePrefix: string, isForcedOnline?: b
   // Format clean offline prefix: e.g., 'POS-' + 'C1' -> 'POS-C1-' or 'INV-' + 'C1' -> 'INV-C1-'
   const cleanBase = (basePrefix || 'POS-').replace(/[-_]+$/, '');
   return `${cleanBase}-${counterId}-`;
+}
+
+// ----------------- TERMINALS MANAGEMENT & LICENSING -----------------
+export const DEFAULT_TERMINALS: TerminalConfig[] = [
+  {
+    id: 'C1',
+    name: 'Counter 1 (Billing PC)',
+    code: 'C1',
+    role: 'Cashier',
+    defaultView: 'pos',
+    description: 'Main Billing Desk 1 with rapid barcode scanning',
+    tag: 'Counter 1',
+    color: 'from-blue-600 to-indigo-600',
+    isActive: true,
+    isPrimary: true
+  },
+  {
+    id: 'C2',
+    name: 'Counter 2 (Billing PC)',
+    code: 'C2',
+    role: 'Cashier',
+    defaultView: 'pos',
+    description: 'Second Billing Terminal with synchronized offline safety',
+    tag: 'Counter 2',
+    color: 'from-indigo-600 to-violet-600',
+    isActive: false
+  },
+  {
+    id: 'C3',
+    name: 'Counter 3 (Billing PC)',
+    code: 'C3',
+    role: 'Cashier',
+    defaultView: 'pos',
+    description: 'Third Billing Counter for peak rush hours',
+    tag: 'Counter 3',
+    color: 'from-violet-600 to-purple-600',
+    isActive: false
+  },
+  {
+    id: 'C4',
+    name: 'Counter 4 (Express Checkout)',
+    code: 'C4',
+    role: 'Cashier',
+    defaultView: 'pos',
+    description: 'Express Checkout / Quick Grocery Desk',
+    tag: 'Counter 4',
+    color: 'from-purple-600 to-fuchsia-600',
+    isActive: false
+  },
+  {
+    id: 'ACC1',
+    name: 'Accountant Desk 1',
+    code: 'ACC1',
+    role: 'Accountant',
+    defaultView: 'vouchers',
+    description: 'Direct accounting voucher entry & bank reconciliation',
+    tag: 'Accountant 1',
+    color: 'from-emerald-600 to-teal-600',
+    isActive: true
+  },
+  {
+    id: 'ACC2',
+    name: 'Accountant Desk 2',
+    code: 'ACC2',
+    role: 'Accountant',
+    defaultView: 'reports',
+    description: 'Financial audits, P&L statements, and ledger reviews',
+    tag: 'Accountant 2',
+    color: 'from-teal-600 to-cyan-600',
+    isActive: false
+  },
+  {
+    id: 'MOB',
+    name: 'Owner / Mobile Phone',
+    code: 'MOB',
+    role: 'Manager',
+    defaultView: 'dashboard',
+    description: 'Live mobile sales analytics & supervisor overview',
+    tag: 'Mobile Admin',
+    color: 'from-amber-600 to-orange-600',
+    isActive: true
+  }
+];
+
+export function getTerminalsConfig(customCompanyId?: string): TerminalConfig[] {
+  return loadJson<TerminalConfig[]>(STORAGE_KEYS.TERMINALS, DEFAULT_TERMINALS, customCompanyId);
+}
+
+export function saveTerminalsConfig(terminals: TerminalConfig[], customCompanyId?: string): void {
+  saveJson(STORAGE_KEYS.TERMINALS, terminals, customCompanyId);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('terminals_config_changed', { detail: { terminals } }));
+  }
+}
+
+export function getMaxTerminalLimit(customCompanyId?: string): number {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const cId = customCompanyId || getActiveCompanyId();
+      const tenantKey = getTenantStorageKey('deep_pos_terminal_limit', cId);
+      const val = localStorage.getItem(tenantKey);
+      if (val !== null && val !== '') {
+        const parsed = parseInt(val, 10);
+        if (!isNaN(parsed)) return parsed;
+      }
+      
+      // Also check if company record has allowed_counters
+      const cached = localStorage.getItem('supabase_cached_companies');
+      if (cached && cId) {
+        const comps: any[] = JSON.parse(cached);
+        const match = comps.find(c => c.id === cId);
+        if (match && typeof match.allowed_counters === 'number') {
+          return match.allowed_counters;
+        }
+      }
+      
+      // Fallback to legacy non-prefixed key if any
+      const legacyVal = localStorage.getItem('deep_pos_terminal_limit');
+      if (legacyVal !== null && legacyVal !== '') {
+        const parsed = parseInt(legacyVal, 10);
+        if (!isNaN(parsed)) return parsed;
+      }
+    }
+  } catch {}
+  return 1; // Default: 1 active billing counter allowed per company
+}
+
+export function setMaxTerminalLimit(limit: number, customCompanyId?: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const cId = customCompanyId || getActiveCompanyId();
+      const tenantKey = getTenantStorageKey('deep_pos_terminal_limit', cId);
+      localStorage.setItem(tenantKey, String(limit));
+      localStorage.setItem('deep_pos_terminal_limit', String(limit));
+
+      // Update cached company record if present
+      const cached = localStorage.getItem('supabase_cached_companies');
+      if (cached && cId) {
+        try {
+          const comps: any[] = JSON.parse(cached);
+          const idx = comps.findIndex(c => c.id === cId);
+          if (idx !== -1) {
+            comps[idx].allowed_counters = limit;
+            localStorage.setItem('supabase_cached_companies', JSON.stringify(comps));
+          }
+        } catch {}
+      }
+
+      window.dispatchEvent(new CustomEvent('terminal_limit_changed', { detail: { limit, companyId: cId } }));
+    }
+  } catch {}
+}
+
+export function saveTerminalConfig(terminal: TerminalConfig): { ok: boolean; error?: string; terminals: TerminalConfig[] } {
+  const terminals = getTerminalsConfig();
+  const limit = getMaxTerminalLimit();
+  
+  const cleanId = (terminal.id || '').trim();
+  const cleanCode = (terminal.code || '').trim().toUpperCase();
+  const cleanName = (terminal.name || '').trim();
+
+  if (!cleanCode) {
+    return { ok: false, error: 'Terminal Code / ID (e.g. C1, POS-01) is required.', terminals };
+  }
+  if (!cleanName) {
+    return { ok: false, error: 'Terminal Name (e.g. Counter 1, Front Billing) is required.', terminals };
+  }
+
+  const existingIndex = terminals.findIndex(
+    t => t.id === cleanId || t.code.toUpperCase() === cleanCode
+  );
+
+  const updatedTerminal: TerminalConfig = {
+    ...terminal,
+    id: cleanId || cleanCode,
+    code: cleanCode,
+    name: cleanName
+  };
+
+  if (existingIndex >= 0) {
+    // If we are activating an existing inactive terminal, check limit
+    const wasInactive = !terminals[existingIndex].isActive;
+    const activeCount = terminals.filter((t, idx) => idx !== existingIndex && t.isActive).length;
+    if (wasInactive && updatedTerminal.isActive && limit > 0 && activeCount >= limit) {
+      return {
+        ok: false,
+        error: `Cannot activate terminal. Current subscription plan allows maximum ${limit} active terminal(s).`,
+        terminals
+      };
+    }
+    terminals[existingIndex] = updatedTerminal;
+  } else {
+    // Adding brand new terminal
+    const activeCount = terminals.filter(t => t.isActive).length;
+    if (updatedTerminal.isActive && limit > 0 && activeCount >= limit) {
+      return {
+        ok: false,
+        error: `Cannot add active terminal. Current subscription plan allows maximum ${limit} active terminal(s). Please adjust the limit or deactivate an unused terminal.`,
+        terminals
+      };
+    }
+    terminals.push(updatedTerminal);
+  }
+
+  saveTerminalsConfig(terminals);
+  return { ok: true, terminals };
+}
+
+export function deleteTerminalConfig(terminalId: string): { ok: boolean; error?: string; terminals: TerminalConfig[] } {
+  const terminals = getTerminalsConfig();
+  if (terminals.length <= 1) {
+    return { ok: false, error: 'At least one terminal must remain in the system.', terminals };
+  }
+  const filtered = terminals.filter(t => t.id !== terminalId && t.code.toUpperCase() !== terminalId.toUpperCase());
+  saveTerminalsConfig(filtered);
+  return { ok: true, terminals: filtered };
+}
+
+export function resetTerminalsToDefault(): TerminalConfig[] {
+  saveTerminalsConfig(DEFAULT_TERMINALS);
+  return DEFAULT_TERMINALS;
 }
 
 export function getActiveBranch(config?: Config): Branch {

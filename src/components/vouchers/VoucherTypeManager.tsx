@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { VoucherType, VoucherGroupType } from '../../types';
-import { getVoucherTypes, saveVoucherType, deleteVoucherType, toggleVoucherTypeStatus, setVoucherTypeDefault } from '../../services/storageService';
+import { VoucherType, VoucherGroupType, Branch } from '../../types';
+import { getVoucherTypes, saveVoucherType, deleteVoucherType, toggleVoucherTypeStatus, setVoucherTypeDefault, getBranches } from '../../services/storageService';
 import { playSaveSound } from '../../utils/audio';
 import { 
   Plus, Edit2, Trash2, CheckCircle2, AlertCircle, Layers, 
   Sparkles, Check, X, Shield, ArrowRight, FileText, Hash, 
-  SlidersHorizontal, RefreshCw, Star, ToggleLeft, ToggleRight
+  SlidersHorizontal, RefreshCw, Star, ToggleLeft, ToggleRight, Building2
 } from 'lucide-react';
 
 interface VoucherTypeManagerProps {
@@ -14,6 +14,7 @@ interface VoucherTypeManagerProps {
 
 const TYPE_CATEGORIES: { id: VoucherGroupType | 'All'; label: string; color: string }[] = [
   { id: 'All', label: 'All Types', color: 'bg-slate-100 text-slate-800' },
+  { id: 'Sale', label: 'Sales / POS', color: 'bg-blue-100 text-blue-800' },
   { id: 'Payment', label: 'Payment', color: 'bg-rose-100 text-rose-800' },
   { id: 'Receipt', label: 'Receipt', color: 'bg-emerald-100 text-emerald-800' },
   { id: 'Purchase', label: 'Purchase', color: 'bg-amber-100 text-amber-800' },
@@ -30,7 +31,9 @@ const TYPE_CATEGORIES: { id: VoucherGroupType | 'All'; label: string; color: str
 
 export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdated }) => {
   const [voucherTypes, setVoucherTypes] = useState<VoucherType[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<VoucherGroupType | 'All'>('All');
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   
   // Modal State
@@ -47,12 +50,14 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
     startingNumber: 1,
     description: '',
     isDefault: false,
-    isActive: true
+    isActive: true,
+    branchId: ''
   });
 
   const loadData = () => {
     const list = getVoucherTypes();
     setVoucherTypes(list);
+    setBranches(getBranches());
   };
 
   useEffect(() => {
@@ -72,7 +77,7 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
     const defaultPrefixMap: Record<string, string> = {
       Payment: 'PMT-',
       Receipt: 'RCT-',
-      Sale: 'INV-',
+      Sale: 'POS-',
       Purchase: 'PUR-',
       Journal: 'JRN-',
       Contra: 'CTR-',
@@ -80,8 +85,8 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
       'Credit Note': 'CN-',
       DebitNote: 'DN-',
       'Debit Note': 'DN-',
-      DeliveryNote: 'DC-',
-      'Delivery Note': 'DC-',
+      DeliveryNote: 'DLV-',
+      'Delivery Note': 'DLV-',
       Quotation: 'QTN-',
       PhysicalStock: 'PHY-',
       'Physical Stock': 'PHY-'
@@ -95,7 +100,8 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
       startingNumber: 1,
       description: '',
       isDefault: false,
-      isActive: true
+      isActive: true,
+      branchId: selectedBranchId !== 'ALL' && selectedBranchId !== 'GLOBAL' ? selectedBranchId : ''
     });
     setIsModalOpen(true);
   };
@@ -117,6 +123,8 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
       return;
     }
 
+    const matchedBranch = branches.find(b => b.id === formData.branchId);
+
     const payload: Partial<VoucherType> = {
       ...(editingId ? { id: editingId } : {}),
       name: formData.name.trim(),
@@ -127,7 +135,10 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
       startingNumber: Number(formData.startingNumber) || 1,
       description: (formData.description || '').trim(),
       isDefault: Boolean(formData.isDefault),
-      isActive: formData.isActive !== false
+      isActive: formData.isActive !== false,
+      branchId: formData.branchId || undefined,
+      branchCode: matchedBranch?.code || undefined,
+      branchName: matchedBranch?.name || undefined
     };
 
     const res = saveVoucherType(payload);
@@ -160,7 +171,7 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
   };
 
   const handleToggleDefault = (vt: VoucherType) => {
-    if (vt.isDefault) return; // already default
+    if (vt.isDefault) return;
     const res = setVoucherTypeDefault(vt.id);
     if (res.ok) {
       loadData();
@@ -183,14 +194,23 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
   };
 
   const filteredTypes = voucherTypes.filter(vt => {
-    if (vt.type === 'Sale' || vt.parentType === 'Sale') return false;
-    const matchesCat = selectedCategory === 'All' || vt.type === selectedCategory;
+    const matchesCat = selectedCategory === 'All' || vt.type === selectedCategory || vt.parentType === selectedCategory;
+    const matchesBranch = 
+      selectedBranchId === 'ALL' 
+        ? true 
+        : selectedBranchId === 'GLOBAL' 
+          ? !vt.branchId 
+          : vt.branchId === selectedBranchId;
+
     const matchesSearch = 
       vt.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       vt.prefix.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      vt.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (vt.type && vt.type.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (vt.branchCode && vt.branchCode.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (vt.branchName && vt.branchName.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (vt.description || '').toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesCat && matchesSearch;
+
+    return matchesCat && matchesBranch && matchesSearch;
   });
 
   return (
@@ -200,10 +220,10 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
         <div>
           <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
             <Layers className="h-4 w-4 text-indigo-600" />
-            <span>Custom Voucher Types (ERP Master)</span>
+            <span>Voucher Identities &amp; Numbering Series Master</span>
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Create and organize multiple custom voucher types under Payment, Receipt, Journal, Purchase, and more.
+            Manage global and branch-specific numbering series for Sales, Purchases, Payments, Receipts, Contra, and Journal vouchers.
           </p>
         </div>
 
@@ -227,8 +247,49 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
         </div>
       )}
 
-      {/* Filter Chips & Search Bar */}
+      {/* Filter Chips, Branch Dropdown & Search Bar */}
       <div className="space-y-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Branch Filter Dropdown */}
+          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-300 text-xs shadow-2xs">
+            <Building2 className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+            <span className="font-bold text-slate-600 text-[11px]">Branch:</span>
+            <select
+              value={selectedBranchId}
+              onChange={e => setSelectedBranchId(e.target.value)}
+              className="font-bold text-slate-900 outline-none bg-transparent cursor-pointer text-xs"
+            >
+              <option value="ALL">All Branches &amp; Global ({voucherTypes.length})</option>
+              <option value="GLOBAL">Global / Default Series Only ({voucherTypes.filter(v => !v.branchId).length})</option>
+              {branches.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name} ({b.code}) - {voucherTypes.filter(v => v.branchId === b.id).length} Series
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex-1 flex items-center justify-between gap-2 min-w-[240px]">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Search voucher types by name, prefix, branch, or description..."
+              className="w-full h-9 rounded-xl border border-slate-300 px-3 text-xs bg-white text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="text-xs text-slate-400 hover:text-slate-700 font-semibold px-2 cursor-pointer"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Voucher Category Chips */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
           {TYPE_CATEGORIES.map(cat => (
             <button
@@ -246,30 +307,11 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
                 <span className={`ml-1.5 px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
                   selectedCategory === cat.id ? 'bg-indigo-800 text-white' : 'bg-slate-200 text-slate-800'
                 }`}>
-                  {voucherTypes.filter(v => v.type === cat.id).length}
+                  {voucherTypes.filter(v => v.type === cat.id || v.parentType === cat.id).length}
                 </span>
               )}
             </button>
           ))}
-        </div>
-
-        <div className="flex items-center justify-between gap-2">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Search voucher types by name, prefix, or description..."
-            className="flex-1 h-9 rounded-xl border border-slate-300 px-3 text-xs bg-white text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100"
-          />
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={() => setSearchTerm('')}
-              className="text-xs text-slate-400 hover:text-slate-700 font-semibold px-2"
-            >
-              Clear
-            </button>
-          )}
         </div>
       </div>
 
@@ -279,6 +321,7 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
           <thead className="sticky top-0 z-20 bg-slate-100 border-b border-slate-200 text-slate-700 uppercase text-[10px] font-extrabold tracking-wider shadow-2xs">
             <tr>
               <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 whitespace-nowrap">Voucher Type Name</th>
+              <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 whitespace-nowrap">Branch Identity</th>
               <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 whitespace-nowrap">Parent Group</th>
               <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 whitespace-nowrap">Prefix / Sample</th>
               <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 whitespace-nowrap">Numbering</th>
@@ -290,13 +333,13 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
           <tbody className="divide-y divide-slate-100">
             {filteredTypes.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-slate-400 italic">
-                  No voucher types found. Click "Create Voucher Type" above to add one.
+                <td colSpan={8} className="py-8 text-center text-slate-400 italic">
+                  No voucher types found. Click &quot;Create Voucher Type&quot; above to add one.
                 </td>
               </tr>
             ) : (
               filteredTypes.map(vt => {
-                const catObj = TYPE_CATEGORIES.find(c => c.id === vt.type);
+                const catObj = TYPE_CATEGORIES.find(c => c.id === vt.type || c.id === vt.parentType);
                 return (
                   <tr key={vt.id} className="hover:bg-slate-50/70 transition">
                     <td className="py-2 px-3">
@@ -316,8 +359,21 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
                     </td>
 
                     <td className="py-2 px-3">
+                      {vt.branchName || vt.branchCode ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono">
+                          <Building2 className="h-2.5 w-2.5 text-indigo-500 shrink-0" />
+                          <span>{vt.branchCode || 'BR'} - {vt.branchName || 'Branch'}</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                          <span>Global / Central</span>
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="py-2 px-3">
                       <span className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold font-mono ${catObj?.color || 'bg-slate-100 text-slate-800'}`}>
-                        {vt.type}
+                        {vt.type || vt.parentType}
                       </span>
                     </td>
 
@@ -331,7 +387,7 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
                       <span className="capitalize font-semibold">{vt.numberingMode || 'auto'}</span>
                     </td>
 
-                    <td className="py-2 px-3 text-slate-500 truncate max-w-[200px]" title={vt.description}>
+                    <td className="py-2 px-3 text-slate-500 truncate max-w-[180px]" title={vt.description}>
                       {vt.description || <span className="text-slate-300 italic">—</span>}
                     </td>
 
@@ -402,7 +458,7 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
                   <h3 className="text-sm font-extrabold text-slate-900">
                     {editingId ? 'Edit Voucher Type' : 'Create New Voucher Type'}
                   </h3>
-                  <p className="text-xs text-slate-500">Configure voucher numbering, prefix, and categorization</p>
+                  <p className="text-xs text-slate-500">Configure voucher numbering, prefix, and branch scope</p>
                 </div>
               </div>
               <button
@@ -431,6 +487,32 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
                 />
               </div>
 
+              <div>
+                <label className="block font-bold text-slate-800 mb-1">
+                  Branch Association
+                </label>
+                <select
+                  value={formData.branchId || ''}
+                  onChange={e => {
+                    const bId = e.target.value;
+                    const matched = branches.find(b => b.id === bId);
+                    setFormData({
+                      ...formData,
+                      branchId: bId,
+                      prefix: matched && !formData.prefix?.startsWith(matched.code) ? `${matched.code}-${formData.prefix || 'VCH-'}` : formData.prefix
+                    });
+                  }}
+                  className="w-full h-9 rounded-xl border border-slate-300 px-3 font-semibold text-slate-800 outline-none bg-white focus:border-indigo-600"
+                >
+                  <option value="">Global / Central (All Branches)</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} ({b.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-slate-800 mb-1">
@@ -443,7 +525,7 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
                       const defaultPrefixMap: Record<string, string> = {
                         Payment: 'PMT-',
                         Receipt: 'RCT-',
-                        Sale: 'INV-',
+                        Sale: 'POS-',
                         Purchase: 'PUR-',
                         Journal: 'JRN-',
                         Contra: 'CTR-',
@@ -451,8 +533,8 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
                         'Credit Note': 'CN-',
                         DebitNote: 'DN-',
                         'Debit Note': 'DN-',
-                        DeliveryNote: 'DC-',
-                        'Delivery Note': 'DC-',
+                        DeliveryNote: 'DLV-',
+                        'Delivery Note': 'DLV-',
                         Quotation: 'QTN-',
                         PhysicalStock: 'PHY-',
                         'Physical Stock': 'PHY-'
@@ -465,6 +547,7 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
                     }}
                     className="w-full h-9 rounded-xl border border-slate-300 px-3 font-semibold text-slate-800 outline-none bg-white focus:border-indigo-600"
                   >
+                    <option value="Sale">Sale / POS Invoice</option>
                     <option value="Payment">Payment</option>
                     <option value="Receipt">Receipt</option>
                     <option value="Purchase">Purchase Entry</option>
@@ -484,7 +567,7 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. PMT-, BNK-, INV-"
+                    placeholder="e.g. PMT-, BNK-, INV-, THI-POS-"
                     value={formData.prefix || ''}
                     onChange={e => setFormData({ ...formData, prefix: e.target.value.toUpperCase() })}
                     className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono font-bold text-slate-900 outline-none focus:border-indigo-600"
@@ -586,3 +669,4 @@ export const VoucherTypeManager: React.FC<VoucherTypeManagerProps> = ({ onUpdate
     </div>
   );
 };
+

@@ -140,6 +140,21 @@ export interface Godown {
   notes?: string;
 }
 
+export interface TerminalConfig {
+  id: string;
+  name: string;
+  code: string;
+  role: 'Cashier' | 'Accountant' | 'Sales' | 'Manager' | 'Admin';
+  defaultView: 'pos' | 'normalsale' | 'vouchers' | 'sales' | 'reports' | 'dashboard';
+  description?: string;
+  tag?: string;
+  color?: string;
+  branchId?: string;
+  branchName?: string;
+  isActive: boolean;
+  isPrimary?: boolean;
+}
+
 export interface StockTransferItem {
   itemCode: string;
   itemName: string;
@@ -672,6 +687,9 @@ export interface VoucherType {
   lineDescription?: string;
   isActive?: boolean;
   status?: 'Active' | 'Inactive';
+  branchId?: string;
+  branchCode?: string;
+  branchName?: string;
 }
 
 export interface VoucherLine {
