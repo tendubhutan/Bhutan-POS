@@ -710,14 +710,19 @@ export function getActiveCompanyId(): string {
     return urlId;
   }
 
-  // 3. Clean Root URL (no dedicated company in URL):
-  // When accessing the base URL (e.g. https://bhutan-pos.tendubhutan.workers.dev) without query parameters,
-  // we must open the primary platform default workspace (Bhutan Retail Enterprise)
-  // and NOT hijack the session with a previously visited client dedicated link.
+  // 3. Clean Root URL / Session check:
   if (typeof sessionStorage !== 'undefined') {
     const sessionCompany = sessionStorage.getItem('supabase_active_session_company');
     if (sessionCompany) {
       return sessionCompany;
+    }
+  }
+
+  // 4. Persistent company selection in localStorage:
+  if (typeof localStorage !== 'undefined') {
+    const localCompany = localStorage.getItem(STORAGE_KEYS.TENANT_COMPANY_ID) || localStorage.getItem('supabase_active_company_id');
+    if (localCompany) {
+      return localCompany;
     }
   }
 

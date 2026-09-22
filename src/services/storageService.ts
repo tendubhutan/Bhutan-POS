@@ -1087,33 +1087,58 @@ export function loadJson<T>(key: string, fallback: T, customCompanyId?: string):
     if (raw) {
       const parsed = JSON.parse(raw);
 
-      // Auto-heal & sanitize: non-demo tenant ledgers must NEVER retain contaminated demo balances
-      if (!isDemo && key === STORAGE_KEYS.LEDGERS && Array.isArray(parsed)) {
-        const sKey = getTenantStorageKey(STORAGE_KEYS.SALES_INVOICES, cId);
-        const pKey = getTenantStorageKey(STORAGE_KEYS.PURCHASE_INVOICES, cId);
-        const vKey = getTenantStorageKey(STORAGE_KEYS.VOUCHERS, cId);
-        const sRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(sKey) : null;
-        const pRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(pKey) : null;
-        const vRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(vKey) : null;
-        const hasTransactions = 
-          (sRaw && sRaw !== '[]' && JSON.parse(sRaw).length > 0) ||
-          (pRaw && pRaw !== '[]' && JSON.parse(pRaw).length > 0) ||
-          (vRaw && vRaw !== '[]' && JSON.parse(vRaw).length > 0);
-
-        if (!hasTransactions) {
-          let sanitized = false;
-          parsed.forEach((l: any) => {
-            const cur = Number(l['Current Balance']) || 0;
-            const op = Number(l['Opening Balance']) || 0;
-            // Any non-zero current balance or opening balance without transactions in a client workspace is phantom
-            if (cur !== 0 || op !== 0) {
-              l['Opening Balance'] = 0;
-              l['Current Balance'] = 0;
-              sanitized = true;
+      // Auto-heal & sanitize: non-demo tenant ledgers & invoices must NEVER retain contaminated demo balances
+      if (!isDemo && Array.isArray(parsed)) {
+        if (key === STORAGE_KEYS.SALES_INVOICES || key === STORAGE_KEYS.PURCHASE_INVOICES || key === STORAGE_KEYS.VOUCHERS) {
+          const filtered = parsed.filter((item: any) => {
+            const itemComp = item.companyId || item.company_id;
+            if (itemComp && itemComp !== cId) return false;
+            // Reject demo invoices leaking into client workspace
+            const invNo = item.invoiceNo || item.billNo || item.voucherNo || '';
+            if (invNo.startsWith('POS-') || invNo.startsWith('SAL-') || invNo.startsWith('VOU-')) {
+              const hasDemoItems = Array.isArray(item.items) && item.items.some((it: any) => 
+                it['Item Name']?.includes('Wireless Mouse') || it['Item Name']?.includes('Pendrive') || it['Item Code']?.startsWith('ITM260812')
+              );
+              if (hasDemoItems) return false;
             }
+            return true;
           });
-          if (sanitized && typeof localStorage !== 'undefined') {
-            localStorage.setItem(effectiveKey, JSON.stringify(parsed));
+
+          if (filtered.length !== parsed.length) {
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem(effectiveKey, JSON.stringify(filtered));
+            }
+            return filtered as unknown as T;
+          }
+        }
+
+        if (key === STORAGE_KEYS.LEDGERS) {
+          const sKey = getTenantStorageKey(STORAGE_KEYS.SALES_INVOICES, cId);
+          const pKey = getTenantStorageKey(STORAGE_KEYS.PURCHASE_INVOICES, cId);
+          const vKey = getTenantStorageKey(STORAGE_KEYS.VOUCHERS, cId);
+          const sRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(sKey) : null;
+          const pRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(pKey) : null;
+          const vRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(vKey) : null;
+          const hasTransactions = 
+            (sRaw && sRaw !== '[]' && JSON.parse(sRaw).length > 0) ||
+            (pRaw && pRaw !== '[]' && JSON.parse(pRaw).length > 0) ||
+            (vRaw && vRaw !== '[]' && JSON.parse(vRaw).length > 0);
+
+          if (!hasTransactions) {
+            let sanitized = false;
+            parsed.forEach((l: any) => {
+              const cur = Number(l['Current Balance']) || 0;
+              const op = Number(l['Opening Balance']) || 0;
+              // Any non-zero current balance or opening balance without transactions in a client workspace is phantom
+              if (cur !== 0 || op !== 0) {
+                l['Opening Balance'] = 0;
+                l['Current Balance'] = 0;
+                sanitized = true;
+              }
+            });
+            if (sanitized && typeof localStorage !== 'undefined') {
+              localStorage.setItem(effectiveKey, JSON.stringify(parsed));
+            }
           }
         }
       }
@@ -1334,10 +1359,11 @@ export function nextCounter(name: string): number {
   return val;
 }
 
-export function getLedgers(): Ledger[] {
-  let leds = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
-  const deletedLedgers = new Set(loadJson<string[]>(STORAGE_KEYS.DELETED_LEDGERS, []).map(d => (d || '').trim().toLowerCase()));
-  const isDefaultDemoCompany = !getActiveCompanyId() || getActiveCompanyId() === DEFAULT_TENANT_COMPANY.id;
+export function getLedgers(targetCompanyId?: string): Ledger[] {
+  const cId = targetCompanyId || getActiveCompanyId();
+  let leds = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS, cId);
+  const deletedLedgers = new Set(loadJson<string[]>(STORAGE_KEYS.DELETED_LEDGERS, [], cId).map(d => (d || '').trim().toLowerCase()));
+  const isDefaultDemoCompany = !cId || cId === DEFAULT_TENANT_COMPANY.id;
 
   // Auto-purge TD/DA Expenses if present and unused (consolidating to TA/DA Expenses)
   leds = leds.filter(l => {
@@ -6653,20 +6679,23 @@ export function getFullLedgerStatement(name: string, fromDate?: string, toDate?:
   return { openingBalance: periodOpBal, rows };
 }
 
-export function getDeduplicatedSales(): SalesInvoice[] {
-  const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
+export function getDeduplicatedSales(targetCompanyId?: string): SalesInvoice[] {
+  const cId = targetCompanyId || getActiveCompanyId();
+  const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, [], cId);
   const map = new Map<string, SalesInvoice>();
   sales.forEach(s => {
-    // Overwrite previous entries, but prefer Active over Cancelled if duplicate numbers exist
-    if (!map.has(s.invoiceNo) || map.get(s.invoiceNo)?.status === 'Cancelled' || s.status !== 'Cancelled') {
-      map.set(s.invoiceNo, s);
+    if (s && s.invoiceNo) {
+      if (!map.has(s.invoiceNo) || map.get(s.invoiceNo)?.status === 'Cancelled' || s.status !== 'Cancelled') {
+        map.set(s.invoiceNo, s);
+      }
     }
   });
   return Array.from(map.values());
 }
 
-export function getDeduplicatedPurchases(): PurchaseInvoice[] {
-  const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
+export function getDeduplicatedPurchases(targetCompanyId?: string): PurchaseInvoice[] {
+  const cId = targetCompanyId || getActiveCompanyId();
+  const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, [], cId);
   const map = new Map<string, PurchaseInvoice>();
   purchases.forEach(p => {
     const bNo = p.billNo || p.invoiceNo;
@@ -6675,7 +6704,7 @@ export function getDeduplicatedPurchases(): PurchaseInvoice[] {
         map.set(bNo, p);
       }
     } else {
-      map.set(Math.random().toString(), p); // Handle edge case of missing bill no
+      map.set(Math.random().toString(), p);
     }
   });
   return Array.from(map.values());
@@ -8154,11 +8183,14 @@ export function getAdvancedDashboardData(from: string, to: string) {
   const fr = new Date(from).setHours(0, 0, 0, 0);
   const toDt = new Date(to).setHours(23, 59, 59, 999);
   
-  const sales = getDeduplicatedSales();
-  const purchases = getDeduplicatedPurchases();
-  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
-  const items = loadJson<any[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
-  const ledgers = getLedgers();
+  const currentCompId = getActiveCompanyId();
+  const isDemoComp = !currentCompId || currentCompId === DEFAULT_TENANT_COMPANY.id;
+
+  const sales = getDeduplicatedSales(currentCompId);
+  const purchases = getDeduplicatedPurchases(currentCompId);
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, [], currentCompId);
+  const items = loadJson<any[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS, currentCompId);
+  const ledgers = getLedgers(currentCompId);
   
   const sls = sales.filter(r => {
     const d = new Date(r.date).getTime();
@@ -8196,8 +8228,6 @@ export function getAdvancedDashboardData(from: string, to: string) {
   }
 
   // Calculate balances by groups
-  const currentCompId = getActiveCompanyId();
-  const isDemoComp = !currentCompId || currentCompId === DEFAULT_TENANT_COMPANY.id;
   const hasTxns = sls.length > 0 || purchases.length > 0 || vouchers.length > 0;
 
   // Cash

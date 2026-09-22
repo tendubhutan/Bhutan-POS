@@ -35,7 +35,9 @@ import {
   fetchFinancialYears, 
   fetchTenantRemoteConfig,
   getActiveCompanyId, 
+  setActiveCompanyId,
   getActiveFYId, 
+  DEFAULT_TENANT_COMPANY,
   SupabaseCompany, 
   SupabaseFinancialYear 
 } from './services/supabaseTenantService';
@@ -292,8 +294,11 @@ export default function App() {
       const cId = getActiveCompanyId();
       const fyId = getActiveFYId();
       const { companies: comps } = await fetchUserCompanies();
-      const currentC = comps.find(c => c.id === cId) || comps[0];
+      const currentC = comps.find(c => c.id === cId) || comps.find(c => c.id === DEFAULT_TENANT_COMPANY.id) || comps[0];
       if (currentC) {
+        if (currentC.id !== cId) {
+          setActiveCompanyId(currentC.id);
+        }
         setActiveCompany(currentC);
         // Automatically sync company profile and remote config
         const remoteCfg = await fetchTenantRemoteConfig(currentC.id);
