@@ -166,28 +166,32 @@ export const LoginGate: React.FC<LoginGateProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col justify-center items-center p-4 selection:bg-blue-600 selection:text-white">
-      {/* Ambient background lighting */}
+      {/* Ambient background lighting and subtle gradients */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-blue-600/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 right-10 w-[500px] h-[300px] bg-indigo-600/10 rounded-full blur-3xl" />
+        <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[600px] sm:w-[750px] h-[380px] bg-gradient-to-b from-blue-600/15 via-indigo-600/10 to-transparent rounded-full blur-3xl" />
+        <div className="absolute -bottom-32 -right-20 w-[450px] h-[350px] bg-blue-500/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-32 -left-20 w-[450px] h-[350px] bg-teal-500/10 rounded-full blur-3xl" />
+        {/* Subtle decorative grid background */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b08_1px,transparent_1px),linear-gradient(to_bottom,#1e293b08_1px,transparent_1px)] bg-[size:24px_24px] opacity-40" />
       </div>
 
-      <div className="relative w-full max-w-md bg-slate-900/95 border border-slate-800 rounded-3xl shadow-2xl p-6 sm:p-8 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200">
-        {/* Brand & Security Header */}
-        <div className="flex flex-col items-center text-center mb-5">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-xl shadow-blue-500/20 mb-3 ring-4 ring-blue-500/20">
-            <ShieldCheck className="h-8 w-8" />
+      <div className="relative w-full max-w-md bg-slate-900/90 border border-slate-800/90 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.6)] p-6 sm:p-8 backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-200">
+        {/* Brand Header */}
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className="relative mb-3.5">
+            <div className="h-16 w-16 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-xl shadow-blue-500/25 ring-4 ring-blue-500/15">
+              <ShieldCheck className="h-8 w-8 text-white drop-shadow" />
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-blue-950/80 border border-blue-800/80 text-blue-400 text-[11px] font-mono font-bold mb-1.5">
-            <Database className="h-3 w-3 text-emerald-400" />
-            <span>BHUTAN POS ENTERPRISE ERP</span>
+          
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-950/70 border border-blue-800/60 text-blue-300 text-xs font-semibold tracking-wide shadow-xs mb-2">
+            <Sparkles className="h-3.5 w-3.5 text-blue-400" />
+            <span>Ezee ERP</span>
           </div>
-          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+
+          <h1 className="text-2xl sm:text-[26px] font-black text-white tracking-tight">
             Terminal Access
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Offline-first POS with multi-tenant cloud sync
-          </p>
         </div>
 
         {/* 1-Click Instant Enter: ONLY displayed in development / preview environments */}
@@ -214,44 +218,46 @@ export const LoginGate: React.FC<LoginGateProps> = ({
         )}
 
         {/* Active Workspace Notification */}
-        <div className="mb-5 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
-            <Building2 className="h-4 w-4 text-blue-400" />
-            <div className="text-left">
-              <span className="text-slate-400 block text-[9px] font-mono uppercase tracking-wider">Active Workspace</span>
-              <span className="text-white font-bold truncate max-w-[190px] block text-xs">
+        <div className="mb-5 p-3 rounded-2xl bg-slate-800/50 border border-slate-700/60 flex items-center justify-between text-xs backdrop-blur-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-blue-600/15 border border-blue-500/25 flex items-center justify-center shrink-0 text-blue-400">
+              <Building2 className="h-4 w-4" />
+            </div>
+            <div className="text-left min-w-0">
+              <span className="text-slate-400 block text-[9px] font-mono uppercase tracking-wider font-semibold">Active Workspace</span>
+              <span className="text-white font-bold truncate block text-xs">
                 {activeCompany?.company_name || 'Bhutan Retail Enterprise'}
               </span>
             </div>
           </div>
-          <div className="text-right font-mono text-[10px] text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-md">
+          <div className="shrink-0 text-right font-mono text-[10px] text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800/60 px-2.5 py-1 rounded-lg shadow-2xs">
             {activeFY?.fy_name || 'FY 2026'}
           </div>
         </div>
 
         {/* Alerts */}
         {errorMsg && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5">
+          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5 animate-in fade-in duration-150">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-400" />
             <div className="leading-snug">{errorMsg}</div>
           </div>
         )}
 
         {isSuccess && (
-          <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+          <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in duration-150">
             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
             <span>Entering {authenticatedRole ? `${authenticatedRole} workspace...` : 'workspace...'}</span>
           </div>
         )}
 
         {/* Authentication Form */}
-        <form onSubmit={handleLoginSubmit} className="space-y-3.5">
+        <form onSubmit={handleLoginSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-300 mb-1 text-left">
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5 text-left">
               Email, Username, or Store Name
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                 <Mail className="h-4 w-4" />
               </div>
               <input
@@ -262,19 +268,19 @@ export const LoginGate: React.FC<LoginGateProps> = ({
                 placeholder="e.g. panglungenterprise@gmail.com, admin, or store name"
                 autoComplete="username"
                 disabled={isLoading || isSuccess}
-                className="w-full pl-9 pr-3 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                className="w-full pl-10 pr-3.5 py-2.5 bg-slate-800/70 border border-slate-700/80 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition shadow-inner"
               />
             </div>
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-xs font-bold text-slate-300 text-left">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-slate-300 text-left">
                 Password or PIN
               </label>
             </div>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                 <Lock className="h-4 w-4" />
               </div>
               <input
@@ -285,12 +291,12 @@ export const LoginGate: React.FC<LoginGateProps> = ({
                 placeholder="Password or 4-digit PIN"
                 autoComplete="current-password"
                 disabled={isLoading || isSuccess}
-                className="w-full pl-9 pr-9 py-2.5 bg-slate-800/80 border border-slate-700 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-800/70 border border-slate-700/80 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition shadow-inner"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition cursor-pointer"
+                className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 transition cursor-pointer"
                 title={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -301,7 +307,7 @@ export const LoginGate: React.FC<LoginGateProps> = ({
           <button
             type="submit"
             disabled={isLoading || isSuccess}
-            className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.98] text-white font-bold text-xs rounded-xl shadow-md shadow-blue-600/30 transition duration-150 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:via-indigo-500 hover:to-blue-500 active:scale-[0.99] text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/30 transition duration-150 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             {isLoading ? (
               <>
@@ -385,12 +391,6 @@ export const LoginGate: React.FC<LoginGateProps> = ({
             </div>
           </div>
         )}
-
-        {/* Security guarantee footer */}
-        <div className="mt-4 pt-2.5 border-t border-slate-800/40 flex items-center justify-center gap-1.5 text-[10px] text-slate-500">
-          <Terminal className="h-3 w-3 text-slate-400" />
-          <span>Strict Row Level Security (RLS) & Tenant Isolation Active</span>
-        </div>
       </div>
     </div>
   );
