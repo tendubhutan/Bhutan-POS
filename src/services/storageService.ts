@@ -1105,8 +1105,8 @@ export function loadJson<T>(key: string, fallback: T, customCompanyId?: string):
           parsed.forEach((l: any) => {
             const cur = Number(l['Current Balance']) || 0;
             const op = Number(l['Opening Balance']) || 0;
-            // Any non-zero current balance without transactions or demo opening balance is phantom
-            if (cur !== 0 || [10000, 50000, 25000, 85000].includes(op)) {
+            // Any non-zero current balance or opening balance without transactions in a client workspace is phantom
+            if (cur !== 0 || op !== 0) {
               l['Opening Balance'] = 0;
               l['Current Balance'] = 0;
               sanitized = true;
@@ -1369,7 +1369,7 @@ export function getLedgers(): Ledger[] {
       leds.forEach(l => {
         const cur = Number(l['Current Balance']) || 0;
         const op = Number(l['Opening Balance']) || 0;
-        if (cur !== 0 || [10000, 50000, 25000, 85000].includes(op)) {
+        if (cur !== 0 || op !== 0) {
           l['Opening Balance'] = 0;
           l['Current Balance'] = 0;
           ledgersUpdated = true;
@@ -4534,6 +4534,17 @@ export function recalculateLedgerBalances() {
   const healedLedgers = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
   const healedLogs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
 
+  const cId = getActiveCompanyId();
+  const isDemo = !cId || cId === DEFAULT_TENANT_COMPANY.id;
+
+  // Strict multi-tenant isolation: non-demo companies with no transactions must strictly start at zero
+  if (!isDemo && sales.length === 0 && purchases.length === 0 && vouchers.length === 0) {
+    healedLedgers.forEach(l => {
+      l['Opening Balance'] = 0;
+      l['Current Balance'] = 0;
+    });
+  }
+
   const ledgerMap = new Map<string, { opening: number; current: number }>();
   healedLedgers.forEach(l => {
     const cleanName = (l['Ledger Name'] || '').trim().toLowerCase();
@@ -4564,16 +4575,10 @@ export function recalculateLedgerBalances() {
     }
   });
 
-  const cId = getActiveCompanyId();
-  const isDemo = !cId || cId === DEFAULT_TENANT_COMPANY.id;
   if (!isDemo && sales.length === 0 && purchases.length === 0 && vouchers.length === 0) {
     healedLedgers.forEach(l => {
-      const cur = Number(l['Current Balance']) || 0;
-      const op = Number(l['Opening Balance']) || 0;
-      if (cur !== 0 || [10000, 50000, 25000, 85000].includes(op)) {
-        l['Opening Balance'] = 0;
-        l['Current Balance'] = 0;
-      }
+      l['Opening Balance'] = 0;
+      l['Current Balance'] = 0;
     });
   }
 
@@ -8150,6 +8155,8 @@ export function getAdvancedDashboardData(from: string, to: string) {
   const toDt = new Date(to).setHours(23, 59, 59, 999);
   
   const sales = getDeduplicatedSales();
+  const purchases = getDeduplicatedPurchases();
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
   const items = loadJson<any[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const ledgers = getLedgers();
   
@@ -8189,17 +8196,23 @@ export function getAdvancedDashboardData(from: string, to: string) {
   }
 
   // Calculate balances by groups
+  const currentCompId = getActiveCompanyId();
+  const isDemoComp = !currentCompId || currentCompId === DEFAULT_TENANT_COMPANY.id;
+  const hasTxns = sls.length > 0 || purchases.length > 0 || vouchers.length > 0;
+
   // Cash
   const cashLedgers = ledgers.filter(l => l.Group === 'Cash-in-Hand' || (l['Ledger Name'] || '').toLowerCase() === 'cash');
-  const cashBalance = cashLedgers.reduce((acc, l) => {
+  const rawCashBalance = cashLedgers.reduce((acc, l) => {
     return acc + (Number(l['Current Balance']) || 0) * (l['Balance Type (Dr/Cr)'] === 'Cr' ? -1 : 1);
   }, 0);
+  const cashBalance = (!isDemoComp && !hasTxns) ? 0 : rawCashBalance;
   
   // Bank
   const bankLedgers = ledgers.filter(l => l.Group === 'Bank Accounts' || ['bob', 'bob account', 'bnbl', 'bnbl account'].includes((l['Ledger Name'] || '').toLowerCase()) || l['Bank Name']);
-  const bankBalance = bankLedgers.reduce((acc, l) => {
+  const rawBankBalance = bankLedgers.reduce((acc, l) => {
     return acc + (Number(l['Current Balance']) || 0) * (l['Balance Type (Dr/Cr)'] === 'Cr' ? -1 : 1);
   }, 0);
+  const bankBalance = (!isDemoComp && !hasTxns) ? 0 : rawBankBalance;
   
   // Receivable (Sundry Debtors only - strictly exclude Bank, Cash, Tax, etc.)
   const recLedgers = ledgers.filter(l => {
@@ -8208,9 +8221,10 @@ export function getAdvancedDashboardData(from: string, to: string) {
     const isNonDebtor = grp === 'Bank Accounts' || grp === 'Cash-in-Hand' || grp === 'Duties & Taxes' || grp.includes('Expense') || grp.includes('Income') || grp.includes('Capital') || grp.includes('Loan') || ['bob', 'bnbl', 'cash', 'duties & taxes', 'gst payable', 'gst receivable'].includes(name) || l['Bank Name'];
     return !isNonDebtor && (grp === 'Sundry Debtors' || grp.toLowerCase().includes('debtor') || grp.toLowerCase().includes('customer'));
   });
-  const recBalance = recLedgers.reduce((acc, l) => {
+  const rawRecBalance = recLedgers.reduce((acc, l) => {
     return acc + (Number(l['Current Balance']) || 0) * (l['Balance Type (Dr/Cr)'] === 'Cr' ? -1 : 1);
   }, 0);
+  const recBalance = (!isDemoComp && !hasTxns) ? 0 : rawRecBalance;
   
   // Payable (Sundry Creditors only - strictly exclude Bank, Cash, Tax, etc.)
   const payLedgers = ledgers.filter(l => {
@@ -8219,9 +8233,10 @@ export function getAdvancedDashboardData(from: string, to: string) {
     const isNonCreditor = grp === 'Bank Accounts' || grp === 'Cash-in-Hand' || grp === 'Duties & Taxes' || grp.includes('Expense') || grp.includes('Income') || grp.includes('Capital') || grp.includes('Loan') || ['bob', 'bnbl', 'cash', 'duties & taxes', 'gst payable', 'gst receivable'].includes(name) || l['Bank Name'];
     return !isNonCreditor && (grp === 'Sundry Creditors' || grp.toLowerCase().includes('creditor') || grp.toLowerCase().includes('supplier'));
   });
-  const payBalance = payLedgers.reduce((acc, l) => {
+  const rawPayBalance = payLedgers.reduce((acc, l) => {
     return acc + (Number(l['Current Balance']) || 0) * (l['Balance Type (Dr/Cr)'] === 'Cr' ? 1 : -1);
   }, 0);
+  const payBalance = (!isDemoComp && !hasTxns) ? 0 : rawPayBalance;
   
   const lowStock = items.filter(x => x['Maintain Stock'] !== 'N' && Number(x['Current Stock']) <= Number(x['Reorder Level']) && Number(x['Reorder Level']) > 0);
   

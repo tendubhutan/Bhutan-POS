@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured, SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser } from '../lib/supabase';
 import { Config, AppUser } from '../types';
 import { saveCompanyFeatures } from './tenantFeatureService';
+import { DEFAULT_LEDGERS } from './storageService';
 
 export type { SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser };
 
@@ -522,39 +523,11 @@ export function initializeBlankTenantStorage(cId: string) {
     localStorage.setItem(`${p}_${cId}`, '[]');
   });
   try {
-    const rawDemoLedgers = localStorage.getItem('deep_pos_ledgers_30a4e773-585a-45a3-8fce-a32f94bbc7e0') || localStorage.getItem('deep_pos_ledgers');
-    let clean: any[] = [];
-    if (rawDemoLedgers) {
-      const parsed = JSON.parse(rawDemoLedgers);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        clean = parsed.map((l: any) => ({
-          ...l,
-          'Opening Balance': 0,
-          'Current Balance': 0
-        }));
-      }
-    }
-    // Fallback standard chart of accounts if demo key wasn't available
-    if (clean.length === 0) {
-      const defaultNames = [
-        { name: 'Cash', group: 'Cash-in-Hand' },
-        { name: 'BOB Account', group: 'Bank Accounts' },
-        { name: 'BNBL Account', group: 'Bank Accounts' },
-        { name: 'Sales Account', group: 'Sales Accounts' },
-        { name: 'Purchase Account', group: 'Purchase Accounts' },
-        { name: 'Duties & Taxes', group: 'Duties & Taxes' },
-        { name: 'Direct Expenses', group: 'Direct Expenses' },
-        { name: 'Indirect Expenses', group: 'Indirect Expenses' },
-        { name: 'Capital Account', group: 'Capital Account' }
-      ];
-      clean = defaultNames.map(d => ({
-        'Ledger Name': d.name,
-        Group: d.group,
-        'Opening Balance': 0,
-        'Current Balance': 0,
-        'Balance Type (Dr/Cr)': 'Dr'
-      }));
-    }
+    const clean = DEFAULT_LEDGERS.map(l => ({
+      ...l,
+      'Opening Balance': 0,
+      'Current Balance': 0
+    }));
     localStorage.setItem(`deep_pos_ledgers_${cId}`, JSON.stringify(clean));
   } catch {}
   localStorage.setItem(`deep_pos_counters_${cId}`, JSON.stringify({
