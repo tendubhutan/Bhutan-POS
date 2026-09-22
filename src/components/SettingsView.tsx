@@ -338,15 +338,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const proceedSaveUsers = (updatedUsers: AppUser[]) => {
     setSavingSection('security');
-    saveUsers(updatedUsers);
-    setUsersList(updatedUsers);
-    onDataRefresh();
-    playSaveSound();
-    setSavingSection(null);
-    setJustSavedSection('security');
-    setTimeout(() => {
-      setJustSavedSection(prev => (prev === 'security' ? null : prev));
-    }, 2500);
+    try {
+      saveUsers(updatedUsers);
+      setUsersList(updatedUsers);
+      saveConfig(form);
+      onDataRefresh();
+      playSaveSound();
+      setSavingSection(null);
+      setJustSavedSection('security');
+      setTimeout(() => {
+        setJustSavedSection(prev => (prev === 'security' ? null : prev));
+      }, 2500);
+    } catch {
+      setSavingSection(null);
+    }
   };
 
   const renderSaveButton = (

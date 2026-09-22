@@ -414,10 +414,10 @@ export async function purgeRemoteCompanyData(companyId: string): Promise<void> {
   }
 }
 
-export async function syncConfigToSupabase(config?: Config, targetCompanyId?: string): Promise<{ count: number }> {
+export async function syncConfigToSupabase(config?: Partial<Config>, targetCompanyId?: string): Promise<{ count: number }> {
   if (!isSupabaseConfigured) return { count: 1 };
   const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
-  const currentConfig = config || {};
+  const currentConfig: Partial<Config> = config || {};
 
   try {
     await supabase.from('tenant_settings').upsert({
@@ -426,6 +426,14 @@ export async function syncConfigToSupabase(config?: Config, targetCompanyId?: st
       data: currentConfig,
       updated_at: new Date().toISOString()
     }, { onConflict: 'company_id, record_id' });
+
+    if (companyId && companyId !== DEFAULT_TENANT_COMPANY.id && currentConfig.AllowSupportAccess !== undefined) {
+      try {
+        await supabase.from('companies').update({
+          allow_support_access: currentConfig.AllowSupportAccess === 'true'
+        }).eq('id', companyId);
+      } catch {}
+    }
     return { count: 1 };
   } catch (err: any) {
     console.warn('[Supabase Sync Config Error]:', err?.message || err);
