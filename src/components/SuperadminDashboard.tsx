@@ -361,7 +361,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   // Switch workspace to selected company
   const handleEnterClientWorkspace = (company: SupabaseCompany) => {
     // Privacy check for client companies (allow default demo company)
-    if (company.id !== DEFAULT_TENANT_COMPANY.id && !isSupportAccessAllowed(company.id)) {
+    if (company.id !== DEFAULT_TENANT_COMPANY.id && !isSupportAccessAllowed(company)) {
       setPrivacyBlockedCompany(company);
       return;
     }

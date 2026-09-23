@@ -194,7 +194,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
     }
 
     // Platform Support Access check for Superadmin on client companies
-    if (isSuperAdmin && company.id !== DEFAULT_TENANT_COMPANY.id && !isSupportAccessAllowed(company.id)) {
+    if (isSuperAdmin && company.id !== DEFAULT_TENANT_COMPANY.id && !isSupportAccessAllowed(company)) {
       setPrivacyBlockedCompany(company);
       return;
     }

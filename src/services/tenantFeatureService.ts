@@ -545,12 +545,60 @@ export function isFeatureAllowed(
 
 /**
  * Checks if platform support access is granted by the company owner.
- * Returns true for the default/demo company, or if company config has AllowSupportAccess === 'true'.
+ * Returns true for the default/demo company, or if company config or company record has AllowSupportAccess / allow_support_access.
  */
-export function isSupportAccessAllowed(companyId: string): boolean {
-  if (!companyId) return true;
-  if (companyId === DEFAULT_TENANT_COMPANY.id) return true;
+export function isSupportAccessAllowed(companyIdOrObj: string | any): boolean {
+  if (!companyIdOrObj) return true;
+
+  let companyId = '';
+  let objSupportAccess: boolean | undefined = undefined;
+
+  if (typeof companyIdOrObj === 'string') {
+    companyId = companyIdOrObj;
+  } else if (typeof companyIdOrObj === 'object' && companyIdOrObj !== null) {
+    companyId = companyIdOrObj.id || '';
+    if (companyIdOrObj.allow_support_access !== undefined && companyIdOrObj.allow_support_access !== null) {
+      objSupportAccess = companyIdOrObj.allow_support_access === true || String(companyIdOrObj.allow_support_access) === 'true';
+    } else if (companyIdOrObj.AllowSupportAccess !== undefined && companyIdOrObj.AllowSupportAccess !== null) {
+      objSupportAccess = companyIdOrObj.AllowSupportAccess === 'true' || companyIdOrObj.AllowSupportAccess === true;
+    }
+  }
+
+  if (!companyId || companyId === DEFAULT_TENANT_COMPANY.id) return true;
+
+  // If passed company object has explicit allow_support_access
+  if (objSupportAccess !== undefined) {
+    return objSupportAccess;
+  }
+
+  // 1. Check local company config
   const cfg = getCompanyConfig(companyId);
-  return cfg.AllowSupportAccess === 'true';
+  if (cfg && cfg.AllowSupportAccess === 'true') return true;
+
+  // 2. Check local caches where company records are stored
+  try {
+    const keys = ['supabase_cached_companies', 'supabase_user_companies_cache', 'registered_companies'];
+    for (const key of keys) {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          const match = list.find((c: any) => c && c.id === companyId);
+          if (match) {
+            if (
+              match.allow_support_access === true ||
+              String(match.allow_support_access) === 'true' ||
+              match.AllowSupportAccess === 'true' ||
+              match.AllowSupportAccess === true
+            ) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+
+  return false;
 }
 
