@@ -428,10 +428,37 @@ export async function syncConfigToSupabase(config?: Partial<Config>, targetCompa
     }, { onConflict: 'company_id, record_id' });
 
     if (companyId && companyId !== DEFAULT_TENANT_COMPANY.id && currentConfig.AllowSupportAccess !== undefined) {
+      const isAllowed = currentConfig.AllowSupportAccess === 'true';
       try {
         await supabase.from('companies').update({
-          allow_support_access: currentConfig.AllowSupportAccess === 'true'
+          allow_support_access: isAllowed
         }).eq('id', companyId);
+      } catch {}
+
+      // Keep local company caches in sync immediately
+      try {
+        if (typeof localStorage !== 'undefined') {
+          const keys = ['supabase_cached_companies', 'supabase_user_companies_cache', 'registered_companies', 'local_companies'];
+          for (const key of keys) {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              const list = JSON.parse(raw);
+              if (Array.isArray(list)) {
+                let modified = false;
+                list.forEach((c: any) => {
+                  if (c && (c.id === companyId || c.company_id === companyId)) {
+                    c.allow_support_access = isAllowed;
+                    c.AllowSupportAccess = isAllowed ? 'true' : 'false';
+                    modified = true;
+                  }
+                });
+                if (modified) {
+                  localStorage.setItem(key, JSON.stringify(list));
+                }
+              }
+            }
+          }
+        }
       } catch {}
     }
     return { count: 1 };
@@ -596,15 +623,15 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
               return false;
             }
             if (!isDemo) {
-              const hasDemoItems = (s as any).isDemo === true || (Array.isArray(s.items) && s.items.some((it: any) => 
+              const isStaleInvoice = invNo === 'pos-0007' || invNo === 'pos-0011' || (s as any).isDemo === true || (Array.isArray(s.items) && s.items.some((it: any) => 
                 it['Item Name']?.includes('Wireless Mouse') || 
                 it['Item Name']?.includes('Pendrive') || 
                 it['Item Name']?.toLowerCase().includes('candy') ||
                 it['Item Code']?.startsWith('ITM260812') ||
                 it.isDemo === true
               ));
-              if (hasDemoItems) {
-                deleteSalesInvoiceFromSupabase(s.invoiceNo, companyId);
+              if (isStaleInvoice) {
+                deleteSalesInvoiceFromSupabase(s.invoiceNo || invNo, companyId);
                 return false;
               }
             }

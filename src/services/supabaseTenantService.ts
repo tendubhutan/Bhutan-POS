@@ -157,34 +157,43 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
           });
         }
 
-        // Fetch all admin_credentials from tenant_settings so every company has its admin username, pin, password, and email across all PCs!
-        let credsQuery = supabase.from('tenant_settings').select('company_id, data').eq('record_id', 'admin_credentials');
+        // Fetch admin_credentials and main_config from tenant_settings so every company has its settings and support access status across all PCs!
+        let settingsQuery = supabase.from('tenant_settings').select('company_id, record_id, data').in('record_id', ['admin_credentials', 'main_config']);
         if (!includeAll && !isSuperadmin && assignedCompanyId) {
-          credsQuery = credsQuery.eq('company_id', assignedCompanyId);
+          settingsQuery = settingsQuery.eq('company_id', assignedCompanyId);
         }
-        const { data: credsList } = await credsQuery;
-        if (credsList && credsList.length > 0) {
-          credsList.forEach(row => {
+        const { data: settingsList } = await settingsQuery;
+        if (settingsList && settingsList.length > 0) {
+          settingsList.forEach(row => {
             if (row.company_id && row.data) {
               const existing: SupabaseCompany = mergedMap.get(row.company_id) || {
                 id: row.company_id,
                 company_name: row.data.company_name || 'Client Company',
                 currency_symbol: 'Nu.'
               };
-              mergedMap.set(row.company_id, {
-                ...existing,
-                company_name: existing.company_name || row.data.company_name || 'Client Company',
-                email: existing.email || row.data.email || '',
-                phone: existing.phone || row.data.phone || '',
-                trade_license_no: existing.trade_license_no || row.data.trade_license_no || '',
-                tax_payer_id: existing.tax_payer_id || row.data.tax_payer_id || '',
-                address: existing.address || row.data.address || '',
-                admin_username: row.data.admin_username || existing.admin_username || 'admin',
-                admin_name: row.data.admin_name || existing.admin_name,
-                admin_pin: row.data.admin_pin || existing.admin_pin || '1234',
-                admin_password: row.data.admin_password || existing.admin_password || 'ClientPass@123',
-                is_active: row.data.is_active !== undefined ? row.data.is_active : (existing.is_active ?? true)
-              });
+
+              if (row.record_id === 'admin_credentials') {
+                mergedMap.set(row.company_id, {
+                  ...existing,
+                  company_name: existing.company_name || row.data.company_name || 'Client Company',
+                  email: existing.email || row.data.email || '',
+                  phone: existing.phone || row.data.phone || '',
+                  trade_license_no: existing.trade_license_no || row.data.trade_license_no || '',
+                  tax_payer_id: existing.tax_payer_id || row.data.tax_payer_id || '',
+                  address: existing.address || row.data.address || '',
+                  admin_username: row.data.admin_username || existing.admin_username || 'admin',
+                  admin_name: row.data.admin_name || existing.admin_name,
+                  admin_pin: row.data.admin_pin || existing.admin_pin || '1234',
+                  admin_password: row.data.admin_password || existing.admin_password || 'ClientPass@123',
+                  is_active: row.data.is_active !== undefined ? row.data.is_active : (existing.is_active ?? true)
+                });
+              } else if (row.record_id === 'main_config') {
+                const supportAccess = row.data.AllowSupportAccess === 'true' || row.data.AllowSupportAccess === true || row.data.allow_support_access === true;
+                mergedMap.set(row.company_id, {
+                  ...existing,
+                  allow_support_access: supportAccess || existing.allow_support_access || false
+                });
+              }
             }
           });
         }

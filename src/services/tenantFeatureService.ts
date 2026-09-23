@@ -566,38 +566,57 @@ export function isSupportAccessAllowed(companyIdOrObj: string | any): boolean {
 
   if (!companyId || companyId === DEFAULT_TENANT_COMPANY.id) return true;
 
-  // If passed company object has explicit allow_support_access
-  if (objSupportAccess !== undefined) {
-    return objSupportAccess;
+  // 1. If passed company object explicitly granted support access, return true
+  if (objSupportAccess === true) {
+    return true;
   }
 
-  // 1. Check local company config
+  // 2. Check local company config
   const cfg = getCompanyConfig(companyId);
-  if (cfg && cfg.AllowSupportAccess === 'true') return true;
+  if (cfg && (cfg.AllowSupportAccess === 'true' || (cfg as any).allow_support_access === true)) {
+    return true;
+  }
 
-  // 2. Check local caches where company records are stored
+  // 3. Check direct tenant storage key
   try {
-    const keys = ['supabase_cached_companies', 'supabase_user_companies_cache', 'registered_companies'];
-    for (const key of keys) {
-      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
-      if (raw) {
-        const list = JSON.parse(raw);
-        if (Array.isArray(list)) {
-          const match = list.find((c: any) => c && c.id === companyId);
-          if (match) {
-            if (
-              match.allow_support_access === true ||
-              String(match.allow_support_access) === 'true' ||
-              match.AllowSupportAccess === 'true' ||
-              match.AllowSupportAccess === true
-            ) {
-              return true;
+    if (typeof localStorage !== 'undefined') {
+      const tenantKey = getTenantStorageKey(STORAGE_KEYS.CONFIG, companyId);
+      const rawCfg = localStorage.getItem(tenantKey);
+      if (rawCfg) {
+        const parsed = JSON.parse(rawCfg);
+        if (parsed && (parsed.AllowSupportAccess === 'true' || parsed.allow_support_access === true)) {
+          return true;
+        }
+      }
+
+      // Check local caches where company records are stored
+      const keys = ['supabase_cached_companies', 'supabase_user_companies_cache', 'registered_companies', 'local_companies'];
+      for (const key of keys) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            const match = list.find((c: any) => c && (c.id === companyId || c.company_id === companyId));
+            if (match) {
+              if (
+                match.allow_support_access === true ||
+                String(match.allow_support_access) === 'true' ||
+                match.AllowSupportAccess === 'true' ||
+                match.AllowSupportAccess === true
+              ) {
+                return true;
+              }
             }
           }
         }
       }
     }
   } catch {}
+
+  // 4. If object explicitly denies access and no config overrides it to true
+  if (objSupportAccess === false) {
+    return false;
+  }
 
   return false;
 }

@@ -1095,10 +1095,17 @@ export function loadJson<T>(key: string, fallback: T, customCompanyId?: string):
             const itemComp = item.companyId || item.company_id;
             if (itemComp && itemComp !== cId) return false;
             // Reject demo invoices leaking into client workspace
-            const invNo = item.invoiceNo || item.billNo || item.voucherNo || '';
-            if (invNo.startsWith('POS-') || invNo.startsWith('SAL-') || invNo.startsWith('VOU-')) {
+            const invNo = (item.invoiceNo || item.billNo || item.voucherNo || '').trim().toLowerCase();
+            if (invNo === 'pos-0007' || invNo === 'pos-0011' || item.isDemo === true) {
+              return false;
+            }
+            if (invNo.startsWith('pos-') || invNo.startsWith('sal-') || invNo.startsWith('vou-')) {
               const hasDemoItems = Array.isArray(item.items) && item.items.some((it: any) => 
-                it['Item Name']?.includes('Wireless Mouse') || it['Item Name']?.includes('Pendrive') || it['Item Code']?.startsWith('ITM260812')
+                it['Item Name']?.includes('Wireless Mouse') || 
+                it['Item Name']?.includes('Pendrive') || 
+                it['Item Name']?.toLowerCase().includes('candy') ||
+                it['Item Code']?.startsWith('ITM260812') ||
+                it.isDemo === true
               );
               if (hasDemoItems) return false;
             }
@@ -1339,7 +1346,16 @@ export function healAndSanitizeNonDemoTenant(targetCompanyId?: string): void {
       const code = String(it['Item Code'] || it.itemCode || '').trim();
       const name = String(it['Item Name'] || it.itemName || '').trim().toLowerCase();
       if (code.startsWith('ITM260812')) return true;
-      if (name.includes('wireless mouse') || name.includes('pendrive') || name.includes('five star')) return true;
+      if (name.includes('wireless mouse') || name.includes('pendrive') || name.includes('five star') || name.includes('candy')) return true;
+      return false;
+    };
+
+    const isStaleInvoice = (s: any) => {
+      if (!s) return false;
+      if ((s as any).isDemo === true) return true;
+      const invNo = String(s.invoiceNo || s.billNo || s.voucherNo || '').trim().toLowerCase();
+      if (invNo === 'pos-0007' || invNo === 'pos-0011') return true;
+      if (Array.isArray(s.items) && s.items.some(isDemoItem)) return true;
       return false;
     };
 
@@ -1348,12 +1364,7 @@ export function healAndSanitizeNonDemoTenant(targetCompanyId?: string): void {
     let salesModified = false;
     if (Array.isArray(sales) && sales.length > 0) {
       const cleanSales = sales.filter(s => {
-        if ((s as any).isDemo === true) {
-          salesModified = true;
-          if (s.invoiceNo) deleteSalesInvoiceFromFirestore(s.invoiceNo, cId).catch(() => {});
-          return false;
-        }
-        if (Array.isArray(s.items) && s.items.some(isDemoItem)) {
+        if (isStaleInvoice(s)) {
           salesModified = true;
           if (s.invoiceNo) deleteSalesInvoiceFromFirestore(s.invoiceNo, cId).catch(() => {});
           return false;
@@ -1366,6 +1377,10 @@ export function healAndSanitizeNonDemoTenant(targetCompanyId?: string): void {
         sales = cleanSales;
       }
     }
+
+    // Always issue cleanups for target stale test invoices in Supabase
+    deleteSalesInvoiceFromFirestore('POS-0007', cId).catch(() => {});
+    deleteSalesInvoiceFromFirestore('POS-0011', cId).catch(() => {});
 
     // 2. Sanitize Purchase Invoices & Vouchers similarly
     let purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, [], cId);
