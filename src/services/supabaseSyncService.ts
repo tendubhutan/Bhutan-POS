@@ -5,7 +5,7 @@ import {
   pullCollectionFromSupabase,
   getActiveTenantId
 } from './tenantAuthService';
-import { STORAGE_KEYS, getTenantStorageKey, DEFAULT_CONFIG } from './storageService';
+import { STORAGE_KEYS, getTenantStorageKey, DEFAULT_CONFIG, healAndSanitizeNonDemoTenant } from './storageService';
 import { Item, Ledger, SalesInvoice, PurchaseInvoice, Voucher, Config } from '../types';
 import { getActiveCompanyId, DEFAULT_TENANT_COMPANY, ensureCompanyExists } from './supabaseTenantService';
 
@@ -293,8 +293,8 @@ export async function deleteSalesInvoiceFromSupabase(invoiceNo: string, targetCo
   if (!cleanNo) return;
 
   try {
-    await supabase.from('sales_invoices').delete().eq('company_id', companyId).eq('record_id', cleanNo);
-    await supabase.from('sales_invoices').delete().eq('company_id', companyId).eq('invoice_no', cleanNo);
+    await supabase.from('sales_invoices').delete().eq('company_id', companyId).ilike('record_id', cleanNo);
+    await supabase.from('sales_invoices').delete().eq('company_id', companyId).ilike('invoice_no', cleanNo);
   } catch (err: any) {
     console.warn('[Supabase Delete Sales Invoice Error]:', err?.message || err);
   }
@@ -341,8 +341,8 @@ export async function deletePurchaseInvoiceFromSupabase(billNo: string, targetCo
   if (!cleanNo) return;
 
   try {
-    await supabase.from('purchase_invoices').delete().eq('company_id', companyId).eq('record_id', cleanNo);
-    await supabase.from('purchase_invoices').delete().eq('company_id', companyId).eq('invoice_no', cleanNo);
+    await supabase.from('purchase_invoices').delete().eq('company_id', companyId).ilike('record_id', cleanNo);
+    await supabase.from('purchase_invoices').delete().eq('company_id', companyId).ilike('invoice_no', cleanNo);
   } catch (err: any) {
     console.warn('[Supabase Delete Purchase Invoice Error]:', err?.message || err);
   }
@@ -391,8 +391,8 @@ export async function deleteVoucherFromSupabase(voucherNo: string, targetCompany
   if (!cleanNo) return;
 
   try {
-    await supabase.from('vouchers').delete().eq('company_id', companyId).eq('record_id', cleanNo);
-    await supabase.from('vouchers').delete().eq('company_id', companyId).eq('voucher_no', cleanNo);
+    await supabase.from('vouchers').delete().eq('company_id', companyId).ilike('record_id', cleanNo);
+    await supabase.from('vouchers').delete().eq('company_id', companyId).ilike('voucher_no', cleanNo);
   } catch (err: any) {
     console.warn('[Supabase Delete Voucher Error]:', err?.message || err);
   }
@@ -405,7 +405,7 @@ export async function deleteVoucherFromSupabase(voucherNo: string, targetCompany
 export async function purgeRemoteCompanyData(companyId: string): Promise<void> {
   if (!companyId || companyId === DEFAULT_TENANT_COMPANY.id || !isSupabaseConfigured) return;
   try {
-    const tables = ['sales_invoices', 'purchase_invoices', 'vouchers', 'items', 'ledgers'];
+    const tables = ['sales_invoices', 'purchase_invoices', 'vouchers', 'items', 'ledgers', 'stock_ledger', 'ledger_log'];
     for (const tbl of tables) {
       await supabase.from(tbl).delete().eq('company_id', companyId);
     }
@@ -596,9 +596,13 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
               return false;
             }
             if (!isDemo) {
-              const hasDemoItems = Array.isArray(s.items) && s.items.some((it: any) => 
-                it['Item Name']?.includes('Wireless Mouse') || it['Item Name']?.includes('Pendrive') || it['Item Code']?.startsWith('ITM260812')
-              );
+              const hasDemoItems = (s as any).isDemo === true || (Array.isArray(s.items) && s.items.some((it: any) => 
+                it['Item Name']?.includes('Wireless Mouse') || 
+                it['Item Name']?.includes('Pendrive') || 
+                it['Item Name']?.toLowerCase().includes('candy') ||
+                it['Item Code']?.startsWith('ITM260812') ||
+                it.isDemo === true
+              ));
               if (hasDemoItems) {
                 deleteSalesInvoiceFromSupabase(s.invoiceNo, companyId);
                 return false;
@@ -626,9 +630,13 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
               return false;
             }
             if (!isDemo) {
-              const hasDemoItems = Array.isArray(p.items) && p.items.some((it: any) => 
-                it['Item Name']?.includes('Wireless Mouse') || it['Item Name']?.includes('Pendrive') || it['Item Code']?.startsWith('ITM260812')
-              );
+              const hasDemoItems = (p as any).isDemo === true || (Array.isArray(p.items) && p.items.some((it: any) => 
+                it['Item Name']?.includes('Wireless Mouse') || 
+                it['Item Name']?.includes('Pendrive') || 
+                it['Item Name']?.toLowerCase().includes('candy') ||
+                it['Item Code']?.startsWith('ITM260812') ||
+                it.isDemo === true
+              ));
               if (hasDemoItems) {
                 deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
                 return false;
@@ -688,6 +696,8 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         saveLocalArray(STORAGE_KEYS.LEDGER_LOG, [], companyId);
         saveLocalArray(STORAGE_KEYS.STOCK_LEDGER, [], companyId);
       }
+
+      healAndSanitizeNonDemoTenant(companyId);
 
       if (isSubscribed) {
         updateStatus('connected', 'Supabase Cloud Connected & Synced');

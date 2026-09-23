@@ -1,7 +1,8 @@
 import { supabase, isSupabaseConfigured, SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser } from '../lib/supabase';
 import { Config, AppUser } from '../types';
 import { saveCompanyFeatures } from './tenantFeatureService';
-import { DEFAULT_LEDGERS } from './storageService';
+import { DEFAULT_LEDGERS, healAndSanitizeNonDemoTenant } from './storageService';
+import { purgeRemoteCompanyData } from './supabaseSyncService';
 
 export type { SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser };
 
@@ -542,6 +543,7 @@ export function initializeBlankTenantStorage(cId: string) {
     DebitNote: 0,
     Voucher: 0
   }));
+  purgeRemoteCompanyData(cId).catch(() => {});
 }
 
 // Fetch financial years for a company
@@ -780,6 +782,7 @@ export function setActiveCompanyId(id: string): void {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('supabase:tenant_changed', { detail: { companyId: id } }));
   }
+  healAndSanitizeNonDemoTenant(id);
 }
 
 export function getActiveFYId(): string {

@@ -68,7 +68,8 @@ import {
   syncPurchaseInvoiceToSupabase as syncPurchaseInvoiceToFirestore,
   deletePurchaseInvoiceFromSupabase as deletePurchaseInvoiceFromFirestore,
   syncVoucherToSupabase as syncVoucherToFirestore,
-  deleteVoucherFromSupabase as deleteVoucherFromFirestore
+  deleteVoucherFromSupabase as deleteVoucherFromFirestore,
+  purgeRemoteCompanyData
 } from './supabaseSyncService';
 import { 
   getActiveCompanyId, 
@@ -1315,8 +1316,128 @@ export function resetCompanyToBlank(companyId: string): void {
   }));
   localStorage.setItem(getTenantStorageKey(STORAGE_KEYS.LEDGERS, companyId), JSON.stringify(cleanLedgers));
 
+  // Purge Supabase remote records for this client company to prevent re-hydration
+  purgeRemoteCompanyData(companyId).catch(() => {});
+
   // Notify components of tenant data change
   window.dispatchEvent(new CustomEvent('supabase:tenant_changed', { detail: { companyId } }));
+}
+
+/**
+ * Auto-Heal & Sanitize Non-Demo Client Tenant Workspaces:
+ * Guarantees that client/new companies NEVER inherit demo transactions, demo items,
+ * or lingering phantom balances (e.g. Sales, GST, Opening Balances).
+ */
+export function healAndSanitizeNonDemoTenant(targetCompanyId?: string): void {
+  const cId = targetCompanyId || getActiveCompanyId();
+  if (!cId || cId === DEFAULT_TENANT_COMPANY.id) return; // Skip default demo company
+
+  try {
+    const isDemoItem = (it: any) => {
+      if (!it) return false;
+      if (it.isDemo === true) return true;
+      const code = String(it['Item Code'] || it.itemCode || '').trim();
+      const name = String(it['Item Name'] || it.itemName || '').trim().toLowerCase();
+      if (code.startsWith('ITM260812')) return true;
+      if (name.includes('wireless mouse') || name.includes('pendrive') || name.includes('five star')) return true;
+      return false;
+    };
+
+    // 1. Sanitize Sales Invoices for non-demo company
+    let sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, [], cId);
+    let salesModified = false;
+    if (Array.isArray(sales) && sales.length > 0) {
+      const cleanSales = sales.filter(s => {
+        if ((s as any).isDemo === true) {
+          salesModified = true;
+          if (s.invoiceNo) deleteSalesInvoiceFromFirestore(s.invoiceNo, cId).catch(() => {});
+          return false;
+        }
+        if (Array.isArray(s.items) && s.items.some(isDemoItem)) {
+          salesModified = true;
+          if (s.invoiceNo) deleteSalesInvoiceFromFirestore(s.invoiceNo, cId).catch(() => {});
+          return false;
+        }
+        return true;
+      });
+
+      if (salesModified) {
+        saveJson(STORAGE_KEYS.SALES_INVOICES, cleanSales, cId);
+        sales = cleanSales;
+      }
+    }
+
+    // 2. Sanitize Purchase Invoices & Vouchers similarly
+    let purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, [], cId);
+    if (Array.isArray(purchases) && purchases.length > 0) {
+      let pMod = false;
+      const cleanP = purchases.filter(p => {
+        if ((p as any).isDemo === true || (Array.isArray(p.items) && p.items.some(isDemoItem))) {
+          pMod = true;
+          if (p.billNo || p.invoiceNo) deletePurchaseInvoiceFromFirestore(p.billNo || p.invoiceNo, cId).catch(() => {});
+          return false;
+        }
+        return true;
+      });
+      if (pMod) {
+        saveJson(STORAGE_KEYS.PURCHASE_INVOICES, cleanP, cId);
+        purchases = cleanP;
+      }
+    }
+
+    let vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, [], cId);
+    if (Array.isArray(vouchers) && vouchers.length > 0) {
+      let vMod = false;
+      const cleanV = vouchers.filter(v => {
+        if ((v as any).isDemo === true) {
+          vMod = true;
+          if (v.voucherNo) deleteVoucherFromFirestore(v.voucherNo, cId).catch(() => {});
+          return false;
+        }
+        return true;
+      });
+      if (vMod) {
+        saveJson(STORAGE_KEYS.VOUCHERS, cleanV, cId);
+        vouchers = cleanV;
+      }
+    }
+
+    // 3. Ensure Standard System Ledgers have 0 Opening Balance for new client companies
+    let ledgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS, cId);
+    let ledgersModified = false;
+    if (Array.isArray(ledgers)) {
+      ledgers.forEach(l => {
+        const op = Number(l['Opening Balance']) || 0;
+        if (op !== 0 && !(l as any).isCustomOpeningBalance) {
+          l['Opening Balance'] = 0;
+          ledgersModified = true;
+        }
+      });
+
+      const activeSales = (sales || []).filter(s => s.status !== 'Cancelled');
+      const activePurch = (purchases || []).filter(p => p.status !== 'Cancelled');
+      const activeVouch = (vouchers || []).filter(v => v.status !== 'Cancelled');
+
+      if (activeSales.length === 0 && activePurch.length === 0 && activeVouch.length === 0) {
+        ledgers.forEach(l => {
+          if (Number(l['Current Balance']) !== 0) {
+            l['Current Balance'] = 0;
+            ledgersModified = true;
+          }
+        });
+        saveJson(STORAGE_KEYS.LEDGER_LOG, [], cId);
+        saveJson(STORAGE_KEYS.STOCK_LEDGER, [], cId);
+      }
+
+      if (ledgersModified) {
+        saveJson(STORAGE_KEYS.LEDGERS, ledgers, cId);
+      }
+    }
+
+    recalculateLedgerBalances();
+  } catch (err) {
+    console.warn('[Tenant Sanitization Warning]:', err);
+  }
 }
 
 export function migrateExistingItemsOpeningAmount() {
@@ -1410,6 +1531,7 @@ export function getLedgers(targetCompanyId?: string): Ledger[] {
 }
 
 export function getInitialData() {
+  healAndSanitizeNonDemoTenant();
   autoCleanTrash();
   const logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
   const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
@@ -5107,6 +5229,9 @@ export function bulkDeleteData(options: BulkDeleteOptions) {
       saveJson(STORAGE_KEYS.EMPLOYEE_ADVANCES, []);
       saveJson(STORAGE_KEYS.TRASH_LOG, []);
       saveJson(STORAGE_KEYS.COUNTERS, {});
+
+      // Purge Supabase remote records to prevent re-hydration on browser refresh
+      purgeRemoteCompanyData(getActiveCompanyId()).catch(() => {});
 
       const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
       items.forEach(i => {
