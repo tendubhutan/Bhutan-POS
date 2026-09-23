@@ -44,6 +44,7 @@ import {
   SupabaseFinancialYear 
 } from './services/supabaseTenantService';
 import { isFeatureAllowed } from './services/tenantFeatureService';
+import { Lock } from 'lucide-react';
 import { 
   isSuperAdmin, 
   getCurrentTenantSession, 
@@ -905,12 +906,34 @@ export default function App() {
           )}
 
           {(currentView === 'staff' || currentView === 'attendance') && (
-            <StaffManagementView
-              key={activeCompany?.id || 'default_staff'}
-              config={config}
-              onDataRefresh={refreshData}
-              onNavigateToPayroll={() => navigateTo('payroll')}
-            />
+            ((isFeatureAllowed(config, 'EnableStaffAttendanceAndLeave') && config.EnableStaffAttendanceAndLeave !== 'false') ||
+             (isFeatureAllowed(config, 'EnableStaffAssignments') && config.EnableStaffAssignments !== 'false')) ? (
+              <StaffManagementView
+                key={activeCompany?.id || 'default_staff'}
+                config={config}
+                onDataRefresh={refreshData}
+                onNavigateToPayroll={() => navigateTo('payroll')}
+              />
+            ) : (
+              <div className="p-12 max-w-lg mx-auto text-center space-y-4">
+                <div className="h-14 w-14 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-xs">
+                  <Lock className="h-7 w-7" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Module Disabled for Store</h3>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    Leave Management, Attendance, and Task Assignment are currently not enabled for this client store. Please contact your platform superadmin to activate this module.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('dashboard')}
+                  className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition cursor-pointer"
+                >
+                  Return to Dashboard
+                </button>
+              </div>
+            )
           )}
 
           {currentView === 'assets' && isFeatureAllowed(config, 'EnableAssetManagement') && config.EnableAssetManagement !== 'false' && (

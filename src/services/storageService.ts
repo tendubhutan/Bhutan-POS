@@ -275,6 +275,8 @@ export const DEFAULT_CONFIG: Config = {
   EnableCategory: 'true',
   EnableAssetManagement: 'true',
   EnablePayroll: 'true',
+  EnableStaffAttendanceAndLeave: 'true',
+  EnableStaffAssignments: 'true',
   EnablePOS: 'true',
   EnableNormalSale: 'true',
   EnableEmployeeAdvances: 'true',

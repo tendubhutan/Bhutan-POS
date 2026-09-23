@@ -160,6 +160,20 @@ export const ALL_SYSTEM_FEATURES: FeatureDefinition[] = [
     defaultEnabled: true
   },
   {
+    id: 'EnableStaffAttendanceAndLeave',
+    label: 'Leave & Attendance Management',
+    shortDesc: 'Mobile check-in/out with Office WiFi anti-fraud, daily logs, annual/casual leave quotas, and payroll link.',
+    category: 'HR, Assets & Modules',
+    defaultEnabled: true
+  },
+  {
+    id: 'EnableStaffAssignments',
+    label: 'Tasks & Note/Assignment System',
+    shortDesc: 'Manager/GM task delegation with timelines, priority levels, status workflows, and interactive comment trails.',
+    category: 'HR, Assets & Modules',
+    defaultEnabled: true
+  },
+  {
     id: 'EnableEmployeeAdvances',
     label: 'Employee Advances (DSA/Imprest)',
     shortDesc: 'Track DSA, imprest, and salary advances by individual employee.',
@@ -402,6 +416,8 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableBankTxnId: true,
       IntegrateAccountsWithInventory: true,
       EnablePayroll: true,
+      EnableStaffAttendanceAndLeave: true,
+      EnableStaffAssignments: true,
       EnableEmployeeAdvances: true,
       EnableAssetManagement: true,
       EnableAuditTrail: true,
@@ -432,6 +448,8 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableBankTxnId: false,
       IntegrateAccountsWithInventory: false,
       EnablePayroll: false,
+      EnableStaffAttendanceAndLeave: false,
+      EnableStaffAssignments: false,
       EnableEmployeeAdvances: false,
       EnableAssetManagement: false,
       EnableAuditTrail: false,

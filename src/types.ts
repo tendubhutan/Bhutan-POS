@@ -40,6 +40,8 @@ export interface Config {
   EnableCategory?: string; // "true" | "false"
   EnableAssetManagement?: string; // "true" | "false"
   EnablePayroll?: string;
+  EnableStaffAttendanceAndLeave?: string; // "true" | "false"
+  EnableStaffAssignments?: string; // "true" | "false"
   EnablePOS?: string;
   EnableNormalSale?: string;
   EnableEmployeeAdvances?: string; // "true" | "false"

@@ -3,12 +3,13 @@ import {
   Clock, Calendar, CheckSquare, User, Smartphone, LogOut, 
   Send, MessageSquare, Plus, Check, X, AlertCircle, ChevronRight,
   Coffee, ShieldCheck, ArrowRight, Sparkles, Download, CheckCircle2,
-  CalendarCheck, Timer, Briefcase, Award, Info, Wifi, WifiOff, RefreshCw, MapPin
+  CalendarCheck, Timer, Briefcase, Award, Info, Wifi, WifiOff, RefreshCw, MapPin, Lock
 } from 'lucide-react';
 import { 
   getEmployees, saveEmployees 
 } from '../../services/storageService';
 import { getActiveCompanyId } from '../../services/supabaseTenantService';
+import { getCompanyConfig, isFeatureAllowed } from '../../services/tenantFeatureService';
 import { 
   getLeaveTypes, getLeaveApplications, applyForLeave, 
   calculateEmployeeLeaveBalance, getTodayDateString,
@@ -35,9 +36,26 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
   config,
   onExitPortal
 }) => {
+  const companyId = activeCompany?.id || getActiveCompanyId() || 'default';
+  const effectiveConfig = config || getCompanyConfig(companyId);
+
+  const isAttendanceAllowed = isFeatureAllowed(effectiveConfig, 'EnableStaffAttendanceAndLeave') && effectiveConfig.EnableStaffAttendanceAndLeave !== 'false';
+  const isAssignmentsAllowed = isFeatureAllowed(effectiveConfig, 'EnableStaffAssignments') && effectiveConfig.EnableStaffAssignments !== 'false';
+  const isPortalModuleAllowed = isAttendanceAllowed || isAssignmentsAllowed;
+
+  const initialTab = isAttendanceAllowed ? 'clock' : (isAssignmentsAllowed ? 'tasks' : 'profile');
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
-  const [activeTab, setActiveTab] = useState<'clock' | 'leaves' | 'tasks' | 'profile'>('clock');
+  const [activeTab, setActiveTab] = useState<'clock' | 'leaves' | 'tasks' | 'profile'>(initialTab);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
+
+  // Auto-correct active tab if feature is turned off
+  useEffect(() => {
+    if (!isAttendanceAllowed && (activeTab === 'clock' || activeTab === 'leaves')) {
+      setActiveTab(isAssignmentsAllowed ? 'tasks' : 'profile');
+    } else if (!isAssignmentsAllowed && activeTab === 'tasks') {
+      setActiveTab(isAttendanceAllowed ? 'clock' : 'profile');
+    }
+  }, [isAttendanceAllowed, isAssignmentsAllowed, activeTab]);
   
   // Login form state
   const [loginEmpCode, setLoginEmpCode] = useState('');
@@ -72,7 +90,6 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
   const [isInstalled, setIsInstalled] = useState(false);
 
   // Network Verification State (Office Network Enforcement)
-  const companyId = activeCompany?.id || getActiveCompanyId() || 'default';
   const [networkStatus, setNetworkStatus] = useState<NetworkVerificationResult | null>(null);
   const [isCheckingNetwork, setIsCheckingNetwork] = useState<boolean>(true);
   const [currentGpsCoords, setCurrentGpsCoords] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -386,6 +403,31 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
   const myBalances = currentEmployee ? calculateEmployeeLeaveBalance(currentEmployee.id) : null;
 
   // =========================================================================
+  // VIEW 0: MODULE INACTIVE NOTICE (WHEN SUPERADMIN HAS DISABLED BOTH FEATURES)
+  // =========================================================================
+  if (!isPortalModuleAllowed) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 text-center">
+        <div className="h-16 w-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 shadow-lg">
+          <Lock className="h-8 w-8" />
+        </div>
+        <h2 className="text-xl font-black text-white mb-2">Staff Portal Inactive</h2>
+        <p className="text-xs text-slate-400 max-w-sm mb-6 leading-relaxed">
+          Employee Mobile Services (Leave Management, Attendance, and Task Assignments) are not enabled for this client store. Please contact your company administrator or platform superadmin.
+        </p>
+        {onExitPortal && (
+          <button
+            onClick={onExitPortal}
+            className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition cursor-pointer"
+          >
+            Exit Portal
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // =========================================================================
   // VIEW A: LOGIN SCREEN FOR STAFF
   // =========================================================================
   if (!currentEmployee) {
@@ -420,7 +462,13 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
               <div className="h-14 w-14 rounded-2xl bg-blue-500/15 border border-blue-400/20 text-blue-400 mx-auto flex items-center justify-center mb-3">
                 <Smartphone className="h-7 w-7" />
               </div>
-              <h2 className="text-xl font-black text-white">Staff Check-In & Leaves</h2>
+              <h2 className="text-xl font-black text-white">
+                {isAttendanceAllowed && isAssignmentsAllowed
+                  ? 'Staff Portal & Tasks'
+                  : isAttendanceAllowed
+                  ? 'Staff Check-In & Leaves'
+                  : 'Staff Tasks & Assignments'}
+              </h2>
               <p className="text-xs text-slate-400">Enter your Employee Code or Mobile to access your personal dashboard.</p>
             </div>
 
@@ -546,7 +594,7 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
         {/* ============================================================== */}
         {/* TAB 1: CLOCK IN / OUT WIDGET */}
         {/* ============================================================== */}
-        {activeTab === 'clock' && (
+        {activeTab === 'clock' && isAttendanceAllowed && (
           <div className="space-y-4">
             {/* Live Clock Card */}
             <div className="bg-gradient-to-b from-slate-900 to-slate-900/60 border border-slate-800 rounded-3xl p-6 text-center space-y-5 shadow-xl">
@@ -714,7 +762,7 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
         {/* ============================================================== */}
         {/* TAB 2: MY LEAVES & APPLICATIONS */}
         {/* ============================================================== */}
-        {activeTab === 'leaves' && (
+        {activeTab === 'leaves' && isAttendanceAllowed && (
           <div className="space-y-4">
             {/* Top Apply Button */}
             <div className="flex items-center justify-between">
@@ -798,7 +846,7 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
         {/* ============================================================== */}
         {/* TAB 3: MY TASKS & ASSIGNMENTS (MANAGER/GM NOTES) */}
         {/* ============================================================== */}
-        {activeTab === 'tasks' && (
+        {activeTab === 'tasks' && isAssignmentsAllowed && (
           <div className="space-y-4">
             <div>
               <h2 className="font-black text-lg text-white">My Assignments & Tasks</h2>
@@ -900,38 +948,44 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
       {/* BOTTOM MOBILE NAVIGATION BAR */}
       {/* ============================================================== */}
       <nav className="fixed bottom-0 inset-x-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 max-w-md mx-auto flex items-center justify-around py-2 px-1">
-        <button
-          onClick={() => setActiveTab('clock')}
-          className={`flex flex-col items-center gap-1 text-[10px] font-bold p-1 cursor-pointer transition ${
-            activeTab === 'clock' ? 'text-blue-400' : 'text-slate-400'
-          }`}
-        >
-          <Clock className="h-5 w-5" />
-          <span>Clock</span>
-        </button>
+        {isAttendanceAllowed && (
+          <button
+            onClick={() => setActiveTab('clock')}
+            className={`flex flex-col items-center gap-1 text-[10px] font-bold p-1 cursor-pointer transition ${
+              activeTab === 'clock' ? 'text-blue-400' : 'text-slate-400'
+            }`}
+          >
+            <Clock className="h-5 w-5" />
+            <span>Clock</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('leaves')}
-          className={`flex flex-col items-center gap-1 text-[10px] font-bold p-1 cursor-pointer transition ${
-            activeTab === 'leaves' ? 'text-blue-400' : 'text-slate-400'
-          }`}
-        >
-          <Calendar className="h-5 w-5" />
-          <span>Leaves</span>
-        </button>
+        {isAttendanceAllowed && (
+          <button
+            onClick={() => setActiveTab('leaves')}
+            className={`flex flex-col items-center gap-1 text-[10px] font-bold p-1 cursor-pointer transition ${
+              activeTab === 'leaves' ? 'text-blue-400' : 'text-slate-400'
+            }`}
+          >
+            <Calendar className="h-5 w-5" />
+            <span>Leaves</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('tasks')}
-          className={`flex flex-col items-center gap-1 text-[10px] font-bold p-1 cursor-pointer transition relative ${
-            activeTab === 'tasks' ? 'text-blue-400' : 'text-slate-400'
-          }`}
-        >
-          <CheckSquare className="h-5 w-5" />
-          <span>Tasks</span>
-          {myTasks.filter(t => t.status !== 'Completed').length > 0 && (
-            <span className="absolute top-0 right-1 h-2 w-2 rounded-full bg-blue-500 animate-ping" />
-          )}
-        </button>
+        {isAssignmentsAllowed && (
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className={`flex flex-col items-center gap-1 text-[10px] font-bold p-1 cursor-pointer transition relative ${
+              activeTab === 'tasks' ? 'text-blue-400' : 'text-slate-400'
+            }`}
+          >
+            <CheckSquare className="h-5 w-5" />
+            <span>Tasks</span>
+            {myTasks.filter(t => t.status !== 'Completed').length > 0 && (
+              <span className="absolute top-0 right-1 h-2 w-2 rounded-full bg-blue-500 animate-ping" />
+            )}
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab('profile')}

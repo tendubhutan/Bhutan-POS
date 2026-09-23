@@ -1417,6 +1417,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </label>
               )}
 
+              {/* Staff Leave & Attendance Management */}
+              {isFeatureAllowed(form, 'EnableStaffAttendanceAndLeave', isSuperadminUser) && (
+                <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      checked={form.EnableStaffAttendanceAndLeave !== "false"}
+                      onChange={e => setForm({ ...form, EnableStaffAttendanceAndLeave: e.target.checked ? "true" : "false" })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Leave & Attendance Management</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Track daily staff attendance, mobile check-in/out with WiFi anti-fraud, and leave quotas.</p>
+                  </div>
+                </label>
+              )}
+
+              {/* Staff Tasks & Assignments Module */}
+              {isFeatureAllowed(form, 'EnableStaffAssignments', isSuperadminUser) && (
+                <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      checked={form.EnableStaffAssignments !== "false"}
+                      onChange={e => setForm({ ...form, EnableStaffAssignments: e.target.checked ? "true" : "false" })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Task & Assignment Tracking</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Assign tasks and notes to employees with deadlines, priority levels, and interactive comments.</p>
+                  </div>
+                </label>
+              )}
+
               {/* Bill Lumpsum Discount Module */}
               {isFeatureAllowed(form, 'EnableBillDiscount', isSuperadminUser) && (
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-3 transition">

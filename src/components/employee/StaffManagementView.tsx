@@ -25,6 +25,7 @@ import {
 import { getEmployees } from '../../services/storageService';
 import { getActiveCompanyId } from '../../services/supabaseTenantService';
 import { Employee, Config } from '../../types';
+import { isFeatureAllowed } from '../../services/tenantFeatureService';
 import { GlowButton } from '../common/GlowButton';
 
 interface StaffManagementViewProps {
@@ -38,7 +39,21 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   onDataRefresh,
   onNavigateToPayroll
 }) => {
-  const [activeTab, setActiveTab] = useState<'attendance' | 'leaves' | 'tasks' | 'security' | 'portal_qr'>('attendance');
+  const isAttendanceAllowed = isFeatureAllowed(config, 'EnableStaffAttendanceAndLeave') && config.EnableStaffAttendanceAndLeave !== 'false';
+  const isAssignmentsAllowed = isFeatureAllowed(config, 'EnableStaffAssignments') && config.EnableStaffAssignments !== 'false';
+
+  const initialTab = isAttendanceAllowed ? 'attendance' : (isAssignmentsAllowed ? 'tasks' : 'portal_qr');
+  const [activeTab, setActiveTab] = useState<'attendance' | 'leaves' | 'tasks' | 'security' | 'portal_qr'>(initialTab);
+
+  // Auto-correct active tab if current tab is disabled by superadmin
+  useEffect(() => {
+    if (!isAttendanceAllowed && (activeTab === 'attendance' || activeTab === 'leaves' || activeTab === 'security')) {
+      setActiveTab(isAssignmentsAllowed ? 'tasks' : 'portal_qr');
+    } else if (!isAssignmentsAllowed && activeTab === 'tasks') {
+      setActiveTab(isAttendanceAllowed ? 'attendance' : 'portal_qr');
+    }
+  }, [isAttendanceAllowed, isAssignmentsAllowed, activeTab]);
+
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [leaveTypes, setLeaveTypesList] = useState<LeaveTypeConfig[]>([]);
   const [leaveApplications, setLeaveApplicationsList] = useState<LeaveApplication[]>([]);
@@ -349,106 +364,120 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
             </div>
           </div>
 
-          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 font-bold">
-              <UserCheck className="h-5 w-5" />
+          {isAttendanceAllowed && (
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 font-bold">
+                <UserCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Present Today</div>
+                <div className="text-lg font-black text-emerald-700">{presentCount} <span className="text-xs text-slate-400 font-normal">/ {employees.length}</span></div>
+              </div>
             </div>
-            <div>
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Present Today</div>
-              <div className="text-lg font-black text-emerald-700">{presentCount} <span className="text-xs text-slate-400 font-normal">/ {employees.length}</span></div>
-            </div>
-          </div>
+          )}
 
-          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 font-bold">
-              <Calendar className="h-5 w-5" />
+          {isAttendanceAllowed && (
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 font-bold">
+                <Calendar className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Pending Leaves</div>
+                <div className="text-lg font-black text-amber-700">{pendingLeaves.length}</div>
+              </div>
             </div>
-            <div>
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Pending Leaves</div>
-              <div className="text-lg font-black text-amber-700">{pendingLeaves.length}</div>
-            </div>
-          </div>
+          )}
 
-          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0 font-bold">
-              <CheckSquare className="h-5 w-5" />
+          {isAssignmentsAllowed && (
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0 font-bold">
+                <CheckSquare className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Open Tasks</div>
+                <div className="text-lg font-black text-indigo-700">{openTasks.length}</div>
+              </div>
             </div>
-            <div>
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Open Tasks</div>
-              <div className="text-lg font-black text-indigo-700">{openTasks.length}</div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
       {/* Main Tabs Navigation */}
       <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-4">
         <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-px">
-          <button
-            onClick={() => setActiveTab('attendance')}
-            className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-              activeTab === 'attendance'
-                ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Clock className="h-4 w-4" />
-            <span>Attendance Register</span>
-          </button>
+          {isAttendanceAllowed && (
+            <button
+              onClick={() => setActiveTab('attendance')}
+              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                activeTab === 'attendance'
+                  ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Clock className="h-4 w-4" />
+              <span>Attendance Register</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => setActiveTab('leaves')}
-            className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer relative ${
-              activeTab === 'leaves'
-                ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <CalendarCheck className="h-4 w-4" />
-            <span>Leave Management & Quotas</span>
-            {pendingLeaves.length > 0 && (
-              <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">
-                {pendingLeaves.length}
-              </span>
-            )}
-          </button>
+          {isAttendanceAllowed && (
+            <button
+              onClick={() => setActiveTab('leaves')}
+              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer relative ${
+                activeTab === 'leaves'
+                  ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <CalendarCheck className="h-4 w-4" />
+              <span>Leave Management & Quotas</span>
+              {pendingLeaves.length > 0 && (
+                <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">
+                  {pendingLeaves.length}
+                </span>
+              )}
+            </button>
+          )}
 
-          <button
-            onClick={() => setActiveTab('tasks')}
-            className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-              activeTab === 'tasks'
-                ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <CheckSquare className="h-4 w-4" />
-            <span>Tasks & Assignments</span>
-            {openTasks.length > 0 && (
-              <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center">
-                {openTasks.length}
-              </span>
-            )}
-          </button>
+          {isAssignmentsAllowed && (
+            <button
+              onClick={() => setActiveTab('tasks')}
+              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                activeTab === 'tasks'
+                  ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <CheckSquare className="h-4 w-4" />
+              <span>Tasks & Assignments</span>
+              {openTasks.length > 0 && (
+                <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center">
+                  {openTasks.length}
+                </span>
+              )}
+            </button>
+          )}
 
-          <button
-            onClick={() => {
-              setActiveTab('security');
-              detectCurrentIp();
-            }}
-            className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-              activeTab === 'security'
-                ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <ShieldCheck className="h-4 w-4" />
-            <span>Office WiFi & Anti-Misuse Security</span>
-            {networkConfig.requireOfficeNetwork && (
-              <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider">
-                Active
-              </span>
-            )}
-          </button>
+          {isAttendanceAllowed && (
+            <button
+              onClick={() => {
+                setActiveTab('security');
+                detectCurrentIp();
+              }}
+              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                activeTab === 'security'
+                  ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              <span>Office WiFi & Anti-Misuse Security</span>
+              {networkConfig.requireOfficeNetwork && (
+                <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider">
+                  Active
+                </span>
+              )}
+            </button>
+          )}
 
           <button
             onClick={() => setActiveTab('portal_qr')}
@@ -469,7 +498,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         {/* ============================================================== */}
         {/* TAB 1: ATTENDANCE REGISTER */}
         {/* ============================================================== */}
-        {activeTab === 'attendance' && (
+        {activeTab === 'attendance' && isAttendanceAllowed && (
           <div className="space-y-6">
             {/* Filter Bar */}
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -693,7 +722,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         {/* ============================================================== */}
         {/* TAB 2: LEAVE MANAGEMENT & QUOTAS */}
         {/* ============================================================== */}
-        {activeTab === 'leaves' && (
+        {activeTab === 'leaves' && isAttendanceAllowed && (
           <div className="space-y-6">
             {/* Top Action Bar */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
@@ -869,7 +898,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         {/* ============================================================== */}
         {/* TAB 3: TASKS & ASSIGNMENTS (MANAGER / GM NOTE TRACKING) */}
         {/* ============================================================== */}
-        {activeTab === 'tasks' && (
+        {activeTab === 'tasks' && isAssignmentsAllowed && (
           <div className="space-y-6">
             {/* Header / New Task Button */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
@@ -971,7 +1000,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         {/* ============================================================== */}
         {/* TAB 4: OFFICE WIFI & ANTI-MISUSE SECURITY */}
         {/* ============================================================== */}
-        {activeTab === 'security' && (
+        {activeTab === 'security' && isAttendanceAllowed && (
           <div className="max-w-4xl mx-auto space-y-6">
             {/* Success Toast */}
             {securitySavedToast && (

@@ -94,6 +94,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     session?.isSuperadmin === true ||
     rawRole === 'superadmin';
 
+  const isStaffAttendanceAllowed = isFeatureAllowed(config, 'EnableStaffAttendanceAndLeave', isSuperadminUser) && config.EnableStaffAttendanceAndLeave !== 'false';
+  const isStaffAssignmentsAllowed = isFeatureAllowed(config, 'EnableStaffAssignments', isSuperadminUser) && config.EnableStaffAssignments !== 'false';
+  const isStaffAllowed = isStaffAttendanceAllowed || isStaffAssignmentsAllowed;
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+H' },
     ...(isFeatureAllowed(config, 'EnablePOS', isSuperadminUser) && config.EnablePOS !== 'false' ? [{ id: 'pos', label: 'POS Billing', icon: ShoppingCart, shortcut: 'Alt+P' }] : []),
@@ -104,7 +108,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ...(isFeatureAllowed(config, 'EnableSchemes', isSuperadminUser) && config.EnableSchemes !== 'false' ? [{ id: 'schemes', label: 'Schemes & Offers', icon: Tags, shortcut: 'Alt+O' }] : []),
     ...(isFeatureAllowed(config, 'EnableBarcodePrinting', isSuperadminUser) && config.EnableBarcodePrinting !== 'false' ? [{ id: 'barcode', label: 'Barcode Print', icon: Barcode, shortcut: 'Alt+K' }] : []),
     ...(!isCashier && isFeatureAllowed(config, 'EnablePayroll', isSuperadminUser) && config.EnablePayroll !== 'false' ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users, shortcut: 'Alt+Y' }] : []),
-    ...(!isCashier ? [{ id: 'staff', label: 'Staff & Tasks', icon: Smartphone, shortcut: 'Alt+A' }] : []),
+    ...(!isCashier && isStaffAllowed ? [{
+      id: 'staff',
+      label: isStaffAttendanceAllowed && isStaffAssignmentsAllowed
+        ? 'Staff & Tasks'
+        : isStaffAttendanceAllowed
+        ? 'Attendance & Leaves'
+        : 'Assignments & Tasks',
+      icon: Smartphone,
+      shortcut: 'Alt+A'
+    }] : []),
     ...(!isCashier && isFeatureAllowed(config, 'EnableAssetManagement', isSuperadminUser) && config.EnableAssetManagement !== 'false' ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'Alt+E' }] : []),
     ...(!isCashier && isFeatureAllowed(config, 'EnableBankReconciliation', isSuperadminUser) && config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
     ...(!isCashier ? [{ id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R' }] : []),
