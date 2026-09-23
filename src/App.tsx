@@ -15,6 +15,8 @@ import { Vouchers } from './components/Vouchers';
 import { Masters } from './components/Masters';
 import { BarcodePrinting } from './components/BarcodePrinting';
 import { Payroll } from './components/Payroll';
+import { StaffManagementView } from './components/employee/StaffManagementView';
+import { EmployeePortalApp } from './components/employee/EmployeePortalApp';
 import { AssetManagementModule } from './components/assetManagement/AssetManagementModule';
 import { Reports, ReportTarget } from './components/Reports';
 import { SettingsView } from './components/SettingsView';
@@ -328,6 +330,14 @@ export default function App() {
 
   const supabaseUnsubRef = useRef<(() => void) | null>(null);
 
+  const [isEmployeePortalMode, setIsEmployeePortalMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      return p.get('portal') === 'employee' || p.get('portal') === 'staff' || p.get('mode') === 'staff' || p.get('mode') === 'employee';
+    }
+    return false;
+  });
+
   // Dedicated Client Link URL Query Parameter Auto-Initializer
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -336,6 +346,12 @@ export default function App() {
       const counterParam = urlParams.get('counter') || urlParams.get('terminal');
       const branchParam = urlParams.get('branch');
       const viewParam = urlParams.get('view');
+      const portalParam = urlParams.get('portal');
+      const modeParam = urlParams.get('mode');
+
+      if (portalParam === 'employee' || portalParam === 'staff' || modeParam === 'staff' || modeParam === 'employee') {
+        setIsEmployeePortalMode(true);
+      }
 
       if (counterParam) {
         const cleanCounter = counterParam.trim().toUpperCase();
@@ -346,7 +362,7 @@ export default function App() {
       }
       if (viewParam) {
         const cleanView = viewParam.trim().toLowerCase();
-        if (['pos', 'normalsale', 'sales', 'reports', 'masters', 'vouchers', 'dashboard'].includes(cleanView)) {
+        if (['pos', 'normalsale', 'sales', 'reports', 'masters', 'vouchers', 'dashboard', 'payroll', 'staff'].includes(cleanView)) {
           setCurrentView(cleanView);
         }
       }
@@ -701,6 +717,24 @@ export default function App() {
     quickItemModalProps.isOpen
   );
 
+  if (isEmployeePortalMode) {
+    return (
+      <EmployeePortalApp
+        activeCompany={activeCompany}
+        config={config}
+        onExitPortal={() => {
+          setIsEmployeePortalMode(false);
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('portal');
+            url.searchParams.delete('mode');
+            window.history.replaceState({}, '', url.toString());
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
       {/* Sidebar Navigation */}
@@ -730,6 +764,7 @@ export default function App() {
           activeFYName={activeFY?.fy_name}
           currentUser={currentUser}
           onOpenUserAuthModal={() => setShowUserAuthModal(true)}
+          onNavigate={view => navigateTo(view)}
           onLockTerminal={() => {
             sessionStorage.setItem('bhutan_pos_terminal_explicitly_locked', 'true');
             sessionStorage.removeItem('bhutan_pos_session_unlocked');
@@ -867,6 +902,15 @@ export default function App() {
 
           {currentView === 'payroll' && isFeatureAllowed(config, 'EnablePayroll') && config.EnablePayroll !== 'false' && (
             <Payroll key={activeCompany?.id || 'default_payroll'} config={config} ledgers={ledgers} onDataRefresh={refreshData} />
+          )}
+
+          {(currentView === 'staff' || currentView === 'attendance') && (
+            <StaffManagementView
+              key={activeCompany?.id || 'default_staff'}
+              config={config}
+              onDataRefresh={refreshData}
+              onNavigateToPayroll={() => navigateTo('payroll')}
+            />
           )}
 
           {currentView === 'assets' && isFeatureAllowed(config, 'EnableAssetManagement') && config.EnableAssetManagement !== 'false' && (

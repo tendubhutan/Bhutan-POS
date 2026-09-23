@@ -179,6 +179,55 @@ Format your response using Markdown.
     res.json({ terminals: active, logs: hubDispatchedLogs });
   });
 
+  // ==========================================
+  // ATTENDANCE OFFICE NETWORK VERIFICATION
+  // ==========================================
+  app.all("/api/attendance/verify-network", (req, res) => {
+    const rawIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || 
+                  req.socket.remoteAddress || 
+                  req.ip || 
+                  '';
+    const cleanIp = rawIp.replace(/^.*:ffff:/, '').trim();
+
+    // Check if client is on Private/Local Subnet (Shop/Office WiFi or LAN)
+    const isLan = cleanIp === '127.0.0.1' || 
+                  cleanIp === '::1' || 
+                  cleanIp === 'localhost' ||
+                  cleanIp.startsWith('192.168.') || 
+                  cleanIp.startsWith('10.') ||
+                  /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(cleanIp);
+
+    const allowedIpsQuery = (req.query.allowedIps as string) || '';
+    const allowedIpsBody = Array.isArray(req.body?.allowedIps) ? req.body.allowedIps : [];
+    const allowedList = [
+      ...allowedIpsQuery.split(',').map(s => s.trim()).filter(Boolean),
+      ...allowedIpsBody.map((s: string) => String(s).trim()).filter(Boolean)
+    ];
+
+    const allowLocalLan = req.query.allowLocalLan !== 'false' && req.body?.allowLocalLan !== false;
+
+    let isMatch = false;
+    if (allowLocalLan && isLan) {
+      isMatch = true;
+    } else if (allowedList.length > 0) {
+      isMatch = allowedList.some(rule => {
+        if (!rule) return false;
+        if (rule.endsWith('*')) {
+          return cleanIp.startsWith(rule.slice(0, -1));
+        }
+        return cleanIp === rule || cleanIp.startsWith(rule);
+      });
+    }
+
+    res.json({
+      ok: true,
+      clientIp: cleanIp,
+      isLan,
+      isOfficeNetwork: isMatch,
+      timestamp: new Date().toISOString()
+    });
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

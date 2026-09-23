@@ -125,7 +125,12 @@ export const STORAGE_KEYS = {
   BRANCHES: 'deep_pos_branches',
   GODOWNS: 'deep_pos_godowns',
   STOCK_TRANSFERS: 'deep_pos_stock_transfers',
-  TERMINALS: 'deep_pos_terminals'
+  TERMINALS: 'deep_pos_terminals',
+  LEAVE_TYPES: 'deep_pos_leave_types',
+  LEAVE_APPLICATIONS: 'deep_pos_leave_applications',
+  ATTENDANCE_RECORDS: 'deep_pos_attendance_records',
+  TASK_ASSIGNMENTS: 'deep_pos_task_assignments',
+  OFFICE_NETWORK_CONFIG: 'deep_pos_office_network_config'
 };
 
 export const DEFAULT_BRANCHES: Branch[] = [

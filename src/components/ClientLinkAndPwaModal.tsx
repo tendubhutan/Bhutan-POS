@@ -42,6 +42,7 @@ import {
 } from '../services/storageService';
 import { isSuperAdmin } from '../services/authTenantContext';
 import { promptPwaInstall, isPwaInstalled, subscribePwaState, canInstallPwa } from '../services/pwaService';
+import { getDedicatedEmployeePortalUrl } from '../services/employeeStaffService';
 import { TerminalConfig, Branch } from '../types';
 
 interface ClientLinkAndPwaModalProps {
@@ -64,7 +65,7 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
   const [selectedPreset, setSelectedPreset] = useState<string>('C1');
   const [hasPrompt, setHasPrompt] = useState<boolean>(() => canInstallPwa());
   const [isAppInstalled, setIsAppInstalled] = useState<boolean>(() => isPwaInstalled());
-  const [activeTab, setActiveTab] = useState<'links' | 'manage' | 'pwa'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'links' | 'manage' | 'pwa' | 'staff'>((initialTab as any) || 'links');
 
   useEffect(() => {
     if (isOpen && initialTab) {
@@ -413,6 +414,19 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
                 Installed
               </span>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('staff')}
+            className={`flex items-center gap-2 pb-3 px-3 text-xs font-black border-b-2 transition cursor-pointer whitespace-nowrap ${
+              activeTab === 'staff'
+                ? 'border-indigo-600 text-indigo-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Smartphone className="h-4 w-4" />
+            <span>Staff Mobile Portal & QR</span>
           </button>
         </div>
 
@@ -919,6 +933,112 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* TAB 4: Staff Mobile Portal & QR Code */}
+          {activeTab === 'staff' && (() => {
+            const staffUrl = getDedicatedEmployeePortalUrl();
+            const staffQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(staffUrl)}`;
+
+            return (
+              <div className="space-y-4">
+                <div className="p-5 bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 text-white rounded-3xl shadow-md space-y-3.5">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 bg-white/10 rounded-2xl border border-white/20">
+                        <Smartphone className="h-7 w-7 text-blue-300" />
+                      </div>
+                      <div>
+                        <h3 className="font-black text-base text-white">Dedicated Staff Mobile Portal (PWA)</h3>
+                        <p className="text-xs text-blue-200">
+                          100% Mobile Phone Friendly • Self-service check-in/out, leave applications & task assignments.
+                        </p>
+                      </div>
+                    </div>
+
+                    <a
+                      href={staffUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2.5 bg-blue-500 hover:bg-blue-400 text-white font-bold text-xs rounded-xl shadow-md transition active:scale-95 flex items-center gap-2 shrink-0 cursor-pointer"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      <span>Open Staff Preview</span>
+                    </a>
+                  </div>
+                </div>
+
+                <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                  <div className="flex flex-col md:flex-row items-center gap-6">
+                    {/* QR Code */}
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-center shrink-0">
+                      <img
+                        src={staffQrUrl}
+                        alt="Employee Portal QR Code"
+                        className="h-40 w-40 rounded-xl object-contain mx-auto shadow-2xs"
+                        loading="lazy"
+                      />
+                      <div className="text-[11px] font-bold text-slate-700 mt-2 flex items-center justify-center gap-1">
+                        <QrCode className="h-3.5 w-3.5 text-blue-600" />
+                        <span>Staff Phone Scan QR</span>
+                      </div>
+                    </div>
+
+                    {/* Instructions & Link */}
+                    <div className="flex-1 space-y-3">
+                      <div>
+                        <h4 className="font-black text-sm text-slate-900">How Staff Use This Portal</h4>
+                        <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                          Employees can scan this QR code with their mobile phone cameras or tap the link to open their personal portal. They can add it to their phone home screen as a native mobile app.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          Dedicated Staff Portal Link
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            readOnly
+                            value={staffUrl}
+                            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-700 select-all"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleCopy('staff_portal', staffUrl)}
+                            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          >
+                            {copiedKey === 'staff_portal' ? (
+                              <>
+                                <Check className="h-3.5 w-3.5" />
+                                <span>Copied!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-3.5 w-3.5" />
+                                <span>Copy Link</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Security highlight */}
+                      <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-800 space-y-1">
+                        <div className="font-bold flex items-center gap-1.5">
+                          <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                          <span>100% Isolated From Financial Books</span>
+                        </div>
+                        <p className="text-slate-600">
+                          Employees only see their own attendance, leave balances, and assigned tasks. POS billing, inventory, ledgers, and profits are strictly hidden and inaccessible.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Footer */}

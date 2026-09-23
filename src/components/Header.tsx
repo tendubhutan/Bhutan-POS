@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown, UserCircle, Lock, Shield, Radio, Wifi, Laptop, Download, Share2 } from 'lucide-react';
+import { Menu, RefreshCw, Store, Terminal, ShieldCheck, Database, ArrowLeft, Building2, ChevronDown, UserCircle, Lock, Shield, Radio, Wifi, Laptop, Download, Share2, Smartphone } from 'lucide-react';
 import { Config, AppUser } from '../types';
 import { AIAssistant } from './AIAssistant';
 import { getCurrentTenantSession, isSuperAdmin as checkIsSuperAdmin } from '../services/authTenantContext';
@@ -22,6 +22,7 @@ interface HeaderProps {
   currentUser?: AppUser;
   onOpenUserAuthModal?: () => void;
   onLockTerminal?: () => void;
+  onNavigate?: (view: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -38,7 +39,8 @@ export const Header: React.FC<HeaderProps> = ({
   activeFYName,
   currentUser,
   onOpenUserAuthModal,
-  onLockTerminal
+  onLockTerminal,
+  onNavigate
 }) => {
   const session = getCurrentTenantSession();
   const rawRole = (
@@ -258,6 +260,19 @@ export const Header: React.FC<HeaderProps> = ({
           <Laptop className="h-3.5 w-3.5 text-emerald-300" />
           <span className="hidden md:inline text-[11px]">Client Link & App</span>
         </button>
+
+        {/* Staff Attendance, Leaves & Tasks */}
+        {onNavigate && (
+          <button
+            type="button"
+            onClick={() => onNavigate('staff')}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-900/80 hover:bg-blue-800 border border-blue-400/50 text-blue-100 hover:text-white text-xs font-bold shadow-xs transition cursor-pointer"
+            title="Staff Attendance, Leave Policies, and Tasks"
+          >
+            <Smartphone className="h-3.5 w-3.5 text-blue-300" />
+            <span className="hidden md:inline text-[11px]">Staff & Tasks</span>
+          </button>
+        )}
 
         {/* Shop WiFi Hub (LAN Mode) Button */}
         <button

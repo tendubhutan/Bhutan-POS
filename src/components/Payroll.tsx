@@ -23,9 +23,12 @@ import {
   Percent,
   FileSpreadsheet,
   WalletCards,
-  Banknote
+  Banknote,
+  Clock
 } from 'lucide-react';
 import { EmployeeAdvances } from './payroll/EmployeeAdvances';
+import { StaffManagementView } from './employee/StaffManagementView';
+import { calculateMonthlyAttendanceSummary } from '../services/employeeStaffService';
 import { Config, PayHead, Employee, MonthlyPayroll, PayrollEntry, PayrollPayHeadItem, AdvanceType, EmployeeAdvance } from '../types';
 import {
   getPayHeads,
@@ -48,10 +51,12 @@ interface PayrollProps {
 }
 
 export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh }) => {
-  const [activeTab, setActiveTab] = useState<'processing' | 'employees' | 'payheads' | 'advances'>('processing');
+  const [activeTab, setActiveTab] = useState<'processing' | 'attendance' | 'employees' | 'payheads' | 'advances'>('processing');
+  const [linkAttendanceToPayroll, setLinkAttendanceToPayroll] = useState<boolean>(true);
 
   const payrollTabs = [
     { id: 'processing', label: 'Salary Processing', icon: Calendar },
+    { id: 'attendance', label: 'Attendance & Leaves', icon: Clock },
     { id: 'employees', label: 'Employee Master', icon: Users },
     { id: 'payheads', label: 'Flexible Pay Heads', icon: TrendingUp },
     ...(config.EnableEmployeeAdvances !== 'false' ? [{ id: 'advances', label: 'Advances & Loans', icon: WalletCards }] : [])
@@ -402,6 +407,18 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
         if (exitObj.getFullYear() === selectedYear && (exitObj.getMonth() + 1) === selectedMonth) {
           workingDays = Math.min(workingDays, exitObj.getDate());
         }
+      }
+
+      // Check attendance register for Loss of Pay (LOP) days if enabled
+      let attendanceLOPDays = 0;
+      if (linkAttendanceToPayroll) {
+        try {
+          const attSummary = calculateMonthlyAttendanceSummary(emp.id, selectedYear, selectedMonth);
+          if (attSummary && attSummary.lossOfPayDays > 0) {
+            attendanceLOPDays = attSummary.lossOfPayDays;
+            workingDays = Math.max(0, workingDays - attendanceLOPDays);
+          }
+        } catch {}
       }
 
       workingDays = Math.max(0, Math.min(monthTotalDays, workingDays));
@@ -1234,7 +1251,18 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-300 text-xs font-bold text-slate-700 cursor-pointer select-none transition">
+                <input
+                  type="checkbox"
+                  checked={linkAttendanceToPayroll}
+                  onChange={e => setLinkAttendanceToPayroll(e.target.checked)}
+                  className="rounded text-indigo-600 w-3.5 h-3.5 cursor-pointer"
+                />
+                <Clock className="h-3.5 w-3.5 text-indigo-600" />
+                <span>Auto-deduct LOP from Attendance</span>
+              </label>
+
               <button
                 onClick={handleProcessPayroll}
                 className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
@@ -1473,7 +1501,18 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
         </div>
       )}
 
-      {/* TAB 2: EMPLOYEE MASTER */}
+      {/* TAB 2: ATTENDANCE & LEAVES */}
+      {activeTab === 'attendance' && (
+        <div className="space-y-4">
+          <StaffManagementView
+            config={config}
+            onDataRefresh={onDataRefresh}
+            onNavigateToPayroll={() => setActiveTab('processing')}
+          />
+        </div>
+      )}
+
+      {/* TAB 3: EMPLOYEE MASTER */}
       {activeTab === 'employees' && (
         <div className="space-y-4">
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">

@@ -20,7 +20,8 @@ import {
   Monitor,
   CheckCircle2,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Smartphone
 } from 'lucide-react';
 import { Config, AppUser } from "../types";
 import { isSuperAdmin, getCurrentTenantSession } from '../services/authTenantContext';
@@ -103,6 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ...(isFeatureAllowed(config, 'EnableSchemes', isSuperadminUser) && config.EnableSchemes !== 'false' ? [{ id: 'schemes', label: 'Schemes & Offers', icon: Tags, shortcut: 'Alt+O' }] : []),
     ...(isFeatureAllowed(config, 'EnableBarcodePrinting', isSuperadminUser) && config.EnableBarcodePrinting !== 'false' ? [{ id: 'barcode', label: 'Barcode Print', icon: Barcode, shortcut: 'Alt+K' }] : []),
     ...(!isCashier && isFeatureAllowed(config, 'EnablePayroll', isSuperadminUser) && config.EnablePayroll !== 'false' ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users, shortcut: 'Alt+Y' }] : []),
+    ...(!isCashier ? [{ id: 'staff', label: 'Staff & Tasks', icon: Smartphone, shortcut: 'Alt+A' }] : []),
     ...(!isCashier && isFeatureAllowed(config, 'EnableAssetManagement', isSuperadminUser) && config.EnableAssetManagement !== 'false' ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'Alt+E' }] : []),
     ...(!isCashier && isFeatureAllowed(config, 'EnableBankReconciliation', isSuperadminUser) && config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
     ...(!isCashier ? [{ id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R' }] : []),
