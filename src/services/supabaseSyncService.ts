@@ -130,6 +130,7 @@ export function handleIncomingInstantMutation(payload: any) {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('deep_pos_items_updated', { detail: { item: data, companyId: targetCompanyId } }));
           window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+          window.dispatchEvent(new CustomEvent('app:refresh-data'));
         }
         break;
       }
@@ -147,6 +148,7 @@ export function handleIncomingInstantMutation(payload: any) {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('deep_pos_ledgers_updated', { detail: { ledger: data, companyId: targetCompanyId } }));
           window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+          window.dispatchEvent(new CustomEvent('app:refresh-data'));
         }
         break;
       }
@@ -164,6 +166,7 @@ export function handleIncomingInstantMutation(payload: any) {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('deep_pos_vouchers_updated', { detail: { voucher: data, companyId: targetCompanyId } }));
           window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+          window.dispatchEvent(new CustomEvent('app:refresh-data'));
         }
         break;
       }
@@ -181,6 +184,7 @@ export function handleIncomingInstantMutation(payload: any) {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('deep_pos_sales_updated', { detail: { sales: data, companyId: targetCompanyId } }));
           window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+          window.dispatchEvent(new CustomEvent('app:refresh-data'));
         }
         break;
       }
@@ -1151,7 +1155,7 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
             deleteItemFromSupabase(it['Item Code'] || (it as any).itemCode, companyId);
             return false;
           }
-          if (!isDemo && (it['Item Code']?.startsWith('ITM260812') || it['Item Name']?.includes('Wireless Mouse') || it['Item Name']?.includes('Pendrive'))) {
+          if (!isDemo && (it as any).isDemo === true) {
             deleteItemFromSupabase(it['Item Code'] || (it as any).itemCode, companyId);
             return false;
           }
@@ -1336,18 +1340,9 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
             deleteSalesInvoiceFromSupabase(s.invoiceNo, companyId);
             return false;
           }
-          if (!isDemo) {
-            const isStaleInvoice = invNo === 'pos-0007' || invNo === 'pos-0011' || (s as any).isDemo === true || (Array.isArray(s.items) && s.items.some((it: any) => 
-              it['Item Name']?.includes('Wireless Mouse') || 
-              it['Item Name']?.includes('Pendrive') || 
-              it['Item Name']?.toLowerCase().includes('candy') ||
-              it['Item Code']?.startsWith('ITM260812') ||
-              it.isDemo === true
-            ));
-            if (isStaleInvoice) {
-              deleteSalesInvoiceFromSupabase(s.invoiceNo || invNo, companyId);
-              return false;
-            }
+          if (!isDemo && (s as any).isDemo === true) {
+            deleteSalesInvoiceFromSupabase(s.invoiceNo || invNo, companyId);
+            return false;
           }
           return true;
         });
@@ -1414,18 +1409,9 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
             deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
             return false;
           }
-          if (!isDemo) {
-            const hasDemoItems = (p as any).isDemo === true || (Array.isArray(p.items) && p.items.some((it: any) => 
-              it['Item Name']?.includes('Wireless Mouse') || 
-              it['Item Name']?.includes('Pendrive') || 
-              it['Item Name']?.toLowerCase().includes('candy') ||
-              it['Item Code']?.startsWith('ITM260812') ||
-              it.isDemo === true
-            ));
-            if (hasDemoItems) {
-              deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
-              return false;
-            }
+          if (!isDemo && (p as any).isDemo === true) {
+            deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
+            return false;
           }
           return true;
         });
@@ -1666,9 +1652,97 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
   }
 
   // 2. Firestore Realtime Listeners (Guaranteed cross-PC instant sync across all locations)
+  let fsUnsubItems = () => {};
+  let fsUnsubLedgers = () => {};
   let fsUnsubSales = () => {};
   let fsUnsubPurchases = () => {};
   let fsUnsubVouchers = () => {};
+
+  try {
+    const qItems = query(collection(db, 'items'), where('companyId', '==', companyId));
+    fsUnsubItems = onSnapshot(qItems, (snapshot) => {
+      let changed = false;
+      const currentItems = loadLocalArray<Item>(STORAGE_KEYS.ITEMS, companyId);
+      const iMap = new Map<string, Item>();
+      currentItems.forEach(it => {
+        const code = (it['Item Code'] || (it as any).itemCode || '').trim().toLowerCase();
+        if (code) iMap.set(code, it);
+      });
+
+      snapshot.docChanges().forEach((ch) => {
+        const d = ch.doc.data();
+        const it: Item = d?.data || d;
+        const code = (it?.['Item Code'] || (it as any)?.itemCode || d?.itemCode || d?.recordId || '').trim();
+        if (!code) return;
+        const lowerCode = code.toLowerCase();
+
+        if (ch.type === 'added' || ch.type === 'modified') {
+          iMap.set(lowerCode, { ...it, 'Item Code': code });
+          changed = true;
+        } else if (ch.type === 'removed') {
+          if (iMap.has(lowerCode)) {
+            iMap.delete(lowerCode);
+            changed = true;
+          }
+        }
+      });
+
+      if (changed) {
+        const updated = Array.from(iMap.values());
+        saveLocalArray(STORAGE_KEYS.ITEMS, updated, companyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_items_updated', { detail: { items: updated, companyId } }));
+          window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+          window.dispatchEvent(new CustomEvent('app:refresh-data'));
+        }
+      }
+    }, (err) => console.warn('[Firestore Items Listener Notice]:', err));
+  } catch (fsErr) {
+    console.warn('[Firestore Items Listener Setup Notice]:', fsErr);
+  }
+
+  try {
+    const qLedgers = query(collection(db, 'ledgers'), where('companyId', '==', companyId));
+    fsUnsubLedgers = onSnapshot(qLedgers, (snapshot) => {
+      let changed = false;
+      const currentLedgers = loadLocalArray<Ledger>(STORAGE_KEYS.LEDGERS, companyId);
+      const lMap = new Map<string, Ledger>();
+      currentLedgers.forEach(l => {
+        const name = (l['Ledger Name'] || (l as any).ledgerName || '').trim().toLowerCase();
+        if (name) lMap.set(name, l);
+      });
+
+      snapshot.docChanges().forEach((ch) => {
+        const d = ch.doc.data();
+        const lg: Ledger = d?.data || d;
+        const name = (lg?.['Ledger Name'] || (lg as any)?.ledgerName || d?.ledgerName || d?.recordId || '').trim();
+        if (!name) return;
+        const lowerName = name.toLowerCase();
+
+        if (ch.type === 'added' || ch.type === 'modified') {
+          lMap.set(lowerName, { ...lg, 'Ledger Name': name });
+          changed = true;
+        } else if (ch.type === 'removed') {
+          if (lMap.has(lowerName)) {
+            lMap.delete(lowerName);
+            changed = true;
+          }
+        }
+      });
+
+      if (changed) {
+        const updated = Array.from(lMap.values());
+        saveLocalArray(STORAGE_KEYS.LEDGERS, updated, companyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_ledgers_updated', { detail: { ledgers: updated, companyId } }));
+          window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+          window.dispatchEvent(new CustomEvent('app:refresh-data'));
+        }
+      }
+    }, (err) => console.warn('[Firestore Ledgers Listener Notice]:', err));
+  } catch (fsErr) {
+    console.warn('[Firestore Ledgers Listener Setup Notice]:', fsErr);
+  }
 
   try {
     const qSales = query(collection(db, 'sales_invoices'), where('companyId', '==', companyId));
@@ -1705,6 +1779,7 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('deep_pos_sales_updated', { detail: { sales: updated, companyId } }));
           window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+          window.dispatchEvent(new CustomEvent('app:refresh-data'));
         }
       }
     }, (err) => console.warn('[Firestore Sales Listener Notice]:', err));
@@ -1747,6 +1822,7 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('deep_pos_purchases_updated', { detail: { purchases: updated, companyId } }));
           window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+          window.dispatchEvent(new CustomEvent('app:refresh-data'));
         }
       }
     }, (err) => console.warn('[Firestore Purchases Listener Notice]:', err));
@@ -1789,6 +1865,7 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('deep_pos_vouchers_updated', { detail: { vouchers: updated, companyId } }));
           window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+          window.dispatchEvent(new CustomEvent('app:refresh-data'));
         }
       }
     }, (err) => console.warn('[Firestore Vouchers Listener Notice]:', err));
@@ -1798,6 +1875,8 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
 
   return () => {
     isSubscribed = false;
+    fsUnsubItems();
+    fsUnsubLedgers();
     fsUnsubSales();
     fsUnsubPurchases();
     fsUnsubVouchers();

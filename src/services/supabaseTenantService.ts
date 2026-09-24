@@ -1,4 +1,6 @@
 import { supabase, isSupabaseConfigured, SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
 import { Config, AppUser } from '../types';
 import { saveCompanyFeatures } from './tenantFeatureService';
 import { DEFAULT_LEDGERS, healAndSanitizeNonDemoTenant } from './storageService';
@@ -200,6 +202,24 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
       } catch (e) {
         console.warn('Supabase companies fetch warning:', e);
       }
+    }
+
+    // 1.5 Fetch companies from Firestore cloud database (guarantees cross-PC discovery)
+    try {
+      const fsSnap = await getDocs(collection(db, 'companies'));
+      fsSnap.forEach(docSnap => {
+        const c = docSnap.data() as SupabaseCompany;
+        if (c && c.id) {
+          const existing = mergedMap.get(c.id);
+          if (existing) {
+            mergedMap.set(c.id, { ...c, ...existing });
+          } else {
+            mergedMap.set(c.id, c);
+          }
+        }
+      });
+    } catch (fsErr) {
+      console.warn('Firestore companies fetch notice:', fsErr);
     }
 
     // 2. Dedicated URL company lookup check (e.g. ?company=uuid)
@@ -442,6 +462,29 @@ export async function createCompany(
       } catch (sbSignUpErr) {
         console.warn('Supabase auth signUp background notice:', sbSignUpErr);
       }
+    }
+
+    // 1.8 Persist to Firestore cloud database (guarantees other PCs discover it immediately)
+    try {
+      await setDoc(doc(db, 'companies', newId), {
+        ...newComp,
+        updatedAt: new Date().toISOString()
+      });
+      await setDoc(doc(db, 'tenant_settings', `${newId}_admin_credentials`), {
+        company_id: newId,
+        record_id: 'admin_credentials',
+        data: {
+          admin_username: adminUsername,
+          admin_name: adminFullName,
+          admin_pin: adminPin,
+          admin_password: adminPassword,
+          company_name: newComp.company_name,
+          email: newComp.email || ''
+        },
+        updatedAt: new Date().toISOString()
+      });
+    } catch (fsErr) {
+      console.warn('Firestore company save notice:', fsErr);
     }
 
     // 2. Save in local cache

@@ -330,6 +330,8 @@ export interface Item {
   branchAllocations?: BranchStockAllocation[];
   multiUnits?: { unit: string; conversionFactor: number; purchaseRate: number; saleRate: number; wholesaleRate?: number; mrp: number; }[];
   oldCode?: string;
+  isDemo?: boolean;
+  companyId?: string;
 }
 
 export interface ItemGroup {

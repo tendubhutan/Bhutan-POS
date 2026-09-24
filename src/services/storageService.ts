@@ -984,6 +984,7 @@ const DEFAULT_EMPLOYEES: Employee[] = [
 
 export const DEFAULT_ITEMS: Item[] = [
   {
+    isDemo: true,
     'Item Code': 'ITM260812000001',
     Barcode: '20000001',
     'Item Name': 'Pendrive 320GB',
@@ -1003,6 +1004,7 @@ export const DEFAULT_ITEMS: Item[] = [
     'Opening Serials': 'SN-PD320-001, SN-PD320-002, SN-PD320-003'
   },
   {
+    isDemo: true,
     'Item Code': 'ITM260812000002',
     Barcode: '20000002',
     'Item Name': 'Wireless Mouse Logitech',
@@ -1021,6 +1023,7 @@ export const DEFAULT_ITEMS: Item[] = [
     'Reorder Level': 5
   },
   {
+    isDemo: true,
     'Item Code': 'ITM260812000003',
     Barcode: '20000003',
     'Item Name': 'A4 Copy Paper Rim',
@@ -1039,6 +1042,7 @@ export const DEFAULT_ITEMS: Item[] = [
     'Reorder Level': 10
   },
   {
+    isDemo: true,
     'Item Code': 'ITM260812000004',
     Barcode: '20000004',
     'Item Name': 'Mechanical Keyboard RGB',
@@ -1102,20 +1106,9 @@ export function loadJson<T>(key: string, fallback: T, customCompanyId?: string):
           const filtered = parsed.filter((item: any) => {
             const itemComp = item.companyId || item.company_id;
             if (itemComp && itemComp !== cId) return false;
-            // Reject demo invoices leaking into client workspace
-            const invNo = (item.invoiceNo || item.billNo || item.voucherNo || '').trim().toLowerCase();
-            if (invNo === 'pos-0007' || invNo === 'pos-0011' || item.isDemo === true) {
+            // Only reject items explicitly tagged as demo
+            if (item.isDemo === true) {
               return false;
-            }
-            if (invNo.startsWith('pos-') || invNo.startsWith('sal-') || invNo.startsWith('vou-')) {
-              const hasDemoItems = Array.isArray(item.items) && item.items.some((it: any) => 
-                it['Item Name']?.includes('Wireless Mouse') || 
-                it['Item Name']?.includes('Pendrive') || 
-                it['Item Name']?.toLowerCase().includes('candy') ||
-                it['Item Code']?.startsWith('ITM260812') ||
-                it.isDemo === true
-              );
-              if (hasDemoItems) return false;
             }
             return true;
           });
@@ -1350,21 +1343,12 @@ export function healAndSanitizeNonDemoTenant(targetCompanyId?: string): void {
   try {
     const isDemoItem = (it: any) => {
       if (!it) return false;
-      if (it.isDemo === true) return true;
-      const code = String(it['Item Code'] || it.itemCode || '').trim();
-      const name = String(it['Item Name'] || it.itemName || '').trim().toLowerCase();
-      if (code.startsWith('ITM260812')) return true;
-      if (name.includes('wireless mouse') || name.includes('pendrive') || name.includes('five star') || name.includes('candy')) return true;
-      return false;
+      return it.isDemo === true;
     };
 
     const isStaleInvoice = (s: any) => {
       if (!s) return false;
-      if ((s as any).isDemo === true) return true;
-      const invNo = String(s.invoiceNo || s.billNo || s.voucherNo || '').trim().toLowerCase();
-      if (invNo === 'pos-0007' || invNo === 'pos-0011') return true;
-      if (Array.isArray(s.items) && s.items.some(isDemoItem)) return true;
-      return false;
+      return (s as any).isDemo === true;
     };
 
     // 1. Sanitize Sales Invoices for non-demo company

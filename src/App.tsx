@@ -384,10 +384,19 @@ export default function App() {
         refreshData();
       });
     };
+
+    const handleRemoteDataChanged = () => {
+      refreshData();
+    };
+
     window.addEventListener('supabase:tenant_changed', handleTenantChange);
     window.addEventListener('supabase:company_updated', handleTenantChange);
     window.addEventListener('supabase:fy_changed', handleTenantChange);
     window.addEventListener('popstate', handleTenantChange);
+    window.addEventListener('app:dataLoaded', handleRemoteDataChanged);
+    window.addEventListener('app:refresh-data', handleRemoteDataChanged);
+    window.addEventListener('deep_pos_items_updated', handleRemoteDataChanged);
+    window.addEventListener('deep_pos_sales_updated', handleRemoteDataChanged);
 
     const unsubSession = subscribeTenantSession(session => {
       if (session) {
@@ -407,6 +416,10 @@ export default function App() {
       window.removeEventListener('supabase:company_updated', handleTenantChange);
       window.removeEventListener('supabase:fy_changed', handleTenantChange);
       window.removeEventListener('popstate', handleTenantChange);
+      window.removeEventListener('app:dataLoaded', handleRemoteDataChanged);
+      window.removeEventListener('app:refresh-data', handleRemoteDataChanged);
+      window.removeEventListener('deep_pos_items_updated', handleRemoteDataChanged);
+      window.removeEventListener('deep_pos_sales_updated', handleRemoteDataChanged);
       unsubSession();
     };
   }, []);
