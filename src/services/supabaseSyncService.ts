@@ -483,6 +483,17 @@ export async function syncSalesInvoiceToSupabase(invoice: SalesInvoice, targetCo
         updated_at: new Date().toISOString()
       }, { onConflict: 'company_id, record_id' });
     }
+
+    // Backup full array into tenant_settings for zero data-loss resilience
+    const localSales = loadLocalArray<SalesInvoice>(STORAGE_KEYS.SALES_INVOICES, companyId);
+    if (localSales.length > 0) {
+      await supabase.from('tenant_settings').upsert({
+        company_id: companyId,
+        record_id: 'company_sales_invoices',
+        data: { sales: localSales },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'company_id, record_id' });
+    }
   } catch (err: any) {
     console.warn('[Supabase Sync Sales Invoice Error]:', err?.message || err);
   }
@@ -497,6 +508,13 @@ export async function deleteSalesInvoiceFromSupabase(invoiceNo: string, targetCo
   try {
     await supabase.from('sales_invoices').delete().eq('company_id', companyId).ilike('record_id', cleanNo);
     await supabase.from('sales_invoices').delete().eq('company_id', companyId).ilike('invoice_no', cleanNo);
+    const localSales = loadLocalArray<SalesInvoice>(STORAGE_KEYS.SALES_INVOICES, companyId);
+    await supabase.from('tenant_settings').upsert({
+      company_id: companyId,
+      record_id: 'company_sales_invoices',
+      data: { sales: localSales },
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'company_id, record_id' });
   } catch (err: any) {
     console.warn('[Supabase Delete Sales Invoice Error]:', err?.message || err);
   }
@@ -531,6 +549,16 @@ export async function syncPurchaseInvoiceToSupabase(purchase: PurchaseInvoice, t
         updated_at: new Date().toISOString()
       }, { onConflict: 'company_id, record_id' });
     }
+
+    const localPurchases = loadLocalArray<PurchaseInvoice>(STORAGE_KEYS.PURCHASE_INVOICES, companyId);
+    if (localPurchases.length > 0) {
+      await supabase.from('tenant_settings').upsert({
+        company_id: companyId,
+        record_id: 'company_purchase_invoices',
+        data: { purchases: localPurchases },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'company_id, record_id' });
+    }
   } catch (err: any) {
     console.warn('[Supabase Sync Purchase Invoice Error]:', err?.message || err);
   }
@@ -545,6 +573,13 @@ export async function deletePurchaseInvoiceFromSupabase(billNo: string, targetCo
   try {
     await supabase.from('purchase_invoices').delete().eq('company_id', companyId).ilike('record_id', cleanNo);
     await supabase.from('purchase_invoices').delete().eq('company_id', companyId).ilike('invoice_no', cleanNo);
+    const localPurchases = loadLocalArray<PurchaseInvoice>(STORAGE_KEYS.PURCHASE_INVOICES, companyId);
+    await supabase.from('tenant_settings').upsert({
+      company_id: companyId,
+      record_id: 'company_purchase_invoices',
+      data: { purchases: localPurchases },
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'company_id, record_id' });
   } catch (err: any) {
     console.warn('[Supabase Delete Purchase Invoice Error]:', err?.message || err);
   }
@@ -581,6 +616,16 @@ export async function syncVoucherToSupabase(voucher: Voucher, targetCompanyId?: 
         updated_at: new Date().toISOString()
       }, { onConflict: 'company_id, record_id' });
     }
+
+    const localVouchers = loadLocalArray<Voucher>(STORAGE_KEYS.VOUCHERS, companyId);
+    if (localVouchers.length > 0) {
+      await supabase.from('tenant_settings').upsert({
+        company_id: companyId,
+        record_id: 'company_vouchers',
+        data: { vouchers: localVouchers },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'company_id, record_id' });
+    }
   } catch (err: any) {
     console.warn('[Supabase Sync Voucher Error]:', err?.message || err);
   }
@@ -595,6 +640,13 @@ export async function deleteVoucherFromSupabase(voucherNo: string, targetCompany
   try {
     await supabase.from('vouchers').delete().eq('company_id', companyId).ilike('record_id', cleanNo);
     await supabase.from('vouchers').delete().eq('company_id', companyId).ilike('voucher_no', cleanNo);
+    const localVouchers = loadLocalArray<Voucher>(STORAGE_KEYS.VOUCHERS, companyId);
+    await supabase.from('tenant_settings').upsert({
+      company_id: companyId,
+      record_id: 'company_vouchers',
+      data: { vouchers: localVouchers },
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'company_id, record_id' });
   } catch (err: any) {
     console.warn('[Supabase Delete Voucher Error]:', err?.message || err);
   }
@@ -744,136 +796,239 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
       const deletedItems = new Set(loadLocalArray<string>(STORAGE_KEYS.DELETED_ITEMS, companyId).map(d => (d || '').trim().toLowerCase()));
 
       // 1. Pull Items
+      let loadedItems: Item[] = [];
       const { data: sbItems, error: itErr } = await supabase
         .from('items')
         .select('data')
         .eq('company_id', companyId);
 
-      if (!itErr) {
-        if (sbItems && sbItems.length > 0) {
-          const loadedItems: Item[] = sbItems
-            .map(row => row.data)
-            .filter(Boolean)
-            .filter(it => {
-              const code = (it['Item Code'] || it.itemCode || '').trim().toLowerCase();
-              if (deletedItems.has(code)) {
-                deleteItemFromSupabase(it['Item Code'] || it.itemCode, companyId);
-                return false;
-              }
-              if (!isDemo && (it['Item Code']?.startsWith('ITM260812') || it['Item Name']?.includes('Wireless Mouse') || it['Item Name']?.includes('Pendrive'))) {
-                deleteItemFromSupabase(it['Item Code'] || it.itemCode, companyId);
-                return false;
-              }
-              return true;
-            });
-          saveLocalArray(STORAGE_KEYS.ITEMS, loadedItems, companyId);
-        } else if (isDemo) {
-          await seedInitialLocalDataToSupabase();
-        } else {
-          saveLocalArray(STORAGE_KEYS.ITEMS, [], companyId);
+      if (!itErr && sbItems && sbItems.length > 0) {
+        loadedItems = sbItems.map(row => row.data).filter(Boolean);
+      } else {
+        try {
+          const { data: itSetting } = await supabase
+            .from('tenant_settings')
+            .select('data')
+            .eq('company_id', companyId)
+            .eq('record_id', 'company_items')
+            .maybeSingle();
+          if (itSetting?.data?.items && Array.isArray(itSetting.data.items)) {
+            loadedItems = itSetting.data.items;
+          }
+        } catch {}
+      }
+
+      if (loadedItems.length > 0) {
+        const filteredItems = loadedItems.filter(it => {
+          const code = (it['Item Code'] || (it as any).itemCode || '').trim().toLowerCase();
+          if (deletedItems.has(code)) {
+            deleteItemFromSupabase(it['Item Code'] || (it as any).itemCode, companyId);
+            return false;
+          }
+          if (!isDemo && (it['Item Code']?.startsWith('ITM260812') || it['Item Name']?.includes('Wireless Mouse') || it['Item Name']?.includes('Pendrive'))) {
+            deleteItemFromSupabase(it['Item Code'] || (it as any).itemCode, companyId);
+            return false;
+          }
+          return true;
+        });
+        saveLocalArray(STORAGE_KEYS.ITEMS, filteredItems, companyId);
+      } else if (isDemo) {
+        await seedInitialLocalDataToSupabase();
+      } else {
+        const localItems = loadLocalArray<Item>(STORAGE_KEYS.ITEMS, companyId);
+        if (localItems.length > 0) {
+          syncItemsBatchToSupabase(localItems, companyId).catch(() => {});
         }
       }
 
       // 2. Pull Ledgers
+      let loadedLedgers: Ledger[] = [];
       const { data: sbLedgers, error: lgErr } = await supabase
         .from('ledgers')
         .select('data')
         .eq('company_id', companyId);
 
       if (!lgErr && sbLedgers && sbLedgers.length > 0) {
-        const loadedLedgers: Ledger[] = sbLedgers.map(row => row.data).filter(Boolean);
-        if (loadedLedgers.length > 0) {
-          saveLocalArray(STORAGE_KEYS.LEDGERS, loadedLedgers, companyId);
+        loadedLedgers = sbLedgers.map(row => row.data).filter(Boolean);
+      } else {
+        try {
+          const { data: lgSetting } = await supabase
+            .from('tenant_settings')
+            .select('data')
+            .eq('company_id', companyId)
+            .eq('record_id', 'company_ledgers')
+            .maybeSingle();
+          if (lgSetting?.data?.ledgers && Array.isArray(lgSetting.data.ledgers)) {
+            loadedLedgers = lgSetting.data.ledgers;
+          }
+        } catch {}
+      }
+
+      if (loadedLedgers.length > 0) {
+        saveLocalArray(STORAGE_KEYS.LEDGERS, loadedLedgers, companyId);
+      } else {
+        const localLedgers = loadLocalArray<Ledger>(STORAGE_KEYS.LEDGERS, companyId);
+        if (localLedgers.length > 0) {
+          syncLedgersToSupabase(localLedgers).catch(() => {});
         }
       }
 
       // 3. Pull Vouchers
+      let loadedVouchers: Voucher[] = [];
       const { data: sbVouchers, error: vchErr } = await supabase
         .from('vouchers')
         .select('data')
         .eq('company_id', companyId);
 
-      if (!vchErr) {
-        const loadedVouchers: Voucher[] = (sbVouchers || [])
-          .map(row => row.data)
-          .filter(Boolean)
-          .filter(v => {
-            const vNo = (v.voucherNo || '').trim().toLowerCase();
-            if (deletedVouchers.has(vNo)) {
-              deleteVoucherFromSupabase(v.voucherNo, companyId);
-              return false;
-            }
-            return true;
-          });
-        saveLocalArray(STORAGE_KEYS.VOUCHERS, loadedVouchers, companyId);
+      if (!vchErr && sbVouchers && sbVouchers.length > 0) {
+        loadedVouchers = sbVouchers.map(row => row.data).filter(Boolean);
+      } else {
+        try {
+          const { data: vchSetting } = await supabase
+            .from('tenant_settings')
+            .select('data')
+            .eq('company_id', companyId)
+            .eq('record_id', 'company_vouchers')
+            .maybeSingle();
+          if (vchSetting?.data?.vouchers && Array.isArray(vchSetting.data.vouchers)) {
+            loadedVouchers = vchSetting.data.vouchers;
+          }
+        } catch {}
+      }
+
+      if (loadedVouchers.length > 0) {
+        const filteredVouchers = loadedVouchers.filter(v => {
+          const vNo = (v.voucherNo || '').trim().toLowerCase();
+          if (deletedVouchers.has(vNo)) {
+            deleteVoucherFromSupabase(v.voucherNo, companyId);
+            return false;
+          }
+          return true;
+        });
+        saveLocalArray(STORAGE_KEYS.VOUCHERS, filteredVouchers, companyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_vouchers_updated', { detail: { vouchers: filteredVouchers, companyId } }));
+        }
+      } else {
+        const localVouchers = loadLocalArray<Voucher>(STORAGE_KEYS.VOUCHERS, companyId)
+          .filter(v => !deletedVouchers.has((v.voucherNo || '').trim().toLowerCase()));
+        if (localVouchers.length > 0) {
+          syncVouchersToSupabase(localVouchers).catch(() => {});
+        }
       }
 
       // 4. Pull Sales Invoices
+      let loadedSales: SalesInvoice[] = [];
       const { data: sbSales, error: sErr } = await supabase
         .from('sales_invoices')
         .select('data')
         .eq('company_id', companyId);
 
-      if (!sErr) {
-        const loadedSales: SalesInvoice[] = (sbSales || [])
-          .map(row => row.data)
-          .filter(Boolean)
-          .filter(s => {
-            const invNo = (s.invoiceNo || '').trim().toLowerCase();
-            if (deletedSales.has(invNo)) {
-              deleteSalesInvoiceFromSupabase(s.invoiceNo, companyId);
+      if (!sErr && sbSales && sbSales.length > 0) {
+        loadedSales = sbSales.map(row => row.data).filter(Boolean);
+      } else {
+        try {
+          const { data: sSetting } = await supabase
+            .from('tenant_settings')
+            .select('data')
+            .eq('company_id', companyId)
+            .eq('record_id', 'company_sales_invoices')
+            .maybeSingle();
+          if (sSetting?.data?.sales && Array.isArray(sSetting.data.sales)) {
+            loadedSales = sSetting.data.sales;
+          }
+        } catch {}
+      }
+
+      if (loadedSales.length > 0) {
+        const filteredSales = loadedSales.filter(s => {
+          const invNo = (s.invoiceNo || '').trim().toLowerCase();
+          if (deletedSales.has(invNo)) {
+            deleteSalesInvoiceFromSupabase(s.invoiceNo, companyId);
+            return false;
+          }
+          if (!isDemo) {
+            const isStaleInvoice = invNo === 'pos-0007' || invNo === 'pos-0011' || (s as any).isDemo === true || (Array.isArray(s.items) && s.items.some((it: any) => 
+              it['Item Name']?.includes('Wireless Mouse') || 
+              it['Item Name']?.includes('Pendrive') || 
+              it['Item Name']?.toLowerCase().includes('candy') ||
+              it['Item Code']?.startsWith('ITM260812') ||
+              it.isDemo === true
+            ));
+            if (isStaleInvoice) {
+              deleteSalesInvoiceFromSupabase(s.invoiceNo || invNo, companyId);
               return false;
             }
-            if (!isDemo) {
-              const isStaleInvoice = invNo === 'pos-0007' || invNo === 'pos-0011' || (s as any).isDemo === true || (Array.isArray(s.items) && s.items.some((it: any) => 
-                it['Item Name']?.includes('Wireless Mouse') || 
-                it['Item Name']?.includes('Pendrive') || 
-                it['Item Name']?.toLowerCase().includes('candy') ||
-                it['Item Code']?.startsWith('ITM260812') ||
-                it.isDemo === true
-              ));
-              if (isStaleInvoice) {
-                deleteSalesInvoiceFromSupabase(s.invoiceNo || invNo, companyId);
-                return false;
-              }
-            }
-            return true;
-          });
-        saveLocalArray(STORAGE_KEYS.SALES_INVOICES, loadedSales, companyId);
+          }
+          return true;
+        });
+        saveLocalArray(STORAGE_KEYS.SALES_INVOICES, filteredSales, companyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_sales_updated', { detail: { sales: filteredSales, companyId } }));
+        }
+      } else {
+        const localSales = loadLocalArray<SalesInvoice>(STORAGE_KEYS.SALES_INVOICES, companyId)
+          .filter(s => !deletedSales.has((s.invoiceNo || '').trim().toLowerCase()));
+        if (localSales.length > 0) {
+          syncSalesInvoicesToSupabase(localSales).catch(() => {});
+        }
       }
 
       // 5. Pull Purchase Invoices
+      let loadedPurchases: PurchaseInvoice[] = [];
       const { data: sbPurchases, error: pErr } = await supabase
         .from('purchase_invoices')
         .select('data')
         .eq('company_id', companyId);
 
-      if (!pErr) {
-        const loadedPurchases: PurchaseInvoice[] = (sbPurchases || [])
-          .map(row => row.data)
-          .filter(Boolean)
-          .filter(p => {
-            const bNo = (p.billNo || p.invoiceNo || '').trim().toLowerCase();
-            if (deletedPurchases.has(bNo)) {
+      if (!pErr && sbPurchases && sbPurchases.length > 0) {
+        loadedPurchases = sbPurchases.map(row => row.data).filter(Boolean);
+      } else {
+        try {
+          const { data: pSetting } = await supabase
+            .from('tenant_settings')
+            .select('data')
+            .eq('company_id', companyId)
+            .eq('record_id', 'company_purchase_invoices')
+            .maybeSingle();
+          if (pSetting?.data?.purchases && Array.isArray(pSetting.data.purchases)) {
+            loadedPurchases = pSetting.data.purchases;
+          }
+        } catch {}
+      }
+
+      if (loadedPurchases.length > 0) {
+        const filteredPurchases = loadedPurchases.filter(p => {
+          const bNo = (p.billNo || p.invoiceNo || '').trim().toLowerCase();
+          if (deletedPurchases.has(bNo)) {
+            deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
+            return false;
+          }
+          if (!isDemo) {
+            const hasDemoItems = (p as any).isDemo === true || (Array.isArray(p.items) && p.items.some((it: any) => 
+              it['Item Name']?.includes('Wireless Mouse') || 
+              it['Item Name']?.includes('Pendrive') || 
+              it['Item Name']?.toLowerCase().includes('candy') ||
+              it['Item Code']?.startsWith('ITM260812') ||
+              it.isDemo === true
+            ));
+            if (hasDemoItems) {
               deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
               return false;
             }
-            if (!isDemo) {
-              const hasDemoItems = (p as any).isDemo === true || (Array.isArray(p.items) && p.items.some((it: any) => 
-                it['Item Name']?.includes('Wireless Mouse') || 
-                it['Item Name']?.includes('Pendrive') || 
-                it['Item Name']?.toLowerCase().includes('candy') ||
-                it['Item Code']?.startsWith('ITM260812') ||
-                it.isDemo === true
-              ));
-              if (hasDemoItems) {
-                deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
-                return false;
-              }
-            }
-            return true;
-          });
-        saveLocalArray(STORAGE_KEYS.PURCHASE_INVOICES, loadedPurchases, companyId);
+          }
+          return true;
+        });
+        saveLocalArray(STORAGE_KEYS.PURCHASE_INVOICES, filteredPurchases, companyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_purchases_updated', { detail: { purchases: filteredPurchases, companyId } }));
+        }
+      } else {
+        const localPurchases = loadLocalArray<PurchaseInvoice>(STORAGE_KEYS.PURCHASE_INVOICES, companyId)
+          .filter(p => !deletedPurchases.has((p.billNo || p.invoiceNo || '').trim().toLowerCase()));
+        if (localPurchases.length > 0) {
+          syncPurchaseInvoicesToSupabase(localPurchases).catch(() => {});
+        }
       }
 
       // 6. Pull Staff Users from tenant_settings

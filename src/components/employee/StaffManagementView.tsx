@@ -5,7 +5,7 @@ import {
   MessageSquare, Send, Tag, ArrowRight, UserCheck, ShieldAlert,
   ChevronRight, RefreshCw, Eye, Edit3, Trash2, Sliders, Briefcase,
   FileSpreadsheet, Award, CalendarCheck, CheckSquare, Bell,
-  Wifi, WifiOff, ShieldCheck, MapPin, Globe, Lock, Phone, KeyRound, Fingerprint
+  Wifi, WifiOff, ShieldCheck, MapPin, Globe, Lock, Phone, KeyRound, Fingerprint, Layers
 } from 'lucide-react';
 import { 
   getLeaveTypes, saveLeaveTypes, updateLeaveType,

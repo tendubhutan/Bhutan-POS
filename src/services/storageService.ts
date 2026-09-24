@@ -3945,9 +3945,31 @@ export function saveSalesInvoice(payload: {
   }
   saveJson(STORAGE_KEYS.SALES_INVOICES, sales);
   syncSalesInvoiceToFirestore(invoice).catch(() => {});
+  try {
+    const compId = getActiveCompanyId();
+    broadcastEntityMutation({
+      entity: 'sales_invoice',
+      action: 'upsert',
+      data: invoice,
+      companyId: compId
+    });
+    broadcastEntityMutation({
+      entity: 'counters',
+      data: loadJson(STORAGE_KEYS.COUNTERS, {}, compId),
+      companyId: compId
+    });
+  } catch {}
 
   if (originalInvoiceNo && originalInvoiceNo.trim().toLowerCase() !== iNo.trim().toLowerCase()) {
     deleteSalesInvoiceFromFirestore(originalInvoiceNo.trim()).catch(() => {});
+    try {
+      broadcastEntityMutation({
+        entity: 'sales_invoice',
+        action: 'delete',
+        data: { invoiceNo: originalInvoiceNo.trim() },
+        companyId: getActiveCompanyId()
+      });
+    } catch {}
   }
 
   // Audit Trail Logging
@@ -4293,9 +4315,30 @@ export function savePurchaseInvoice(payload: {
   }
   saveJson(STORAGE_KEYS.PURCHASE_INVOICES, purchases);
   syncPurchaseInvoiceToFirestore(purchase).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'purchase_invoice',
+      action: 'upsert',
+      data: purchase,
+      companyId: finalBranchId ? getActiveCompanyId() : undefined
+    });
+    broadcastEntityMutation({
+      entity: 'counters',
+      data: loadJson(STORAGE_KEYS.COUNTERS, {}),
+      companyId: getActiveCompanyId()
+    });
+  } catch {}
 
   if (originalBillNo && originalBillNo.trim().toLowerCase() !== bNo.trim().toLowerCase()) {
     deletePurchaseInvoiceFromFirestore(originalBillNo.trim()).catch(() => {});
+    try {
+      broadcastEntityMutation({
+        entity: 'purchase_invoice',
+        action: 'delete',
+        data: { billNo: originalBillNo.trim(), invoiceNo: originalBillNo.trim() },
+        companyId: getActiveCompanyId()
+      });
+    } catch {}
   }
 
   // Audit Trail Logging
@@ -4984,6 +5027,14 @@ export function deleteSalesInvoicePermanent(invoiceNo: string) {
     saveJson(STORAGE_KEYS.DELETED_SALES_INVOICES, deletedSales);
   }
   deleteSalesInvoiceFromFirestore(actualNo).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'sales_invoice',
+      action: 'delete',
+      data: { invoiceNo: actualNo },
+      companyId: getActiveCompanyId()
+    });
+  } catch {}
 
   let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
   logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== invoiceNo.trim().toLowerCase());
@@ -5031,6 +5082,14 @@ export function cancelPurchaseInvoice(billNo: string, reason?: string) {
   (target as any).cancellationReason = reason || 'Cancelled by user';
   saveJson(STORAGE_KEYS.PURCHASE_INVOICES, purchases);
   syncPurchaseInvoiceToFirestore(target).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'purchase_invoice',
+      action: 'upsert',
+      data: target,
+      companyId: getActiveCompanyId()
+    });
+  } catch {}
 
   let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
   logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== billNo.trim().toLowerCase());
@@ -5082,6 +5141,14 @@ export function deletePurchaseInvoicePermanent(billNo: string) {
     saveJson(STORAGE_KEYS.DELETED_PURCHASE_INVOICES, deletedPurchases);
   }
   deletePurchaseInvoiceFromFirestore(ref).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'purchase_invoice',
+      action: 'delete',
+      data: { billNo: ref, invoiceNo: ref },
+      companyId: getActiveCompanyId()
+    });
+  } catch {}
 
   let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
   logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== ref.trim().toLowerCase());
@@ -5120,6 +5187,14 @@ export function cancelVoucher(voucherNo: string, reason?: string) {
   target.cancellationReason = reason || 'Cancelled by user';
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
   syncVoucherToFirestore(target).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'voucher',
+      action: 'upsert',
+      data: target,
+      companyId: getActiveCompanyId()
+    });
+  } catch {}
 
   let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
   logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== voucherNo.trim().toLowerCase());
@@ -5168,6 +5243,14 @@ export function deleteVoucherPermanent(voucherNo: string) {
     saveJson(STORAGE_KEYS.DELETED_VOUCHERS, deletedVouchers);
   }
   deleteVoucherFromFirestore(actualNo).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'voucher',
+      action: 'delete',
+      data: { voucherNo: actualNo },
+      companyId: getActiveCompanyId()
+    });
+  } catch {}
 
   let logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
   logs = logs.filter(l => l['Ref No']?.trim().toLowerCase() !== actualNo.trim().toLowerCase());
@@ -5478,9 +5561,30 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
   }
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
   syncVoucherToFirestore(newV).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'voucher',
+      action: 'upsert',
+      data: newV,
+      companyId: getActiveCompanyId()
+    });
+    broadcastEntityMutation({
+      entity: 'counters',
+      data: loadJson(STORAGE_KEYS.COUNTERS, {}),
+      companyId: getActiveCompanyId()
+    });
+  } catch {}
 
   if (v.originalVoucherNo && v.originalVoucherNo.trim().toLowerCase() !== finalNo.trim().toLowerCase()) {
     deleteVoucherFromFirestore(v.originalVoucherNo.trim()).catch(() => {});
+    try {
+      broadcastEntityMutation({
+        entity: 'voucher',
+        action: 'delete',
+        data: { voucherNo: v.originalVoucherNo.trim() },
+        companyId: getActiveCompanyId()
+      });
+    } catch {}
   }
 
   // Audit Trail Logging
@@ -5772,9 +5876,25 @@ export function saveCreditNote(payload: {
   }
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
   syncVoucherToFirestore(newV).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'voucher',
+      action: 'upsert',
+      data: newV,
+      companyId: getActiveCompanyId()
+    });
+  } catch {}
 
   if (payload.originalVoucherNo && payload.originalVoucherNo.trim().toLowerCase() !== finalNoCN.trim().toLowerCase()) {
     deleteVoucherFromFirestore(payload.originalVoucherNo.trim()).catch(() => {});
+    try {
+      broadcastEntityMutation({
+        entity: 'voucher',
+        action: 'delete',
+        data: { voucherNo: payload.originalVoucherNo.trim() },
+        companyId: getActiveCompanyId()
+      });
+    } catch {}
   }
 
   // Audit Trail Logging
@@ -5912,9 +6032,25 @@ export function saveDebitNote(payload: {
   }
   saveJson(STORAGE_KEYS.VOUCHERS, vouchers);
   syncVoucherToFirestore(newV).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'voucher',
+      action: 'upsert',
+      data: newV,
+      companyId: getActiveCompanyId()
+    });
+  } catch {}
 
   if (payload.originalVoucherNo && payload.originalVoucherNo.trim().toLowerCase() !== finalNo.trim().toLowerCase()) {
     deleteVoucherFromFirestore(payload.originalVoucherNo.trim()).catch(() => {});
+    try {
+      broadcastEntityMutation({
+        entity: 'voucher',
+        action: 'delete',
+        data: { voucherNo: payload.originalVoucherNo.trim() },
+        companyId: getActiveCompanyId()
+      });
+    } catch {}
   }
 
   // Audit Trail Logging

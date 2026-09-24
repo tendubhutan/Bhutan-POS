@@ -264,8 +264,15 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
           id: t.assignedToEmpId,
           empCode: '',
           fullName: t.assignedToEmpName || 'Unassigned Staff',
-          status: 'Active',
-          role: 'Staff'
+          cidNo: '',
+          designation: 'Staff',
+          department: 'General',
+          joiningDate: '',
+          contactNo: '',
+          bankName: '',
+          accountNo: '',
+          basicSalary: 0,
+          status: 'Active'
         };
         item = { emp: dummyEmp, total: 0, completed: 0, active: 0, overdue: 0, urgent: 0, tasks: [] };
         map.set(t.assignedToEmpId, item);
@@ -1150,7 +1157,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                         <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
                           <span>{w.emp.empCode || 'Staff'}</span>
                           <span>·</span>
-                          <span>{w.emp.role || 'Employee'}</span>
+                          <span>{w.emp.designation || w.emp.department || 'Employee'}</span>
                         </div>
                       </div>
                     </div>
