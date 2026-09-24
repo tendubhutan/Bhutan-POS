@@ -484,6 +484,8 @@ export interface PaymentDetails {
 }
 
 export interface SalesInvoice {
+  companyId?: string;
+  company_id?: string;
   isPOS?: boolean;
   invoiceNo: string;
   orderNo?: string;
@@ -549,6 +551,8 @@ export interface SalesInvoice {
 }
 
 export interface PurchaseInvoice {
+  companyId?: string;
+  company_id?: string;
   billNo: string;
   invoiceNo?: string;
   supplierBillNo?: string;
@@ -703,6 +707,8 @@ export interface VoucherLine {
 }
 
 export interface Voucher {
+  companyId?: string;
+  company_id?: string;
   voucherNo: string;
   date: string;
   type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'PHYSICAL_STOCK' | 'QUOTATION' | 'SALES_ORDER' | 'PURCHASE_ORDER' | 'RECEIPT_NOTE' | 'STOCK_TRANSFER';

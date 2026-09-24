@@ -1,4 +1,16 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import {
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  deleteDoc,
+  query,
+  where,
+  onSnapshot
+} from 'firebase/firestore';
 import {
   initTenantSession,
   pushCollectionToSupabase,
@@ -283,8 +295,8 @@ function saveLocalArray<T>(key: string, data: T[], companyId?: string): void {
 // ----------------------------------------------------------------------------
 
 export async function syncItemToSupabase(item: Item, targetCompanyId?: string): Promise<void> {
-  if (!isSupabaseConfigured || !item) return;
-  const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
+  if (!item) return;
+  const companyId = targetCompanyId || (item as any).companyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const itemCode = (item['Item Code'] || (item as any).code || (item as any).itemCode || '').trim();
   if (!itemCode) return;
 
@@ -308,71 +320,89 @@ export async function syncItemToSupabase(item: Item, targetCompanyId?: string): 
     'Reorder Level': Number(item['Reorder Level']) || 0
   };
 
-  const payload: Record<string, any> = {
-    company_id: companyId,
-    record_id: itemCode,
-    item_code: itemCode,
-    item_name: itemName,
-    data: safeData,
-    updated_at: new Date().toISOString()
-  };
-
+  // 1. Firestore Item Sync
   try {
-    // Ensure parent company exists in companies table before inserting item
-    await ensureCompanyExists(companyId);
+    const docId = `${companyId}_${itemCode.replace(/[\/\\]/g, '_')}`;
+    await setDoc(doc(db, 'items', docId), {
+      companyId,
+      company_id: companyId,
+      recordId: itemCode,
+      itemCode,
+      itemName,
+      data: safeData,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (fsErr) {
+    console.warn('[Firestore Item Sync Notice]:', fsErr);
+  }
 
-    let res = await supabase.from('items').upsert(payload, { onConflict: 'company_id, record_id' });
-    if (res.error) {
-      console.warn('[Supabase Sync Item Notice]:', res.error.message);
-      // If table is named 'Item' (singular/capitalized)
-      if (res.error.message.includes('relation') && (res.error.message.includes('items') || res.error.message.includes('Item'))) {
-        res = await supabase.from('Item').upsert(payload, { onConflict: 'company_id, record_id' });
-      }
-      // If column mismatch on flat fields, retry purely with JSONB data
-      if (res.error && (res.error.message.includes('column') || res.error.message.includes('schema'))) {
-        res = await supabase.from('items').upsert({
-          company_id: companyId,
-          record_id: itemCode,
-          data: safeData,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'company_id, record_id' });
-      }
+  // 2. Supabase Item Sync
+  if (isSupabaseConfigured) {
+    const payload: Record<string, any> = {
+      company_id: companyId,
+      record_id: itemCode,
+      item_code: itemCode,
+      item_name: itemName,
+      data: safeData,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      await ensureCompanyExists(companyId);
+
+      let res = await supabase.from('items').upsert(payload, { onConflict: 'company_id, record_id' });
       if (res.error) {
-        console.error('[Supabase Item Sync Error]:', res.error.message, res.error.details);
+        if (res.error.message.includes('relation') && (res.error.message.includes('items') || res.error.message.includes('Item'))) {
+          res = await supabase.from('Item').upsert(payload, { onConflict: 'company_id, record_id' });
+        }
+        if (res.error && (res.error.message.includes('column') || res.error.message.includes('schema'))) {
+          res = await supabase.from('items').upsert({
+            company_id: companyId,
+            record_id: itemCode,
+            data: safeData,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'company_id, record_id' });
+        }
       }
+    } catch (err: any) {
+      console.warn('[Supabase Sync Item Error]:', err?.message || err);
     }
-  } catch (err: any) {
-    console.warn('[Supabase Sync Item Error]:', err?.message || err);
   }
 }
 
 export async function syncItemsBatchToSupabase(items: Item[], targetCompanyId?: string): Promise<void> {
-  if (!items || items.length === 0 || !isSupabaseConfigured) return;
+  if (!items || items.length === 0) return;
   for (const it of items) {
     await syncItemToSupabase(it, targetCompanyId);
   }
 }
 
 export async function deleteItemFromSupabase(itemCode: string, targetCompanyId?: string): Promise<void> {
-  if (!isSupabaseConfigured) return;
   const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const cleanCode = (itemCode || '').trim();
   if (!cleanCode) return;
 
   try {
-    let res = await supabase
-      .from('items')
-      .delete()
-      .match({ company_id: companyId, record_id: cleanCode });
+    const docId = `${companyId}_${cleanCode.replace(/[\/\\]/g, '_')}`;
+    await deleteDoc(doc(db, 'items', docId));
+  } catch {}
 
-    if (res.error && res.error.message.includes('relation')) {
-      await supabase
-        .from('Item')
+  if (isSupabaseConfigured) {
+    try {
+      let res = await supabase
+        .from('items')
         .delete()
         .match({ company_id: companyId, record_id: cleanCode });
+
+      if (res.error && res.error.message.includes('relation')) {
+        await supabase
+          .from('Item')
+          .delete()
+          .match({ company_id: companyId, record_id: cleanCode });
+      }
+    } catch (err: any) {
+      console.warn('[Supabase Delete Item Error]:', err?.message || err);
     }
-  } catch (err: any) {
-    console.warn('[Supabase Delete Item Error]:', err?.message || err);
   }
 }
 
@@ -381,8 +411,8 @@ export async function deleteItemFromSupabase(itemCode: string, targetCompanyId?:
 // ----------------------------------------------------------------------------
 
 export async function syncLedgerToSupabase(ledger: Ledger, targetCompanyId?: string): Promise<void> {
-  if (!isSupabaseConfigured || !ledger) return;
-  const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
+  if (!ledger) return;
+  const companyId = targetCompanyId || (ledger as any).companyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const ledgerName = (ledger['Ledger Name'] || (ledger as any).name || (ledger as any).ledgerName || '').trim();
   if (!ledgerName) return;
 
@@ -396,56 +426,80 @@ export async function syncLedgerToSupabase(ledger: Ledger, targetCompanyId?: str
     'Balance Type (Dr/Cr)': ledger['Balance Type (Dr/Cr)'] === 'Cr' ? 'Cr' : 'Dr'
   };
 
-  const payload: Record<string, any> = {
-    company_id: companyId,
-    record_id: ledgerName,
-    ledger_name: ledgerName,
-    name: ledgerName,
-    group: group,
-    data: safeData,
-    updated_at: new Date().toISOString()
-  };
-
+  // 1. Firestore Ledger Sync
   try {
-    let res = await supabase.from('ledgers').upsert(payload, { onConflict: 'company_id, record_id' });
-    if (res.error) {
-      if (res.error.message.includes('relation')) {
-        res = await supabase.from('Ledger').upsert(payload, { onConflict: 'company_id, record_id' });
+    const docId = `${companyId}_${ledgerName.replace(/[\/\\]/g, '_')}`;
+    await setDoc(doc(db, 'ledgers', docId), {
+      companyId,
+      company_id: companyId,
+      recordId: ledgerName,
+      ledgerName,
+      data: safeData,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (fsErr) {
+    console.warn('[Firestore Ledger Sync Notice]:', fsErr);
+  }
+
+  // 2. Supabase Ledger Sync
+  if (isSupabaseConfigured) {
+    const payload: Record<string, any> = {
+      company_id: companyId,
+      record_id: ledgerName,
+      ledger_name: ledgerName,
+      name: ledgerName,
+      group: group,
+      data: safeData,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      let res = await supabase.from('ledgers').upsert(payload, { onConflict: 'company_id, record_id' });
+      if (res.error) {
+        if (res.error.message.includes('relation')) {
+          res = await supabase.from('Ledger').upsert(payload, { onConflict: 'company_id, record_id' });
+        }
+        if (res.error && (res.error.message.includes('column') || res.error.message.includes('schema'))) {
+          await supabase.from('ledgers').upsert({
+            company_id: companyId,
+            record_id: ledgerName,
+            data: safeData,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'company_id, record_id' });
+        }
       }
-      if (res.error && (res.error.message.includes('column') || res.error.message.includes('schema'))) {
-        await supabase.from('ledgers').upsert({
-          company_id: companyId,
-          record_id: ledgerName,
-          data: safeData,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'company_id, record_id' });
-      }
+    } catch (err: any) {
+      console.warn('[Supabase Sync Ledger Error]:', err?.message || err);
     }
-  } catch (err: any) {
-    console.warn('[Supabase Sync Ledger Error]:', err?.message || err);
   }
 }
 
 export async function deleteLedgerFromSupabase(ledgerName: string, targetCompanyId?: string): Promise<void> {
-  if (!isSupabaseConfigured) return;
   const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const cleanName = (ledgerName || '').trim();
   if (!cleanName) return;
 
   try {
-    let res = await supabase
-      .from('ledgers')
-      .delete()
-      .match({ company_id: companyId, record_id: cleanName });
+    const docId = `${companyId}_${cleanName.replace(/[\/\\]/g, '_')}`;
+    await deleteDoc(doc(db, 'ledgers', docId));
+  } catch {}
 
-    if (res.error && res.error.message.includes('relation')) {
-      await supabase
-        .from('Ledger')
+  if (isSupabaseConfigured) {
+    try {
+      let res = await supabase
+        .from('ledgers')
         .delete()
         .match({ company_id: companyId, record_id: cleanName });
+
+      if (res.error && res.error.message.includes('relation')) {
+        await supabase
+          .from('Ledger')
+          .delete()
+          .match({ company_id: companyId, record_id: cleanName });
+      }
+    } catch (err: any) {
+      console.warn('[Supabase Delete Ledger Error]:', err?.message || err);
     }
-  } catch (err: any) {
-    console.warn('[Supabase Delete Ledger Error]:', err?.message || err);
   }
 }
 
@@ -454,135 +508,290 @@ export async function deleteLedgerFromSupabase(ledgerName: string, targetCompany
 // ----------------------------------------------------------------------------
 
 export async function syncSalesInvoiceToSupabase(invoice: SalesInvoice, targetCompanyId?: string): Promise<void> {
-  if (!isSupabaseConfigured || !invoice) return;
-  const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
+  if (!invoice) return;
+  const companyId = targetCompanyId || invoice.companyId || (invoice as any).company_id || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const invNo = (invoice.invoiceNo || (invoice as any).billNo || '').trim();
   if (!invNo) return;
 
-  const payload: Record<string, any> = {
-    company_id: companyId,
-    record_id: invNo,
-    invoice_no: invNo,
-    date: invoice.date || new Date().toISOString().slice(0, 10),
-    customer_name: (invoice.customer?.name || invoice.customer?.ledger || 'Walk-in / Cash Customer').trim(),
-    total_amount: Number(invoice.total) || 0,
-    tax_amount: Number(invoice.gstAmt) || 0,
-    payment_mode: invoice.cash ? 'Cash' : (invoice.bank1 || invoice.bank2) ? 'Bank' : 'Credit',
-    status: invoice.status || 'Paid',
-    data: invoice,
-    updated_at: new Date().toISOString()
-  };
+  // Stamp tenant ID on invoice
+  invoice.companyId = companyId;
+  (invoice as any).company_id = companyId;
 
+  // 1. Instant Google Cloud Firestore Sync (Zero RLS restrictions, instant sync across all PCs)
   try {
-    let res = await supabase.from('sales_invoices').upsert(payload, { onConflict: 'company_id, record_id' });
-    if (res.error && (res.error.message.includes('column') || res.error.message.includes('schema'))) {
-      await supabase.from('sales_invoices').upsert({
-        company_id: companyId,
-        record_id: invNo,
-        data: invoice,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'company_id, record_id' });
-    }
-
-    // Backup full array into tenant_settings for zero data-loss resilience
-    const localSales = loadLocalArray<SalesInvoice>(STORAGE_KEYS.SALES_INVOICES, companyId);
-    if (localSales.length > 0) {
-      await supabase.from('tenant_settings').upsert({
-        company_id: companyId,
-        record_id: 'company_sales_invoices',
-        data: { sales: localSales },
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'company_id, record_id' });
-    }
-  } catch (err: any) {
-    console.warn('[Supabase Sync Sales Invoice Error]:', err?.message || err);
+    const docId = `${companyId}_${invNo.replace(/[\/\\]/g, '_')}`;
+    await setDoc(doc(db, 'sales_invoices', docId), {
+      companyId: companyId,
+      company_id: companyId,
+      recordId: invNo,
+      invoiceNo: invNo,
+      date: invoice.date || new Date().toISOString().slice(0, 10),
+      customerName: (invoice.customer?.name || invoice.customer?.ledger || 'Walk-in / Cash Customer').trim(),
+      totalAmount: Number(invoice.total) || 0,
+      taxAmount: Number(invoice.gstAmt) || 0,
+      paymentMode: invoice.cash ? 'Cash' : (invoice.bank1 || invoice.bank2) ? 'Bank' : 'Credit',
+      status: invoice.status || 'Paid',
+      data: invoice,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (fsErr) {
+    console.warn('[Firestore Sync Sales Invoice Notice]:', fsErr);
   }
+
+  // 2. Supabase Table Sync (with safe schema fallback)
+  if (isSupabaseConfigured) {
+    const payload: Record<string, any> = {
+      company_id: companyId,
+      record_id: invNo,
+      invoice_no: invNo,
+      date: invoice.date || new Date().toISOString().slice(0, 10),
+      customer_name: (invoice.customer?.name || invoice.customer?.ledger || 'Walk-in / Cash Customer').trim(),
+      total_amount: Number(invoice.total) || 0,
+      tax_amount: Number(invoice.gstAmt) || 0,
+      payment_mode: invoice.cash ? 'Cash' : (invoice.bank1 || invoice.bank2) ? 'Bank' : 'Credit',
+      status: invoice.status || 'Paid',
+      data: invoice,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      let res = await supabase.from('sales_invoices').upsert(payload, { onConflict: 'company_id, record_id' });
+      if (res.error && (res.error.message.includes('column') || res.error.message.includes('schema') || res.error.message.includes('violates'))) {
+        await supabase.from('sales_invoices').upsert({
+          company_id: companyId,
+          record_id: invNo,
+          data: invoice,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'company_id, record_id' });
+      }
+
+      // Safe update to tenant_settings for zero data-loss resilience
+      const localSales = loadLocalArray<SalesInvoice>(STORAGE_KEYS.SALES_INVOICES, companyId);
+      const idx = localSales.findIndex(s => (s.invoiceNo || '').trim().toLowerCase() === invNo.toLowerCase());
+      if (idx >= 0) {
+        localSales[idx] = invoice;
+      } else {
+        localSales.push(invoice);
+      }
+      if (localSales.length > 0) {
+        await supabase.from('tenant_settings').upsert({
+          company_id: companyId,
+          record_id: 'company_sales_invoices',
+          data: { sales: localSales },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'company_id, record_id' });
+      }
+    } catch (err: any) {
+      console.warn('[Supabase Sync Sales Invoice Notice]:', err?.message || err);
+    }
+  }
+
+  // 3. Real-time broadcast
+  try {
+    broadcastEntityMutation({
+      entity: 'sales_invoice',
+      action: 'upsert',
+      data: invoice,
+      companyId
+    });
+  } catch {}
 }
 
 export async function deleteSalesInvoiceFromSupabase(invoiceNo: string, targetCompanyId?: string): Promise<void> {
-  if (!isSupabaseConfigured) return;
   const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const cleanNo = (invoiceNo || '').trim();
   if (!cleanNo) return;
 
+  // 1. Delete from Firestore
   try {
-    await supabase.from('sales_invoices').delete().eq('company_id', companyId).ilike('record_id', cleanNo);
-    await supabase.from('sales_invoices').delete().eq('company_id', companyId).ilike('invoice_no', cleanNo);
-    const localSales = loadLocalArray<SalesInvoice>(STORAGE_KEYS.SALES_INVOICES, companyId);
-    await supabase.from('tenant_settings').upsert({
-      company_id: companyId,
-      record_id: 'company_sales_invoices',
-      data: { sales: localSales },
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'company_id, record_id' });
-  } catch (err: any) {
-    console.warn('[Supabase Delete Sales Invoice Error]:', err?.message || err);
+    const docId = `${companyId}_${cleanNo.replace(/[\/\\]/g, '_')}`;
+    await deleteDoc(doc(db, 'sales_invoices', docId));
+  } catch (fsErr) {
+    console.warn('[Firestore Delete Sales Notice]:', fsErr);
   }
+
+  // 2. Delete from Supabase
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('sales_invoices').delete().eq('company_id', companyId).ilike('record_id', cleanNo);
+      await supabase.from('sales_invoices').delete().eq('company_id', companyId).ilike('invoice_no', cleanNo);
+
+      // Safe update to tenant_settings (NEVER wipe if remote or local already has sales)
+      const { data: sSetting } = await supabase
+        .from('tenant_settings')
+        .select('data')
+        .eq('company_id', companyId)
+        .eq('record_id', 'company_sales_invoices')
+        .maybeSingle();
+      let existingSales: SalesInvoice[] = sSetting?.data?.sales || [];
+      if (existingSales.length === 0) {
+        existingSales = loadLocalArray<SalesInvoice>(STORAGE_KEYS.SALES_INVOICES, companyId);
+      }
+      if (existingSales.length > 0) {
+        const filtered = existingSales.filter(s => (s.invoiceNo || '').trim().toLowerCase() !== cleanNo.toLowerCase());
+        await supabase.from('tenant_settings').upsert({
+          company_id: companyId,
+          record_id: 'company_sales_invoices',
+          data: { sales: filtered },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'company_id, record_id' });
+      }
+    } catch (err: any) {
+      console.warn('[Supabase Delete Sales Invoice Notice]:', err?.message || err);
+    }
+  }
+
+  // 3. Real-time broadcast
+  try {
+    broadcastEntityMutation({
+      entity: 'sales_invoice',
+      action: 'delete',
+      data: { invoiceNo: cleanNo },
+      companyId
+    });
+  } catch {}
 }
 
 export async function syncPurchaseInvoiceToSupabase(purchase: PurchaseInvoice, targetCompanyId?: string): Promise<void> {
-  if (!isSupabaseConfigured || !purchase) return;
-  const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
+  if (!purchase) return;
+  const companyId = targetCompanyId || purchase.companyId || (purchase as any).company_id || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const billNo = (purchase.billNo || purchase.invoiceNo || '').trim();
   if (!billNo) return;
 
-  const payload: Record<string, any> = {
-    company_id: companyId,
-    record_id: billNo,
-    invoice_no: billNo,
-    date: purchase.date || new Date().toISOString().slice(0, 10),
-    supplier_name: (purchase.supplier?.name || purchase.supplier?.ledger || 'Standard Supplier').trim(),
-    total_amount: Number(purchase.total) || 0,
-    tax_amount: Number(purchase.gstAmt) || 0,
-    status: purchase.status || 'Paid',
-    data: purchase,
-    updated_at: new Date().toISOString()
-  };
+  // Stamp tenant ID on purchase
+  purchase.companyId = companyId;
+  (purchase as any).company_id = companyId;
 
+  // 1. Instant Firestore Sync
   try {
-    let res = await supabase.from('purchase_invoices').upsert(payload, { onConflict: 'company_id, record_id' });
-    if (res.error && (res.error.message.includes('column') || res.error.message.includes('schema'))) {
-      await supabase.from('purchase_invoices').upsert({
-        company_id: companyId,
-        record_id: billNo,
-        data: purchase,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'company_id, record_id' });
-    }
-
-    const localPurchases = loadLocalArray<PurchaseInvoice>(STORAGE_KEYS.PURCHASE_INVOICES, companyId);
-    if (localPurchases.length > 0) {
-      await supabase.from('tenant_settings').upsert({
-        company_id: companyId,
-        record_id: 'company_purchase_invoices',
-        data: { purchases: localPurchases },
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'company_id, record_id' });
-    }
-  } catch (err: any) {
-    console.warn('[Supabase Sync Purchase Invoice Error]:', err?.message || err);
+    const docId = `${companyId}_${billNo.replace(/[\/\\]/g, '_')}`;
+    await setDoc(doc(db, 'purchase_invoices', docId), {
+      companyId: companyId,
+      company_id: companyId,
+      recordId: billNo,
+      billNo: billNo,
+      invoiceNo: billNo,
+      date: purchase.date || new Date().toISOString().slice(0, 10),
+      supplierName: (purchase.supplier?.name || purchase.supplier?.ledger || 'Standard Supplier').trim(),
+      totalAmount: Number(purchase.total) || 0,
+      taxAmount: Number(purchase.gstAmt) || 0,
+      status: purchase.status || 'Paid',
+      data: purchase,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (fsErr) {
+    console.warn('[Firestore Sync Purchase Invoice Notice]:', fsErr);
   }
+
+  // 2. Supabase Sync
+  if (isSupabaseConfigured) {
+    const payload: Record<string, any> = {
+      company_id: companyId,
+      record_id: billNo,
+      invoice_no: billNo,
+      date: purchase.date || new Date().toISOString().slice(0, 10),
+      supplier_name: (purchase.supplier?.name || purchase.supplier?.ledger || 'Standard Supplier').trim(),
+      total_amount: Number(purchase.total) || 0,
+      tax_amount: Number(purchase.gstAmt) || 0,
+      status: purchase.status || 'Paid',
+      data: purchase,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      let res = await supabase.from('purchase_invoices').upsert(payload, { onConflict: 'company_id, record_id' });
+      if (res.error && (res.error.message.includes('column') || res.error.message.includes('schema') || res.error.message.includes('violates'))) {
+        await supabase.from('purchase_invoices').upsert({
+          company_id: companyId,
+          record_id: billNo,
+          data: purchase,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'company_id, record_id' });
+      }
+
+      const localPurchases = loadLocalArray<PurchaseInvoice>(STORAGE_KEYS.PURCHASE_INVOICES, companyId);
+      const idx = localPurchases.findIndex(p => (p.billNo || p.invoiceNo || '').trim().toLowerCase() === billNo.toLowerCase());
+      if (idx >= 0) {
+        localPurchases[idx] = purchase;
+      } else {
+        localPurchases.push(purchase);
+      }
+      if (localPurchases.length > 0) {
+        await supabase.from('tenant_settings').upsert({
+          company_id: companyId,
+          record_id: 'company_purchase_invoices',
+          data: { purchases: localPurchases },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'company_id, record_id' });
+      }
+    } catch (err: any) {
+      console.warn('[Supabase Sync Purchase Invoice Notice]:', err?.message || err);
+    }
+  }
+
+  // 3. Real-time broadcast
+  try {
+    broadcastEntityMutation({
+      entity: 'purchase_invoice',
+      action: 'upsert',
+      data: purchase,
+      companyId
+    });
+  } catch {}
 }
 
 export async function deletePurchaseInvoiceFromSupabase(billNo: string, targetCompanyId?: string): Promise<void> {
-  if (!isSupabaseConfigured) return;
   const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const cleanNo = (billNo || '').trim();
   if (!cleanNo) return;
 
+  // 1. Delete from Firestore
   try {
-    await supabase.from('purchase_invoices').delete().eq('company_id', companyId).ilike('record_id', cleanNo);
-    await supabase.from('purchase_invoices').delete().eq('company_id', companyId).ilike('invoice_no', cleanNo);
-    const localPurchases = loadLocalArray<PurchaseInvoice>(STORAGE_KEYS.PURCHASE_INVOICES, companyId);
-    await supabase.from('tenant_settings').upsert({
-      company_id: companyId,
-      record_id: 'company_purchase_invoices',
-      data: { purchases: localPurchases },
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'company_id, record_id' });
-  } catch (err: any) {
-    console.warn('[Supabase Delete Purchase Invoice Error]:', err?.message || err);
+    const docId = `${companyId}_${cleanNo.replace(/[\/\\]/g, '_')}`;
+    await deleteDoc(doc(db, 'purchase_invoices', docId));
+  } catch (fsErr) {
+    console.warn('[Firestore Delete Purchase Notice]:', fsErr);
   }
+
+  // 2. Delete from Supabase
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('purchase_invoices').delete().eq('company_id', companyId).ilike('record_id', cleanNo);
+      await supabase.from('purchase_invoices').delete().eq('company_id', companyId).ilike('invoice_no', cleanNo);
+
+      const { data: pSetting } = await supabase
+        .from('tenant_settings')
+        .select('data')
+        .eq('company_id', companyId)
+        .eq('record_id', 'company_purchase_invoices')
+        .maybeSingle();
+      let existingPurchases: PurchaseInvoice[] = pSetting?.data?.purchases || [];
+      if (existingPurchases.length === 0) {
+        existingPurchases = loadLocalArray<PurchaseInvoice>(STORAGE_KEYS.PURCHASE_INVOICES, companyId);
+      }
+      if (existingPurchases.length > 0) {
+        const filtered = existingPurchases.filter(p => (p.billNo || p.invoiceNo || '').trim().toLowerCase() !== cleanNo.toLowerCase());
+        await supabase.from('tenant_settings').upsert({
+          company_id: companyId,
+          record_id: 'company_purchase_invoices',
+          data: { purchases: filtered },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'company_id, record_id' });
+      }
+    } catch (err: any) {
+      console.warn('[Supabase Delete Purchase Invoice Notice]:', err?.message || err);
+    }
+  }
+
+  // 3. Real-time broadcast
+  try {
+    broadcastEntityMutation({
+      entity: 'purchase_invoice',
+      action: 'delete',
+      data: { billNo: cleanNo },
+      companyId
+    });
+  } catch {}
 }
 
 // ----------------------------------------------------------------------------
@@ -590,66 +799,140 @@ export async function deletePurchaseInvoiceFromSupabase(billNo: string, targetCo
 // ----------------------------------------------------------------------------
 
 export async function syncVoucherToSupabase(voucher: Voucher, targetCompanyId?: string): Promise<void> {
-  if (!isSupabaseConfigured || !voucher) return;
-  const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
+  if (!voucher) return;
+  const companyId = targetCompanyId || voucher.companyId || (voucher as any).company_id || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const vNo = (voucher.voucherNo || '').trim();
   if (!vNo) return;
 
-  const payload: Record<string, any> = {
-    company_id: companyId,
-    record_id: vNo,
-    voucher_no: vNo,
-    date: voucher.date || new Date().toISOString().slice(0, 10),
-    voucher_type: voucher.type || 'P',
-    amount: Number(voucher.amount) || Number(voucher.totalAmount) || 0,
-    data: voucher,
-    updated_at: new Date().toISOString()
-  };
+  // Stamp tenant ID on voucher
+  voucher.companyId = companyId;
+  (voucher as any).company_id = companyId;
 
+  // 1. Instant Firestore Sync
   try {
-    let res = await supabase.from('vouchers').upsert(payload, { onConflict: 'company_id, record_id' });
-    if (res.error && (res.error.message.includes('column') || res.error.message.includes('schema'))) {
-      await supabase.from('vouchers').upsert({
-        company_id: companyId,
-        record_id: vNo,
-        data: voucher,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'company_id, record_id' });
-    }
-
-    const localVouchers = loadLocalArray<Voucher>(STORAGE_KEYS.VOUCHERS, companyId);
-    if (localVouchers.length > 0) {
-      await supabase.from('tenant_settings').upsert({
-        company_id: companyId,
-        record_id: 'company_vouchers',
-        data: { vouchers: localVouchers },
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'company_id, record_id' });
-    }
-  } catch (err: any) {
-    console.warn('[Supabase Sync Voucher Error]:', err?.message || err);
+    const docId = `${companyId}_${vNo.replace(/[\/\\]/g, '_')}`;
+    await setDoc(doc(db, 'vouchers', docId), {
+      companyId: companyId,
+      company_id: companyId,
+      recordId: vNo,
+      voucherNo: vNo,
+      date: voucher.date || new Date().toISOString().slice(0, 10),
+      voucherType: voucher.type || 'P',
+      amount: Number(voucher.amount) || Number(voucher.totalAmount) || 0,
+      data: voucher,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (fsErr) {
+    console.warn('[Firestore Sync Voucher Notice]:', fsErr);
   }
+
+  // 2. Supabase Sync
+  if (isSupabaseConfigured) {
+    const payload: Record<string, any> = {
+      company_id: companyId,
+      record_id: vNo,
+      voucher_no: vNo,
+      date: voucher.date || new Date().toISOString().slice(0, 10),
+      voucher_type: voucher.type || 'P',
+      amount: Number(voucher.amount) || Number(voucher.totalAmount) || 0,
+      data: voucher,
+      updated_at: new Date().toISOString()
+    };
+
+    try {
+      let res = await supabase.from('vouchers').upsert(payload, { onConflict: 'company_id, record_id' });
+      if (res.error && (res.error.message.includes('column') || res.error.message.includes('schema') || res.error.message.includes('violates'))) {
+        await supabase.from('vouchers').upsert({
+          company_id: companyId,
+          record_id: vNo,
+          data: voucher,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'company_id, record_id' });
+      }
+
+      const localVouchers = loadLocalArray<Voucher>(STORAGE_KEYS.VOUCHERS, companyId);
+      const idx = localVouchers.findIndex(v => (v.voucherNo || '').trim().toLowerCase() === vNo.toLowerCase());
+      if (idx >= 0) {
+        localVouchers[idx] = voucher;
+      } else {
+        localVouchers.push(voucher);
+      }
+      if (localVouchers.length > 0) {
+        await supabase.from('tenant_settings').upsert({
+          company_id: companyId,
+          record_id: 'company_vouchers',
+          data: { vouchers: localVouchers },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'company_id, record_id' });
+      }
+    } catch (err: any) {
+      console.warn('[Supabase Sync Voucher Notice]:', err?.message || err);
+    }
+  }
+
+  // 3. Real-time broadcast
+  try {
+    broadcastEntityMutation({
+      entity: 'voucher',
+      action: 'upsert',
+      data: voucher,
+      companyId
+    });
+  } catch {}
 }
 
 export async function deleteVoucherFromSupabase(voucherNo: string, targetCompanyId?: string): Promise<void> {
-  if (!isSupabaseConfigured) return;
   const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const cleanNo = (voucherNo || '').trim();
   if (!cleanNo) return;
 
+  // 1. Delete from Firestore
   try {
-    await supabase.from('vouchers').delete().eq('company_id', companyId).ilike('record_id', cleanNo);
-    await supabase.from('vouchers').delete().eq('company_id', companyId).ilike('voucher_no', cleanNo);
-    const localVouchers = loadLocalArray<Voucher>(STORAGE_KEYS.VOUCHERS, companyId);
-    await supabase.from('tenant_settings').upsert({
-      company_id: companyId,
-      record_id: 'company_vouchers',
-      data: { vouchers: localVouchers },
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'company_id, record_id' });
-  } catch (err: any) {
-    console.warn('[Supabase Delete Voucher Error]:', err?.message || err);
+    const docId = `${companyId}_${cleanNo.replace(/[\/\\]/g, '_')}`;
+    await deleteDoc(doc(db, 'vouchers', docId));
+  } catch (fsErr) {
+    console.warn('[Firestore Delete Voucher Notice]:', fsErr);
   }
+
+  // 2. Delete from Supabase
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('vouchers').delete().eq('company_id', companyId).ilike('record_id', cleanNo);
+      await supabase.from('vouchers').delete().eq('company_id', companyId).ilike('voucher_no', cleanNo);
+
+      const { data: vSetting } = await supabase
+        .from('tenant_settings')
+        .select('data')
+        .eq('company_id', companyId)
+        .eq('record_id', 'company_vouchers')
+        .maybeSingle();
+      let existingVouchers: Voucher[] = vSetting?.data?.vouchers || [];
+      if (existingVouchers.length === 0) {
+        existingVouchers = loadLocalArray<Voucher>(STORAGE_KEYS.VOUCHERS, companyId);
+      }
+      if (existingVouchers.length > 0) {
+        const filtered = existingVouchers.filter(v => (v.voucherNo || '').trim().toLowerCase() !== cleanNo.toLowerCase());
+        await supabase.from('tenant_settings').upsert({
+          company_id: companyId,
+          record_id: 'company_vouchers',
+          data: { vouchers: filtered },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'company_id, record_id' });
+      }
+    } catch (err: any) {
+      console.warn('[Supabase Delete Voucher Notice]:', err?.message || err);
+    }
+  }
+
+  // 3. Real-time broadcast
+  try {
+    broadcastEntityMutation({
+      entity: 'voucher',
+      action: 'delete',
+      data: { voucherNo: cleanNo },
+      companyId
+    });
+  } catch {}
 }
 
 // ----------------------------------------------------------------------------
@@ -657,11 +940,13 @@ export async function deleteVoucherFromSupabase(voucherNo: string, targetCompany
 // ----------------------------------------------------------------------------
 
 export async function purgeRemoteCompanyData(companyId: string): Promise<void> {
-  if (!companyId || companyId === DEFAULT_TENANT_COMPANY.id || !isSupabaseConfigured) return;
+  if (!companyId || companyId === DEFAULT_TENANT_COMPANY.id) return;
   try {
     const tables = ['sales_invoices', 'purchase_invoices', 'vouchers', 'items', 'ledgers', 'stock_ledger', 'ledger_log'];
-    for (const tbl of tables) {
-      await supabase.from(tbl).delete().eq('company_id', companyId);
+    if (isSupabaseConfigured) {
+      for (const tbl of tables) {
+        await supabase.from(tbl).delete().eq('company_id', companyId);
+      }
     }
   } catch (err: any) {
     console.warn('[Purge Remote Data Warning]:', err?.message || err);
@@ -669,57 +954,71 @@ export async function purgeRemoteCompanyData(companyId: string): Promise<void> {
 }
 
 export async function syncConfigToSupabase(config?: Partial<Config>, targetCompanyId?: string): Promise<{ count: number }> {
-  if (!isSupabaseConfigured) return { count: 1 };
   const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const currentConfig: Partial<Config> = config || {};
 
+  // 1. Firestore Config Sync
   try {
-    await supabase.from('tenant_settings').upsert({
+    await setDoc(doc(db, 'tenant_settings', `${companyId}_main_config`), {
+      companyId,
       company_id: companyId,
-      record_id: 'main_config',
+      recordId: 'main_config',
       data: currentConfig,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'company_id, record_id' });
+      updatedAt: new Date().toISOString()
+    });
+  } catch (fsErr) {
+    console.warn('[Firestore Config Sync Notice]:', fsErr);
+  }
 
-    if (companyId && companyId !== DEFAULT_TENANT_COMPANY.id && currentConfig.AllowSupportAccess !== undefined) {
-      const isAllowed = currentConfig.AllowSupportAccess === 'true';
-      try {
-        await supabase.from('companies').update({
-          allow_support_access: isAllowed
-        }).eq('id', companyId);
-      } catch {}
+  // 2. Supabase Config Sync
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('tenant_settings').upsert({
+        company_id: companyId,
+        record_id: 'main_config',
+        data: currentConfig,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'company_id, record_id' });
 
-      // Keep local company caches in sync immediately
-      try {
-        if (typeof localStorage !== 'undefined') {
-          const keys = ['supabase_cached_companies', 'supabase_user_companies_cache', 'registered_companies', 'local_companies'];
-          for (const key of keys) {
-            const raw = localStorage.getItem(key);
-            if (raw) {
-              const list = JSON.parse(raw);
-              if (Array.isArray(list)) {
-                let modified = false;
-                list.forEach((c: any) => {
-                  if (c && (c.id === companyId || c.company_id === companyId)) {
-                    c.allow_support_access = isAllowed;
-                    c.AllowSupportAccess = isAllowed ? 'true' : 'false';
-                    modified = true;
+      if (companyId && companyId !== DEFAULT_TENANT_COMPANY.id && currentConfig.AllowSupportAccess !== undefined) {
+        const isAllowed = currentConfig.AllowSupportAccess === 'true';
+        try {
+          await supabase.from('companies').update({
+            allow_support_access: isAllowed
+          }).eq('id', companyId);
+        } catch {}
+
+        // Keep local company caches in sync immediately
+        try {
+          if (typeof localStorage !== 'undefined') {
+            const keys = ['supabase_cached_companies', 'supabase_user_companies_cache', 'registered_companies', 'local_companies'];
+            for (const key of keys) {
+              const raw = localStorage.getItem(key);
+              if (raw) {
+                const list = JSON.parse(raw);
+                if (Array.isArray(list)) {
+                  let modified = false;
+                  list.forEach((c: any) => {
+                    if (c && (c.id === companyId || c.company_id === companyId)) {
+                      c.allow_support_access = isAllowed;
+                      c.AllowSupportAccess = isAllowed ? 'true' : 'false';
+                      modified = true;
+                    }
+                  });
+                  if (modified) {
+                    localStorage.setItem(key, JSON.stringify(list));
                   }
-                });
-                if (modified) {
-                  localStorage.setItem(key, JSON.stringify(list));
                 }
               }
             }
           }
-        }
-      } catch {}
+        } catch {}
+      }
+    } catch (err: any) {
+      console.warn('[Supabase Sync Config Error]:', err?.message || err);
     }
-    return { count: 1 };
-  } catch (err: any) {
-    console.warn('[Supabase Sync Config Error]:', err?.message || err);
-    return { count: 0 };
   }
+  return { count: 1 };
 }
 
 // ----------------------------------------------------------------------------
@@ -796,30 +1095,57 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
       const deletedItems = new Set(loadLocalArray<string>(STORAGE_KEYS.DELETED_ITEMS, companyId).map(d => (d || '').trim().toLowerCase()));
 
       // 1. Pull Items
-      let loadedItems: Item[] = [];
-      const { data: sbItems, error: itErr } = await supabase
-        .from('items')
-        .select('data')
-        .eq('company_id', companyId);
-
-      if (!itErr && sbItems && sbItems.length > 0) {
-        loadedItems = sbItems.map(row => row.data).filter(Boolean);
-      } else {
-        try {
-          const { data: itSetting } = await supabase
-            .from('tenant_settings')
-            .select('data')
-            .eq('company_id', companyId)
-            .eq('record_id', 'company_items')
-            .maybeSingle();
-          if (itSetting?.data?.items && Array.isArray(itSetting.data.items)) {
-            loadedItems = itSetting.data.items;
+      const itemsMap = new Map<string, Item>();
+      try {
+        const q = query(collection(db, 'items'), where('companyId', '==', companyId));
+        const fsSnap = await getDocs(q);
+        fsSnap.forEach(docSnap => {
+          const d = docSnap.data();
+          const it: Item = d?.data || d;
+          const code = (it['Item Code'] || (it as any).itemCode || (it as any).code || '').trim().toLowerCase();
+          if (code) itemsMap.set(code, it);
+        });
+      } catch (fsErr) {
+        console.warn('[Firestore Items Pull Notice]:', fsErr);
+      }
+      try {
+        const { data: sbItems, error: itErr } = await supabase
+          .from('items')
+          .select('data')
+          .eq('company_id', companyId);
+        if (!itErr && sbItems && sbItems.length > 0) {
+          for (const row of sbItems) {
+            const it: Item = row.data;
+            const code = (it?.['Item Code'] || (it as any)?.itemCode || (it as any)?.code || '').trim().toLowerCase();
+            if (code && !itemsMap.has(code)) itemsMap.set(code, it);
           }
-        } catch {}
+        }
+      } catch {}
+      try {
+        const { data: itSetting } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_items')
+          .maybeSingle();
+        if (itSetting?.data?.items && Array.isArray(itSetting.data.items)) {
+          for (const it of itSetting.data.items) {
+            const code = (it?.['Item Code'] || (it as any)?.itemCode || (it as any)?.code || '').trim().toLowerCase();
+            if (code && !itemsMap.has(code)) itemsMap.set(code, it);
+          }
+        }
+      } catch {}
+      const localItems = loadLocalArray<Item>(STORAGE_KEYS.ITEMS, companyId);
+      for (const it of localItems) {
+        const code = (it?.['Item Code'] || (it as any)?.itemCode || (it as any)?.code || '').trim().toLowerCase();
+        if (code && !itemsMap.has(code) && !deletedItems.has(code)) {
+          itemsMap.set(code, it);
+          syncItemToSupabase(it, companyId).catch(() => {});
+        }
       }
 
-      if (loadedItems.length > 0) {
-        const filteredItems = loadedItems.filter(it => {
+      if (itemsMap.size > 0) {
+        const filteredItems = Array.from(itemsMap.values()).filter(it => {
           const code = (it['Item Code'] || (it as any).itemCode || '').trim().toLowerCase();
           if (deletedItems.has(code)) {
             deleteItemFromSupabase(it['Item Code'] || (it as any).itemCode, companyId);
@@ -834,70 +1160,112 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         saveLocalArray(STORAGE_KEYS.ITEMS, filteredItems, companyId);
       } else if (isDemo) {
         await seedInitialLocalDataToSupabase();
-      } else {
-        const localItems = loadLocalArray<Item>(STORAGE_KEYS.ITEMS, companyId);
-        if (localItems.length > 0) {
-          syncItemsBatchToSupabase(localItems, companyId).catch(() => {});
-        }
       }
 
       // 2. Pull Ledgers
-      let loadedLedgers: Ledger[] = [];
-      const { data: sbLedgers, error: lgErr } = await supabase
-        .from('ledgers')
-        .select('data')
-        .eq('company_id', companyId);
-
-      if (!lgErr && sbLedgers && sbLedgers.length > 0) {
-        loadedLedgers = sbLedgers.map(row => row.data).filter(Boolean);
-      } else {
-        try {
-          const { data: lgSetting } = await supabase
-            .from('tenant_settings')
-            .select('data')
-            .eq('company_id', companyId)
-            .eq('record_id', 'company_ledgers')
-            .maybeSingle();
-          if (lgSetting?.data?.ledgers && Array.isArray(lgSetting.data.ledgers)) {
-            loadedLedgers = lgSetting.data.ledgers;
-          }
-        } catch {}
+      const ledgersMap = new Map<string, Ledger>();
+      try {
+        const q = query(collection(db, 'ledgers'), where('companyId', '==', companyId));
+        const fsSnap = await getDocs(q);
+        fsSnap.forEach(docSnap => {
+          const d = docSnap.data();
+          const lg: Ledger = d?.data || d;
+          const name = (lg['Ledger Name'] || (lg as any).ledgerName || (lg as any).name || '').trim().toLowerCase();
+          if (name) ledgersMap.set(name, lg);
+        });
+      } catch (fsErr) {
+        console.warn('[Firestore Ledgers Pull Notice]:', fsErr);
       }
-
-      if (loadedLedgers.length > 0) {
-        saveLocalArray(STORAGE_KEYS.LEDGERS, loadedLedgers, companyId);
-      } else {
-        const localLedgers = loadLocalArray<Ledger>(STORAGE_KEYS.LEDGERS, companyId);
-        if (localLedgers.length > 0) {
-          syncLedgersToSupabase(localLedgers).catch(() => {});
+      try {
+        const { data: sbLedgers, error: lgErr } = await supabase
+          .from('ledgers')
+          .select('data')
+          .eq('company_id', companyId);
+        if (!lgErr && sbLedgers && sbLedgers.length > 0) {
+          for (const row of sbLedgers) {
+            const lg: Ledger = row.data;
+            const name = (lg?.['Ledger Name'] || (lg as any)?.ledgerName || (lg as any)?.name || '').trim().toLowerCase();
+            if (name && !ledgersMap.has(name)) ledgersMap.set(name, lg);
+          }
         }
+      } catch {}
+      try {
+        const { data: lgSetting } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_ledgers')
+          .maybeSingle();
+        if (lgSetting?.data?.ledgers && Array.isArray(lgSetting.data.ledgers)) {
+          for (const lg of lgSetting.data.ledgers) {
+            const name = (lg?.['Ledger Name'] || (lg as any)?.ledgerName || (lg as any)?.name || '').trim().toLowerCase();
+            if (name && !ledgersMap.has(name)) ledgersMap.set(name, lg);
+          }
+        }
+      } catch {}
+      const localLedgers = loadLocalArray<Ledger>(STORAGE_KEYS.LEDGERS, companyId);
+      for (const lg of localLedgers) {
+        const name = (lg?.['Ledger Name'] || (lg as any)?.ledgerName || (lg as any)?.name || '').trim().toLowerCase();
+        if (name && !ledgersMap.has(name)) {
+          ledgersMap.set(name, lg);
+          syncLedgerToSupabase(lg, companyId).catch(() => {});
+        }
+      }
+      if (ledgersMap.size > 0) {
+        saveLocalArray(STORAGE_KEYS.LEDGERS, Array.from(ledgersMap.values()), companyId);
       }
 
       // 3. Pull Vouchers
-      let loadedVouchers: Voucher[] = [];
-      const { data: sbVouchers, error: vchErr } = await supabase
-        .from('vouchers')
-        .select('data')
-        .eq('company_id', companyId);
-
-      if (!vchErr && sbVouchers && sbVouchers.length > 0) {
-        loadedVouchers = sbVouchers.map(row => row.data).filter(Boolean);
-      } else {
-        try {
-          const { data: vchSetting } = await supabase
-            .from('tenant_settings')
-            .select('data')
-            .eq('company_id', companyId)
-            .eq('record_id', 'company_vouchers')
-            .maybeSingle();
-          if (vchSetting?.data?.vouchers && Array.isArray(vchSetting.data.vouchers)) {
-            loadedVouchers = vchSetting.data.vouchers;
-          }
-        } catch {}
+      const vouchersMap = new Map<string, Voucher>();
+      try {
+        const q = query(collection(db, 'vouchers'), where('companyId', '==', companyId));
+        const fsSnap = await getDocs(q);
+        fsSnap.forEach(docSnap => {
+          const d = docSnap.data();
+          const vch: Voucher = d?.data || d;
+          const no = (vch.voucherNo || (vch as any).vNo || '').trim().toLowerCase();
+          if (no) vouchersMap.set(no, vch);
+        });
+      } catch (fsErr) {
+        console.warn('[Firestore Vouchers Pull Notice]:', fsErr);
       }
-
-      if (loadedVouchers.length > 0) {
-        const filteredVouchers = loadedVouchers.filter(v => {
+      try {
+        const { data: sbVouchers, error: vchErr } = await supabase
+          .from('vouchers')
+          .select('data')
+          .eq('company_id', companyId);
+        if (!vchErr && sbVouchers && sbVouchers.length > 0) {
+          for (const row of sbVouchers) {
+            const vch: Voucher = row.data;
+            const no = (vch?.voucherNo || '').trim().toLowerCase();
+            if (no && !vouchersMap.has(no)) vouchersMap.set(no, vch);
+          }
+        }
+      } catch {}
+      try {
+        const { data: vchSetting } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_vouchers')
+          .maybeSingle();
+        if (vchSetting?.data?.vouchers && Array.isArray(vchSetting.data.vouchers)) {
+          for (const vch of vchSetting.data.vouchers) {
+            const no = (vch?.voucherNo || '').trim().toLowerCase();
+            if (no && !vouchersMap.has(no)) vouchersMap.set(no, vch);
+          }
+        }
+      } catch {}
+      const localVouchers = loadLocalArray<Voucher>(STORAGE_KEYS.VOUCHERS, companyId);
+      for (const vch of localVouchers) {
+        const no = (vch?.voucherNo || '').trim().toLowerCase();
+        if (no && !vouchersMap.has(no) && !deletedVouchers.has(no)) {
+          vouchersMap.set(no, vch);
+          syncVoucherToSupabase(vch, companyId).catch(() => {});
+        }
+      }
+      if (vouchersMap.size > 0) {
+        const filteredVouchers = Array.from(vouchersMap.values()).filter(v => {
           const vNo = (v.voucherNo || '').trim().toLowerCase();
           if (deletedVouchers.has(vNo)) {
             deleteVoucherFromSupabase(v.voucherNo, companyId);
@@ -909,39 +1277,60 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('deep_pos_vouchers_updated', { detail: { vouchers: filteredVouchers, companyId } }));
         }
-      } else {
-        const localVouchers = loadLocalArray<Voucher>(STORAGE_KEYS.VOUCHERS, companyId)
-          .filter(v => !deletedVouchers.has((v.voucherNo || '').trim().toLowerCase()));
-        if (localVouchers.length > 0) {
-          syncVouchersToSupabase(localVouchers).catch(() => {});
-        }
       }
 
       // 4. Pull Sales Invoices
-      let loadedSales: SalesInvoice[] = [];
-      const { data: sbSales, error: sErr } = await supabase
-        .from('sales_invoices')
-        .select('data')
-        .eq('company_id', companyId);
-
-      if (!sErr && sbSales && sbSales.length > 0) {
-        loadedSales = sbSales.map(row => row.data).filter(Boolean);
-      } else {
-        try {
-          const { data: sSetting } = await supabase
-            .from('tenant_settings')
-            .select('data')
-            .eq('company_id', companyId)
-            .eq('record_id', 'company_sales_invoices')
-            .maybeSingle();
-          if (sSetting?.data?.sales && Array.isArray(sSetting.data.sales)) {
-            loadedSales = sSetting.data.sales;
+      const salesMap = new Map<string, SalesInvoice>();
+      try {
+        const q = query(collection(db, 'sales_invoices'), where('companyId', '==', companyId));
+        const fsSnap = await getDocs(q);
+        fsSnap.forEach(docSnap => {
+          const d = docSnap.data();
+          const s: SalesInvoice = d?.data || d;
+          const invNo = (s.invoiceNo || (s as any).billNo || d?.invoiceNo || '').trim().toLowerCase();
+          if (invNo) salesMap.set(invNo, { ...s, invoiceNo: s.invoiceNo || d?.invoiceNo, companyId });
+        });
+      } catch (fsErr) {
+        console.warn('[Firestore Sales Pull Notice]:', fsErr);
+      }
+      try {
+        const { data: sbSales, error: sErr } = await supabase
+          .from('sales_invoices')
+          .select('data')
+          .eq('company_id', companyId);
+        if (!sErr && sbSales && sbSales.length > 0) {
+          for (const row of sbSales) {
+            const s: SalesInvoice = row.data;
+            const invNo = (s?.invoiceNo || (s as any)?.billNo || '').trim().toLowerCase();
+            if (invNo && !salesMap.has(invNo)) salesMap.set(invNo, { ...s, companyId });
           }
-        } catch {}
+        }
+      } catch {}
+      try {
+        const { data: sSetting } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_sales_invoices')
+          .maybeSingle();
+        if (sSetting?.data?.sales && Array.isArray(sSetting.data.sales)) {
+          for (const s of sSetting.data.sales) {
+            const invNo = (s?.invoiceNo || '').trim().toLowerCase();
+            if (invNo && !salesMap.has(invNo)) salesMap.set(invNo, { ...s, companyId });
+          }
+        }
+      } catch {}
+      const localSales = loadLocalArray<SalesInvoice>(STORAGE_KEYS.SALES_INVOICES, companyId);
+      for (const s of localSales) {
+        const invNo = (s?.invoiceNo || (s as any)?.billNo || '').trim().toLowerCase();
+        if (invNo && !salesMap.has(invNo) && !deletedSales.has(invNo)) {
+          salesMap.set(invNo, { ...s, companyId });
+          syncSalesInvoiceToSupabase(s, companyId).catch(() => {});
+        }
       }
 
-      if (loadedSales.length > 0) {
-        const filteredSales = loadedSales.filter(s => {
+      if (salesMap.size > 0) {
+        const filteredSales = Array.from(salesMap.values()).filter(s => {
           const invNo = (s.invoiceNo || '').trim().toLowerCase();
           if (deletedSales.has(invNo)) {
             deleteSalesInvoiceFromSupabase(s.invoiceNo, companyId);
@@ -966,39 +1355,60 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('deep_pos_sales_updated', { detail: { sales: filteredSales, companyId } }));
         }
-      } else {
-        const localSales = loadLocalArray<SalesInvoice>(STORAGE_KEYS.SALES_INVOICES, companyId)
-          .filter(s => !deletedSales.has((s.invoiceNo || '').trim().toLowerCase()));
-        if (localSales.length > 0) {
-          syncSalesInvoicesToSupabase(localSales).catch(() => {});
-        }
       }
 
       // 5. Pull Purchase Invoices
-      let loadedPurchases: PurchaseInvoice[] = [];
-      const { data: sbPurchases, error: pErr } = await supabase
-        .from('purchase_invoices')
-        .select('data')
-        .eq('company_id', companyId);
-
-      if (!pErr && sbPurchases && sbPurchases.length > 0) {
-        loadedPurchases = sbPurchases.map(row => row.data).filter(Boolean);
-      } else {
-        try {
-          const { data: pSetting } = await supabase
-            .from('tenant_settings')
-            .select('data')
-            .eq('company_id', companyId)
-            .eq('record_id', 'company_purchase_invoices')
-            .maybeSingle();
-          if (pSetting?.data?.purchases && Array.isArray(pSetting.data.purchases)) {
-            loadedPurchases = pSetting.data.purchases;
+      const purchasesMap = new Map<string, PurchaseInvoice>();
+      try {
+        const q = query(collection(db, 'purchase_invoices'), where('companyId', '==', companyId));
+        const fsSnap = await getDocs(q);
+        fsSnap.forEach(docSnap => {
+          const d = docSnap.data();
+          const p: PurchaseInvoice = d?.data || d;
+          const bNo = (p.billNo || p.invoiceNo || d?.billNo || '').trim().toLowerCase();
+          if (bNo) purchasesMap.set(bNo, { ...p, billNo: p.billNo || d?.billNo, companyId });
+        });
+      } catch (fsErr) {
+        console.warn('[Firestore Purchases Pull Notice]:', fsErr);
+      }
+      try {
+        const { data: sbPurchases, error: pErr } = await supabase
+          .from('purchase_invoices')
+          .select('data')
+          .eq('company_id', companyId);
+        if (!pErr && sbPurchases && sbPurchases.length > 0) {
+          for (const row of sbPurchases) {
+            const p: PurchaseInvoice = row.data;
+            const bNo = (p?.billNo || p?.invoiceNo || '').trim().toLowerCase();
+            if (bNo && !purchasesMap.has(bNo)) purchasesMap.set(bNo, { ...p, companyId });
           }
-        } catch {}
+        }
+      } catch {}
+      try {
+        const { data: pSetting } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_purchase_invoices')
+          .maybeSingle();
+        if (pSetting?.data?.purchases && Array.isArray(pSetting.data.purchases)) {
+          for (const p of pSetting.data.purchases) {
+            const bNo = (p?.billNo || p?.invoiceNo || '').trim().toLowerCase();
+            if (bNo && !purchasesMap.has(bNo)) purchasesMap.set(bNo, { ...p, companyId });
+          }
+        }
+      } catch {}
+      const localPurchases = loadLocalArray<PurchaseInvoice>(STORAGE_KEYS.PURCHASE_INVOICES, companyId);
+      for (const p of localPurchases) {
+        const bNo = (p?.billNo || p?.invoiceNo || '').trim().toLowerCase();
+        if (bNo && !purchasesMap.has(bNo) && !deletedPurchases.has(bNo)) {
+          purchasesMap.set(bNo, { ...p, companyId });
+          syncPurchaseInvoiceToSupabase(p, companyId).catch(() => {});
+        }
       }
 
-      if (loadedPurchases.length > 0) {
-        const filteredPurchases = loadedPurchases.filter(p => {
+      if (purchasesMap.size > 0) {
+        const filteredPurchases = Array.from(purchasesMap.values()).filter(p => {
           const bNo = (p.billNo || p.invoiceNo || '').trim().toLowerCase();
           if (deletedPurchases.has(bNo)) {
             deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
@@ -1022,12 +1432,6 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         saveLocalArray(STORAGE_KEYS.PURCHASE_INVOICES, filteredPurchases, companyId);
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('deep_pos_purchases_updated', { detail: { purchases: filteredPurchases, companyId } }));
-        }
-      } else {
-        const localPurchases = loadLocalArray<PurchaseInvoice>(STORAGE_KEYS.PURCHASE_INVOICES, companyId)
-          .filter(p => !deletedPurchases.has((p.billNo || p.invoiceNo || '').trim().toLowerCase()));
-        if (localPurchases.length > 0) {
-          syncPurchaseInvoicesToSupabase(localPurchases).catch(() => {});
         }
       }
 
@@ -1211,7 +1615,7 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
 
       // If a non-demo tenant has 0 remote vouchers, 0 sales, and 0 purchases,
       // guarantee that local ledger logs and stock logs are purged of any legacy phantom entries
-      if (companyId !== DEFAULT_TENANT_COMPANY.id && (!sbVouchers || sbVouchers.length === 0) && (!sbSales || sbSales.length === 0) && (!sbPurchases || sbPurchases.length === 0)) {
+      if (companyId !== DEFAULT_TENANT_COMPANY.id && vouchersMap.size === 0 && salesMap.size === 0 && purchasesMap.size === 0) {
         saveLocalArray(STORAGE_KEYS.LEDGER_LOG, [], companyId);
         saveLocalArray(STORAGE_KEYS.STOCK_LEDGER, [], companyId);
       }
@@ -1233,37 +1637,174 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
 
   pullTenantData();
 
-  // Set up Supabase Realtime channel subscription for multi-terminal sync
-  const channel = supabase
-    .channel(`tenant-${companyId}-bullet-realtime`, {
-      config: { broadcast: { ack: false } }
-    })
-    .on(
-      'broadcast',
-      { event: 'bullet_sync_mutation' },
-      ({ payload }) => {
-        if (!payload || payload.senderId === CLIENT_INSTANCE_ID) return;
-        handleIncomingInstantMutation(payload);
-      }
-    )
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', filter: `company_id=eq.${companyId}` },
-      (payload) => {
-        console.log('[Supabase Realtime Event Received]:', payload.table, payload.eventType);
-        pullTenantData();
-      }
-    )
-    .subscribe();
+  // 1. Supabase Realtime channel subscription for multi-terminal sync
+  let channel: any = null;
+  if (isSupabaseConfigured) {
+    channel = supabase
+      .channel(`tenant-${companyId}-bullet-realtime`, {
+        config: { broadcast: { ack: false } }
+      })
+      .on(
+        'broadcast',
+        { event: 'bullet_sync_mutation' },
+        ({ payload }) => {
+          if (!payload || payload.senderId === CLIENT_INSTANCE_ID) return;
+          handleIncomingInstantMutation(payload);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', filter: `company_id=eq.${companyId}` },
+        (payload) => {
+          console.log('[Supabase Realtime Event Received]:', payload.table, payload.eventType);
+          pullTenantData();
+        }
+      )
+      .subscribe();
 
-  activeRealtimeChannel = channel;
+    activeRealtimeChannel = channel;
+  }
+
+  // 2. Firestore Realtime Listeners (Guaranteed cross-PC instant sync across all locations)
+  let fsUnsubSales = () => {};
+  let fsUnsubPurchases = () => {};
+  let fsUnsubVouchers = () => {};
+
+  try {
+    const qSales = query(collection(db, 'sales_invoices'), where('companyId', '==', companyId));
+    fsUnsubSales = onSnapshot(qSales, (snapshot) => {
+      let changed = false;
+      const currentSales = loadLocalArray<SalesInvoice>(STORAGE_KEYS.SALES_INVOICES, companyId);
+      const sMap = new Map<string, SalesInvoice>();
+      currentSales.forEach(s => {
+        const no = (s.invoiceNo || (s as any).billNo || '').trim().toLowerCase();
+        if (no) sMap.set(no, s);
+      });
+
+      snapshot.docChanges().forEach((ch) => {
+        const d = ch.doc.data();
+        const invoice: SalesInvoice = d?.data || d;
+        const invNo = (invoice?.invoiceNo || (invoice as any)?.billNo || d?.invoiceNo || '').trim();
+        if (!invNo) return;
+        const lowerNo = invNo.toLowerCase();
+
+        if (ch.type === 'added' || ch.type === 'modified') {
+          sMap.set(lowerNo, { ...invoice, invoiceNo: invNo, companyId });
+          changed = true;
+        } else if (ch.type === 'removed') {
+          if (sMap.has(lowerNo)) {
+            sMap.delete(lowerNo);
+            changed = true;
+          }
+        }
+      });
+
+      if (changed) {
+        const updated = Array.from(sMap.values());
+        saveLocalArray(STORAGE_KEYS.SALES_INVOICES, updated, companyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_sales_updated', { detail: { sales: updated, companyId } }));
+          window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+        }
+      }
+    }, (err) => console.warn('[Firestore Sales Listener Notice]:', err));
+  } catch (fsErr) {
+    console.warn('[Firestore Sales Listener Setup Notice]:', fsErr);
+  }
+
+  try {
+    const qPurchases = query(collection(db, 'purchase_invoices'), where('companyId', '==', companyId));
+    fsUnsubPurchases = onSnapshot(qPurchases, (snapshot) => {
+      let changed = false;
+      const currentPurchases = loadLocalArray<PurchaseInvoice>(STORAGE_KEYS.PURCHASE_INVOICES, companyId);
+      const pMap = new Map<string, PurchaseInvoice>();
+      currentPurchases.forEach(p => {
+        const no = (p.billNo || p.invoiceNo || '').trim().toLowerCase();
+        if (no) pMap.set(no, p);
+      });
+
+      snapshot.docChanges().forEach((ch) => {
+        const d = ch.doc.data();
+        const purchase: PurchaseInvoice = d?.data || d;
+        const bNo = (purchase?.billNo || purchase?.invoiceNo || d?.billNo || '').trim();
+        if (!bNo) return;
+        const lowerNo = bNo.toLowerCase();
+
+        if (ch.type === 'added' || ch.type === 'modified') {
+          pMap.set(lowerNo, { ...purchase, billNo: bNo, companyId });
+          changed = true;
+        } else if (ch.type === 'removed') {
+          if (pMap.has(lowerNo)) {
+            pMap.delete(lowerNo);
+            changed = true;
+          }
+        }
+      });
+
+      if (changed) {
+        const updated = Array.from(pMap.values());
+        saveLocalArray(STORAGE_KEYS.PURCHASE_INVOICES, updated, companyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_purchases_updated', { detail: { purchases: updated, companyId } }));
+          window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+        }
+      }
+    }, (err) => console.warn('[Firestore Purchases Listener Notice]:', err));
+  } catch (fsErr) {
+    console.warn('[Firestore Purchases Listener Setup Notice]:', fsErr);
+  }
+
+  try {
+    const qVouchers = query(collection(db, 'vouchers'), where('companyId', '==', companyId));
+    fsUnsubVouchers = onSnapshot(qVouchers, (snapshot) => {
+      let changed = false;
+      const currentVouchers = loadLocalArray<Voucher>(STORAGE_KEYS.VOUCHERS, companyId);
+      const vMap = new Map<string, Voucher>();
+      currentVouchers.forEach(v => {
+        const no = (v.voucherNo || (v as any).vNo || '').trim().toLowerCase();
+        if (no) vMap.set(no, v);
+      });
+
+      snapshot.docChanges().forEach((ch) => {
+        const d = ch.doc.data();
+        const vch: Voucher = d?.data || d;
+        const vNo = (vch?.voucherNo || (vch as any)?.vNo || d?.voucherNo || '').trim();
+        if (!vNo) return;
+        const lowerNo = vNo.toLowerCase();
+
+        if (ch.type === 'added' || ch.type === 'modified') {
+          vMap.set(lowerNo, { ...vch, voucherNo: vNo, companyId });
+          changed = true;
+        } else if (ch.type === 'removed') {
+          if (vMap.has(lowerNo)) {
+            vMap.delete(lowerNo);
+            changed = true;
+          }
+        }
+      });
+
+      if (changed) {
+        const updated = Array.from(vMap.values());
+        saveLocalArray(STORAGE_KEYS.VOUCHERS, updated, companyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_vouchers_updated', { detail: { vouchers: updated, companyId } }));
+          window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+        }
+      }
+    }, (err) => console.warn('[Firestore Vouchers Listener Notice]:', err));
+  } catch (fsErr) {
+    console.warn('[Firestore Vouchers Listener Setup Notice]:', fsErr);
+  }
 
   return () => {
     isSubscribed = false;
-    if (activeRealtimeChannel === channel) {
+    fsUnsubSales();
+    fsUnsubPurchases();
+    fsUnsubVouchers();
+    if (activeRealtimeChannel === channel && channel) {
       activeRealtimeChannel = null;
+      supabase.removeChannel(channel);
     }
-    supabase.removeChannel(channel);
   };
 }
 

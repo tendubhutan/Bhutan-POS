@@ -1386,10 +1386,6 @@ export function healAndSanitizeNonDemoTenant(targetCompanyId?: string): void {
       }
     }
 
-    // Always issue cleanups for target stale test invoices in Supabase
-    deleteSalesInvoiceFromFirestore('POS-0007', cId).catch(() => {});
-    deleteSalesInvoiceFromFirestore('POS-0011', cId).catch(() => {});
-
     // 2. Sanitize Purchase Invoices & Vouchers similarly
     let purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, [], cId);
     if (Array.isArray(purchases) && purchases.length > 0) {
@@ -3902,7 +3898,11 @@ export function saveSalesInvoice(payload: {
   const finalBranchId = (payload as any).branchId || oldInv?.branchId || activeBr.id;
   const finalBranchName = (payload as any).branchName || oldInv?.branchName || activeBr.name;
 
+  const currentActiveCompanyId = getActiveCompanyId();
+
   const invoice: SalesInvoice = {
+    companyId: currentActiveCompanyId,
+    company_id: currentActiveCompanyId,
     invoiceNo: iNo,
     date: invoiceDate,
     customer: { ...customer, ledger: sLg, isGSTExempted: isCustomerGstExempted },
@@ -4281,7 +4281,11 @@ export function savePurchaseInvoice(payload: {
   const finalBranchId = (payload as any).branchId || (oldPur as any)?.branchId || activeBr.id;
   const finalBranchName = (payload as any).branchName || (oldPur as any)?.branchName || activeBr.name;
 
+  const currentActiveCompanyId = getActiveCompanyId();
+
   const purchase: PurchaseInvoice = {
+    companyId: currentActiveCompanyId,
+    company_id: currentActiveCompanyId,
     billNo: bNo,
     supplierBillNo: payload.supplierBillNo || '',
     receiptNoteNo: payload.receiptNoteNo || '',
@@ -5521,8 +5525,11 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
   
   const finalNo = v.voucherNo?.trim() || no;
+  const currentActiveCompanyId = getActiveCompanyId();
 
   const newV: Voucher = {
+    companyId: currentActiveCompanyId,
+    company_id: currentActiveCompanyId,
     voucherNo: finalNo,
     date: v.date || new Date().toISOString(),
     type: t,
