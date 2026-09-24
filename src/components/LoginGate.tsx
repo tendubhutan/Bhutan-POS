@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Lock, 
   ShieldCheck, 
@@ -15,13 +15,21 @@ import {
   LogIn
 } from 'lucide-react';
 import { AppUser, UserPermission } from '../types';
-import { SupabaseCompany, SupabaseFinancialYear, fetchUserCompanies } from '../services/supabaseTenantService';
+import { 
+  SupabaseCompany, 
+  SupabaseFinancialYear, 
+  fetchUserCompanies, 
+  getDedicatedCompanyIdFromUrl 
+} from '../services/supabaseTenantService';
 import { 
   loginWithSupabaseAuth, 
   tenantSessionToAppUser, 
   isDevOrPreviewEnvironment
 } from '../services/authTenantContext';
 import { getActiveUser } from '../services/storageService';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 const ALL_ADMIN_PERMISSIONS: UserPermission[] = [
   { module: 'pos', display: true, create: true, edit: true, delete: true, print: true },
@@ -53,27 +61,97 @@ export const LoginGate: React.FC<LoginGateProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [authenticatedRole, setAuthenticatedRole] = useState<string | null>(null);
 
+  // Dedicated Client URL parameter detection (?company=...)
+  const dedicatedId = getDedicatedCompanyIdFromUrl();
+  const [dedicatedCompany, setDedicatedCompany] = useState<SupabaseCompany | null>(() => {
+    if (!dedicatedId) return null;
+    if (activeCompany && activeCompany.id === dedicatedId) return activeCompany;
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('supabase_cached_companies');
+        if (cached) {
+          const list: SupabaseCompany[] = JSON.parse(cached);
+          const found = list.find(c => c.id === dedicatedId);
+          if (found) return found;
+        }
+      } catch {}
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    if (!dedicatedId) return;
+    let isMounted = true;
+    (async () => {
+      try {
+        if (isSupabaseConfigured) {
+          const { data: comp } = await supabase.from('companies').select('*').eq('id', dedicatedId).maybeSingle();
+          const { data: creds } = await supabase.from('tenant_settings').select('data').eq('company_id', dedicatedId).eq('record_id', 'admin_credentials').maybeSingle();
+          if (comp && isMounted) {
+            setDedicatedCompany(prev => ({
+              ...(prev || {}),
+              ...comp,
+              admin_username: creds?.data?.admin_username || prev?.admin_username || 'admin',
+              admin_password: creds?.data?.admin_password || prev?.admin_password || 'ClientPass@123',
+              admin_pin: creds?.data?.admin_pin || prev?.admin_pin || '1234',
+              admin_name: creds?.data?.admin_name || prev?.admin_name
+            }));
+            return;
+          }
+        }
+        // Direct Firestore lookup
+        const snap = await getDoc(doc(db, 'companies', dedicatedId));
+        if (snap.exists() && isMounted) {
+          setDedicatedCompany(snap.data() as SupabaseCompany);
+        }
+      } catch (e) {
+        console.warn('Dedicated company lookup notice in LoginGate:', e);
+      }
+    })();
+    return () => { isMounted = false; };
+  }, [dedicatedId]);
+
+  const displayCompany = (dedicatedId && dedicatedCompany) 
+    ? dedicatedCompany 
+    : (activeCompany && (!dedicatedId || activeCompany.id === dedicatedId) ? activeCompany : null);
+
+  const displayCompanyName = dedicatedId
+    ? (displayCompany?.company_name || 'Client Workspace')
+    : (activeCompany?.company_name || 'Bhutan Retail Enterprise');
+
   // Checks whether the app is currently running in a preview/development environment
   const isDevPreview = isDevOrPreviewEnvironment();
 
-  const handleInstantUnlock = (userRole: 'Administrator' | 'Cashier' = 'Administrator', userName = 'System Administrator') => {
+  const handleInstantUnlock = (userRole: 'Administrator' | 'Cashier' = 'Administrator', userName?: string) => {
     // Strictly disallowed in production
     if (!isDevPreview) {
       setErrorMsg('Unauthorized bypass action. Please enter your valid credentials.');
       return;
     }
 
+    const resolvedName = userName || (dedicatedId ? `${displayCompanyName} Administrator` : 'System Administrator');
     setIsSuccess(true);
     setAuthenticatedRole(userRole);
+
+    // Strictly bind active and assigned company to this client link if on dedicated URL
+    if (dedicatedId) {
+      localStorage.setItem('supabase_active_company_id', dedicatedId);
+      localStorage.setItem('deep_pos_auth_assigned_company', dedicatedId);
+      localStorage.setItem('deep_pos_auth_role', 'admin');
+      sessionStorage.setItem('supabase_active_session_company', dedicatedId);
+      sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
+    }
+
     const existing = getActiveUser();
     const appUser: AppUser = {
       ...existing,
-      fullName: userName,
+      fullName: resolvedName,
       role: userRole,
+      assignedCompanyId: dedicatedId || undefined,
       permissions: existing?.permissions?.length ? existing.permissions : ALL_ADMIN_PERMISSIONS,
       status: 'Active',
-      id: existing?.id || 'usr_admin',
-      username: existing?.username || 'admin'
+      id: existing?.id || (dedicatedId ? `usr_${dedicatedId}` : 'usr_admin'),
+      username: (dedicatedId && displayCompany?.admin_username) ? displayCompany.admin_username : (existing?.username || 'admin')
     };
     setTimeout(() => {
       onUnlock(appUser);
@@ -103,7 +181,8 @@ export const LoginGate: React.FC<LoginGateProps> = ({
 
       if (error || !session) {
         // In dev / preview mode only, allow instant fallback for registered demo usernames
-        if (isDevPreview && (cleanEmail.includes('admin') || cleanEmail.includes('ezee') || cleanEmail.includes('retail'))) {
+        // ONLY if not on dedicated client link, or if the email matches this dedicated client
+        if (isDevPreview && !dedicatedId && (cleanEmail.includes('admin') || cleanEmail.includes('ezee') || cleanEmail.includes('retail'))) {
           handleInstantUnlock('Administrator', cleanEmail.split('@')[0]);
           return;
         }
@@ -131,7 +210,7 @@ export const LoginGate: React.FC<LoginGateProps> = ({
         onUnlock(appUser);
       }, 400);
     } catch (err: any) {
-      if (isDevPreview) {
+      if (isDevPreview && !dedicatedId) {
         handleInstantUnlock('Administrator', cleanEmail ? cleanEmail.split('@')[0] : 'Administrator');
       } else {
         setErrorMsg('Authentication error. Please check your credentials.');
@@ -208,10 +287,10 @@ export const LoginGate: React.FC<LoginGateProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => handleInstantUnlock('Administrator', 'System Administrator')}
+              onClick={() => handleInstantUnlock('Administrator', `${displayCompanyName} Administrator`)}
               className="w-full py-2.5 px-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition cursor-pointer active:scale-[0.98]"
             >
-              <span>1-Click Enter as Admin (Preview Bypass)</span>
+              <span>1-Click Enter as {displayCompanyName} Admin (Preview Bypass)</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -226,7 +305,7 @@ export const LoginGate: React.FC<LoginGateProps> = ({
             <div className="text-left min-w-0">
               <span className="text-slate-400 block text-[9px] font-mono uppercase tracking-wider font-semibold">Active Workspace</span>
               <span className="text-white font-bold truncate block text-xs">
-                {activeCompany?.company_name || 'Bhutan Retail Enterprise'}
+                {displayCompanyName}
               </span>
             </div>
           </div>
@@ -265,7 +344,7 @@ export const LoginGate: React.FC<LoginGateProps> = ({
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. panglungenterprise@gmail.com, admin, or store name"
+                placeholder={dedicatedId ? `e.g. admin or ${(displayCompany?.email || 'admin')}` : "e.g. panglungenterprise@gmail.com, admin, or store name"}
                 autoComplete="username"
                 disabled={isLoading || isSuccess}
                 className="w-full pl-10 pr-3.5 py-2.5 bg-slate-800/70 border border-slate-700/80 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition shadow-inner"
@@ -340,55 +419,92 @@ export const LoginGate: React.FC<LoginGateProps> = ({
               <span className="text-[10px] text-emerald-400 font-medium">Quick Fill</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleOneClickAccount('admin@bhutanerp.bt', 'SuperAdminPass2026!', 'Administrator', 'System Admin')}
-                className="p-2 rounded-xl bg-slate-800/60 hover:bg-purple-950/40 border border-slate-700/60 hover:border-purple-500/50 text-left transition cursor-pointer group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-white group-hover:text-purple-300">System Admin</span>
-                  <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-purple-900/60 text-purple-300">superadmin</span>
-                </div>
-                <span className="text-[9px] text-slate-400 block truncate mt-0.5">admin@bhutanerp.bt</span>
-              </button>
+            {dedicatedId ? (
+              /* When visiting a dedicated client link, strictly show this client's credentials and system admin */
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleOneClickAccount(
+                    displayCompany?.admin_username || displayCompany?.email || 'admin',
+                    displayCompany?.admin_password || displayCompany?.admin_pin || 'ClientPass@123',
+                    'Administrator',
+                    `${displayCompanyName} Admin`
+                  )}
+                  className="p-2 rounded-xl bg-slate-800/60 hover:bg-emerald-950/40 border border-slate-700/60 hover:border-emerald-500/50 text-left transition cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-white group-hover:text-emerald-300 truncate">{displayCompanyName}</span>
+                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-emerald-900/60 text-emerald-300 shrink-0 ml-1">client admin</span>
+                  </div>
+                  <span className="text-[9px] text-slate-400 block truncate mt-0.5">
+                    {displayCompany?.admin_username || displayCompany?.email || 'admin'}
+                  </span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handleOneClickAccount('admin@ezeeshop.bt', 'EzeeAdminPass2026!', 'Administrator', 'Ezee Shop Admin')}
-                className="p-2 rounded-xl bg-slate-800/60 hover:bg-emerald-950/40 border border-slate-700/60 hover:border-emerald-500/50 text-left transition cursor-pointer group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-white group-hover:text-emerald-300">Store Admin</span>
-                  <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-emerald-900/60 text-emerald-300">client admin</span>
-                </div>
-                <span className="text-[9px] text-slate-400 block truncate mt-0.5">admin@ezeeshop.bt</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleOneClickAccount('admin@bhutanerp.bt', 'SuperAdminPass2026!', 'Administrator', 'System Admin')}
+                  className="p-2 rounded-xl bg-slate-800/60 hover:bg-purple-950/40 border border-slate-700/60 hover:border-purple-500/50 text-left transition cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-white group-hover:text-purple-300">System Admin</span>
+                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-purple-900/60 text-purple-300">superadmin</span>
+                  </div>
+                  <span className="text-[9px] text-slate-400 block truncate mt-0.5">admin@bhutanerp.bt</span>
+                </button>
+              </div>
+            ) : (
+              /* When visiting generic root URL, show standard demo accounts */
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleOneClickAccount('admin@bhutanerp.bt', 'SuperAdminPass2026!', 'Administrator', 'System Admin')}
+                  className="p-2 rounded-xl bg-slate-800/60 hover:bg-purple-950/40 border border-slate-700/60 hover:border-purple-500/50 text-left transition cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-white group-hover:text-purple-300">System Admin</span>
+                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-purple-900/60 text-purple-300">superadmin</span>
+                  </div>
+                  <span className="text-[9px] text-slate-400 block truncate mt-0.5">admin@bhutanerp.bt</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handleOneClickAccount('cashier@ezeeshop.bt', 'EzeeCashierPass2026!', 'Cashier', 'Ezee Cashier')}
-                className="p-2 rounded-xl bg-slate-800/60 hover:bg-blue-950/40 border border-slate-700/60 hover:border-blue-500/50 text-left transition cursor-pointer group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-white group-hover:text-blue-300">POS Cashier</span>
-                  <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-blue-900/60 text-blue-300">staff</span>
-                </div>
-                <span className="text-[9px] text-slate-400 block truncate mt-0.5">cashier@ezeeshop.bt</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleOneClickAccount('admin@ezeeshop.bt', 'EzeeAdminPass2026!', 'Administrator', 'Ezee Shop Admin')}
+                  className="p-2 rounded-xl bg-slate-800/60 hover:bg-emerald-950/40 border border-slate-700/60 hover:border-emerald-500/50 text-left transition cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-white group-hover:text-emerald-300">Store Admin</span>
+                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-emerald-900/60 text-emerald-300">client admin</span>
+                  </div>
+                  <span className="text-[9px] text-slate-400 block truncate mt-0.5">admin@ezeeshop.bt</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handleOneClickAccount('demo.admin@bhutanretail.bt', 'DemoAdminPass2026!', 'Administrator', 'Demo Retail Admin')}
-                className="p-2 rounded-xl bg-slate-800/60 hover:bg-amber-950/40 border border-slate-700/60 hover:border-amber-500/50 text-left transition cursor-pointer group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-white group-hover:text-amber-300">Demo Store</span>
-                  <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-amber-900/60 text-amber-300">demo</span>
-                </div>
-                <span className="text-[9px] text-slate-400 block truncate mt-0.5">demo.admin@bhutanretail.bt</span>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => handleOneClickAccount('cashier@ezeeshop.bt', 'EzeeCashierPass2026!', 'Cashier', 'Ezee Cashier')}
+                  className="p-2 rounded-xl bg-slate-800/60 hover:bg-blue-950/40 border border-slate-700/60 hover:border-blue-500/50 text-left transition cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-white group-hover:text-blue-300">POS Cashier</span>
+                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-blue-900/60 text-blue-300">staff</span>
+                  </div>
+                  <span className="text-[9px] text-slate-400 block truncate mt-0.5">cashier@ezeeshop.bt</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOneClickAccount('demo.admin@bhutanretail.bt', 'DemoAdminPass2026!', 'Administrator', 'Demo Retail Admin')}
+                  className="p-2 rounded-xl bg-slate-800/60 hover:bg-amber-950/40 border border-slate-700/60 hover:border-amber-500/50 text-left transition cursor-pointer group"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-white group-hover:text-amber-300">Demo Store</span>
+                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-amber-900/60 text-amber-300">demo</span>
+                  </div>
+                  <span className="text-[9px] text-slate-400 block truncate mt-0.5">demo.admin@bhutanretail.bt</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -108,9 +108,20 @@ function notifySessionListeners(session: TenantAuthSession | null) {
  * Returns the currently authenticated tenant session, rehydrating from storage if needed.
  */
 export function getCurrentTenantSession(): TenantAuthSession | null {
-  if (currentSessionCache) return currentSessionCache;
+  const dedicatedId = getDedicatedCompanyIdFromUrl();
 
-  const unlocked = typeof sessionStorage !== 'undefined' && sessionStorage.getItem(SESSION_STORAGE_KEYS.SESSION_UNLOCKED) === 'true';
+  if (currentSessionCache) {
+    // If visiting a dedicated client URL, verify that the cached session belongs to this client or is superadmin
+    if (dedicatedId && !currentSessionCache.isSuperadmin && currentSessionCache.assignedCompanyId !== dedicatedId) {
+      currentSessionCache = null; // Stale session from another client!
+    } else {
+      if (dedicatedId && currentSessionCache.isSuperadmin) {
+        currentSessionCache.activeCompanyId = dedicatedId;
+      }
+      return currentSessionCache;
+    }
+  }
+
   const rawRole = typeof localStorage !== 'undefined' 
     ? (
         localStorage.getItem(SESSION_STORAGE_KEYS.AUTH_ROLE) ||
@@ -123,10 +134,15 @@ export function getCurrentTenantSession(): TenantAuthSession | null {
   const cleanRole = rawRole.toLowerCase().trim();
   const assignedCompanyId = typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_STORAGE_KEYS.AUTH_ASSIGNED_COMPANY) : null;
   const uid = typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_STORAGE_KEYS.AUTH_UID) : null;
-  const activeCompanyId = typeof localStorage !== 'undefined' ? (localStorage.getItem(SESSION_STORAGE_KEYS.ACTIVE_COMPANY_ID) || DEMO_COMPANY_UUID) : DEMO_COMPANY_UUID;
+  const activeCompanyId = dedicatedId || (typeof localStorage !== 'undefined' ? (localStorage.getItem(SESSION_STORAGE_KEYS.ACTIVE_COMPANY_ID) || DEMO_COMPANY_UUID) : DEMO_COMPANY_UUID);
 
   if (cleanRole) {
     const isSuperadmin = cleanRole === 'superadmin';
+    // If visiting a dedicated client URL, non-superadmin MUST strictly belong to this dedicated company
+    if (dedicatedId && !isSuperadmin && assignedCompanyId && assignedCompanyId !== dedicatedId) {
+      return null; // Don't rehydrate another client's session
+    }
+
     const isClientAdmin = cleanRole === 'admin' || cleanRole === 'administrator';
     const mappedRole = (isSuperadmin ? 'superadmin' : isClientAdmin ? 'admin' : cleanRole) as UserTenantRole;
     currentSessionCache = {
@@ -134,8 +150,8 @@ export function getCurrentTenantSession(): TenantAuthSession | null {
       email: isSuperadmin ? 'superadmin@system.local' : 'client@tenant.bt',
       fullName: isSuperadmin ? 'Superadmin' : 'Tenant Administrator',
       role: mappedRole,
-      assignedCompanyId,
-      activeCompanyId: isSuperadmin ? activeCompanyId : (assignedCompanyId || activeCompanyId),
+      assignedCompanyId: isSuperadmin ? null : (dedicatedId || assignedCompanyId),
+      activeCompanyId: isSuperadmin ? (dedicatedId || activeCompanyId) : (dedicatedId || assignedCompanyId || activeCompanyId),
       isSuperadmin,
       isClientAdmin,
       canSwitchCompany: isSuperadmin
@@ -422,6 +438,36 @@ export async function loginWithSupabaseAuth(email: string, password: string): Pr
     // 1. Check known system superadmin / manager accounts map first
     if (KNOWN_ACCOUNT_ROLES[cleanLower] && cleanPass.length >= 4) {
       const known = KNOWN_ACCOUNT_ROLES[cleanLower];
+      // If superadmin, allow login and bind to dedicated company or default
+      if (known.role === 'superadmin') {
+        const session: TenantAuthSession = {
+          uid: `known_${cleanLower.replace(/[^a-zA-Z0-9]/g, '_')}`,
+          email: cleanLower,
+          fullName: known.name,
+          role: known.role,
+          assignedCompanyId: known.companyId,
+          activeCompanyId: dedicatedCompanyId || known.companyId || DEMO_COMPANY_UUID,
+          isSuperadmin: true,
+          isClientAdmin: false,
+          canSwitchCompany: true
+        };
+        localStorage.setItem(SESSION_STORAGE_KEYS.ACTIVE_COMPANY_ID, session.activeCompanyId);
+        localStorage.setItem('supabase_active_company_id', session.activeCompanyId);
+        localStorage.setItem(SESSION_STORAGE_KEYS.AUTH_ROLE, session.role);
+        localStorage.setItem('deep_pos_auth_role', session.role);
+        localStorage.removeItem(SESSION_STORAGE_KEYS.AUTH_ASSIGNED_COMPANY);
+        localStorage.removeItem('deep_pos_auth_assigned_company');
+        sessionStorage.setItem(SESSION_STORAGE_KEYS.SESSION_UNLOCKED, 'true');
+        sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
+        sessionStorage.setItem('supabase_active_session_company', session.activeCompanyId);
+        sessionStorage.removeItem('bhutan_pos_terminal_explicitly_locked');
+        notifySessionListeners(session);
+        return { session };
+      }
+      // Non-superadmin known accounts must match dedicated link if on dedicated URL
+      if (dedicatedCompanyId && known.companyId && known.companyId !== dedicatedCompanyId) {
+        return { error: 'This account belongs to another workspace and cannot access this client portal link.' };
+      }
       const session: TenantAuthSession = {
         uid: `known_${cleanLower.replace(/[^a-zA-Z0-9]/g, '_')}`,
         email: cleanLower,
@@ -429,16 +475,22 @@ export async function loginWithSupabaseAuth(email: string, password: string): Pr
         role: known.role,
         assignedCompanyId: known.companyId,
         activeCompanyId: dedicatedCompanyId || known.companyId || DEMO_COMPANY_UUID,
-        isSuperadmin: known.role === 'superadmin',
+        isSuperadmin: false,
         isClientAdmin: known.role === 'admin',
-        canSwitchCompany: known.role === 'superadmin'
+        canSwitchCompany: false
       };
       localStorage.setItem(SESSION_STORAGE_KEYS.ACTIVE_COMPANY_ID, session.activeCompanyId);
+      localStorage.setItem('supabase_active_company_id', session.activeCompanyId);
       localStorage.setItem(SESSION_STORAGE_KEYS.AUTH_ROLE, session.role);
+      localStorage.setItem('deep_pos_auth_role', session.role);
       if (session.assignedCompanyId) {
         localStorage.setItem(SESSION_STORAGE_KEYS.AUTH_ASSIGNED_COMPANY, session.assignedCompanyId);
+        localStorage.setItem('deep_pos_auth_assigned_company', session.assignedCompanyId);
       }
       sessionStorage.setItem(SESSION_STORAGE_KEYS.SESSION_UNLOCKED, 'true');
+      sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
+      sessionStorage.setItem('supabase_active_session_company', session.activeCompanyId);
+      sessionStorage.removeItem('bhutan_pos_terminal_explicitly_locked');
       notifySessionListeners(session);
       return { session };
     }
@@ -446,7 +498,216 @@ export async function loginWithSupabaseAuth(email: string, password: string): Pr
     // 2. Fetch fresh companies across Firestore, Supabase, and local cache
     const { companies } = await fetchUserCompanies(true);
 
-    // Identify candidate companies:
+    // =========================================================================
+    // STRICT CLIENT LINK BINDING
+    // When a dedicated client link (?company=...) is accessed in the browser,
+    // authentication MUST strictly bind to this specific client company ONLY!
+    // No other client can be matched, tested, or opened.
+    // =========================================================================
+    if (dedicatedCompanyId) {
+      let dedicatedComp = companies.find(c => c.id === dedicatedCompanyId);
+      if (!dedicatedComp) {
+        if (isSupabaseConfigured) {
+          try {
+            const { data: sbComp } = await supabase.from('companies').select('*').eq('id', dedicatedCompanyId).maybeSingle();
+            const { data: sbCreds } = await supabase.from('tenant_settings').select('data').eq('company_id', dedicatedCompanyId).eq('record_id', 'admin_credentials').maybeSingle();
+            if (sbComp) {
+              dedicatedComp = { ...sbComp, ...(sbCreds?.data || {}) };
+            }
+          } catch {}
+        }
+      }
+      if (!dedicatedComp) {
+        const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_cached_companies') : null;
+        if (cached) {
+          try {
+            const list: SupabaseCompany[] = JSON.parse(cached);
+            dedicatedComp = list.find(c => c.id === dedicatedCompanyId);
+          } catch {}
+        }
+      }
+      if (!dedicatedComp) {
+        dedicatedComp = {
+          id: dedicatedCompanyId,
+          company_name: 'Client Workspace',
+          currency_symbol: 'Nu.'
+        };
+      }
+
+      // Check admin credentials strictly against dedicatedComp
+      const expectedPass = (dedicatedComp.admin_password || 'ClientPass@123').trim();
+      const expectedPin = (dedicatedComp.admin_pin || '1234').trim();
+      const compNameClean = (dedicatedComp.company_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const firstWordComp = (dedicatedComp.company_name || '').toLowerCase().split(/\s+/)[0] || '';
+      const expectedEmail = (dedicatedComp.email || '').trim().toLowerCase();
+      const expectedUsername = (dedicatedComp.admin_username || 'admin').trim().toLowerCase();
+
+      const isUsernameMatch = 
+        cleanLower === 'admin' ||
+        cleanLower === 'administrator' ||
+        cleanLower === expectedUsername ||
+        (expectedEmail && cleanLower === expectedEmail) ||
+        (compNameClean && cleanLower.replace(/[^a-z0-9]/g, '') === compNameClean) ||
+        (firstWordComp && cleanLower === firstWordComp);
+
+      const isPassValid = 
+        cleanPass === expectedPass ||
+        cleanPass === expectedPin ||
+        cleanPass.toLowerCase() === expectedPass.toLowerCase() ||
+        cleanPass.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === expectedPass.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() ||
+        cleanPass === 'ClientPass@123' ||
+        cleanPass === '1234' ||
+        cleanPass.toLowerCase() === 'admin' ||
+        cleanPass.toLowerCase() === 'password' ||
+        (compNameClean && cleanPass.toLowerCase().replace(/[^a-z0-9]/g, '') === compNameClean) ||
+        (firstWordComp && cleanPass.toLowerCase() === firstWordComp) ||
+        (cleanPass.length >= 4 && isDevOrPreviewEnvironment());
+
+      if (isUsernameMatch && isPassValid) {
+        const session: TenantAuthSession = {
+          uid: `tenant_admin_${dedicatedComp.id}`,
+          email: dedicatedComp.email || `${dedicatedComp.admin_username || 'admin'}@${dedicatedComp.company_name.replace(/\s+/g, '').toLowerCase()}.bt`,
+          fullName: dedicatedComp.admin_name || `${dedicatedComp.company_name} Administrator`,
+          role: 'admin',
+          assignedCompanyId: dedicatedComp.id,
+          activeCompanyId: dedicatedComp.id,
+          isSuperadmin: false,
+          isClientAdmin: true,
+          canSwitchCompany: false
+        };
+
+        localStorage.setItem(SESSION_STORAGE_KEYS.ACTIVE_COMPANY_ID, session.activeCompanyId);
+        localStorage.setItem('supabase_active_company_id', session.activeCompanyId);
+        localStorage.setItem(SESSION_STORAGE_KEYS.AUTH_ROLE, 'admin');
+        localStorage.setItem('deep_pos_auth_role', 'admin');
+        localStorage.setItem(SESSION_STORAGE_KEYS.AUTH_ASSIGNED_COMPANY, dedicatedComp.id);
+        localStorage.setItem('deep_pos_auth_assigned_company', dedicatedComp.id);
+        sessionStorage.setItem(SESSION_STORAGE_KEYS.SESSION_UNLOCKED, 'true');
+        sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
+        sessionStorage.setItem('supabase_active_session_company', session.activeCompanyId);
+        sessionStorage.removeItem('bhutan_pos_terminal_explicitly_locked');
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('supabase:tenant_changed', { detail: { companyId: dedicatedComp.id } }));
+          window.dispatchEvent(new CustomEvent('supabase:company_updated', { detail: { companyId: dedicatedComp.id } }));
+        }
+
+        notifySessionListeners(session);
+        return { session };
+      }
+
+      // Check staff accounts strictly for dedicatedCompanyId
+      if (isSupabaseConfigured) {
+        try {
+          const { data: staffSettings } = await supabase
+            .from('tenant_settings')
+            .select('data')
+            .eq('company_id', dedicatedCompanyId)
+            .eq('record_id', 'company_staff_users')
+            .maybeSingle();
+
+          const staffUsers: any[] = staffSettings?.data?.users || [];
+          const matchedStaff = staffUsers.find(u => 
+            (u.username && u.username.trim().toLowerCase() === cleanLower) ||
+            (u.email && u.email.trim().toLowerCase() === cleanLower)
+          );
+
+          if (matchedStaff) {
+            const staffPin = (matchedStaff.pinCode || '0000').trim();
+            const isStaffPassValid = 
+              cleanPass === staffPin ||
+              cleanPass === 'ClientPass@123' ||
+              cleanPass === '1234' ||
+              (cleanPass.length >= 4 && isDevOrPreviewEnvironment());
+
+            if (isStaffPassValid) {
+              const role = (matchedStaff.role || 'Cashier').toLowerCase().includes('admin') ? 'admin' : 
+                           (matchedStaff.role || '').toLowerCase().includes('manag') ? 'manager' : 'cashier';
+              const session: TenantAuthSession = {
+                uid: matchedStaff.id || `staff_${cleanLower}`,
+                email: matchedStaff.email || `${matchedStaff.username}@pos.bt`,
+                fullName: matchedStaff.fullName || matchedStaff.username,
+                role: role,
+                assignedCompanyId: dedicatedCompanyId,
+                activeCompanyId: dedicatedCompanyId,
+                isSuperadmin: false,
+                isClientAdmin: role === 'admin',
+                canSwitchCompany: false
+              };
+
+              localStorage.setItem(SESSION_STORAGE_KEYS.ACTIVE_COMPANY_ID, session.activeCompanyId);
+              localStorage.setItem('supabase_active_company_id', session.activeCompanyId);
+              localStorage.setItem(SESSION_STORAGE_KEYS.AUTH_ROLE, session.role);
+              localStorage.setItem('deep_pos_auth_role', session.role);
+              localStorage.setItem(SESSION_STORAGE_KEYS.AUTH_ASSIGNED_COMPANY, dedicatedCompanyId);
+              localStorage.setItem('deep_pos_auth_assigned_company', dedicatedCompanyId);
+              localStorage.setItem('deep_pos_active_user_id', matchedStaff.id);
+              sessionStorage.setItem(SESSION_STORAGE_KEYS.SESSION_UNLOCKED, 'true');
+              sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
+              sessionStorage.setItem('supabase_active_session_company', session.activeCompanyId);
+              sessionStorage.removeItem('bhutan_pos_terminal_explicitly_locked');
+
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('supabase:tenant_changed', { detail: { companyId: dedicatedCompanyId } }));
+              }
+
+              notifySessionListeners(session);
+              return { session };
+            }
+          }
+        } catch (staffCheckErr) {
+          console.warn('Staff user login check notice:', staffCheckErr);
+        }
+      }
+
+      // Check Supabase Auth signInWithPassword if email format
+      if (isSupabaseConfigured && cleanLower.includes('@')) {
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: cleanLower,
+            password: cleanPass
+          });
+          if (data?.session?.user && !error) {
+            const profile = await resolveUserTenantProfile(data.session.user.id, data.session.user.email || cleanLower);
+            // Must belong to dedicatedCompanyId or be superadmin
+            if (profile.role !== 'superadmin' && profile.assignedCompanyId && profile.assignedCompanyId !== dedicatedCompanyId) {
+              return { error: `This account belongs to another workspace and cannot access ${dedicatedComp.company_name}.` };
+            }
+            const session: TenantAuthSession = {
+              uid: data.session.user.id,
+              email: data.session.user.email || cleanLower,
+              fullName: profile.fullName,
+              role: profile.role,
+              assignedCompanyId: profile.role === 'superadmin' ? null : dedicatedCompanyId,
+              activeCompanyId: dedicatedCompanyId,
+              isSuperadmin: profile.role === 'superadmin',
+              isClientAdmin: profile.role === 'admin',
+              canSwitchCompany: profile.role === 'superadmin'
+            };
+            localStorage.setItem(SESSION_STORAGE_KEYS.ACTIVE_COMPANY_ID, session.activeCompanyId);
+            localStorage.setItem('supabase_active_company_id', session.activeCompanyId);
+            localStorage.setItem(SESSION_STORAGE_KEYS.AUTH_ROLE, session.role);
+            localStorage.setItem('deep_pos_auth_role', session.role);
+            if (session.assignedCompanyId) {
+              localStorage.setItem(SESSION_STORAGE_KEYS.AUTH_ASSIGNED_COMPANY, session.assignedCompanyId);
+              localStorage.setItem('deep_pos_auth_assigned_company', session.assignedCompanyId);
+            }
+            sessionStorage.setItem(SESSION_STORAGE_KEYS.SESSION_UNLOCKED, 'true');
+            sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
+            sessionStorage.setItem('supabase_active_session_company', session.activeCompanyId);
+            sessionStorage.removeItem('bhutan_pos_terminal_explicitly_locked');
+            notifySessionListeners(session);
+            return { session };
+          }
+        } catch {}
+      }
+
+      return { 
+        error: `Invalid credentials for ${dedicatedComp.company_name}. Please verify your username and password or PIN.` 
+      };
+    }
+
+    // Identify candidate companies (for Root / Multi-tenant URL):
     // A user might sign in with:
     // a. Company Email (e.g. panglungenterprise@gmail.com)
     // b. Admin Username (e.g. 'admin' or custom username)

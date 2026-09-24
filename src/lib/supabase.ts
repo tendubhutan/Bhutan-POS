@@ -10,7 +10,11 @@ export function getStoredSupabaseUrl(): string {
     const custom = localStorage.getItem('supabase_custom_url') || localStorage.getItem('VITE_SUPABASE_URL');
     if (custom && custom.startsWith('https://')) return custom.trim();
   }
-  return (import.meta.env.VITE_SUPABASE_URL as string) || DEFAULT_SUPABASE_URL;
+  try {
+    return (import.meta.env?.VITE_SUPABASE_URL as string) || DEFAULT_SUPABASE_URL;
+  } catch {
+    return DEFAULT_SUPABASE_URL;
+  }
 }
 
 export function getStoredSupabaseAnonKey(): string {
@@ -18,7 +22,11 @@ export function getStoredSupabaseAnonKey(): string {
     const custom = localStorage.getItem('supabase_anon_key') || localStorage.getItem('VITE_SUPABASE_ANON_KEY');
     if (custom && custom.trim().length > 10) return custom.trim();
   }
-  return (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || DEFAULT_SUPABASE_ANON_KEY;
+  try {
+    return (import.meta.env?.VITE_SUPABASE_ANON_KEY as string) || DEFAULT_SUPABASE_ANON_KEY;
+  } catch {
+    return DEFAULT_SUPABASE_ANON_KEY;
+  }
 }
 
 export const supabaseUrl = getStoredSupabaseUrl();

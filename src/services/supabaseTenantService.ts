@@ -45,14 +45,23 @@ export function getDedicatedCompanyIdFromUrl(): string | null {
   try {
     if (typeof window === 'undefined' || !window.location) return null;
     const searchParams = new URLSearchParams(window.location.search);
-    const fromSearch = searchParams.get('company') || searchParams.get('cid') || searchParams.get('tenant');
-    if (fromSearch) return fromSearch;
+    const fromSearch = searchParams.get('company') || 
+                       searchParams.get('company_id') || 
+                       searchParams.get('cid') || 
+                       searchParams.get('tenant') ||
+                       searchParams.get('cId');
+    if (fromSearch && fromSearch.trim()) return fromSearch.trim();
 
     // Support hash fragment URLs like /#/?company=... or /#/path?company=...
     if (window.location.hash && window.location.hash.includes('?')) {
       const hashQuery = window.location.hash.split('?')[1];
       const hashParams = new URLSearchParams(hashQuery);
-      return hashParams.get('company') || hashParams.get('cid') || hashParams.get('tenant') || null;
+      const fromHash = hashParams.get('company') || 
+                       hashParams.get('company_id') || 
+                       hashParams.get('cid') || 
+                       hashParams.get('tenant') ||
+                       hashParams.get('cId');
+      if (fromHash && fromHash.trim()) return fromHash.trim();
     }
     return null;
   } catch {
@@ -98,7 +107,20 @@ export const DEFAULT_TENANT_FY: SupabaseFinancialYear = {
 
 // Filter companies according to dedicated client URL or hide demo company preference
 function filterCompaniesForView(list: SupabaseCompany[]): SupabaseCompany[] {
-  // Check if non-superadmin has an assigned company
+  // 1. If a dedicated client link parameter is present in the URL (e.g. ?company=...)
+  // This takes absolute precedence because the browser is specifically accessing this client's portal!
+  const dedicatedId = getDedicatedCompanyIdFromUrl();
+  if (dedicatedId) {
+    const matched = list.filter(c => c.id === dedicatedId);
+    if (matched.length > 0) return matched;
+    return [{
+      id: dedicatedId,
+      company_name: 'Client Workspace',
+      currency_symbol: 'Nu.'
+    }];
+  }
+
+  // 2. Check if non-superadmin has an assigned company on root/general URLs
   const assignedCompanyId = typeof localStorage !== 'undefined' ? localStorage.getItem('deep_pos_auth_assigned_company') : null;
   const role = typeof localStorage !== 'undefined' ? localStorage.getItem('deep_pos_auth_role') : null;
   if (role && role !== 'superadmin' && assignedCompanyId) {
@@ -106,18 +128,6 @@ function filterCompaniesForView(list: SupabaseCompany[]): SupabaseCompany[] {
     if (matched.length > 0) return matched;
     return [{
       id: assignedCompanyId,
-      company_name: 'Client Workspace',
-      currency_symbol: 'Nu.'
-    }];
-  }
-
-  // If a dedicated client link parameter is present in the URL (e.g. ?company=...)
-  const dedicatedId = getDedicatedCompanyIdFromUrl();
-  if (dedicatedId) {
-    const matched = list.filter(c => c.id === dedicatedId);
-    if (matched.length > 0) return matched;
-    return [{
-      id: dedicatedId,
       company_name: 'Client Workspace',
       currency_symbol: 'Nu.'
     }];
@@ -144,13 +154,14 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
     const role = typeof localStorage !== 'undefined' ? localStorage.getItem('deep_pos_auth_role') : null;
     const assignedCompanyId = typeof localStorage !== 'undefined' ? localStorage.getItem('deep_pos_auth_assigned_company') : null;
     const isSuperadmin = role === 'superadmin';
+    const dedicatedId = getDedicatedCompanyIdFromUrl();
 
     // 1. Fetch from Supabase companies table and attach credentials from tenant_settings
     if (isSupabaseConfigured) {
       try {
         let query = supabase.from('companies').select('*');
-        if (!includeAll && !isSuperadmin && assignedCompanyId) {
-          query = query.eq('id', assignedCompanyId);
+        if (!includeAll && !isSuperadmin && (dedicatedId || assignedCompanyId)) {
+          query = query.eq('id', dedicatedId || assignedCompanyId);
         }
         const { data: sbCompanies, error: sbErr } = await query;
         if (sbCompanies && sbCompanies.length > 0 && !sbErr) {
@@ -161,8 +172,8 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
 
         // Fetch admin_credentials and main_config from tenant_settings so every company has its settings and support access status across all PCs!
         let settingsQuery = supabase.from('tenant_settings').select('company_id, record_id, data').in('record_id', ['admin_credentials', 'main_config']);
-        if (!includeAll && !isSuperadmin && assignedCompanyId) {
-          settingsQuery = settingsQuery.eq('company_id', assignedCompanyId);
+        if (!includeAll && !isSuperadmin && (dedicatedId || assignedCompanyId)) {
+          settingsQuery = settingsQuery.eq('company_id', dedicatedId || assignedCompanyId);
         }
         const { data: settingsList } = await settingsQuery;
         if (settingsList && settingsList.length > 0) {
@@ -223,34 +234,69 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
     }
 
     // 2. Dedicated URL company lookup check (e.g. ?company=uuid)
-    const dedicatedId = getDedicatedCompanyIdFromUrl();
-    if (dedicatedId && isSupabaseConfigured) {
-      const existingComp = mergedMap.get(dedicatedId);
+    if (dedicatedId) {
+      let existingComp = mergedMap.get(dedicatedId);
       if (!existingComp || !existingComp.admin_password) {
-        try {
-          const { data: dedicatedComp } = await supabase.from('companies').select('*').eq('id', dedicatedId).maybeSingle();
-          const { data: dedicatedCreds } = await supabase.from('tenant_settings').select('data').eq('company_id', dedicatedId).eq('record_id', 'admin_credentials').maybeSingle();
-          if (dedicatedComp) {
-            const creds = dedicatedCreds?.data || {};
-            mergedMap.set(dedicatedId, {
-              ...(existingComp || {}),
-              ...dedicatedComp,
-              email: dedicatedComp.email || creds.email || existingComp?.email || '',
-              phone: dedicatedComp.phone || creds.phone || existingComp?.phone || '',
-              address: dedicatedComp.address || creds.address || existingComp?.address || '',
-              trade_license_no: dedicatedComp.trade_license_no || creds.trade_license_no || existingComp?.trade_license_no || '',
-              tax_payer_id: dedicatedComp.tax_payer_id || creds.tax_payer_id || existingComp?.tax_payer_id || '',
-              admin_username: creds.admin_username || existingComp?.admin_username,
-              admin_name: creds.admin_name || existingComp?.admin_name,
-              admin_pin: creds.admin_pin || existingComp?.admin_pin,
-              admin_password: creds.admin_password || existingComp?.admin_password,
-              is_active: creds.is_active !== undefined ? creds.is_active : (existingComp?.is_active ?? true)
-            });
+        if (isSupabaseConfigured) {
+          try {
+            const { data: dedicatedComp } = await supabase.from('companies').select('*').eq('id', dedicatedId).maybeSingle();
+            const { data: dedicatedCreds } = await supabase.from('tenant_settings').select('data').eq('company_id', dedicatedId).eq('record_id', 'admin_credentials').maybeSingle();
+            if (dedicatedComp) {
+              const creds = dedicatedCreds?.data || {};
+              existingComp = {
+                ...(existingComp || {}),
+                ...dedicatedComp,
+                email: dedicatedComp.email || creds.email || existingComp?.email || '',
+                phone: dedicatedComp.phone || creds.phone || existingComp?.phone || '',
+                address: dedicatedComp.address || creds.address || existingComp?.address || '',
+                trade_license_no: dedicatedComp.trade_license_no || creds.trade_license_no || existingComp?.trade_license_no || '',
+                tax_payer_id: dedicatedComp.tax_payer_id || creds.tax_payer_id || existingComp?.tax_payer_id || '',
+                admin_username: creds.admin_username || existingComp?.admin_username,
+                admin_name: creds.admin_name || existingComp?.admin_name,
+                admin_pin: creds.admin_pin || existingComp?.admin_pin,
+                admin_password: creds.admin_password || existingComp?.admin_password,
+                is_active: creds.is_active !== undefined ? creds.is_active : (existingComp?.is_active ?? true)
+              };
+              mergedMap.set(dedicatedId, existingComp);
+            }
+          } catch (e) {
+            console.warn('Dedicated company Supabase lookup warning:', e);
           }
-        } catch (e) {
-          console.warn('Dedicated company Supabase lookup warning:', e);
         }
       }
+      // If not yet in mergedMap, try direct Firestore single-doc lookup
+      if (!mergedMap.has(dedicatedId)) {
+        try {
+          const { getDoc } = await import('firebase/firestore');
+          const snap = await getDoc(doc(db, 'companies', dedicatedId));
+          if (snap.exists()) {
+            mergedMap.set(dedicatedId, snap.data() as SupabaseCompany);
+          }
+        } catch {}
+      }
+    }
+
+    // If dedicated URL is present and not superadmin, strictly return ONLY the dedicated company!
+    if (!includeAll && !isSuperadmin && dedicatedId) {
+      const dedicatedComp = mergedMap.get(dedicatedId);
+      if (dedicatedComp) {
+        return { companies: [dedicatedComp] };
+      }
+      const cached = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.LOCAL_COMPANIES) : null;
+      if (cached) {
+        try {
+          const list: SupabaseCompany[] = JSON.parse(cached);
+          const found = list.find(c => c.id === dedicatedId);
+          if (found) return { companies: [found] };
+        } catch {}
+      }
+      return { 
+        companies: [{
+          id: dedicatedId,
+          company_name: 'Client Workspace',
+          currency_symbol: 'Nu.'
+        }]
+      };
     }
 
     // If client user and not requesting all companies, strictly return only assigned company
@@ -749,19 +795,20 @@ export async function deleteCompany(companyId: string): Promise<{ success: boole
 
 // Get and Set Active Company and FY IDs
 export function getActiveCompanyId(): string {
-  // 1. If user is authenticated as non-superadmin, STRICTLY enforce their assigned company
+  // 1. If dedicated URL parameter is provided (e.g. ?company=... or ?cid=... or ?tenant=...)
+  // This takes absolute precedence because the browser is specifically accessing this client's portal!
+  const urlId = getDedicatedCompanyIdFromUrl();
+  if (urlId) {
+    return urlId;
+  }
+
+  // 2. If user is authenticated as non-superadmin, STRICTLY enforce their assigned company on general URLs
   if (typeof localStorage !== 'undefined') {
     const role = localStorage.getItem('deep_pos_auth_role');
     const assigned = localStorage.getItem('deep_pos_auth_assigned_company');
     if (role && role !== 'superadmin' && assigned) {
       return assigned;
     }
-  }
-
-  // 2. If dedicated URL parameter is provided (e.g. ?company=... or ?cid=... or ?tenant=...)
-  const urlId = getDedicatedCompanyIdFromUrl();
-  if (urlId) {
-    return urlId;
   }
 
   // 3. Clean Root URL / Session check:
@@ -787,12 +834,19 @@ export function setActiveCompanyId(id: string): void {
   if (typeof localStorage !== 'undefined') {
     const role = localStorage.getItem('deep_pos_auth_role');
     const assigned = localStorage.getItem('deep_pos_auth_assigned_company');
+    const dedicatedId = getDedicatedCompanyIdFromUrl();
     // Security check: non-superadmin cannot switch company
     if (role && role !== 'superadmin' && assigned && id !== assigned) {
       console.error('Unauthorized attempt by non-superadmin to switch active company to:', id);
       return;
     }
+    // Also: non-superadmin cannot switch away from dedicated client URL
+    if (role && role !== 'superadmin' && dedicatedId && id !== dedicatedId) {
+      console.error('Unauthorized attempt to switch away from dedicated client company:', id);
+      return;
+    }
     localStorage.setItem(STORAGE_KEYS.TENANT_COMPANY_ID, id);
+    localStorage.setItem('supabase_active_company_id', id);
     if (typeof sessionStorage !== 'undefined') {
       if (id === DEFAULT_TENANT_COMPANY.id) {
         sessionStorage.removeItem('supabase_active_session_company');

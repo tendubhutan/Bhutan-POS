@@ -255,6 +255,7 @@ export interface AppUser {
   pinCode?: string;
   status: 'Active' | 'Inactive';
   permissions: UserPermission[];
+  assignedCompanyId?: string;
 }
 
 export interface ItemVariant {

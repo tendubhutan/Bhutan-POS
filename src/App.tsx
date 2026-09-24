@@ -39,6 +39,7 @@ import {
   getActiveCompanyId, 
   setActiveCompanyId,
   getActiveFYId, 
+  getDedicatedCompanyIdFromUrl,
   DEFAULT_TENANT_COMPANY,
   SupabaseCompany, 
   SupabaseFinancialYear 
@@ -263,6 +264,7 @@ export default function App() {
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showUserAuthModal, setShowUserAuthModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<AppUser>(() => {
+    const dedicatedId = getDedicatedCompanyIdFromUrl();
     const rawLocalRole = (typeof localStorage !== 'undefined'
       ? (localStorage.getItem('deep_pos_auth_role') ||
          localStorage.getItem('supabase_active_role') ||
@@ -271,6 +273,21 @@ export default function App() {
          '')
       : '').toLowerCase().trim();
     const isSuper = rawLocalRole === 'superadmin' || isSuperAdmin();
+    const storedAssignedCompany = typeof localStorage !== 'undefined' ? localStorage.getItem('deep_pos_auth_assigned_company') : null;
+
+    // Strict client isolation: If visiting a dedicated client link and stored credentials belong to a different company (and user is not superadmin):
+    if (dedicatedId && !isSuper && storedAssignedCompany && storedAssignedCompany !== dedicatedId) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('deep_pos_auth_assigned_company');
+        localStorage.removeItem('deep_pos_auth_role');
+        localStorage.removeItem('deep_pos_auth_uid');
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem('bhutan_pos_session_unlocked');
+        sessionStorage.removeItem('supabase_active_session_company');
+      }
+    }
+
     const base = getActiveUser();
     if (isSuper) {
       return {
@@ -284,6 +301,38 @@ export default function App() {
     return base;
   });
   const [isTerminalLocked, setIsTerminalLocked] = useState<boolean>(() => {
+    const dedicatedId = getDedicatedCompanyIdFromUrl();
+    const rawLocalRole = (typeof localStorage !== 'undefined'
+      ? (localStorage.getItem('deep_pos_auth_role') ||
+         localStorage.getItem('supabase_active_role') ||
+         localStorage.getItem('user_role') ||
+         localStorage.getItem('role') ||
+         '')
+      : '').toLowerCase().trim();
+    const isSuper = rawLocalRole === 'superadmin' || isSuperAdmin();
+    const storedAssignedCompany = typeof localStorage !== 'undefined' ? localStorage.getItem('deep_pos_auth_assigned_company') : null;
+
+    // If accessing dedicated client link:
+    if (dedicatedId) {
+      // If user was logged in as a non-superadmin for another client:
+      if (!isSuper && storedAssignedCompany && storedAssignedCompany !== dedicatedId) {
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.removeItem('bhutan_pos_session_unlocked');
+          sessionStorage.removeItem('supabase_active_session_company');
+        }
+        return true; // Strictly lock to show this client's login screen!
+      }
+      // If session in this tab was for a different company:
+      const sessionCompany = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('supabase_active_session_company') : null;
+      if (sessionCompany && sessionCompany !== dedicatedId && !isSuper) {
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.removeItem('bhutan_pos_session_unlocked');
+          sessionStorage.removeItem('supabase_active_session_company');
+        }
+        return true;
+      }
+    }
+
     // Require explicit authentication by default: lock screen until a valid session is confirmed
     const sessionUnlocked = sessionStorage.getItem('bhutan_pos_session_unlocked');
     return sessionUnlocked !== 'true';
@@ -294,10 +343,14 @@ export default function App() {
   // Load active company and FY details
   const loadTenantDetails = async () => {
     try {
+      const dedicatedId = getDedicatedCompanyIdFromUrl();
+      if (dedicatedId) {
+        setActiveCompanyId(dedicatedId);
+      }
       const cId = getActiveCompanyId();
       const fyId = getActiveFYId();
-      const { companies: comps } = await fetchUserCompanies();
-      const currentC = comps.find(c => c.id === cId) || comps.find(c => c.id === DEFAULT_TENANT_COMPANY.id) || comps[0];
+      const { companies: comps } = await fetchUserCompanies(Boolean(dedicatedId));
+      const currentC = comps.find(c => c.id === cId) || comps.find(c => c.id === dedicatedId) || comps.find(c => c.id === DEFAULT_TENANT_COMPANY.id) || comps[0];
       if (currentC) {
         if (currentC.id !== cId) {
           setActiveCompanyId(currentC.id);
@@ -343,6 +396,21 @@ export default function App() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
+      const dedicatedId = getDedicatedCompanyIdFromUrl();
+      if (dedicatedId) {
+        setActiveCompanyId(dedicatedId);
+        const storedRole = (localStorage.getItem('deep_pos_auth_role') || '').toLowerCase().trim();
+        const storedAssigned = localStorage.getItem('deep_pos_auth_assigned_company');
+        if (storedRole !== 'superadmin' && storedAssigned && storedAssigned !== dedicatedId) {
+          localStorage.removeItem('deep_pos_auth_assigned_company');
+          localStorage.removeItem('deep_pos_auth_role');
+          localStorage.removeItem('deep_pos_auth_uid');
+          sessionStorage.removeItem('bhutan_pos_session_unlocked');
+          sessionStorage.removeItem('supabase_active_session_company');
+          setIsTerminalLocked(true);
+        }
+      }
+
       const urlParams = new URLSearchParams(window.location.search);
       const counterParam = urlParams.get('counter') || urlParams.get('terminal');
       const branchParam = urlParams.get('branch');
