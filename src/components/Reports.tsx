@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Config, Item, Ledger } from '../types';
 import {
   getDailyColumnarReport, getGSTReport, getGSTInputDomReport, getGSTInputImpReport, getGSTSummaryReport, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig,
-  getPartyOutstandingBills, saveVoucher, canUserViewAuditTrail, getActiveUser, getBranches, getGodowns
+  getPartyOutstandingBills, saveVoucher, canUserViewAuditTrail, getActiveUser, getBranches, getGodowns, getEmployees
 } from '../services/storageService';
+import { AssignmentReportView } from './employee/AssignmentReportView';
 import XLSX from 'xlsx-js-style';
 import {
   Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, Warehouse, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History, Plus, Minus
@@ -20,7 +21,7 @@ export interface ReportTarget {
   category: 'daily' | 'gst' | 'inv' | 'fin' | 'reg' | 'audit';
   finSubTab?: 'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED';
   invSubTab?: 'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary' | 'godown_summary';
-  regSubTab?: 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes';
+  regSubTab?: 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes' | 'assignments';
   voucherTypeFilter?: string;
   voucherStatusFilter?: string;
   ledgerName?: string;
@@ -128,7 +129,7 @@ interface ReportViewState {
   mainCategory: 'daily' | 'gst' | 'gst_summary' | 'gst_input_dom' | 'gst_input_imp' | 'inv' | 'fin' | 'reg' | 'audit';
   finSubTab: 'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED';
   invSubTab: 'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary' | 'godown_summary';
-  regSubTab: 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes';
+  regSubTab: 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes' | 'assignments';
   itemWise: boolean;
   selectedLedger: string;
 }
@@ -152,7 +153,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const [invSubTab, setInvSubTab] = useState<'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary' | 'godown_summary'>('summary');
   const [finSubTab, setFinSubTab] = useState<'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED'>('TB');
   const [reportDepth, setReportDepth] = useState<ReportDetailDepth>(config?.ReportDetailDepth || 'detailed');
-  const [regSubTab, setRegSubTab] = useState<'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes'>('vouchers');
+  const [regSubTab, setRegSubTab] = useState<'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes' | 'assignments'>('vouchers');
   const [voucherTypeFilter, setVoucherTypeFilter] = useState('ALL');
   const [voucherStatusFilter, setVoucherStatusFilter] = useState('ALL');
   const [voucherSearchQuery, setVoucherSearchQuery] = useState('');
@@ -572,7 +573,8 @@ export const Reports: React.FC<ReportsProps> = ({
           { id: 'reg-sales', name: 'Sales Register', group: 'Registers', desc: 'Detailed sales invoice logbook', keywords: ['sales register', 'invoices', 'billed'] },
           { id: 'reg-purchases', name: 'Purchase Register', group: 'Registers', desc: 'Supplier purchase invoice register', keywords: ['purchase register', 'vendor', 'bills'] },
           { id: 'reg-quotations', name: 'Quotation Register', group: 'Registers', desc: 'Proforma and sales quotations', keywords: ['quote', 'estimate', 'quotation'] },
-          { id: 'reg-delivery_notes', name: 'Delivery Note Register', group: 'Registers', desc: 'Goods dispatch and delivery challans', keywords: ['delivery', 'challan', 'dispatch', 'dc'] }
+          { id: 'reg-delivery_notes', name: 'Delivery Note Register', group: 'Registers', desc: 'Goods dispatch and delivery challans', keywords: ['delivery', 'challan', 'dispatch', 'dc'] },
+          { id: 'reg-assignments', name: 'Staff Task & Assignment Report', group: 'Registers', desc: 'Employee task register, operational audits & workload KPIs', keywords: ['assignment', 'task', 'staff', 'employee', 'delegation', 'todo', 'kpi', 'audit'] }
         ]
       }
     ];
@@ -751,7 +753,8 @@ export const Reports: React.FC<ReportsProps> = ({
     { cat: 'reg', regSub: 'sales', label: 'Sales Register' },
     { cat: 'reg', regSub: 'purchases', label: 'Purchase Register' },
     { cat: 'reg', regSub: 'quotations', label: 'Quotation Register' },
-    { cat: 'reg', regSub: 'delivery_notes', label: 'Delivery Note Register' }
+    { cat: 'reg', regSub: 'delivery_notes', label: 'Delivery Note Register' },
+    { cat: 'reg', regSub: 'assignments', label: 'Staff Task & Assignment Report' }
   ], [showGst]);
 
   // Track report navigation transitions for strict sequential step-back
@@ -3059,7 +3062,8 @@ export const Reports: React.FC<ReportsProps> = ({
                   { id: 'sales', label: 'Sales Register' },
                   { id: 'purchases', label: 'Purchase Register' },
                   { id: 'quotations', label: 'Quotation Register' },
-                  { id: 'delivery_notes', label: 'Delivery Note Register' }
+                  { id: 'delivery_notes', label: 'Delivery Note Register' },
+                  { id: 'assignments', label: 'Staff Task & Assignment Report' }
                 ].map(tab => (
                   <button
                     key={tab.id}
@@ -5247,6 +5251,14 @@ export const Reports: React.FC<ReportsProps> = ({
                       </tbody>
                     </table>
                   </div>
+                )}
+
+                {/* Staff Task & Assignment Report */}
+                {regSubTab === 'assignments' && (
+                  <AssignmentReportView
+                    config={config}
+                    employees={getEmployees()}
+                  />
                 )}
               </div>
             )}

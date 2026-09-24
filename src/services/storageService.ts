@@ -69,7 +69,8 @@ import {
   deletePurchaseInvoiceFromSupabase as deletePurchaseInvoiceFromFirestore,
   syncVoucherToSupabase as syncVoucherToFirestore,
   deleteVoucherFromSupabase as deleteVoucherFromFirestore,
-  purgeRemoteCompanyData
+  purgeRemoteCompanyData,
+  broadcastEntityMutation
 } from './supabaseSyncService';
 import { 
   getActiveCompanyId, 
@@ -1494,11 +1495,56 @@ export function round2(n: number): number {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
-export function nextCounter(name: string): number {
-  const counters = loadJson<Record<string, number>>(STORAGE_KEYS.COUNTERS, { InternalBarcode: 5, SalesInvoice: 32, PurchaseInvoice: 12, PaymentVoucher: 1, ReceiptVoucher: 1, JournalVoucher: 1, ContraVoucher: 1 });
-  const val = (counters[name] || 0) + 1;
+export function nextCounter(name: string, targetCompanyId?: string): number {
+  const cId = targetCompanyId || getActiveCompanyId();
+  const counters = loadJson<Record<string, number>>(STORAGE_KEYS.COUNTERS, { InternalBarcode: 5, SalesInvoice: 32, PurchaseInvoice: 12, PaymentVoucher: 1, ReceiptVoucher: 1, JournalVoucher: 1, ContraVoucher: 1 }, cId);
+  
+  let currentVal = Number(counters[name]) || 0;
+
+  // Collision prevention across multiple network terminals:
+  // Dynamically inspect local deduplicated vouchers/invoices from any terminal to guarantee max monotonicity
+  if (name === 'SalesInvoice' || name.toLowerCase().includes('sale')) {
+    const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, [], cId);
+    sales.forEach(s => {
+      const match = (s.invoiceNo || '').match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > currentVal) currentVal = num;
+      }
+    });
+  } else if (name === 'PurchaseInvoice' || name.toLowerCase().includes('purchase')) {
+    const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, [], cId);
+    purchases.forEach(p => {
+      const match = (p.billNo || p.invoiceNo || '').match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > currentVal) currentVal = num;
+      }
+    });
+  } else if (name.includes('Voucher') || name.includes('JV') || name.includes('Payment') || name.includes('Receipt') || name.includes('Contra') || name.includes('Journal')) {
+    const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, [], cId);
+    vouchers.forEach(v => {
+      const match = (v.voucherNo || '').match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > currentVal) currentVal = num;
+      }
+    });
+  }
+
+  const val = currentVal + 1;
   counters[name] = val;
-  saveJson(STORAGE_KEYS.COUNTERS, counters);
+  saveJson(STORAGE_KEYS.COUNTERS, counters, cId);
+
+  // Broadcast counter advance to all other PC terminals
+  try {
+    broadcastEntityMutation({
+      entity: 'counters',
+      data: counters,
+      companyId: cId
+    });
+  } catch {}
+
   return val;
 }
 
@@ -3177,6 +3223,13 @@ export function saveItem(item: Item) {
   }
 
   syncItemToFirestore(item).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'item',
+      action: 'upsert',
+      data: item
+    });
+  } catch {}
 
   if (isNew && Number(item['Opening Stock']) > 0) {
     const openingRef = item['Opening Serials'] && item['Opening Serials'].trim()
@@ -3275,6 +3328,13 @@ export function deleteItem(code: string) {
   }
 
   deleteItemFromFirestore(target).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'item',
+      action: 'delete',
+      data: { 'Item Code': target }
+    });
+  } catch {}
 
   // Audit Trail Logging
   addAuditLog({
@@ -3332,6 +3392,13 @@ export function saveLedger(l: Ledger) {
   list = sanitizeLedgers(list);
   saveJson(STORAGE_KEYS.LEDGERS, list);
   syncLedgerToFirestore(l).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'ledger',
+      action: 'upsert',
+      data: l
+    });
+  } catch {}
 
   // Audit Trail Logging
   addAuditLog({
@@ -3445,6 +3512,13 @@ export function deleteLedger(name: string) {
   }
 
   deleteLedgerFromFirestore(target).catch(() => {});
+  try {
+    broadcastEntityMutation({
+      entity: 'ledger',
+      action: 'delete',
+      data: { 'Ledger Name': target }
+    });
+  } catch {}
 
   // Audit Trail Logging
   addAuditLog({
@@ -8975,8 +9049,9 @@ export function getCategoryLedgerBreakdown(category: string, from?: string, to?:
 
 // ==================== PAYROLL SERVICES ====================
 
-export function getPayHeads(): PayHead[] {
-  const heads = loadJson<PayHead[]>(STORAGE_KEYS.PAY_HEADS, DEFAULT_PAY_HEADS);
+export function getPayHeads(targetCompanyId?: string): PayHead[] {
+  const cId = targetCompanyId || getActiveCompanyId();
+  const heads = loadJson<PayHead[]>(STORAGE_KEYS.PAY_HEADS, DEFAULT_PAY_HEADS, cId);
   return heads.map(h => {
     if (h.id === 'ph_health') {
       return {
@@ -8997,31 +9072,147 @@ export function getPayHeads(): PayHead[] {
   });
 }
 
-export function savePayHeads(heads: PayHead[]): void {
-  saveJson(STORAGE_KEYS.PAY_HEADS, heads);
+export function savePayHeads(heads: PayHead[], targetCompanyId?: string): void {
+  const cId = targetCompanyId || getActiveCompanyId();
+  saveJson(STORAGE_KEYS.PAY_HEADS, heads, cId);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('deep_pos_pay_heads_updated', { detail: { heads, companyId: cId } }));
+  }
+
+  // Cross-PC sync: Save to Supabase tenant_settings and broadcast instantly
+  if (isSupabaseConfigured && cId) {
+    Promise.resolve(
+      supabase
+        .from('tenant_settings')
+        .upsert({
+          company_id: cId,
+          record_id: 'company_pay_heads',
+          data: { heads, updated_at: new Date().toISOString() }
+        }, { onConflict: 'company_id,record_id' })
+    ).catch((err) => {
+      console.warn('[Supabase savePayHeads cloud sync error]:', err);
+    });
+
+    try {
+      broadcastEntityMutation({
+        entity: 'pay_heads',
+        action: 'upsert',
+        data: heads,
+        companyId: cId
+      });
+    } catch {}
+  }
 }
 
-export function getEmployees(): Employee[] {
-  return loadJson<Employee[]>(STORAGE_KEYS.EMPLOYEES, DEFAULT_EMPLOYEES);
+export function getEmployees(targetCompanyId?: string): Employee[] {
+  const cId = targetCompanyId || getActiveCompanyId();
+  const list = loadJson<Employee[]>(STORAGE_KEYS.EMPLOYEES, [], cId);
+  if (list && list.length > 0) return list;
+  if (cId === DEFAULT_TENANT_COMPANY.id) return DEFAULT_EMPLOYEES;
+  return [];
 }
 
-export function saveEmployees(employees: Employee[]): void {
-  saveJson(STORAGE_KEYS.EMPLOYEES, employees);
+export function saveEmployees(employees: Employee[], targetCompanyId?: string): void {
+  const cId = targetCompanyId || getActiveCompanyId();
+  saveJson(STORAGE_KEYS.EMPLOYEES, employees, cId);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('deep_pos_employees_updated', { detail: { employees, companyId: cId } }));
+  }
+
+  // Cross-PC sync: Save to Supabase tenant_settings and broadcast instantly across all PCs & mobile portals
+  if (isSupabaseConfigured && cId) {
+    Promise.resolve(
+      supabase
+        .from('tenant_settings')
+        .upsert({
+          company_id: cId,
+          record_id: 'company_employees',
+          data: { employees, updated_at: new Date().toISOString() }
+        }, { onConflict: 'company_id,record_id' })
+    ).catch((err) => {
+      console.warn('[Supabase saveEmployees cloud sync error]:', err);
+    });
+
+    try {
+      broadcastEntityMutation({
+        entity: 'employees',
+        action: 'upsert',
+        data: employees,
+        companyId: cId
+      });
+    } catch {}
+  }
 }
 
-export function getMonthlyPayrolls(): MonthlyPayroll[] {
-  return loadJson<MonthlyPayroll[]>(STORAGE_KEYS.MONTHLY_PAYROLLS, []);
+export async function syncEmployeesFromSupabase(targetCompanyId?: string): Promise<Employee[]> {
+  const cId = targetCompanyId || getActiveCompanyId();
+  if (!isSupabaseConfigured || !cId) return getEmployees(cId);
+
+  try {
+    const { data, error } = await supabase
+      .from('tenant_settings')
+      .select('data')
+      .eq('company_id', cId)
+      .eq('record_id', 'company_employees')
+      .maybeSingle();
+
+    if (!error && data?.data?.employees && Array.isArray(data.data.employees)) {
+      saveJson(STORAGE_KEYS.EMPLOYEES, data.data.employees, cId);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('deep_pos_employees_updated', { detail: { employees: data.data.employees, companyId: cId } }));
+      }
+      return data.data.employees;
+    }
+  } catch (err) {
+    console.warn('[Supabase syncEmployeesFromSupabase notice]:', err);
+  }
+  return getEmployees(cId);
 }
 
-export function saveMonthlyPayroll(payroll: MonthlyPayroll): void {
-  const list = getMonthlyPayrolls();
+export function getMonthlyPayrolls(targetCompanyId?: string): MonthlyPayroll[] {
+  const cId = targetCompanyId || getActiveCompanyId();
+  return loadJson<MonthlyPayroll[]>(STORAGE_KEYS.MONTHLY_PAYROLLS, [], cId);
+}
+
+export function saveMonthlyPayroll(payroll: MonthlyPayroll, targetCompanyId?: string): void {
+  const cId = targetCompanyId || getActiveCompanyId();
+  const list = getMonthlyPayrolls(cId);
   const idx = list.findIndex(p => p.id === payroll.id);
   if (idx >= 0) {
     list[idx] = payroll;
   } else {
     list.push(payroll);
   }
-  saveJson(STORAGE_KEYS.MONTHLY_PAYROLLS, list);
+  saveJson(STORAGE_KEYS.MONTHLY_PAYROLLS, list, cId);
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('deep_pos_payroll_updated', { detail: { payrolls: list, companyId: cId } }));
+  }
+
+  // Cross-PC sync: Save to Supabase tenant_settings and broadcast instantly
+  if (isSupabaseConfigured && cId) {
+    Promise.resolve(
+      supabase
+        .from('tenant_settings')
+        .upsert({
+          company_id: cId,
+          record_id: 'company_monthly_payrolls',
+          data: { payrolls: list, updated_at: new Date().toISOString() }
+        }, { onConflict: 'company_id,record_id' })
+    ).catch((err) => {
+      console.warn('[Supabase saveMonthlyPayroll cloud sync error]:', err);
+    });
+
+    try {
+      broadcastEntityMutation({
+        entity: 'payroll',
+        action: 'upsert',
+        data: list,
+        companyId: cId
+      });
+    } catch {}
+  }
 }
 
 export function syncPayrollToAccounting(): void {
@@ -9771,12 +9962,28 @@ export function deleteVoucherByRef(refNo: string) {
 
 
 
-export function getEmployeeAdvances(): import('../types').EmployeeAdvance[] {
-  return loadJson<import('../types').EmployeeAdvance[]>(STORAGE_KEYS.EMPLOYEE_ADVANCES, []);
+export function getEmployeeAdvances(targetCompanyId?: string): import('../types').EmployeeAdvance[] {
+  const cId = targetCompanyId || getActiveCompanyId();
+  return loadJson<import('../types').EmployeeAdvance[]>(STORAGE_KEYS.EMPLOYEE_ADVANCES, [], cId);
 }
 
-export function saveEmployeeAdvances(advances: import('../types').EmployeeAdvance[]): void {
-  saveJson(STORAGE_KEYS.EMPLOYEE_ADVANCES, advances);
+export function saveEmployeeAdvances(advances: import('../types').EmployeeAdvance[], targetCompanyId?: string): void {
+  const cId = targetCompanyId || getActiveCompanyId();
+  saveJson(STORAGE_KEYS.EMPLOYEE_ADVANCES, advances, cId);
+
+  if (isSupabaseConfigured && cId) {
+    Promise.resolve(
+      supabase
+        .from('tenant_settings')
+        .upsert({
+          company_id: cId,
+          record_id: 'company_employee_advances',
+          data: { advances, updated_at: new Date().toISOString() }
+        }, { onConflict: 'company_id,record_id' })
+    ).catch((err) => {
+      console.warn('[Supabase saveEmployeeAdvances cloud sync error]:', err);
+    });
+  }
 }
 
 

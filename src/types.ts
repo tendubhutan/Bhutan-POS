@@ -879,6 +879,15 @@ export interface PayHead {
   enabled: boolean;
 }
 
+export interface BiometricCredential {
+  id: string; // Base64URL-encoded credential ID
+  rawId?: string;
+  type: string; // e.g. 'public-key'
+  createdAt: string; // ISO date string
+  deviceName?: string; // e.g. 'iPhone TouchID / FaceID', 'Android Fingerprint', 'Chrome Windows Hello'
+  transports?: string[];
+}
+
 export interface Employee {
   id: string;
   empCode: string;
@@ -897,6 +906,8 @@ export interface Employee {
   accountNo: string;
   basicSalary: number;
   status: 'Active' | 'Inactive';
+  pin?: string; // 4-6 digit security PIN for mobile staff portal sign-in (default: 1234)
+  biometricCredentials?: BiometricCredential[]; // WebAuthn registered biometric credentials
   customPayHeads?: {
     [payHeadId: string]: {
       overrideValue?: number;

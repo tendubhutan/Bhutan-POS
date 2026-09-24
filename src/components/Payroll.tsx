@@ -41,7 +41,8 @@ import {
   saveMultiLineVoucher,
   nextCounter,
   getVoucherPrefix,
-  round2
+  round2,
+  syncEmployeesFromSupabase
 } from '../services/storageService';
 
 interface PayrollProps {
@@ -196,6 +197,26 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
   useEffect(() => {
     refreshAllData();
+
+    // Async sync from cloud
+    syncEmployeesFromSupabase().then(remoteEmps => {
+      if (remoteEmps && remoteEmps.length > 0) {
+        setEmployeesState(remoteEmps);
+      }
+    });
+
+    const handleUpdate = () => refreshAllData();
+    window.addEventListener('deep_pos_employees_updated', handleUpdate);
+    window.addEventListener('deep_pos_pay_heads_updated', handleUpdate);
+    window.addEventListener('deep_pos_payroll_updated', handleUpdate);
+    window.addEventListener('app:dataLoaded', handleUpdate);
+
+    return () => {
+      window.removeEventListener('deep_pos_employees_updated', handleUpdate);
+      window.removeEventListener('deep_pos_pay_heads_updated', handleUpdate);
+      window.removeEventListener('deep_pos_payroll_updated', handleUpdate);
+      window.removeEventListener('app:dataLoaded', handleUpdate);
+    };
   }, []);
 
   // Update current monthly payroll view whenever month/year or payrolls list changes

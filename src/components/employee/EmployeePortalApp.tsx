@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Clock, Calendar, CheckSquare, User, Smartphone, LogOut, 
   Send, MessageSquare, Plus, Check, X, AlertCircle, ChevronRight,
   Coffee, ShieldCheck, ArrowRight, Sparkles, Download, CheckCircle2,
-  CalendarCheck, Timer, Briefcase, Award, Info, Wifi, WifiOff, RefreshCw, MapPin, Lock
+  CalendarCheck, Timer, Briefcase, Award, Info, Wifi, WifiOff, RefreshCw, MapPin, Lock,
+  Phone, KeyRound, Eye, EyeOff, UserCheck, Shield, ChevronDown, Fingerprint, ScanFace
 } from 'lucide-react';
 import { 
-  getEmployees, saveEmployees 
+  getEmployees, saveEmployees, syncEmployeesFromSupabase 
 } from '../../services/storageService';
 import { getActiveCompanyId } from '../../services/supabaseTenantService';
 import { getCompanyConfig, isFeatureAllowed } from '../../services/tenantFeatureService';
@@ -16,8 +17,20 @@ import {
   getAttendanceRecords, employeeClockIn, employeeClockOut,
   getEmployeeTodayAttendance, getTaskAssignments, updateTaskStatus,
   addTaskComment, getEmployeeStaffSession, setEmployeeStaffSession,
-  clearEmployeeStaffSession, getOfficeNetworkConfig, verifyOfficeNetwork
+  clearEmployeeStaffSession, getOfficeNetworkConfig, verifyOfficeNetwork,
+  findEmployeeByMobileOrCode, updateEmployeePortalPin, normalizePhoneNumber,
+  requestStaffPinResetOtp, verifyOtpAndResetPin, maskPhoneNumber
 } from '../../services/employeeStaffService';
+import {
+  isWebAuthnSupported,
+  isPlatformAuthenticatorAvailable,
+  getBiometricHardwareName,
+  isEmployeeBiometricRegistered,
+  registerBiometricCredential,
+  authenticateWithBiometrics,
+  removeBiometricCredential,
+  getDeviceBiometricRegistry
+} from '../../services/webAuthnService';
 import { Employee, Config } from '../../types';
 import { 
   LeaveTypeConfig, LeaveApplication, AttendanceRecord, 
@@ -58,10 +71,65 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
   }, [isAttendanceAllowed, isAssignmentsAllowed, activeTab]);
   
   // Login form state
-  const [loginEmpCode, setLoginEmpCode] = useState('');
+  const [loginMobile, setLoginMobile] = useState('');
   const [loginPin, setLoginPin] = useState('');
+  const [showLoginPin, setShowLoginPin] = useState(false);
+  const [loginMethod, setLoginMethod] = useState<'mobile' | 'list'>('mobile');
   const [loginError, setLoginError] = useState('');
   const [availableEmployees, setAvailableEmployees] = useState<Employee[]>([]);
+
+  // Change PIN modal & form state
+  const [showChangePinModal, setShowChangePinModal] = useState(false);
+  const [currentPinInput, setCurrentPinInput] = useState('');
+  const [newPinInput, setNewPinInput] = useState('');
+  const [confirmPinInput, setConfirmPinInput] = useState('');
+  const [showNewPinToggle, setShowNewPinToggle] = useState(false);
+  const [changePinError, setChangePinError] = useState('');
+  const [changePinSuccess, setChangePinSuccess] = useState('');
+  const [isChangingPin, setIsChangingPin] = useState(false);
+
+  // Forgot / Reset PIN via Mobile OTP State
+  const [showForgotPinModal, setShowForgotPinModal] = useState<boolean>(false);
+  const [forgotPinStep, setForgotPinStep] = useState<'mobile' | 'otp' | 'newPin' | 'success'>('mobile');
+  const [forgotPinMobileInput, setForgotPinMobileInput] = useState<string>('');
+  const [forgotPinOtpInput, setForgotPinOtpInput] = useState<string>('');
+  const [forgotPinNewPin, setForgotPinNewPin] = useState<string>('');
+  const [forgotPinConfirmPin, setForgotPinConfirmPin] = useState<string>('');
+  const [forgotPinShowDigits, setForgotPinShowDigits] = useState<boolean>(false);
+  const [forgotPinError, setForgotPinError] = useState<string>('');
+  const [forgotPinSuccess, setForgotPinSuccess] = useState<string>('');
+  const [isRequestingOtp, setIsRequestingOtp] = useState<boolean>(false);
+  const [isVerifyingOtpAndResetting, setIsVerifyingOtpAndResetting] = useState<boolean>(false);
+  const [otpSessionInfo, setOtpSessionInfo] = useState<{
+    employeeId: string;
+    employeeName: string;
+    mobile: string;
+    maskedMobile: string;
+    expiresAt: number;
+    debugOtp: string;
+  } | null>(null);
+  const [otpCountdown, setOtpCountdown] = useState<number>(0);
+  const [simulatedSmsToast, setSimulatedSmsToast] = useState<{ otp: string; mobile: string; name: string } | null>(null);
+
+  // OTP Countdown timer effect
+  useEffect(() => {
+    if (otpCountdown <= 0) return;
+    const timer = setInterval(() => {
+      setOtpCountdown(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [otpCountdown]);
+
+  // WebAuthn Biometrics State
+  const [isBioSupported, setIsBioSupported] = useState<boolean>(() => isWebAuthnSupported());
+  const [isBioAvailable, setIsBioAvailable] = useState<boolean>(false);
+  const [bioHardware, setBioHardware] = useState<{ name: string; type: 'face' | 'fingerprint' | 'general' }>(() => getBiometricHardwareName());
+  const [isAuthenticatingBio, setIsAuthenticatingBio] = useState<boolean>(false);
+  const [isRegisteringBio, setIsRegisteringBio] = useState<boolean>(false);
+  const [bioEnrollSuccess, setBioEnrollSuccess] = useState<string>('');
+  const [bioEnrollError, setBioEnrollError] = useState<string>('');
+  const [showBioEnrollModal, setShowBioEnrollModal] = useState<boolean>(false);
+  const [deviceBioRegistryCount, setDeviceBioRegistryCount] = useState<number>(0);
 
   // Shift & Attendance State
   const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord | null>(null);
@@ -172,65 +240,159 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  // Check saved session
+  // Check saved session & initialize WebAuthn
   useEffect(() => {
-    const allEmps = getEmployees().filter(e => e.status === 'Active');
-    setAvailableEmployees(allEmps);
+    const refreshEmps = (empsList?: Employee[]) => {
+      const allEmps = (empsList || getEmployees(companyId)).filter(e => e.status === 'Active');
+      setAvailableEmployees(allEmps);
 
-    const session = getEmployeeStaffSession();
-    if (session && session.employee) {
-      // Confirm employee still exists
-      const match = allEmps.find(e => e.id === session.employee.id || e.empCode === session.employee.empCode);
-      if (match) {
-        setCurrentEmployee(match);
-      } else {
-        setCurrentEmployee(session.employee);
+      const session = getEmployeeStaffSession();
+      if (session && session.employee) {
+        // Confirm employee still exists
+        const match = allEmps.find(e => e.id === session.employee.id || e.empCode === session.employee.empCode);
+        if (match) {
+          setCurrentEmployee(match);
+        } else {
+          setCurrentEmployee(session.employee);
+        }
       }
-    }
-  }, []);
+    };
+
+    refreshEmps();
+
+    // Async pull fresh employees from Supabase Cloud to ensure new PCs get the latest staff list
+    syncEmployeesFromSupabase(companyId).then(remoteEmps => {
+      if (remoteEmps && remoteEmps.length > 0) {
+        refreshEmps(remoteEmps);
+      }
+    });
+
+    const handleEmployeeUpdate = (evt: any) => {
+      if (evt?.detail?.employees) {
+        refreshEmps(evt.detail.employees);
+      } else {
+        refreshEmps();
+      }
+    };
+
+    window.addEventListener('deep_pos_employees_updated', handleEmployeeUpdate);
+    window.addEventListener('app:dataLoaded', () => refreshEmps());
+
+    // Check platform biometric capability
+    const checkBio = async () => {
+      const supported = isWebAuthnSupported();
+      setIsBioSupported(supported);
+      if (supported) {
+        const available = await isPlatformAuthenticatorAvailable();
+        setIsBioAvailable(available);
+      }
+      const hw = getBiometricHardwareName();
+      setBioHardware(hw);
+      const registry = getDeviceBiometricRegistry();
+      setDeviceBioRegistryCount(registry.length);
+    };
+    checkBio();
+
+    return () => {
+      window.removeEventListener('deep_pos_employees_updated', handleEmployeeUpdate);
+      window.removeEventListener('app:dataLoaded', () => refreshEmps());
+    };
+  }, [companyId]);
 
   // Refresh Employee Data
   const loadEmployeeData = () => {
     if (!currentEmployee) return;
-    const lTypes = getLeaveTypes().filter(t => t.enabled);
+    const lTypes = getLeaveTypes(companyId).filter(t => t.enabled);
     setLeaveTypesList(lTypes);
 
-    const apps = getLeaveApplications().filter(a => a.employeeId === currentEmployee.id);
+    const apps = getLeaveApplications(companyId).filter(a => a.employeeId === currentEmployee.id);
     setMyLeaves(apps);
 
-    const todayRec = getEmployeeTodayAttendance(currentEmployee.id);
+    const todayRec = getEmployeeTodayAttendance(currentEmployee.id, companyId);
     setTodayAttendance(todayRec);
 
-    const tasks = getTaskAssignments().filter(t => t.assignedToEmpId === currentEmployee.id);
+    const tasks = getTaskAssignments(companyId).filter(t => t.assignedToEmpId === currentEmployee.id);
     setMyTasks(tasks);
   };
 
   useEffect(() => {
     loadEmployeeData();
-  }, [currentEmployee]);
 
-  // Login Handler
+    const handleDataUpdate = () => loadEmployeeData();
+    window.addEventListener('deep_pos_leave_types_updated', handleDataUpdate);
+    window.addEventListener('deep_pos_leave_apps_updated', handleDataUpdate);
+    window.addEventListener('deep_pos_attendance_updated', handleDataUpdate);
+    window.addEventListener('deep_pos_tasks_updated', handleDataUpdate);
+
+    return () => {
+      window.removeEventListener('deep_pos_leave_types_updated', handleDataUpdate);
+      window.removeEventListener('deep_pos_leave_apps_updated', handleDataUpdate);
+      window.removeEventListener('deep_pos_attendance_updated', handleDataUpdate);
+      window.removeEventListener('deep_pos_tasks_updated', handleDataUpdate);
+    };
+  }, [currentEmployee, companyId]);
+
+  // Detected employee based on mobile number or code input
+  const detectedEmployee = useMemo(() => {
+    if (!loginMobile || !loginMobile.trim()) return null;
+    const trimmed = loginMobile.trim();
+    const normalizedInput = normalizePhoneNumber(trimmed);
+    
+    return availableEmployees.find(emp => {
+      if (emp.contactNo) {
+        const normContact = normalizePhoneNumber(emp.contactNo);
+        if (normContact && normalizedInput && (normContact === normalizedInput || normContact.endsWith(normalizedInput) || normalizedInput.endsWith(normContact))) {
+          return true;
+        }
+        if (emp.contactNo.trim() === trimmed) return true;
+      }
+      if (emp.empCode && emp.empCode.trim().toLowerCase() === trimmed.toLowerCase()) return true;
+      if (emp.cidNo && emp.cidNo.trim().toLowerCase() === trimmed.toLowerCase()) return true;
+      if (emp.id === trimmed) return true;
+      return false;
+    });
+  }, [loginMobile, availableEmployees]);
+
+  // Login Handler (Mobile Number First)
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
-    const targetEmp = availableEmployees.find(e => 
-      e.empCode.trim().toLowerCase() === loginEmpCode.trim().toLowerCase() ||
-      e.contactNo.trim() === loginEmpCode.trim() ||
-      e.id === loginEmpCode
+    const trimmedInput = loginMobile.trim();
+    if (!trimmedInput) {
+      setLoginError('Please enter your mobile phone number.');
+      return;
+    }
+
+    const targetEmp = detectedEmployee || availableEmployees.find(e => 
+      (e.contactNo && normalizePhoneNumber(e.contactNo) === normalizePhoneNumber(trimmedInput)) ||
+      e.contactNo.trim() === trimmedInput ||
+      e.empCode.trim().toLowerCase() === trimmedInput.toLowerCase() ||
+      e.id === trimmedInput
     );
 
     if (!targetEmp) {
-      setLoginError('Employee Code or Phone number not recognized.');
+      setLoginError('Mobile number not recognized in staff records. Please check the number or select your name from the staff list.');
+      return;
+    }
+
+    const enteredPin = loginPin.trim();
+    if (!enteredPin) {
+      setLoginError('Please enter your 4-digit Security PIN (Default: 1234).');
       return;
     }
 
     // Default pin is 1234 or last 4 digits of phone
-    const defaultPin = targetEmp.contactNo ? targetEmp.contactNo.slice(-4) : '1234';
-    const validPin = (targetEmp as any).pin || defaultPin || '1234';
+    const defaultFallbackPin = targetEmp.contactNo ? targetEmp.contactNo.slice(-4) : '1234';
+    const validPin = targetEmp.pin || '1234';
 
-    if (loginPin && loginPin.trim() !== validPin && loginPin.trim() !== '1234') {
-      setLoginError('Invalid PIN code. (Default PIN is 1234)');
+    const isMatch = 
+      enteredPin === validPin || 
+      enteredPin === '1234' || 
+      (defaultFallbackPin && enteredPin === defaultFallbackPin);
+
+    if (!isMatch) {
+      setLoginError('Invalid PIN code. If you have not changed your PIN yet, the default PIN is 1234.');
       return;
     }
 
@@ -239,6 +401,221 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
     setCurrentEmployee(targetEmp);
     setLoginPin('');
     setLoginError('');
+  };
+
+  // Change PIN Submit Handler
+  const handleChangePinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setChangePinError('');
+    setChangePinSuccess('');
+
+    if (!currentEmployee) return;
+
+    if (!currentPinInput.trim()) {
+      setChangePinError('Please enter your current PIN (Default: 1234).');
+      return;
+    }
+
+    const cleanNewPin = newPinInput.trim();
+    if (!cleanNewPin || cleanNewPin.length < 4 || cleanNewPin.length > 6) {
+      setChangePinError('New PIN must be between 4 and 6 digits.');
+      return;
+    }
+
+    if (!/^\d+$/.test(cleanNewPin)) {
+      setChangePinError('New PIN must contain numeric digits only.');
+      return;
+    }
+
+    if (cleanNewPin !== confirmPinInput.trim()) {
+      setChangePinError('New PIN and Confirm PIN do not match.');
+      return;
+    }
+
+    setIsChangingPin(true);
+    const result = updateEmployeePortalPin(currentEmployee.id, currentPinInput.trim(), cleanNewPin);
+    setIsChangingPin(false);
+
+    if (!result.success) {
+      setChangePinError(result.error || 'Failed to update PIN.');
+      return;
+    }
+
+    if (result.updatedEmployee) {
+      setCurrentEmployee(result.updatedEmployee);
+      setAvailableEmployees(prev => prev.map(emp => emp.id === result.updatedEmployee!.id ? result.updatedEmployee! : emp));
+    }
+
+    setChangePinSuccess('Security PIN changed successfully! Please use this new PIN next time you sign in.');
+    setCurrentPinInput('');
+    setNewPinInput('');
+    setConfirmPinInput('');
+    setTimeout(() => {
+      setShowChangePinModal(false);
+      setChangePinSuccess('');
+    }, 2500);
+  };
+
+  // WebAuthn Biometric Login Handler
+  const handleBiometricLogin = async (targetEmp?: Employee) => {
+    setLoginError('');
+    setIsAuthenticatingBio(true);
+    try {
+      const empToTarget = 
+        targetEmp || 
+        detectedEmployee || 
+        (loginMobile.trim() ? availableEmployees.find(e => {
+          const norm = normalizePhoneNumber(loginMobile.trim());
+          return (e.contactNo && normalizePhoneNumber(e.contactNo) === norm) || e.empCode.toLowerCase() === loginMobile.trim().toLowerCase();
+        }) : undefined);
+
+      const res = await authenticateWithBiometrics(empToTarget, availableEmployees);
+      if (res.success && res.employee) {
+        const companyId = activeCompany?.id || getActiveCompanyId() || 'default';
+        setEmployeeStaffSession(res.employee, companyId);
+        setCurrentEmployee(res.employee);
+        setLoginPin('');
+        setLoginError('');
+      } else {
+        setLoginError(res.error || 'Biometric recognition failed.');
+      }
+    } catch (err: any) {
+      setLoginError(err.message || 'Biometric authentication was canceled.');
+    } finally {
+      setIsAuthenticatingBio(false);
+    }
+  };
+
+  // WebAuthn Biometric Registration (Enrollment) Handler
+  const handleEnrollBiometrics = async () => {
+    if (!currentEmployee) return;
+    setIsRegisteringBio(true);
+    setBioEnrollError('');
+    setBioEnrollSuccess('');
+    try {
+      const res = await registerBiometricCredential(currentEmployee);
+      if (res.success && res.employee) {
+        setCurrentEmployee(res.employee);
+        setAvailableEmployees(prev => prev.map(e => e.id === res.employee!.id ? res.employee! : e));
+        setDeviceBioRegistryCount(getDeviceBiometricRegistry().length);
+        setBioEnrollSuccess(`Biometric recognition (${bioHardware.name}) has been enabled on this device!`);
+      } else {
+        setBioEnrollError(res.error || 'Failed to complete biometric setup.');
+      }
+    } catch (err: any) {
+      setBioEnrollError(err.message || 'Biometric registration failed.');
+    } finally {
+      setIsRegisteringBio(false);
+    }
+  };
+
+  // Remove Biometrics Handler
+  const handleRemoveBiometrics = (credId?: string) => {
+    if (!currentEmployee) return;
+    const res = removeBiometricCredential(currentEmployee.id, credId);
+    if (res.success && res.employee) {
+      setCurrentEmployee(res.employee);
+      setAvailableEmployees(prev => prev.map(e => e.id === res.employee!.id ? res.employee! : e));
+      setDeviceBioRegistryCount(getDeviceBiometricRegistry().length);
+      setBioEnrollSuccess('Biometric login credentials removed from this device.');
+      setTimeout(() => setBioEnrollSuccess(''), 3000);
+    }
+  };
+
+  // Forgot PIN / Reset via Mobile OTP Handlers
+  const handleOpenForgotPinModal = (initialMobile?: string) => {
+    const targetMobile = initialMobile || loginMobile || (detectedEmployee?.contactNo || '');
+    setForgotPinMobileInput(targetMobile);
+    setForgotPinOtpInput('');
+    setForgotPinNewPin('');
+    setForgotPinConfirmPin('');
+    setForgotPinError('');
+    setForgotPinSuccess('');
+    setOtpSessionInfo(null);
+    setForgotPinStep('mobile');
+    setShowForgotPinModal(true);
+  };
+
+  const handleSendOtpSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setForgotPinError('');
+    setIsRequestingOtp(true);
+    try {
+      const res = requestStaffPinResetOtp(forgotPinMobileInput);
+      if (res.success && res.otpSession) {
+        setOtpSessionInfo(res.otpSession);
+        setForgotPinStep('otp');
+        setOtpCountdown(30); // 30s cooldown before resend
+        // Show simulated Bhutan SMS notification banner for testing convenience
+        setSimulatedSmsToast({
+          otp: res.otpSession.debugOtp,
+          mobile: res.otpSession.mobile,
+          name: res.otpSession.employeeName
+        });
+      } else {
+        setForgotPinError(res.error || 'Failed to send OTP code.');
+      }
+    } catch (err: any) {
+      setForgotPinError(err.message || 'Error requesting OTP.');
+    } finally {
+      setIsRequestingOtp(false);
+    }
+  };
+
+  const handleVerifyOtpAndProceed = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setForgotPinError('');
+    const clean = forgotPinOtpInput.trim().replace(/\D/g, '');
+    if (clean.length !== 6) {
+      setForgotPinError('Please enter the full 6-digit OTP code sent to your phone.');
+      return;
+    }
+    if (otpSessionInfo && clean !== otpSessionInfo.debugOtp) {
+      setForgotPinError('Invalid OTP code. Please check your SMS or re-enter.');
+      return;
+    }
+    setForgotPinStep('newPin');
+  };
+
+  const handleResetPinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotPinError('');
+    if (!otpSessionInfo) {
+      setForgotPinError('OTP session expired. Please start over.');
+      return;
+    }
+    if (forgotPinNewPin !== forgotPinConfirmPin) {
+      setForgotPinError('New PIN and Confirmation PIN do not match.');
+      return;
+    }
+    if (forgotPinNewPin.length < 4 || forgotPinNewPin.length > 6) {
+      setForgotPinError('New PIN must be between 4 and 6 digits.');
+      return;
+    }
+    if (!/^\d+$/.test(forgotPinNewPin)) {
+      setForgotPinError('PIN must contain numbers only.');
+      return;
+    }
+
+    setIsVerifyingOtpAndResetting(true);
+    try {
+      const res = verifyOtpAndResetPin(otpSessionInfo.employeeId, forgotPinOtpInput, forgotPinNewPin);
+      if (res.success && res.updatedEmployee) {
+        // Auto login the employee
+        const companyId = activeCompany?.id || getActiveCompanyId() || 'default';
+        setEmployeeStaffSession(res.updatedEmployee, companyId);
+        setCurrentEmployee(res.updatedEmployee);
+        setAvailableEmployees(prev => prev.map(e => e.id === res.updatedEmployee!.id ? res.updatedEmployee! : e));
+        setForgotPinStep('success');
+        setForgotPinSuccess('Your PIN has been successfully reset! You are now logged in.');
+      } else {
+        setForgotPinError(res.error || 'Failed to reset PIN.');
+      }
+    } catch (err: any) {
+      setForgotPinError(err.message || 'Error occurred while resetting PIN.');
+    } finally {
+      setIsVerifyingOtpAndResetting(false);
+    }
   };
 
   const handleLogout = () => {
@@ -402,6 +779,330 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
   // Leave Balances
   const myBalances = currentEmployee ? calculateEmployeeLeaveBalance(currentEmployee.id) : null;
 
+  // Render Bhutan SMS OTP Notification Banner
+  const renderSimulatedSmsToast = () => {
+    if (!simulatedSmsToast) return null;
+    return (
+      <div className="fixed top-4 left-4 right-4 max-w-sm mx-auto z-50 animate-in slide-in-from-top duration-300">
+        <div className="bg-slate-900/95 border-2 border-blue-500/80 rounded-2xl p-3.5 shadow-2xl text-white space-y-2.5 backdrop-blur-xl ring-4 ring-blue-500/10">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm">
+                <MessageSquare className="h-3.5 w-3.5" />
+              </div>
+              <span className="text-[11px] font-black text-blue-300 uppercase tracking-wider">
+                SMS Gateway (B-Mobile / TashiCell)
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSimulatedSmsToast(null)}
+              className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="bg-slate-950/90 p-2.5 rounded-xl border border-slate-800 text-xs leading-relaxed">
+            <p className="text-slate-300">
+              Dear <strong className="text-white">{simulatedSmsToast.name}</strong>, your Bhutan POS Verification Code is{' '}
+              <span className="inline-block px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono font-bold text-sm tracking-widest border border-blue-500/30">
+                {simulatedSmsToast.otp}
+              </span>. Valid for 10 minutes.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-0.5">
+            <span className="text-[10px] text-slate-400 truncate">Sent to {simulatedSmsToast.mobile}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setForgotPinOtpInput(simulatedSmsToast.otp);
+                setSimulatedSmsToast(null);
+              }}
+              className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm cursor-pointer active:scale-95 transition"
+            >
+              <Sparkles className="h-3 w-3" />
+              <span>Auto-fill OTP</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Render Forgot PIN / Reset via Mobile OTP Modal
+  const renderForgotPinModal = () => {
+    if (!showForgotPinModal) return null;
+    return (
+      <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-6 text-white space-y-4 shadow-2xl relative animate-in zoom-in-95 duration-200">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="h-9 w-9 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                <Smartphone className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-white">Reset Staff PIN via OTP</h3>
+                <p className="text-[10px] text-slate-400">Mobile SMS Verification</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowForgotPinModal(false);
+                setSimulatedSmsToast(null);
+              }}
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Progress Bar / Steps */}
+          <div className="flex items-center justify-between px-2 text-[10px] font-bold">
+            <span className={forgotPinStep === 'mobile' ? 'text-blue-400' : 'text-slate-500'}>1. Mobile</span>
+            <ChevronRight className="h-3 w-3 text-slate-600" />
+            <span className={forgotPinStep === 'otp' ? 'text-blue-400' : 'text-slate-500'}>2. Enter OTP</span>
+            <ChevronRight className="h-3 w-3 text-slate-600" />
+            <span className={forgotPinStep === 'newPin' || forgotPinStep === 'success' ? 'text-blue-400' : 'text-slate-500'}>3. New PIN</span>
+          </div>
+
+          {/* Error Message */}
+          {forgotPinError && (
+            <div className="p-2.5 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-in fade-in">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{forgotPinError}</span>
+            </div>
+          )}
+
+          {/* Success Message */}
+          {forgotPinSuccess && (
+            <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+              <span>{forgotPinSuccess}</span>
+            </div>
+          )}
+
+          {/* STEP 1: MOBILE NUMBER INPUT */}
+          {forgotPinStep === 'mobile' && (
+            <form onSubmit={handleSendOtpSubmit} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Registered Mobile Number
+                </label>
+                <div className="relative">
+                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    required
+                    autoFocus
+                    placeholder="e.g. 17123456 or 77123456"
+                    value={forgotPinMobileInput}
+                    onChange={e => setForgotPinMobileInput(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-sm text-white font-mono placeholder:text-slate-600 focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <p className="mt-1.5 text-[10px] text-slate-400">
+                  We will send a 6-digit one-time password (OTP) via SMS to verify your identity.
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPinModal(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRequestingOtp || !forgotPinMobileInput.trim()}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  <span>{isRequestingOtp ? 'Sending SMS...' : 'Send OTP Code'}</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* STEP 2: ENTER OTP */}
+          {forgotPinStep === 'otp' && otpSessionInfo && (
+            <form onSubmit={handleVerifyOtpAndProceed} className="space-y-4">
+              <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-xs space-y-1 text-slate-300">
+                <div className="flex items-center justify-between font-bold text-white">
+                  <span>{otpSessionInfo.employeeName}</span>
+                  <span className="font-mono text-blue-400">{otpSessionInfo.maskedMobile}</span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Enter the 6-digit OTP code sent to your mobile phone.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5 text-center">
+                  6-Digit Verification Code
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  required
+                  autoFocus
+                  placeholder="••••••"
+                  value={forgotPinOtpInput}
+                  onChange={e => setForgotPinOtpInput(e.target.value.replace(/\D/g, ''))}
+                  className="w-full py-3.5 rounded-2xl bg-slate-950 border border-blue-500/50 text-white font-mono text-2xl tracking-[0.4em] text-center focus:border-blue-400 outline-none shadow-inner"
+                />
+              </div>
+
+              {/* Resend OTP */}
+              <div className="flex items-center justify-between text-xs pt-1">
+                <button
+                  type="button"
+                  onClick={() => setForgotPinStep('mobile')}
+                  className="text-slate-400 hover:text-white text-[11px] cursor-pointer"
+                >
+                  Wrong number? Change
+                </button>
+                {otpCountdown > 0 ? (
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    Resend in {otpCountdown}s
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSendOtpSubmit}
+                    disabled={isRequestingOtp}
+                    className="text-[11px] text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    <span>Resend OTP</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setForgotPinStep('mobile')}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition cursor-pointer"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  disabled={forgotPinOtpInput.length !== 6}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  <span>Verify & Continue</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* STEP 3: NEW PIN SETUP */}
+          {forgotPinStep === 'newPin' && (
+            <form onSubmit={handleResetPinSubmit} className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400">Enter a new 4–6 digit security PIN</span>
+                <button
+                  type="button"
+                  onClick={() => setForgotPinShowDigits(!forgotPinShowDigits)}
+                  className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
+                >
+                  {forgotPinShowDigits ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                  <span>{forgotPinShowDigits ? 'Hide' : 'Show'}</span>
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  New Security PIN (4-6 digits) *
+                </label>
+                <input
+                  type={forgotPinShowDigits ? 'text' : 'password'}
+                  inputMode="numeric"
+                  maxLength={6}
+                  required
+                  autoFocus
+                  placeholder="e.g. 5821"
+                  value={forgotPinNewPin}
+                  onChange={e => setForgotPinNewPin(e.target.value.replace(/\D/g, ''))}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-center tracking-widest outline-none focus:border-blue-500 text-base"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  Confirm New Security PIN *
+                </label>
+                <input
+                  type={forgotPinShowDigits ? 'text' : 'password'}
+                  inputMode="numeric"
+                  maxLength={6}
+                  required
+                  placeholder="Re-enter same PIN"
+                  value={forgotPinConfirmPin}
+                  onChange={e => setForgotPinConfirmPin(e.target.value.replace(/\D/g, ''))}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-center tracking-widest outline-none focus:border-blue-500 text-base"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setForgotPinStep('otp')}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition cursor-pointer"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVerifyingOtpAndResetting || !forgotPinNewPin || !forgotPinConfirmPin}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  <span>{isVerifyingOtpAndResetting ? 'Saving...' : 'Save & Sign In'}</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* STEP 4: SUCCESS */}
+          {forgotPinStep === 'success' && (
+            <div className="text-center space-y-4 py-2">
+              <div className="h-14 w-14 rounded-2xl bg-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center">
+                <CheckCircle2 className="h-8 w-8" />
+              </div>
+              <div>
+                <h4 className="font-bold text-base text-white">PIN Successfully Reset!</h4>
+                <p className="text-xs text-slate-400 mt-1">
+                  Your new security PIN is now active and you have been signed in.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgotPinModal(false);
+                  setSimulatedSmsToast(null);
+                }}
+                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-lg shadow-blue-500/20 transition cursor-pointer"
+              >
+                Enter Staff Portal
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // =========================================================================
   // VIEW 0: MODULE INACTIVE NOTICE (WHEN SUPERADMIN HAS DISABLED BOTH FEATURES)
   // =========================================================================
@@ -469,7 +1170,7 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
                   ? 'Staff Check-In & Leaves'
                   : 'Staff Tasks & Assignments'}
               </h2>
-              <p className="text-xs text-slate-400">Enter your Employee Code or Mobile to access your personal dashboard.</p>
+              <p className="text-xs text-slate-400">Sign in with your Mobile Number and 4-digit PIN.</p>
             </div>
 
             {loginError && (
@@ -479,50 +1180,176 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
               </div>
             )}
 
+            {/* Login Mode Switch: Mobile vs List */}
+            <div className="flex bg-slate-900/80 p-1 rounded-xl border border-slate-700/60 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setLoginMethod('mobile')}
+                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  loginMethod === 'mobile'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Phone className="h-3.5 w-3.5" />
+                <span>Mobile Number</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLoginMethod('list')}
+                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  loginMethod === 'list'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <User className="h-3.5 w-3.5" />
+                <span>Select Name</span>
+              </button>
+            </div>
+
             <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Select or Enter Employee
-                </label>
-                <select
-                  value={loginEmpCode}
-                  onChange={e => setLoginEmpCode(e.target.value)}
-                  className="w-full px-3.5 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:border-blue-500 outline-none"
-                >
-                  <option value="">Choose your profile...</option>
-                  {availableEmployees.map(emp => (
-                    <option key={emp.id} value={emp.empCode}>
-                      {emp.fullName} ({emp.empCode} - {emp.designation})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {loginMethod === 'mobile' ? (
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Your Mobile Number
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      autoFocus
+                      placeholder="e.g. 17123456 or 77123456"
+                      value={loginMobile}
+                      onChange={e => setLoginMobile(e.target.value)}
+                      className="w-full pl-10 pr-3.5 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white font-mono placeholder:text-slate-500 focus:border-blue-500 outline-none"
+                    />
+                  </div>
+
+                  {/* Real-time Employee Detection Badge */}
+                  {detectedEmployee && (
+                    <div className="mt-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in">
+                      <UserCheck className="h-4 w-4 shrink-0 text-emerald-400" />
+                      <div className="min-w-0">
+                        <span className="font-bold block truncate">{detectedEmployee.fullName}</span>
+                        <span className="text-[10px] text-emerald-400/80">{detectedEmployee.designation} • {detectedEmployee.department}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {!detectedEmployee && loginMobile.trim().length >= 8 && (
+                    <p className="mt-1.5 text-[11px] text-amber-300/90 flex items-center gap-1">
+                      <Info className="h-3 w-3 shrink-0" />
+                      <span>Number not found. Switch to "Select Name" or check with Admin.</span>
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Select Your Name
+                  </label>
+                  <select
+                    value={loginMobile}
+                    onChange={e => setLoginMobile(e.target.value)}
+                    className="w-full px-3.5 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white focus:border-blue-500 outline-none"
+                  >
+                    <option value="">Choose your profile...</option>
+                    {availableEmployees.map(emp => (
+                      <option key={emp.id} value={emp.contactNo || emp.empCode}>
+                        {emp.fullName} ({emp.contactNo ? `Ph: ${emp.contactNo}` : emp.empCode}) - {emp.designation}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
-                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                  4-Digit Security PIN
-                </label>
-                <input
-                  type="password"
-                  maxLength={6}
-                  placeholder="Default: 1234"
-                  value={loginPin}
-                  onChange={e => setLoginPin(e.target.value)}
-                  className="w-full px-3.5 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white font-mono tracking-widest text-center focus:border-blue-500 outline-none"
-                />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                    Security PIN
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenForgotPinModal()}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 font-bold transition cursor-pointer hover:underline flex items-center gap-1"
+                  >
+                    <Smartphone className="h-3 w-3" />
+                    <span>Forgot PIN?</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type={showLoginPin ? 'text' : 'password'}
+                    maxLength={6}
+                    placeholder="Enter PIN (Default: 1234)"
+                    value={loginPin}
+                    onChange={e => setLoginPin(e.target.value)}
+                    className="w-full pl-10 pr-10 py-3 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white font-mono tracking-widest text-center focus:border-blue-500 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPin(!showLoginPin)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    {showLoginPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <div className="mt-1.5 flex items-center justify-between text-[10px] text-slate-400 leading-tight">
+                  <span>💡 Default PIN: <strong className="text-white font-mono">1234</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenForgotPinModal()}
+                    className="text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer underline"
+                  >
+                    Reset via OTP
+                  </button>
+                </div>
               </div>
 
               <button
                 type="submit"
-                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-sm shadow-lg shadow-blue-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-sm shadow-lg shadow-blue-500/20 transition flex items-center justify-center gap-2 cursor-pointer active:scale-98"
               >
-                <span>Access Staff Dashboard</span>
+                <span>Sign In with PIN</span>
                 <ArrowRight className="h-4 w-4" />
               </button>
             </form>
 
-            <div className="pt-2 text-center text-[11px] text-slate-400">
-              💡 Need help? Contact your company administrator or HR.
+            {/* WebAuthn Biometric Login Option */}
+            {isBioSupported && (
+              <div className="pt-3 border-t border-slate-700/60 space-y-2.5">
+                <div className="flex items-center gap-2 text-slate-500 text-[10px] uppercase font-bold tracking-wider justify-center">
+                  <div className="h-px bg-slate-700 flex-1" />
+                  <span>Or Biometric Fast Login</span>
+                  <div className="h-px bg-slate-700 flex-1" />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isAuthenticatingBio}
+                  onClick={() => handleBiometricLogin()}
+                  className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950/50 hover:from-slate-800 hover:to-indigo-900/50 border border-blue-500/40 text-blue-300 hover:text-white font-bold text-xs transition flex items-center justify-center gap-3 shadow-md group cursor-pointer active:scale-98 disabled:opacity-50"
+                >
+                  <div className="h-8 w-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center group-hover:scale-110 group-hover:bg-blue-500/30 transition shrink-0">
+                    {bioHardware.type === 'face' ? <ScanFace className="h-4 w-4" /> : <Fingerprint className="h-4 w-4" />}
+                  </div>
+                  <div className="text-left leading-tight">
+                    <span className="block font-black text-white text-xs">
+                      {isAuthenticatingBio ? 'Verifying Biometrics...' : `Sign In with ${bioHardware.name}`}
+                    </span>
+                    <span className="text-[10px] text-blue-300/80 font-normal">
+                      Touch sensor or look at camera (WebAuthn)
+                    </span>
+                  </div>
+                </button>
+              </div>
+            )}
+
+            <div className="pt-1 text-center text-[11px] text-slate-400 border-t border-slate-700/40">
+              Bhutan Cloud POS • Employee Mobile Gateway
             </div>
           </div>
         </div>
@@ -531,6 +1358,10 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
         <div className="text-center text-[10px] text-slate-400 pb-2">
           Protected & Encrypted • {activeCompany?.company_name || 'ERP System'}
         </div>
+
+        {/* Simulated SMS Alert & Forgot PIN Modal */}
+        {renderSimulatedSmsToast()}
+        {renderForgotPinModal()}
       </div>
     );
   }
@@ -596,6 +1427,56 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
         {/* ============================================================== */}
         {activeTab === 'clock' && isAttendanceAllowed && (
           <div className="space-y-4">
+            {/* Friendly reminder banner if still using default PIN 1234 */}
+            {(!currentEmployee.pin || currentEmployee.pin === '1234') && (
+              <div 
+                onClick={() => {
+                  setShowChangePinModal(true);
+                  setChangePinError('');
+                  setChangePinSuccess('');
+                }}
+                className="p-3 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs flex items-center justify-between cursor-pointer hover:bg-amber-500/20 transition shadow-sm"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="h-7 w-7 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                    <KeyRound className="h-4 w-4" />
+                  </div>
+                  <div className="truncate">
+                    <span className="font-bold block">Using Default PIN (1234)</span>
+                    <span className="text-[10px] text-amber-300/80">Tap to set your personal secret PIN</span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-400 text-amber-950 shrink-0">
+                  Change PIN
+                </span>
+              </div>
+            )}
+
+            {/* Quick Biometric Enable Banner if supported and not yet enrolled */}
+            {isBioSupported && !isEmployeeBiometricRegistered(currentEmployee.id) && (
+              <div 
+                onClick={handleEnrollBiometrics}
+                className="p-3 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-xs flex items-center justify-between cursor-pointer hover:bg-indigo-500/20 transition shadow-sm"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="h-7 w-7 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                    {bioHardware.type === 'face' ? <ScanFace className="h-4 w-4" /> : <Fingerprint className="h-4 w-4" />}
+                  </div>
+                  <div className="truncate">
+                    <span className="font-bold block">Enable {bioHardware.name} Login</span>
+                    <span className="text-[10px] text-indigo-300/80">Sign in with 1-tap next time (No PIN needed)</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isRegisteringBio}
+                  className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shrink-0 shadow-sm cursor-pointer"
+                >
+                  {isRegisteringBio ? 'Enrolling...' : 'Enable'}
+                </button>
+              </div>
+            )}
+
             {/* Live Clock Card */}
             <div className="bg-gradient-to-b from-slate-900 to-slate-900/60 border border-slate-800 rounded-3xl p-6 text-center space-y-5 shadow-xl">
               <div>
@@ -932,6 +1813,243 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
                 </div>
               </div>
 
+              {/* SECURITY & PORTAL PIN CARD */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-left space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center">
+                      <KeyRound className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs text-white">Staff Sign-In PIN</h4>
+                      <p className="text-[10px] text-slate-400">Used with mobile {currentEmployee.contactNo || ''}</p>
+                    </div>
+                  </div>
+
+                  {(!currentEmployee.pin || currentEmployee.pin === '1234') ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 border border-amber-500/30 text-amber-400">
+                      Default: 1234
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      <span>Custom PIN Set</span>
+                    </span>
+                  )}
+                </div>
+
+                {(!currentEmployee.pin || currentEmployee.pin === '1234') && (
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 space-y-1">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      <span>Default PIN is in use (1234)</span>
+                    </div>
+                    <p className="text-[10px] text-amber-200/80 leading-relaxed">
+                      To keep your personal attendance and leaves secure, change this to a secret 4-6 digit PIN.
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowChangePinModal(true);
+                      setChangePinError('');
+                      setChangePinSuccess('');
+                      setCurrentPinInput('');
+                      setNewPinInput('');
+                      setConfirmPinInput('');
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-blue-500/10 active:scale-98"
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                    <span>{(!currentEmployee.pin || currentEmployee.pin === '1234') ? 'Set Personal Security PIN' : 'Change Security PIN'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenForgotPinModal(currentEmployee.contactNo)}
+                    className="w-full py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white font-medium text-[11px] transition flex items-center justify-center gap-1.5 cursor-pointer border border-slate-800"
+                  >
+                    <Smartphone className="h-3.5 w-3.5 text-blue-400" />
+                    <span>Forgot PIN? Reset via Mobile OTP</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* BIOMETRIC AUTHENTICATION & WEBAUTHN CARD */}
+              <div className="bg-slate-950/90 border border-slate-800 rounded-3xl p-5 text-left space-y-4 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-9 w-9 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center shadow-sm">
+                      {bioHardware.type === 'face' ? <ScanFace className="h-5 w-5" /> : <Fingerprint className="h-5 w-5" />}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-white">Biometric Sign-In</h4>
+                      <p className="text-[10px] text-slate-400">WebAuthn / FIDO2 • {bioHardware.name}</p>
+                    </div>
+                  </div>
+
+                  {isEmployeeBiometricRegistered(currentEmployee.id) ? (
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center gap-1 shadow-xs">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <span>Active & Enrolled</span>
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center gap-1 shadow-xs">
+                      <Shield className="h-3 w-3" />
+                      <span>Not Enabled</span>
+                    </span>
+                  )}
+                </div>
+
+                {bioEnrollSuccess && (
+                  <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 flex items-center gap-2.5 animate-in fade-in">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+                    <span className="font-medium">{bioEnrollSuccess}</span>
+                  </div>
+                )}
+
+                {bioEnrollError && (
+                  <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-300 flex items-center gap-2.5 animate-in fade-in">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                    <span className="font-medium">{bioEnrollError}</span>
+                  </div>
+                )}
+
+                {isBioSupported ? (
+                  <div className="space-y-3">
+                    {isEmployeeBiometricRegistered(currentEmployee.id) ? (
+                      /* Enrolled State */
+                      <div className="space-y-3">
+                        <p className="text-xs text-slate-300 leading-relaxed">
+                          Your device is enrolled for fast hardware-backed biometric sign-in. You can authenticate using your {bioHardware.name} on the portal login screen without entering your PIN.
+                        </p>
+
+                        {currentEmployee.biometricCredentials && currentEmployee.biometricCredentials.length > 0 && (
+                          <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
+                              <ShieldCheck className="h-3.5 w-3.5 text-indigo-400" />
+                              <span>Registered Passkeys & Devices</span>
+                            </span>
+                            {currentEmployee.biometricCredentials.map(cred => (
+                              <div key={cred.id} className="flex items-center justify-between text-xs text-slate-300 bg-slate-950/60 p-2 rounded-xl border border-slate-800/80">
+                                <div className="flex items-center gap-2 truncate">
+                                  <Smartphone className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                                  <span className="truncate font-medium">{cred.deviceName || 'Mobile Device Authenticator'}</span>
+                                </div>
+                                <span className="font-mono text-[10px] text-slate-500 shrink-0">{new Date(cred.createdAt).toLocaleDateString()}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={isRegisteringBio}
+                            onClick={handleEnrollBiometrics}
+                            className="flex-1 py-2.5 rounded-xl bg-indigo-600/25 hover:bg-indigo-600/40 border border-indigo-500/40 text-indigo-300 font-bold text-xs transition cursor-pointer text-center active:scale-98"
+                          >
+                            {isRegisteringBio ? 'Updating...' : 'Re-enroll / Add Device'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveBiometrics()}
+                            className="py-2.5 px-4 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 font-bold text-xs transition cursor-pointer active:scale-98"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Not Enrolled State - Dedicated Promotion & Security Benefits Explanation */
+                      <div className="space-y-3.5">
+                        <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-950/40 via-slate-900 to-slate-900 border border-indigo-500/25 space-y-2.5">
+                          <div className="flex items-center gap-2 text-indigo-300 font-bold text-xs">
+                            <Sparkles className="h-4 w-4 text-indigo-400 shrink-0" />
+                            <span>Why Enable {bioHardware.name} Sign-In?</span>
+                          </div>
+
+                          <div className="space-y-2 text-[11px] text-slate-300">
+                            <div className="flex items-start gap-2">
+                              <div className="h-4 w-4 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0 mt-0.5 font-bold text-[9px]">
+                                🛡️
+                              </div>
+                              <p className="leading-snug">
+                                <strong className="text-white">Hardware-Protected Security:</strong> Private keys stay locked in your device's Secure Enclave/TPM chip. Immune to keyloggers and network phishing.
+                              </p>
+                            </div>
+
+                            <div className="flex items-start gap-2">
+                              <div className="h-4 w-4 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0 mt-0.5 font-bold text-[9px]">
+                                ⚡
+                              </div>
+                              <p className="leading-snug">
+                                <strong className="text-white">Instant 1-Tap Access:</strong> Clock in, apply for leaves, and manage tasks in seconds without having to type or remember your PIN.
+                              </p>
+                            </div>
+
+                            <div className="flex items-start gap-2">
+                              <div className="h-4 w-4 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0 mt-0.5 font-bold text-[9px]">
+                                🔒
+                              </div>
+                              <p className="leading-snug">
+                                <strong className="text-white">Shoulder-Surfing Proof:</strong> Prevents unauthorized access or attendance clock-ins by colleagues in busy retail/office environments.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Dedicated Biometric Enrollment Button */}
+                        <button
+                          type="button"
+                          disabled={isRegisteringBio}
+                          onClick={handleEnrollBiometrics}
+                          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-black text-xs shadow-lg shadow-indigo-600/25 hover:shadow-indigo-600/40 transition flex items-center justify-center gap-2.5 cursor-pointer active:scale-98 disabled:opacity-50 group"
+                        >
+                          <div className="h-6 w-6 rounded-lg bg-white/20 flex items-center justify-center group-hover:scale-110 transition shrink-0">
+                            {bioHardware.type === 'face' ? <ScanFace className="h-3.5 w-3.5" /> : <Fingerprint className="h-3.5 w-3.5" />}
+                          </div>
+                          <span className="text-sm">
+                            {isRegisteringBio ? 'Verifying Sensor & Enrolling...' : `Enable ${bioHardware.name} Sign-In Now`}
+                          </span>
+                        </button>
+                        
+                        <p className="text-center text-[10px] text-slate-400">
+                          Takes ~5 seconds • You can still use your 4-digit PIN anytime as fallback.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-2xl bg-slate-900 border border-slate-800 text-xs text-slate-400 flex items-start gap-2.5">
+                    <Info className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+                    <p className="leading-relaxed">
+                      WebAuthn biometric authentication is not supported by your current browser or device. You can continue logging in securely using your 4-digit PIN.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Install PWA Button if available */}
+              {installPrompt && !isInstalled && (
+                <button
+                  onClick={async () => {
+                    installPrompt.prompt();
+                    const choice = await installPrompt.userChoice;
+                    if (choice.outcome === 'accepted') {
+                      setIsInstalled(true);
+                    }
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-400 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer border border-blue-500/30"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Add App to Phone Home Screen</span>
+                </button>
+              )}
+
               <button
                 onClick={handleLogout}
                 className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
@@ -1188,6 +2306,131 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
           </div>
         </div>
       )}
+
+      {/* ============================================================== */}
+      {/* MODAL 3: CHANGE SECURITY PIN MODAL */}
+      {/* ============================================================== */}
+      {showChangePinModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center">
+                  <KeyRound className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-white">Change Security PIN</h3>
+                  <p className="text-[10px] text-slate-400">Mobile: {currentEmployee.contactNo || currentEmployee.fullName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowChangePinModal(false)}
+                className="h-7 w-7 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {changePinSuccess && (
+              <div className="p-3 rounded-2xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+                <span>{changePinSuccess}</span>
+              </div>
+            )}
+
+            {changePinError && (
+              <div className="p-3 rounded-2xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                <span>{changePinError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleChangePinSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  Current PIN *
+                </label>
+                <input
+                  type={showNewPinToggle ? 'text' : 'password'}
+                  required
+                  maxLength={6}
+                  placeholder="Enter current PIN (Default: 1234)"
+                  value={currentPinInput}
+                  onChange={e => setCurrentPinInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-center tracking-widest outline-none focus:border-blue-500"
+                />
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Default PIN is <strong className="text-white font-mono">1234</strong> if you have never changed it.
+                </p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                    New PIN (4 to 6 Digits) *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPinToggle(!showNewPinToggle)}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    {showNewPinToggle ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                    <span>{showNewPinToggle ? 'Hide Digits' : 'Show Digits'}</span>
+                  </button>
+                </div>
+                <input
+                  type={showNewPinToggle ? 'text' : 'password'}
+                  required
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="Choose 4 to 6 digit secret PIN"
+                  value={newPinInput}
+                  onChange={e => setNewPinInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-center tracking-widest outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  Confirm New PIN *
+                </label>
+                <input
+                  type={showNewPinToggle ? 'text' : 'password'}
+                  required
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="Re-enter your new PIN"
+                  value={confirmPinInput}
+                  onChange={e => setConfirmPinInput(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-center tracking-widest outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowChangePinModal(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isChangingPin}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-blue-500/20 disabled:opacity-50"
+                >
+                  <Check className="h-4 w-4" />
+                  <span>{isChangingPin ? 'Updating...' : 'Save New PIN'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Simulated SMS Alert & Forgot PIN Modal */}
+      {renderSimulatedSmsToast()}
+      {renderForgotPinModal()}
     </div>
   );
 };

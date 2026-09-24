@@ -5,7 +5,7 @@ import {
   MessageSquare, Send, Tag, ArrowRight, UserCheck, ShieldAlert,
   ChevronRight, RefreshCw, Eye, Edit3, Trash2, Sliders, Briefcase,
   FileSpreadsheet, Award, CalendarCheck, CheckSquare, Bell,
-  Wifi, WifiOff, ShieldCheck, MapPin, Globe, Lock
+  Wifi, WifiOff, ShieldCheck, MapPin, Globe, Lock, Phone, KeyRound, Fingerprint
 } from 'lucide-react';
 import { 
   getLeaveTypes, saveLeaveTypes, updateLeaveType,
@@ -15,18 +15,20 @@ import {
   getDedicatedEmployeePortalUrl, getEmployeePortalQrCodeUrl,
   calculateMonthlyAttendanceSummary, calculateEmployeeLeaveBalance,
   getTodayDateString, DEFAULT_LEAVE_TYPES,
-  getOfficeNetworkConfig, saveOfficeNetworkConfig, verifyOfficeNetwork
+  getOfficeNetworkConfig, saveOfficeNetworkConfig, verifyOfficeNetwork,
+  resetEmployeePinToDefault
 } from '../../services/employeeStaffService';
 import { 
   LeaveTypeConfig, LeaveApplication, AttendanceRecord, 
   TaskAssignment, TaskPriority, TaskStatus,
   OfficeNetworkSecurityConfig, NetworkVerificationResult
 } from '../../types/staffPortal';
-import { getEmployees } from '../../services/storageService';
+import { getEmployees, syncEmployeesFromSupabase } from '../../services/storageService';
 import { getActiveCompanyId } from '../../services/supabaseTenantService';
 import { Employee, Config } from '../../types';
 import { isFeatureAllowed } from '../../services/tenantFeatureService';
 import { GlowButton } from '../common/GlowButton';
+import { AssignmentReportView } from './AssignmentReportView';
 
 interface StaffManagementViewProps {
   config: Config;
@@ -43,13 +45,14 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   const isAssignmentsAllowed = isFeatureAllowed(config, 'EnableStaffAssignments') && config.EnableStaffAssignments !== 'false';
 
   const initialTab = isAttendanceAllowed ? 'attendance' : (isAssignmentsAllowed ? 'tasks' : 'portal_qr');
-  const [activeTab, setActiveTab] = useState<'attendance' | 'leaves' | 'tasks' | 'security' | 'portal_qr'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'attendance' | 'leaves' | 'tasks' | 'assignment_report' | 'security' | 'portal_qr'>(initialTab);
+  const [taskBoardView, setTaskBoardView] = useState<'report' | 'board'>('report');
 
   // Auto-correct active tab if current tab is disabled by superadmin
   useEffect(() => {
     if (!isAttendanceAllowed && (activeTab === 'attendance' || activeTab === 'leaves' || activeTab === 'security')) {
       setActiveTab(isAssignmentsAllowed ? 'tasks' : 'portal_qr');
-    } else if (!isAssignmentsAllowed && activeTab === 'tasks') {
+    } else if (!isAssignmentsAllowed && (activeTab === 'tasks' || activeTab === 'assignment_report')) {
       setActiveTab(isAttendanceAllowed ? 'attendance' : 'portal_qr');
     }
   }, [isAttendanceAllowed, isAssignmentsAllowed, activeTab]);
@@ -73,6 +76,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   const [showLeavePolicyModal, setShowLeavePolicyModal] = useState(false);
   const [showNewLeaveModal, setShowNewLeaveModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [pinResetMsg, setPinResetMsg] = useState<{ id: string; msg: string } | null>(null);
 
   // New Task Form
   const [newTaskForm, setNewTaskForm] = useState({
@@ -149,28 +153,40 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   };
 
   const loadData = () => {
-    const emps = getEmployees().filter(e => e.status === 'Active');
+    const cId = getActiveCompanyId();
+    const emps = getEmployees(cId).filter(e => e.status === 'Active');
     setEmployees(emps);
-    setLeaveTypesList(getLeaveTypes());
-    setLeaveApplicationsList(getLeaveApplications());
-    setAttendanceRecordsList(getAttendanceRecords());
-    setTasksList(getTaskAssignments());
+    setLeaveTypesList(getLeaveTypes(cId));
+    setLeaveApplicationsList(getLeaveApplications(cId));
+    setAttendanceRecordsList(getAttendanceRecords(cId));
+    setTasksList(getTaskAssignments(cId));
   };
 
   useEffect(() => {
     loadData();
 
+    const cId = getActiveCompanyId();
+    syncEmployeesFromSupabase(cId).then(remoteEmps => {
+      if (remoteEmps && remoteEmps.length > 0) {
+        setEmployees(remoteEmps.filter(e => e.status === 'Active'));
+      }
+    });
+
     const handleDataUpdate = () => loadData();
+    window.addEventListener('deep_pos_employees_updated', handleDataUpdate);
     window.addEventListener('deep_pos_leave_types_updated', handleDataUpdate);
     window.addEventListener('deep_pos_leave_apps_updated', handleDataUpdate);
     window.addEventListener('deep_pos_attendance_updated', handleDataUpdate);
     window.addEventListener('deep_pos_tasks_updated', handleDataUpdate);
+    window.addEventListener('app:dataLoaded', handleDataUpdate);
 
     return () => {
+      window.removeEventListener('deep_pos_employees_updated', handleDataUpdate);
       window.removeEventListener('deep_pos_leave_types_updated', handleDataUpdate);
       window.removeEventListener('deep_pos_leave_apps_updated', handleDataUpdate);
       window.removeEventListener('deep_pos_attendance_updated', handleDataUpdate);
       window.removeEventListener('deep_pos_tasks_updated', handleDataUpdate);
+      window.removeEventListener('app:dataLoaded', handleDataUpdate);
     };
   }, []);
 
@@ -308,7 +324,18 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
       reason: '',
       isHalfDay: false
     });
+    setShowNewLeaveModal(false);
     loadData();
+  };
+
+  // Reset employee PIN to default 1234
+  const handleResetPin = (empId: string, empName: string) => {
+    const success = resetEmployeePinToDefault(empId);
+    if (success) {
+      setEmployees(getEmployees());
+      setPinResetMsg({ id: empId, msg: `Security PIN for ${empName} was reset to default: 1234` });
+      setTimeout(() => setPinResetMsg(null), 4000);
+    }
   };
 
   return (
@@ -439,22 +466,36 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
           )}
 
           {isAssignmentsAllowed && (
-            <button
-              onClick={() => setActiveTab('tasks')}
-              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                activeTab === 'tasks'
-                  ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <CheckSquare className="h-4 w-4" />
-              <span>Tasks & Assignments</span>
-              {openTasks.length > 0 && (
-                <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center">
-                  {openTasks.length}
-                </span>
-              )}
-            </button>
+            <>
+              <button
+                onClick={() => setActiveTab('tasks')}
+                className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                  activeTab === 'tasks'
+                    ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <CheckSquare className="h-4 w-4" />
+                <span>Tasks & Assignments</span>
+                {openTasks.length > 0 && (
+                  <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center">
+                    {openTasks.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setActiveTab('assignment_report')}
+                className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                  activeTab === 'assignment_report'
+                    ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50 rounded-t-xl'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
+                <span>Assignment Report</span>
+              </button>
+            </>
           )}
 
           {isAttendanceAllowed && (
@@ -900,101 +941,153 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         {/* ============================================================== */}
         {activeTab === 'tasks' && isAssignmentsAllowed && (
           <div className="space-y-6">
-            {/* Header / New Task Button */}
+            {/* Header / Sub-View Switcher / New Task Button */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
               <div>
                 <h3 className="font-black text-slate-900 text-sm">Manager & GM Task/Assignment Board</h3>
                 <p className="text-xs text-slate-500">Assign operations, stock audits, and POS follow-ups to employees with 2-way comments.</p>
               </div>
 
-              <button
-                onClick={() => setShowNewTaskModal(true)}
-                className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="h-4 w-4" />
-                <span>Assign New Task</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap self-end sm:self-auto">
+                {/* View Switcher: Board vs Report */}
+                <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setTaskBoardView('report')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      taskBoardView === 'report'
+                        ? 'bg-white text-indigo-700 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileSpreadsheet className="h-3.5 w-3.5 text-indigo-600" />
+                    <span>Report View</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTaskBoardView('board')}
+                    className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      taskBoardView === 'board'
+                        ? 'bg-white text-indigo-700 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Layers className="h-3.5 w-3.5 text-indigo-600" />
+                    <span>Kanban Board</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setShowNewTaskModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Assign New Task</span>
+                </button>
+              </div>
             </div>
 
-            {/* Tasks Grid by Status */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {(['Assigned', 'In Progress', 'Under Review', 'Completed'] as TaskStatus[]).map(statusCol => {
-                const colTasks = tasks.filter(t => t.status === statusCol);
-                const colBadgeColor = 
-                  statusCol === 'Assigned' ? 'bg-slate-100 text-slate-700 border-slate-300' :
-                  statusCol === 'In Progress' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                  statusCol === 'Under Review' ? 'bg-amber-100 text-amber-800 border-amber-200' :
-                  'bg-emerald-100 text-emerald-800 border-emerald-200';
+            {taskBoardView === 'report' ? (
+              <AssignmentReportView
+                config={config}
+                employees={employees}
+                tasks={tasks}
+                onRefreshData={loadData}
+                showHeaderControls={false}
+              />
+            ) : (
+              /* Tasks Grid by Status (Kanban Board) */
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {(['Assigned', 'In Progress', 'Under Review', 'Completed'] as TaskStatus[]).map(statusCol => {
+                  const colTasks = tasks.filter(t => t.status === statusCol);
+                  const colBadgeColor = 
+                    statusCol === 'Assigned' ? 'bg-slate-100 text-slate-700 border-slate-300' :
+                    statusCol === 'In Progress' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                    statusCol === 'Under Review' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                    'bg-emerald-100 text-emerald-800 border-emerald-200';
 
-                return (
-                  <div key={statusCol} className="bg-slate-100/70 border border-slate-200 rounded-2xl p-3 flex flex-col space-y-3 min-h-[400px]">
-                    <div className="flex items-center justify-between px-1">
-                      <span className={`text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${colBadgeColor}`}>
-                        {statusCol}
-                      </span>
-                      <span className="text-xs font-bold text-slate-500">{colTasks.length}</span>
-                    </div>
+                  return (
+                    <div key={statusCol} className="bg-slate-100/70 border border-slate-200 rounded-2xl p-3 flex flex-col space-y-3 min-h-[400px]">
+                      <div className="flex items-center justify-between px-1">
+                        <span className={`text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${colBadgeColor}`}>
+                          {statusCol}
+                        </span>
+                        <span className="text-xs font-bold text-slate-500">{colTasks.length}</span>
+                      </div>
 
-                    <div className="space-y-2.5 flex-1 overflow-y-auto">
-                      {colTasks.map(task => {
-                        const isOverdue = new Date(task.dueDate).getTime() < new Date().setHours(0,0,0,0) && task.status !== 'Completed';
+                      <div className="space-y-2.5 flex-1 overflow-y-auto">
+                        {colTasks.map(task => {
+                          const isOverdue = new Date(task.dueDate).getTime() < new Date().setHours(0,0,0,0) && task.status !== 'Completed';
 
-                        return (
-                          <div
-                            key={task.id}
-                            onClick={() => setShowTaskDetailModal(task)}
-                            className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-indigo-400 shadow-2xs hover:shadow-sm transition cursor-pointer space-y-2"
-                          >
-                            <div className="flex items-start justify-between gap-1">
-                              <span className="text-[10px] font-black font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
-                                {task.taskNo}
-                              </span>
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                                task.priority === 'Urgent' ? 'bg-rose-100 text-rose-700' :
-                                task.priority === 'High' ? 'bg-amber-100 text-amber-700' :
-                                'bg-slate-100 text-slate-600'
-                              }`}>
-                                {task.priority}
-                              </span>
-                            </div>
-
-                            <h4 className="font-bold text-slate-900 text-xs leading-snug line-clamp-2">
-                              {task.title}
-                            </h4>
-
-                            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
-                              <div className="flex items-center gap-1">
-                                <Users className="h-3 w-3 text-slate-400" />
-                                <span className="font-semibold text-slate-700 truncate max-w-[90px]">{task.assignedToEmpName}</span>
-                              </div>
-
-                              <div className="flex items-center gap-1.5">
-                                <span className={`text-[10px] font-mono font-bold ${isOverdue ? 'text-rose-600' : 'text-slate-400'}`}>
-                                  {task.dueDate}
+                          return (
+                            <div
+                              key={task.id}
+                              onClick={() => setShowTaskDetailModal(task)}
+                              className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-indigo-400 shadow-2xs hover:shadow-sm transition cursor-pointer space-y-2"
+                            >
+                              <div className="flex items-start justify-between gap-1">
+                                <span className="text-[10px] font-black font-mono text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                  {task.taskNo}
                                 </span>
-                                {task.comments.length > 0 && (
-                                  <span className="flex items-center text-[10px] text-slate-400 gap-0.5">
-                                    <MessageSquare className="h-3 w-3" />
-                                    {task.comments.length}
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                  task.priority === 'Urgent' ? 'bg-rose-100 text-rose-700' :
+                                  task.priority === 'High' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-slate-100 text-slate-600'
+                                }`}>
+                                  {task.priority}
+                                </span>
+                              </div>
+
+                              <h4 className="font-bold text-slate-900 text-xs leading-snug line-clamp-2">
+                                {task.title}
+                              </h4>
+
+                              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                                <div className="flex items-center gap-1">
+                                  <Users className="h-3 w-3 text-slate-400" />
+                                  <span className="font-semibold text-slate-700 truncate max-w-[90px]">{task.assignedToEmpName}</span>
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-[10px] font-mono font-bold ${isOverdue ? 'text-rose-600' : 'text-slate-400'}`}>
+                                    {task.dueDate}
                                   </span>
-                                )}
+                                  {task.comments.length > 0 && (
+                                    <span className="flex items-center text-[10px] text-slate-400 gap-0.5">
+                                      <MessageSquare className="h-3 w-3" />
+                                      {task.comments.length}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
 
-                      {colTasks.length === 0 && (
-                        <div className="h-32 flex items-center justify-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
-                          No tasks
-                        </div>
-                      )}
+                        {colTasks.length === 0 && (
+                          <div className="h-32 flex items-center justify-center border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
+                            No tasks
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 3B: DEDICATED ASSIGNMENT REPORT */}
+        {/* ============================================================== */}
+        {activeTab === 'assignment_report' && isAssignmentsAllowed && (
+          <AssignmentReportView
+            config={config}
+            employees={employees}
+            tasks={tasks}
+            onRefreshData={loadData}
+          />
         )}
 
         {/* ============================================================== */}
@@ -1392,6 +1485,148 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
                     <span>Manager Comments</span>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Notification message for PIN Reset */}
+            {pinResetMsg && (
+              <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between shadow-xs animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>{pinResetMsg.msg}</span>
+                </div>
+                <button onClick={() => setPinResetMsg(null)} className="text-emerald-500 hover:text-emerald-700">✕</button>
+              </div>
+            )}
+
+            {/* How Staff Sign In Guide & Credentials Management */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Sign-in Guide */}
+              <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                    <Phone className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900">How Staff Sign In</h3>
+                    <p className="text-[10px] text-slate-500">Fast mobile-number based sign-in</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5 text-xs text-slate-600 pt-1">
+                  <div className="flex items-start gap-2">
+                    <span className="h-5 w-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">1</span>
+                    <p><strong className="text-slate-800">Scan QR Code</strong> or open the link on Android/iPhone browser.</p>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="h-5 w-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">2</span>
+                    <p><strong className="text-slate-800">Enter Mobile Number:</strong> Staff can enter their phone number directly (no employee code required).</p>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="h-5 w-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">3</span>
+                    <p><strong className="text-slate-800">Enter Default PIN (1234):</strong> First-time login uses standard default PIN <code className="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono font-bold">1234</code>.</p>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="h-5 w-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">4</span>
+                    <p><strong className="text-slate-800">Change / Reset PIN via Mobile OTP:</strong> Staff can self-reset forgotten PINs anytime via SMS OTP sent to their mobile number or change it in their Profile tab.</p>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="h-5 w-5 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">5</span>
+                    <p><strong className="text-slate-800">Biometric Login (WebAuthn):</strong> Staff can register their Fingerprint / Face ID for instant 1-tap sign-in without typing a PIN.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Staff PIN & Directory List */}
+              <div className="lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
+                      <KeyRound className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-sm text-slate-900">Staff Mobile Credentials & PIN Directory</h3>
+                      <p className="text-[10px] text-slate-500">Reset forgotten PINs back to 1234 in one tap • View Biometric status</p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-mono font-bold text-slate-400">
+                    {employees.filter(e => e.status === 'Active').length} Active Staff
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-[10px] uppercase font-bold text-slate-400">
+                        <th className="pb-2">Employee</th>
+                        <th className="pb-2">Registered Mobile</th>
+                        <th className="pb-2">PIN Status</th>
+                        <th className="pb-2">Biometrics</th>
+                        <th className="pb-2 text-right">Admin Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {employees.filter(e => e.status === 'Active').map(emp => {
+                        const isCustom = emp.pin && emp.pin !== '1234';
+                        const hasBio = emp.biometricCredentials && emp.biometricCredentials.length > 0;
+                        return (
+                          <tr key={emp.id} className="hover:bg-slate-50/60 transition">
+                            <td className="py-2.5 font-medium text-slate-900">
+                              <div className="font-bold">{emp.fullName}</div>
+                              <div className="text-[10px] text-slate-400">{emp.designation} • {emp.department}</div>
+                            </td>
+                            <td className="py-2.5 font-mono text-slate-700">
+                              {emp.contactNo ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <Phone className="h-3 w-3 text-slate-400" />
+                                  <span>{emp.contactNo}</span>
+                                </span>
+                              ) : (
+                                <span className="text-amber-500 italic text-[11px]">No phone registered</span>
+                              )}
+                            </td>
+                            <td className="py-2.5">
+                              {isCustom ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                                  <Check className="h-2.5 w-2.5" />
+                                  <span>Custom PIN</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold font-mono">
+                                  Default: 1234
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5">
+                              {hasBio ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
+                                  <Fingerprint className="h-3 w-3" />
+                                  <span>Enrolled ({emp.biometricCredentials!.length})</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-400">None</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 text-right">
+                              {isCustom ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetPin(emp.id, emp.fullName)}
+                                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 text-[11px] font-bold transition cursor-pointer"
+                                  title="Reset staff PIN to default 1234"
+                                >
+                                  Reset to 1234
+                                </button>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic">Ready (1234)</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

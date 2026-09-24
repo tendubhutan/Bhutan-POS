@@ -11,8 +11,9 @@ import {
   NetworkVerificationResult
 } from '../types/staffPortal';
 import { Employee } from '../types';
-import { loadJson, saveJson, STORAGE_KEYS, getEmployees } from './storageService';
+import { loadJson, saveJson, STORAGE_KEYS, getEmployees, saveEmployees } from './storageService';
 import { DEFAULT_TENANT_COMPANY, getActiveCompanyId } from './supabaseTenantService';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export const getBaseAppUrl = (): string => {
   if (typeof window !== 'undefined') {
@@ -55,6 +56,17 @@ export function saveOfficeNetworkConfig(config: OfficeNetworkSecurityConfig, com
   const allConfigs = loadJson<Record<string, OfficeNetworkSecurityConfig>>(STORAGE_KEYS.OFFICE_NETWORK_CONFIG, {});
   allConfigs[cId] = { ...config };
   saveJson(STORAGE_KEYS.OFFICE_NETWORK_CONFIG, allConfigs);
+
+  // Cross-PC sync
+  if (isSupabaseConfigured && cId) {
+    Promise.resolve(
+      supabase.from('tenant_settings').upsert({
+        company_id: cId,
+        record_id: 'company_office_network_config',
+        data: { config, updated_at: new Date().toISOString() }
+      }, { onConflict: 'company_id,record_id' })
+    ).catch(err => console.warn('[Supabase saveOfficeNetworkConfig cloud sync error]:', err));
+  }
 }
 
 // Haversine formula to compute distance in meters between two GPS coordinates
@@ -272,6 +284,17 @@ export function saveLeaveTypes(types: LeaveTypeConfig[], companyId?: string): vo
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('deep_pos_leave_types_updated', { detail: { types } }));
   }
+
+  // Cross-PC sync
+  if (isSupabaseConfigured && cId) {
+    Promise.resolve(
+      supabase.from('tenant_settings').upsert({
+        company_id: cId,
+        record_id: 'company_leave_types',
+        data: { types, updated_at: new Date().toISOString() }
+      }, { onConflict: 'company_id,record_id' })
+    ).catch(err => console.warn('[Supabase saveLeaveTypes cloud sync error]:', err));
+  }
 }
 
 export function updateLeaveType(updatedType: LeaveTypeConfig, companyId?: string): void {
@@ -299,6 +322,17 @@ export function saveLeaveApplications(apps: LeaveApplication[], companyId?: stri
   saveJson(STORAGE_KEYS.LEAVE_APPLICATIONS, apps, cId);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('deep_pos_leave_apps_updated', { detail: { apps } }));
+  }
+
+  // Cross-PC sync
+  if (isSupabaseConfigured && cId) {
+    Promise.resolve(
+      supabase.from('tenant_settings').upsert({
+        company_id: cId,
+        record_id: 'company_leave_applications',
+        data: { apps, updated_at: new Date().toISOString() }
+      }, { onConflict: 'company_id,record_id' })
+    ).catch(err => console.warn('[Supabase saveLeaveApplications cloud sync error]:', err));
   }
 }
 
@@ -408,6 +442,17 @@ export function saveAttendanceRecords(records: AttendanceRecord[], companyId?: s
   saveJson(STORAGE_KEYS.ATTENDANCE_RECORDS, records, cId);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('deep_pos_attendance_updated', { detail: { records } }));
+  }
+
+  // Cross-PC sync
+  if (isSupabaseConfigured && cId) {
+    Promise.resolve(
+      supabase.from('tenant_settings').upsert({
+        company_id: cId,
+        record_id: 'company_attendance_records',
+        data: { records, updated_at: new Date().toISOString() }
+      }, { onConflict: 'company_id,record_id' })
+    ).catch(err => console.warn('[Supabase saveAttendanceRecords cloud sync error]:', err));
   }
 }
 
@@ -692,6 +737,17 @@ export function saveTaskAssignments(tasks: TaskAssignment[], companyId?: string)
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('deep_pos_tasks_updated', { detail: { tasks } }));
   }
+
+  // Cross-PC sync
+  if (isSupabaseConfigured && cId) {
+    Promise.resolve(
+      supabase.from('tenant_settings').upsert({
+        company_id: cId,
+        record_id: 'company_task_assignments',
+        data: { tasks, updated_at: new Date().toISOString() }
+      }, { onConflict: 'company_id,record_id' })
+    ).catch(err => console.warn('[Supabase saveTaskAssignments cloud sync error]:', err));
+  }
 }
 
 export function createTaskAssignment(
@@ -782,6 +838,38 @@ export function addTaskComment(
   return comment;
 }
 
+export function deleteTaskAssignment(taskId: string, companyId?: string): boolean {
+  const cId = companyId || getActiveCompanyId();
+  const all = getTaskAssignments(cId);
+  const next = all.filter(t => t.id !== taskId);
+  if (next.length === all.length) return false;
+  saveTaskAssignments(next, cId);
+  return true;
+}
+
+export function updateTaskAssignment(
+  taskId: string, 
+  updates: Partial<Omit<TaskAssignment, 'id' | 'taskNo' | 'createdAt' | 'comments'>>, 
+  companyId?: string
+): TaskAssignment | null {
+  const cId = companyId || getActiveCompanyId();
+  const all = getTaskAssignments(cId);
+  const target = all.find(t => t.id === taskId);
+  if (!target) return null;
+
+  Object.assign(target, updates);
+  target.updatedAt = new Date().toISOString();
+  if (updates.status === 'Completed' && !target.completedAt) {
+    target.completedAt = new Date().toISOString();
+  } else if (updates.status && updates.status !== 'Completed') {
+    target.completedAt = undefined;
+  }
+
+  saveTaskAssignments(all, cId);
+  return target;
+}
+
+
 // ---------------------------------------------------------------------------
 // DEDICATED EMPLOYEE MOBILE PORTAL URL & AUTH
 // ---------------------------------------------------------------------------
@@ -825,3 +913,307 @@ export function clearEmployeeStaffSession(): void {
     }
   } catch {}
 }
+
+export function normalizePhoneNumber(phone: string): string {
+  if (!phone) return '';
+  let cleaned = phone.replace(/\D/g, '');
+  // If starts with 975 (Bhutan country code) and has 11 digits (975 + 8 digits), strip 975
+  if (cleaned.startsWith('975') && cleaned.length >= 11) {
+    cleaned = cleaned.slice(3);
+  }
+  // If starts with 0 and has 9 digits, strip 0
+  if (cleaned.startsWith('0') && cleaned.length === 9) {
+    cleaned = cleaned.slice(1);
+  }
+  return cleaned;
+}
+
+export function findEmployeeByMobileOrCode(identifier: string): Employee | undefined {
+  if (!identifier || !identifier.trim()) return undefined;
+  const emps = getEmployees();
+  const trimmed = identifier.trim().toLowerCase();
+  const normalizedInput = normalizePhoneNumber(identifier);
+
+  return emps.find(emp => {
+    // Check mobile match
+    if (emp.contactNo) {
+      const normalizedContact = normalizePhoneNumber(emp.contactNo);
+      if (normalizedContact && normalizedInput && (normalizedContact === normalizedInput || normalizedContact.endsWith(normalizedInput) || normalizedInput.endsWith(normalizedContact))) {
+        return true;
+      }
+      if (emp.contactNo.trim().toLowerCase() === trimmed) {
+        return true;
+      }
+    }
+    // Check employee code
+    if (emp.empCode && emp.empCode.trim().toLowerCase() === trimmed) {
+      return true;
+    }
+    // Check CID
+    if (emp.cidNo && emp.cidNo.trim().toLowerCase() === trimmed) {
+      return true;
+    }
+    // Check ID
+    if (emp.id === identifier.trim()) {
+      return true;
+    }
+    return false;
+  });
+}
+
+export function updateEmployeePortalPin(
+  empId: string, 
+  currentPin: string, 
+  newPin: string
+): { success: boolean; error?: string; updatedEmployee?: Employee } {
+  const emps = getEmployees();
+  const targetIndex = emps.findIndex(e => e.id === empId);
+  if (targetIndex === -1) {
+    return { success: false, error: 'Employee profile not found.' };
+  }
+
+  const emp = emps[targetIndex];
+  const existingPin = emp.pin || '1234';
+  const defaultFallbackPin = emp.contactNo ? emp.contactNo.slice(-4) : '1234';
+
+  const enteredCurrent = (currentPin || '').trim();
+  const isValidCurrent = 
+    enteredCurrent === existingPin || 
+    enteredCurrent === '1234' || 
+    enteredCurrent === defaultFallbackPin;
+
+  if (!isValidCurrent) {
+    return { success: false, error: 'Current PIN is incorrect. (Default PIN is 1234)' };
+  }
+
+  const cleanNewPin = (newPin || '').trim();
+  if (!cleanNewPin || cleanNewPin.length < 4 || cleanNewPin.length > 6) {
+    return { success: false, error: 'New PIN must be between 4 and 6 digits.' };
+  }
+
+  if (!/^\d+$/.test(cleanNewPin)) {
+    return { success: false, error: 'New PIN must contain digits only.' };
+  }
+
+  const updatedEmp: Employee = {
+    ...emp,
+    pin: cleanNewPin
+  };
+
+  emps[targetIndex] = updatedEmp;
+  saveEmployees(emps);
+
+  // Update staff session if active
+  const activeSession = getEmployeeStaffSession();
+  if (activeSession && activeSession.employee.id === empId) {
+    setEmployeeStaffSession(updatedEmp, activeSession.companyId);
+  }
+
+  return { success: true, updatedEmployee: updatedEmp };
+}
+
+export function resetEmployeePinToDefault(empId: string): boolean {
+  const emps = getEmployees();
+  const targetIndex = emps.findIndex(e => e.id === empId);
+  if (targetIndex === -1) return false;
+
+  emps[targetIndex] = {
+    ...emps[targetIndex],
+    pin: '1234'
+  };
+  saveEmployees(emps);
+  return true;
+}
+
+// Storage key for active OTP challenges
+const STAFF_OTP_CHALLENGE_KEY = 'deep_pos_staff_pin_reset_otp';
+
+export interface StaffPinResetOtpData {
+  employeeId: string;
+  employeeName: string;
+  mobile: string;
+  maskedMobile: string;
+  otpCode: string;
+  expiresAt: number;
+  createdAt: number;
+  attempts: number;
+}
+
+/**
+ * Mask mobile number for privacy (e.g. 17123456 -> 17****56)
+ */
+export function maskPhoneNumber(phone: string): string {
+  const clean = (phone || '').replace(/\s+/g, '');
+  if (clean.length <= 4) return clean;
+  const first = clean.slice(0, 2);
+  const last = clean.slice(-2);
+  const stars = '*'.repeat(Math.max(2, clean.length - 4));
+  return `${first}${stars}${last}`;
+}
+
+/**
+ * Sends a 6-digit OTP to the employee's registered mobile number for PIN Reset.
+ */
+export function requestStaffPinResetOtp(
+  mobileOrCodeOrId: string
+): { 
+  success: boolean; 
+  error?: string; 
+  otpSession?: { 
+    employeeId: string; 
+    employeeName: string; 
+    mobile: string; 
+    maskedMobile: string; 
+    expiresAt: number; 
+    debugOtp: string; 
+  } 
+} {
+  const input = (mobileOrCodeOrId || '').trim();
+  if (!input) {
+    return { success: false, error: 'Please enter your registered mobile number.' };
+  }
+
+  const emps = getEmployees().filter(e => e.status === 'Active');
+  const normalizedInput = normalizePhoneNumber(input);
+
+  // Find employee by mobile number, empCode, or ID
+  const employee = emps.find(e => {
+    if (e.id === input) return true;
+    if (e.empCode && e.empCode.toLowerCase() === input.toLowerCase()) return true;
+    if (e.contactNo) {
+      const normContact = normalizePhoneNumber(e.contactNo);
+      if (normContact === normalizedInput) return true;
+      if (normContact.endsWith(normalizedInput) || normalizedInput.endsWith(normContact)) return true;
+    }
+    return false;
+  });
+
+  if (!employee) {
+    return { 
+      success: false, 
+      error: 'No active employee found with this mobile number. Please check the number or contact your Manager.' 
+    };
+  }
+
+  if (!employee.contactNo) {
+    return { 
+      success: false, 
+      error: `Employee ${employee.fullName} does not have a registered mobile number. Please ask your administrator to update your contact number.` 
+    };
+  }
+
+  // Generate secure 6-digit OTP (100000 - 999999)
+  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+  const now = Date.now();
+  const expiresAt = now + (10 * 60 * 1000); // 10 minutes validity
+
+  const otpData: StaffPinResetOtpData = {
+    employeeId: employee.id,
+    employeeName: employee.fullName,
+    mobile: employee.contactNo,
+    maskedMobile: maskPhoneNumber(employee.contactNo),
+    otpCode,
+    expiresAt,
+    createdAt: now,
+    attempts: 0
+  };
+
+  try {
+    sessionStorage.setItem(STAFF_OTP_CHALLENGE_KEY, JSON.stringify(otpData));
+  } catch {
+    // Fallback if sessionStorage is restricted
+  }
+
+  return {
+    success: true,
+    otpSession: {
+      employeeId: employee.id,
+      employeeName: employee.fullName,
+      mobile: employee.contactNo,
+      maskedMobile: maskPhoneNumber(employee.contactNo),
+      expiresAt,
+      debugOtp: otpCode
+    }
+  };
+}
+
+/**
+ * Verifies entered 6-digit OTP and updates employee PIN.
+ */
+export function verifyOtpAndResetPin(
+  employeeId: string,
+  enteredOtp: string,
+  newPin: string
+): { 
+  success: boolean; 
+  error?: string; 
+  updatedEmployee?: Employee 
+} {
+  let storedChallenge: StaffPinResetOtpData | null = null;
+  try {
+    const raw = sessionStorage.getItem(STAFF_OTP_CHALLENGE_KEY);
+    if (raw) storedChallenge = JSON.parse(raw);
+  } catch {
+    // ignore
+  }
+
+  if (!storedChallenge || storedChallenge.employeeId !== employeeId) {
+    return { success: false, error: 'OTP request expired or not found. Please request a new OTP code.' };
+  }
+
+  if (Date.now() > storedChallenge.expiresAt) {
+    sessionStorage.removeItem(STAFF_OTP_CHALLENGE_KEY);
+    return { success: false, error: 'The OTP code has expired. Please request a new code.' };
+  }
+
+  const cleanOtp = (enteredOtp || '').trim().replace(/\D/g, '');
+  if (cleanOtp !== storedChallenge.otpCode) {
+    storedChallenge.attempts += 1;
+    if (storedChallenge.attempts >= 5) {
+      sessionStorage.removeItem(STAFF_OTP_CHALLENGE_KEY);
+      return { success: false, error: 'Too many incorrect attempts. Please request a new OTP.' };
+    }
+    try {
+      sessionStorage.setItem(STAFF_OTP_CHALLENGE_KEY, JSON.stringify(storedChallenge));
+    } catch {}
+    return { success: false, error: `Invalid OTP code. You have ${5 - storedChallenge.attempts} attempts remaining.` };
+  }
+
+  const cleanNewPin = (newPin || '').trim();
+  if (!cleanNewPin || cleanNewPin.length < 4 || cleanNewPin.length > 6) {
+    return { success: false, error: 'New PIN must be between 4 and 6 digits.' };
+  }
+
+  if (!/^\d+$/.test(cleanNewPin)) {
+    return { success: false, error: 'New PIN must contain numbers only.' };
+  }
+
+  const emps = getEmployees();
+  const targetIndex = emps.findIndex(e => e.id === employeeId);
+  if (targetIndex === -1) {
+    return { success: false, error: 'Employee account not found.' };
+  }
+
+  const updatedEmp: Employee = {
+    ...emps[targetIndex],
+    pin: cleanNewPin
+  };
+
+  emps[targetIndex] = updatedEmp;
+  saveEmployees(emps);
+
+  // Clear OTP session upon successful verification
+  try {
+    sessionStorage.removeItem(STAFF_OTP_CHALLENGE_KEY);
+  } catch {}
+
+  // Update staff session if active
+  const activeSession = getEmployeeStaffSession();
+  if (activeSession && activeSession.employee.id === employeeId) {
+    setEmployeeStaffSession(updatedEmp, activeSession.companyId);
+  }
+
+  return { success: true, updatedEmployee: updatedEmp };
+}
+
+

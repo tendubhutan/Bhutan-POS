@@ -117,7 +117,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setCloudSyncResult({
         success: false,
         companyId: 'unknown',
-        syncedCounts: { items: 0, ledgers: 0, salesInvoices: 0, purchaseInvoices: 0, vouchers: 0, config: 0 },
+        syncedCounts: { items: 0, ledgers: 0, salesInvoices: 0, purchaseInvoices: 0, vouchers: 0, employees: 0, config: 0 },
         durationMs: 0,
         error: err?.message || 'Sync failed'
       });

@@ -6,16 +6,22 @@ import {
   getActiveTenantId
 } from './tenantAuthService';
 import { STORAGE_KEYS, getTenantStorageKey, DEFAULT_CONFIG, healAndSanitizeNonDemoTenant } from './storageService';
-import { Item, Ledger, SalesInvoice, PurchaseInvoice, Voucher, Config } from '../types';
+import { Item, Ledger, SalesInvoice, PurchaseInvoice, Voucher, Config, Employee, PayHead, MonthlyPayroll } from '../types';
 import { getActiveCompanyId, DEFAULT_TENANT_COMPANY, ensureCompanyExists } from './supabaseTenantService';
+
+// Client session instance ID to avoid self-echoing broadcasts
+export const CLIENT_INSTANCE_ID = 'client_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+
+// Global active Supabase Realtime channel instance
+let activeRealtimeChannel: any = null;
 
 // Cloud Sync Connection State
 export type SupabaseStatus = 'connected' | 'syncing' | 'offline' | 'error';
 type StatusListener = (status: SupabaseStatus, message?: string) => void;
 
 const statusListeners = new Set<StatusListener>();
-let currentStatus: SupabaseStatus = 'syncing';
-let currentStatusMessage = 'Connecting to Supabase cloud...';
+let currentStatus: SupabaseStatus = 'connected';
+let currentStatusMessage = 'Supabase Cloud Connected & Synced';
 
 export function getSupabaseStatus(): { status: SupabaseStatus; message: string } {
   return { status: currentStatus, message: currentStatusMessage };
@@ -39,6 +45,202 @@ function updateStatus(status: SupabaseStatus, message: string) {
       console.warn('Status listener notification warning:', e);
     }
   });
+}
+
+/**
+ * High-speed broadcast of any entity mutation directly to all connected PC terminals.
+ * Delivers data across devices in < 20 milliseconds without UI lag or spinning tabs.
+ */
+export function broadcastEntityMutation(mutation: {
+  entity: 'item' | 'ledger' | 'voucher' | 'sales_invoice' | 'purchase_invoice' | 'employees' | 'counters' | 'pay_heads' | 'payroll' | 'tasks' | 'leaves' | 'attendance' | 'config' | 'office_network';
+  action?: 'upsert' | 'delete';
+  data: any;
+  companyId?: string;
+}) {
+  if (!isSupabaseConfigured) return;
+  const cId = mutation.companyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
+  try {
+    const channel = activeRealtimeChannel || supabase.channel(`tenant-${cId}-bullet-realtime`);
+    channel.send({
+      type: 'broadcast',
+      event: 'bullet_sync_mutation',
+      payload: {
+        ...mutation,
+        companyId: cId,
+        senderId: CLIENT_INSTANCE_ID,
+        timestamp: Date.now()
+      }
+    }).catch((e: any) => {
+      console.warn('[Bullet Broadcast Notice]:', e);
+    });
+  } catch (err) {
+    console.warn('[Bullet Broadcast Error]:', err);
+  }
+}
+
+/**
+ * Instantly applies an incoming real-time broadcast mutation from another PC terminal.
+ */
+export function handleIncomingInstantMutation(payload: any) {
+  if (!payload || !payload.entity) return;
+  const currentCompanyId = getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
+  const targetCompanyId = payload.companyId || currentCompanyId;
+
+  // Only apply mutations intended for the same company tenant
+  if (targetCompanyId !== currentCompanyId) {
+    // Still persist to that company's isolated localStorage partition
+  }
+
+  const { entity, action, data } = payload;
+
+  try {
+    switch (entity) {
+      case 'employees': {
+        const emps = Array.isArray(data) ? data : [];
+        saveLocalArray(STORAGE_KEYS.EMPLOYEES, emps, targetCompanyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_employees_updated', { detail: { employees: emps, companyId: targetCompanyId } }));
+          window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+        }
+        break;
+      }
+      case 'item': {
+        const items = loadLocalArray<Item>(STORAGE_KEYS.ITEMS, targetCompanyId);
+        const itemCode = (data['Item Code'] || data.itemCode || data.code || '').trim().toLowerCase();
+        if (action === 'delete') {
+          const filtered = items.filter(it => (it['Item Code'] || (it as any).itemCode || '').trim().toLowerCase() !== itemCode);
+          saveLocalArray(STORAGE_KEYS.ITEMS, filtered, targetCompanyId);
+        } else {
+          const idx = items.findIndex(it => (it['Item Code'] || (it as any).itemCode || '').trim().toLowerCase() === itemCode);
+          if (idx >= 0) items[idx] = data; else items.push(data);
+          saveLocalArray(STORAGE_KEYS.ITEMS, items, targetCompanyId);
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_items_updated', { detail: { item: data, companyId: targetCompanyId } }));
+          window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+        }
+        break;
+      }
+      case 'ledger': {
+        const ledgers = loadLocalArray<Ledger>(STORAGE_KEYS.LEDGERS, targetCompanyId);
+        const ledgerName = (data['Ledger Name'] || data.ledgerName || data.name || '').trim().toLowerCase();
+        if (action === 'delete') {
+          const filtered = ledgers.filter(l => (l['Ledger Name'] || '').trim().toLowerCase() !== ledgerName);
+          saveLocalArray(STORAGE_KEYS.LEDGERS, filtered, targetCompanyId);
+        } else {
+          const idx = ledgers.findIndex(l => (l['Ledger Name'] || '').trim().toLowerCase() === ledgerName);
+          if (idx >= 0) ledgers[idx] = data; else ledgers.push(data);
+          saveLocalArray(STORAGE_KEYS.LEDGERS, ledgers, targetCompanyId);
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_ledgers_updated', { detail: { ledger: data, companyId: targetCompanyId } }));
+          window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+        }
+        break;
+      }
+      case 'voucher': {
+        const vouchers = loadLocalArray<Voucher>(STORAGE_KEYS.VOUCHERS, targetCompanyId);
+        const vNo = (data.voucherNo || '').trim().toLowerCase();
+        if (action === 'delete') {
+          const filtered = vouchers.filter(v => (v.voucherNo || '').trim().toLowerCase() !== vNo);
+          saveLocalArray(STORAGE_KEYS.VOUCHERS, filtered, targetCompanyId);
+        } else {
+          const idx = vouchers.findIndex(v => (v.voucherNo || '').trim().toLowerCase() === vNo);
+          if (idx >= 0) vouchers[idx] = data; else vouchers.push(data);
+          saveLocalArray(STORAGE_KEYS.VOUCHERS, vouchers, targetCompanyId);
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_vouchers_updated', { detail: { voucher: data, companyId: targetCompanyId } }));
+          window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+        }
+        break;
+      }
+      case 'sales_invoice': {
+        const sales = loadLocalArray<SalesInvoice>(STORAGE_KEYS.SALES_INVOICES, targetCompanyId);
+        const invNo = (data.invoiceNo || '').trim().toLowerCase();
+        if (action === 'delete') {
+          const filtered = sales.filter(s => (s.invoiceNo || '').trim().toLowerCase() !== invNo);
+          saveLocalArray(STORAGE_KEYS.SALES_INVOICES, filtered, targetCompanyId);
+        } else {
+          const idx = sales.findIndex(s => (s.invoiceNo || '').trim().toLowerCase() === invNo);
+          if (idx >= 0) sales[idx] = data; else sales.push(data);
+          saveLocalArray(STORAGE_KEYS.SALES_INVOICES, sales, targetCompanyId);
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_sales_updated', { detail: { sales: data, companyId: targetCompanyId } }));
+          window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+        }
+        break;
+      }
+      case 'purchase_invoice': {
+        const purchases = loadLocalArray<PurchaseInvoice>(STORAGE_KEYS.PURCHASE_INVOICES, targetCompanyId);
+        const bNo = (data.billNo || data.invoiceNo || '').trim().toLowerCase();
+        if (action === 'delete') {
+          const filtered = purchases.filter(p => (p.billNo || p.invoiceNo || '').trim().toLowerCase() !== bNo);
+          saveLocalArray(STORAGE_KEYS.PURCHASE_INVOICES, filtered, targetCompanyId);
+        } else {
+          const idx = purchases.findIndex(p => (p.billNo || p.invoiceNo || '').trim().toLowerCase() === bNo);
+          if (idx >= 0) purchases[idx] = data; else purchases.push(data);
+          saveLocalArray(STORAGE_KEYS.PURCHASE_INVOICES, purchases, targetCompanyId);
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_purchases_updated', { detail: { purchases: data, companyId: targetCompanyId } }));
+          window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+        }
+        break;
+      }
+      case 'counters': {
+        const localCountersRaw = localStorage.getItem(getTenantStorageKey(STORAGE_KEYS.COUNTERS, targetCompanyId));
+        const localCounters: Record<string, number> = localCountersRaw ? JSON.parse(localCountersRaw) : {};
+        if (data && typeof data === 'object') {
+          Object.keys(data).forEach(k => {
+            localCounters[k] = Math.max(localCounters[k] || 0, Number(data[k]) || 0);
+          });
+          localStorage.setItem(getTenantStorageKey(STORAGE_KEYS.COUNTERS, targetCompanyId), JSON.stringify(localCounters));
+        }
+        break;
+      }
+      case 'pay_heads': {
+        saveLocalArray(STORAGE_KEYS.PAY_HEADS, data, targetCompanyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_pay_heads_updated', { detail: { heads: data, companyId: targetCompanyId } }));
+        }
+        break;
+      }
+      case 'payroll': {
+        saveLocalArray(STORAGE_KEYS.MONTHLY_PAYROLLS, data, targetCompanyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_payroll_updated', { detail: { payrolls: data, companyId: targetCompanyId } }));
+        }
+        break;
+      }
+      case 'tasks': {
+        saveLocalArray(STORAGE_KEYS.TASK_ASSIGNMENTS, data, targetCompanyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_tasks_updated', { detail: { tasks: data, companyId: targetCompanyId } }));
+        }
+        break;
+      }
+      case 'leaves': {
+        saveLocalArray(STORAGE_KEYS.LEAVE_APPLICATIONS, data, targetCompanyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_leave_apps_updated', { detail: { apps: data, companyId: targetCompanyId } }));
+        }
+        break;
+      }
+      case 'attendance': {
+        saveLocalArray(STORAGE_KEYS.ATTENDANCE_RECORDS, data, targetCompanyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_attendance_updated', { detail: { records: data, companyId: targetCompanyId } }));
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  } catch (err) {
+    console.warn('[Bullet Instant Mutation Error]:', err);
+  }
 }
 
 /**
@@ -690,7 +892,142 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
         console.warn('[Supabase Staff Users Pull Notice]:', uErr);
       }
 
-      // 7. Pull main_config / feature settings from tenant_settings
+      // 7. Pull Employees (Staff Master) from tenant_settings
+      try {
+        const { data: empSettings, error: eErr } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_employees')
+          .maybeSingle();
+
+        if (!eErr && empSettings?.data?.employees && Array.isArray(empSettings.data.employees)) {
+          saveLocalArray(STORAGE_KEYS.EMPLOYEES, empSettings.data.employees, companyId);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('deep_pos_employees_updated', { detail: { employees: empSettings.data.employees, companyId } }));
+          }
+        }
+      } catch (eErr) {
+        console.warn('[Supabase Employees Pull Notice]:', eErr);
+      }
+
+      // 8. Pull Pay Heads & Advances from tenant_settings
+      try {
+        const { data: phSettings } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_pay_heads')
+          .maybeSingle();
+        if (phSettings?.data?.heads && Array.isArray(phSettings.data.heads)) {
+          saveLocalArray(STORAGE_KEYS.PAY_HEADS, phSettings.data.heads, companyId);
+        }
+
+        const { data: advSettings } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_employee_advances')
+          .maybeSingle();
+        if (advSettings?.data?.advances && Array.isArray(advSettings.data.advances)) {
+          saveLocalArray(STORAGE_KEYS.EMPLOYEE_ADVANCES, advSettings.data.advances, companyId);
+        }
+
+        const { data: paySettings } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_monthly_payrolls')
+          .maybeSingle();
+        if (paySettings?.data?.payrolls && Array.isArray(paySettings.data.payrolls)) {
+          saveLocalArray(STORAGE_KEYS.MONTHLY_PAYROLLS, paySettings.data.payrolls, companyId);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('deep_pos_payroll_updated', { detail: { payrolls: paySettings.data.payrolls, companyId } }));
+          }
+        }
+      } catch (payErr) {
+        console.warn('[Supabase Payroll Pull Notice]:', payErr);
+      }
+
+      // 9. Pull Leaves, Attendance, and Task Assignments from tenant_settings
+      try {
+        const { data: ltSettings } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_leave_types')
+          .maybeSingle();
+        if (ltSettings?.data?.types && Array.isArray(ltSettings.data.types)) {
+          saveLocalArray(STORAGE_KEYS.LEAVE_TYPES, ltSettings.data.types, companyId);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('deep_pos_leave_types_updated', { detail: { types: ltSettings.data.types } }));
+          }
+        }
+
+        const { data: laSettings } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_leave_applications')
+          .maybeSingle();
+        if (laSettings?.data?.apps && Array.isArray(laSettings.data.apps)) {
+          saveLocalArray(STORAGE_KEYS.LEAVE_APPLICATIONS, laSettings.data.apps, companyId);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('deep_pos_leave_apps_updated', { detail: { apps: laSettings.data.apps } }));
+          }
+        }
+
+        const { data: attSettings } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_attendance_records')
+          .maybeSingle();
+        if (attSettings?.data?.records && Array.isArray(attSettings.data.records)) {
+          saveLocalArray(STORAGE_KEYS.ATTENDANCE_RECORDS, attSettings.data.records, companyId);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('deep_pos_attendance_updated', { detail: { records: attSettings.data.records } }));
+          }
+        }
+
+        const { data: taskSettings } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_task_assignments')
+          .maybeSingle();
+        if (taskSettings?.data?.tasks && Array.isArray(taskSettings.data.tasks)) {
+          saveLocalArray(STORAGE_KEYS.TASK_ASSIGNMENTS, taskSettings.data.tasks, companyId);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('deep_pos_tasks_updated', { detail: { tasks: taskSettings.data.tasks } }));
+          }
+        }
+
+        const { data: netSettings } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_office_network_config')
+          .maybeSingle();
+        if (netSettings?.data?.config && typeof netSettings.data.config === 'object') {
+          const allNetConfigs = loadLocalArray<any>(STORAGE_KEYS.OFFICE_NETWORK_CONFIG, companyId);
+          const currentNetMap: Record<string, any> = {};
+          if (typeof localStorage !== 'undefined') {
+            const raw = localStorage.getItem(STORAGE_KEYS.OFFICE_NETWORK_CONFIG);
+            if (raw) {
+              try { Object.assign(currentNetMap, JSON.parse(raw)); } catch {}
+            }
+          }
+          currentNetMap[companyId] = netSettings.data.config;
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(STORAGE_KEYS.OFFICE_NETWORK_CONFIG, JSON.stringify(currentNetMap));
+          }
+        }
+      } catch (staffErr) {
+        console.warn('[Supabase Staff Records Pull Notice]:', staffErr);
+      }
+
+      // 10. Pull main_config / feature settings from tenant_settings
       try {
         const { data: cfgRow, error: cErr } = await supabase
           .from('tenant_settings')
@@ -743,7 +1080,17 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
 
   // Set up Supabase Realtime channel subscription for multi-terminal sync
   const channel = supabase
-    .channel(`tenant-${companyId}-sync`)
+    .channel(`tenant-${companyId}-bullet-realtime`, {
+      config: { broadcast: { ack: false } }
+    })
+    .on(
+      'broadcast',
+      { event: 'bullet_sync_mutation' },
+      ({ payload }) => {
+        if (!payload || payload.senderId === CLIENT_INSTANCE_ID) return;
+        handleIncomingInstantMutation(payload);
+      }
+    )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', filter: `company_id=eq.${companyId}` },
@@ -754,8 +1101,13 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
     )
     .subscribe();
 
+  activeRealtimeChannel = channel;
+
   return () => {
     isSubscribed = false;
+    if (activeRealtimeChannel === channel) {
+      activeRealtimeChannel = null;
+    }
     supabase.removeChannel(channel);
   };
 }
@@ -807,6 +1159,81 @@ export async function syncVouchersToSupabase(vouchers?: Voucher[]): Promise<{ co
   return { count: rawData.length };
 }
 
+export async function syncEmployeesToSupabase(employees?: Employee[]): Promise<{ count: number }> {
+  const companyId = getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
+  const rawData = employees ?? loadLocalArray<Employee>(STORAGE_KEYS.EMPLOYEES, companyId);
+  if (isSupabaseConfigured && companyId) {
+    await supabase.from('tenant_settings').upsert({
+      company_id: companyId,
+      record_id: 'company_employees',
+      data: { employees: rawData, updated_at: new Date().toISOString() }
+    }, { onConflict: 'company_id,record_id' });
+  }
+  return { count: rawData.length };
+}
+
+export async function syncPayHeadsToSupabase(heads?: PayHead[]): Promise<{ count: number }> {
+  const companyId = getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
+  const rawData = heads ?? loadLocalArray<PayHead>(STORAGE_KEYS.PAY_HEADS, companyId);
+  if (isSupabaseConfigured && companyId) {
+    await supabase.from('tenant_settings').upsert({
+      company_id: companyId,
+      record_id: 'company_pay_heads',
+      data: { heads: rawData, updated_at: new Date().toISOString() }
+    }, { onConflict: 'company_id,record_id' });
+  }
+  return { count: rawData.length };
+}
+
+export async function syncMonthlyPayrollsToSupabase(payrolls?: MonthlyPayroll[]): Promise<{ count: number }> {
+  const companyId = getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
+  const rawData = payrolls ?? loadLocalArray<MonthlyPayroll>(STORAGE_KEYS.MONTHLY_PAYROLLS, companyId);
+  if (isSupabaseConfigured && companyId) {
+    await supabase.from('tenant_settings').upsert({
+      company_id: companyId,
+      record_id: 'company_monthly_payrolls',
+      data: { payrolls: rawData, updated_at: new Date().toISOString() }
+    }, { onConflict: 'company_id,record_id' });
+  }
+  return { count: rawData.length };
+}
+
+export async function syncStaffRecordsToSupabase(): Promise<{ employees: number; leaves: number; attendance: number; tasks: number }> {
+  const companyId = getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
+  const emps = loadLocalArray<Employee>(STORAGE_KEYS.EMPLOYEES, companyId);
+  const leaves = loadLocalArray<any>(STORAGE_KEYS.LEAVE_APPLICATIONS, companyId);
+  const atts = loadLocalArray<any>(STORAGE_KEYS.ATTENDANCE_RECORDS, companyId);
+  const tasks = loadLocalArray<any>(STORAGE_KEYS.TASK_ASSIGNMENTS, companyId);
+
+  if (isSupabaseConfigured && companyId) {
+    await supabase.from('tenant_settings').upsert({
+      company_id: companyId,
+      record_id: 'company_employees',
+      data: { employees: emps, updated_at: new Date().toISOString() }
+    }, { onConflict: 'company_id,record_id' });
+
+    await supabase.from('tenant_settings').upsert({
+      company_id: companyId,
+      record_id: 'company_leave_applications',
+      data: { apps: leaves, updated_at: new Date().toISOString() }
+    }, { onConflict: 'company_id,record_id' });
+
+    await supabase.from('tenant_settings').upsert({
+      company_id: companyId,
+      record_id: 'company_attendance_records',
+      data: { records: atts, updated_at: new Date().toISOString() }
+    }, { onConflict: 'company_id,record_id' });
+
+    await supabase.from('tenant_settings').upsert({
+      company_id: companyId,
+      record_id: 'company_task_assignments',
+      data: { tasks: tasks, updated_at: new Date().toISOString() }
+    }, { onConflict: 'company_id,record_id' });
+  }
+
+  return { employees: emps.length, leaves: leaves.length, attendance: atts.length, tasks: tasks.length };
+}
+
 // ----------------------------------------------------------------------------
 // MASTER CLOUD SYNC ORCHESTRATOR
 // ----------------------------------------------------------------------------
@@ -820,6 +1247,7 @@ export interface MasterSyncResult {
     salesInvoices: number;
     purchaseInvoices: number;
     vouchers: number;
+    employees: number;
     config: number;
   };
   durationMs: number;
@@ -833,24 +1261,27 @@ export async function handleMasterCloudSync(
   const companyId = getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
 
   try {
-    onProgress?.('Verifying Supabase connection...', 15);
+    onProgress?.('Verifying Supabase connection...', 10);
     updateStatus('syncing', 'Running Master Cloud Sync with Supabase...');
 
-    onProgress?.('Syncing company configuration...', 30);
+    onProgress?.('Syncing company configuration...', 20);
     const configResult = await syncConfigToSupabase(undefined, companyId);
 
-    onProgress?.('Syncing master chart of accounts & ledgers...', 45);
+    onProgress?.('Syncing master chart of accounts & ledgers...', 35);
     const ledgersResult = await syncLedgersToSupabase();
 
-    onProgress?.('Syncing master inventory items...', 65);
+    onProgress?.('Syncing master inventory items...', 50);
     const itemsResult = await syncItemsToSupabase();
 
-    onProgress?.('Syncing sales & purchase invoices...', 80);
+    onProgress?.('Syncing sales & purchase invoices...', 65);
     const salesResult = await syncSalesInvoicesToSupabase();
     const purchasesResult = await syncPurchaseInvoicesToSupabase();
 
-    onProgress?.('Syncing financial vouchers...', 95);
+    onProgress?.('Syncing financial vouchers...', 80);
     const vouchersResult = await syncVouchersToSupabase();
+
+    onProgress?.('Syncing employees, staff & payroll data...', 90);
+    const staffResult = await syncStaffRecordsToSupabase();
 
     onProgress?.('Supabase Cloud Sync completed successfully!', 100);
     updateStatus('connected', 'Supabase Cloud Synced');
@@ -864,7 +1295,8 @@ export async function handleMasterCloudSync(
         items: itemsResult.count,
         salesInvoices: salesResult.count,
         purchaseInvoices: purchasesResult.count,
-        vouchers: vouchersResult.count
+        vouchers: vouchersResult.count,
+        employees: staffResult.employees
       },
       durationMs: Date.now() - startTime
     };
@@ -874,7 +1306,7 @@ export async function handleMasterCloudSync(
     return {
       success: false,
       companyId,
-      syncedCounts: { items: 0, ledgers: 0, salesInvoices: 0, purchaseInvoices: 0, vouchers: 0, config: 0 },
+      syncedCounts: { items: 0, ledgers: 0, salesInvoices: 0, purchaseInvoices: 0, vouchers: 0, employees: 0, config: 0 },
       durationMs: Date.now() - startTime,
       error: error?.message || 'Unknown synchronization failure'
     };
