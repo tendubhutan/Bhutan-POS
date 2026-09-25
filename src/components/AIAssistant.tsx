@@ -165,10 +165,9 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({ className = '' }) => {
             Search or ask AI...
           </span>
         </div>
-        <kbd className="hidden xl:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono font-bold text-blue-200 bg-blue-950/60 rounded border border-blue-700/60 shadow-2xs shrink-0">
-          <span>Ctrl</span>
-          <span>K</span>
-        </kbd>
+        <span className="inline-flex items-center px-2 py-0.5 text-[11px] font-bold text-blue-100 bg-blue-950/70 group-hover:bg-blue-800 group-hover:text-white rounded-lg border border-blue-700/60 shadow-2xs shrink-0">
+          Search
+        </span>
       </button>
 
       {/* Compact Mobile / Tablet Search Button */}
