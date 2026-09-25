@@ -684,17 +684,18 @@ export async function loginWithSupabaseAuth(email: string, password: string): Pr
         return { session };
       }
 
-      // 2. Fetch companies
-      const { companies } = await fetchUserCompanies(true);
-      let dedicatedComp = companies.find(c => c.id === dedicatedCompanyId);
+      // 2. Fetch companies (check cache first for instant 0ms auth)
+      let dedicatedComp: any = null;
+      const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_cached_companies') : null;
+      if (cached) {
+        try {
+          const list: SupabaseCompany[] = JSON.parse(cached);
+          dedicatedComp = list.find(c => c.id === dedicatedCompanyId || (c.company_name && c.company_name.toLowerCase().replace(/[^a-z0-9]/g, '') === dedicatedCompanyId.toLowerCase().replace(/[^a-z0-9]/g, '')));
+        } catch {}
+      }
       if (!dedicatedComp) {
-        const cached = typeof localStorage !== 'undefined' ? localStorage.getItem('supabase_cached_companies') : null;
-        if (cached) {
-          try {
-            const list: SupabaseCompany[] = JSON.parse(cached);
-            dedicatedComp = list.find(c => c.id === dedicatedCompanyId);
-          } catch {}
-        }
+        const { companies } = await fetchUserCompanies(true);
+        dedicatedComp = companies.find(c => c.id === dedicatedCompanyId);
       }
       if (!dedicatedComp) {
         dedicatedComp = {

@@ -49,6 +49,7 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({ isOpen, onClos
 
   const [confirmCode, setConfirmCode] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [confirmStep, setConfirmStep] = useState<0 | 1 | 2>(0); // 0: Form, 1: First Warning, 2: Final Warning
 
   if (!isOpen) return null;
 
@@ -92,7 +93,7 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({ isOpen, onClos
     }
   };
 
-  const handleExecuteBulkDelete = () => {
+  const handleInitialValidation = () => {
     if (!deleteTransactions && !deleteMasters && !resetOpeningBalances) {
       setErrorMsg('Please select at least one option to clean.');
       return;
@@ -108,6 +109,11 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({ isOpen, onClos
       return;
     }
 
+    setErrorMsg('');
+    setConfirmStep(1);
+  };
+
+  const handleFinalExecuteBulkDelete = () => {
     bulkDeleteData({
       deleteTransactions,
       deleteMasters,
@@ -118,6 +124,8 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({ isOpen, onClos
       selectedVoucherCategories: deleteTransactions ? selectedVoucherCategories : undefined
     });
 
+    setConfirmStep(0);
+    setConfirmCode('');
     onDataCleared();
     onClose();
   };
@@ -424,13 +432,106 @@ export const BulkDeleteModal: React.FC<BulkDeleteModalProps> = ({ isOpen, onClos
             Cancel
           </button>
           <button
-            onClick={handleExecuteBulkDelete}
+            onClick={handleInitialValidation}
             className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer"
           >
             <Trash2 className="h-4 w-4" />
             <span>Execute Bulk Action</span>
           </button>
         </div>
+
+        {/* WARNING 1 DIALOG OVERLAY */}
+        {confirmStep === 1 && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border-2 border-amber-500 text-slate-900 space-y-4 animate-in zoom-in-95 duration-150">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 shadow-xs border border-amber-300">
+                  <AlertTriangle className="h-6 w-6 animate-pulse" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Warning 1 of 2</span>
+                  <h3 className="text-base font-black text-slate-900 mt-0.5">Do you want to delete these transactions?</h3>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-1.5">
+                <p className="font-bold">You are about to delete and purge data:</p>
+                <ul className="list-disc list-inside text-[11px] text-amber-800 space-y-0.5">
+                  {deleteTransactions && <li>{dateFilterMode === 'range' ? `Transactions between ${fromDate} and ${toDate}` : 'All transaction history across all dates'}</li>}
+                  {deleteMasters && <li>Master directory records (Items, Categories, Units)</li>}
+                  {resetOpeningBalances && <li>Reset opening balances to zero</li>}
+                </ul>
+                <p className="text-[11px] text-amber-950 font-semibold pt-1">
+                  Do you want to proceed to the final confirmation?
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmStep(0)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmStep(2)}
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shadow-md transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>Yes, Proceed to Final Warning &rarr;</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* WARNING 2 DIALOG OVERLAY (FINAL PERMANENT PURGE CONFIRMATION) */}
+        {confirmStep === 2 && (
+          <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border-2 border-rose-600 text-slate-900 space-y-4 animate-in zoom-in-95 duration-150">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 shadow-xs border border-rose-300">
+                  <ShieldAlert className="h-6 w-6 animate-bounce" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">Final Warning 2 of 2</span>
+                  <h3 className="text-base font-black text-rose-900 mt-0.5">Are you sure you want to permanently delete this?</h3>
+                </div>
+              </div>
+
+              <div className="p-3.5 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-950 space-y-2">
+                <p className="font-black text-rose-700 uppercase tracking-wide text-[11px]">
+                  🚨 PERMANENT DELETION & PURGE NOTICE:
+                </p>
+                <p className="text-[11px] text-rose-900 leading-relaxed font-medium">
+                  This action is <strong>IRREVERSIBLE</strong>. The selected records will be permanently purged and wiped across the cloud database and all connected PC terminals immediately.
+                </p>
+                <p className="text-[11px] text-rose-900 font-bold">
+                  Are you completely sure you want to execute this permanent deletion?
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmStep(0)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  No, Go Back
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFinalExecuteBulkDelete}
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold rounded-xl text-xs shadow-lg transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span>💥 Yes, Permanently Delete Now</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

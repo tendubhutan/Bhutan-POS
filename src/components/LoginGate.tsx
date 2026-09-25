@@ -204,10 +204,16 @@ export const LoginGate: React.FC<LoginGateProps> = ({
         return;
       }
 
-      // Verify subscription status for the authenticated company
+      // Verify subscription status for the authenticated company (fast cached check)
       if (session.role !== 'superadmin' && session.assignedCompanyId) {
-        const { companies } = await fetchUserCompanies(true);
-        const authComp = companies.find(c => c.id === session.assignedCompanyId);
+        let authComp: any = null;
+        try {
+          const cached = localStorage.getItem('supabase_cached_companies');
+          if (cached) {
+            const list: SupabaseCompany[] = JSON.parse(cached);
+            authComp = list.find(c => c.id === session.assignedCompanyId);
+          }
+        } catch {}
         if (authComp && authComp.is_active === false) {
           setErrorMsg('Commercial Account Locked: This store subscription is currently inactive. Please contact your platform superadmin to renew access.');
           setIsLoading(false);

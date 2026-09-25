@@ -5,23 +5,26 @@ import {
   MessageSquare, Send, Tag, ArrowRight, UserCheck, ShieldAlert,
   ChevronRight, RefreshCw, Eye, Edit3, Trash2, Sliders, Briefcase,
   FileSpreadsheet, Award, CalendarCheck, CheckSquare, Bell,
-  Wifi, WifiOff, ShieldCheck, MapPin, Globe, Lock, Phone, KeyRound, Fingerprint, Layers
+  Wifi, WifiOff, ShieldCheck, MapPin, Globe, Lock, Phone, KeyRound, Fingerprint, Layers, Loader2
 } from 'lucide-react';
 import { 
   getLeaveTypes, saveLeaveTypes, updateLeaveType,
   getLeaveApplications, applyForLeave, reviewLeaveApplication,
   getAttendanceRecords, employeeClockIn, employeeClockOut,
   getTaskAssignments, createTaskAssignment, updateTaskStatus, addTaskComment,
+  generateTaskWhatsAppUrl,
   getDedicatedEmployeePortalUrl, getEmployeePortalQrCodeUrl,
   calculateMonthlyAttendanceSummary, calculateEmployeeLeaveBalance,
   getTodayDateString, DEFAULT_LEAVE_TYPES,
   getOfficeNetworkConfig, saveOfficeNetworkConfig, verifyOfficeNetwork,
-  resetEmployeePinToDefault
+  resetEmployeePinToDefault, subscribeToRealtimeTasks,
+  getCompanyHolidayPolicy, saveCompanyHolidayPolicy, calculateLeaveDeductionBreakdown
 } from '../../services/employeeStaffService';
 import { 
   LeaveTypeConfig, LeaveApplication, AttendanceRecord, 
   TaskAssignment, TaskPriority, TaskStatus,
-  OfficeNetworkSecurityConfig, NetworkVerificationResult
+  OfficeNetworkSecurityConfig, NetworkVerificationResult,
+  CompanyHolidayPolicy
 } from '../../types/staffPortal';
 import { getEmployees, syncEmployeesFromSupabase } from '../../services/storageService';
 import { getActiveCompanyId } from '../../services/supabaseTenantService';
@@ -29,6 +32,7 @@ import { Employee, Config } from '../../types';
 import { isFeatureAllowed } from '../../services/tenantFeatureService';
 import { GlowButton } from '../common/GlowButton';
 import { AssignmentReportView } from './AssignmentReportView';
+import { HolidayPolicyModal } from './HolidayPolicyModal';
 
 interface StaffManagementViewProps {
   config: Config;
@@ -74,6 +78,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   const [showTaskDetailModal, setShowTaskDetailModal] = useState<TaskAssignment | null>(null);
   const [taskCommentInput, setTaskCommentInput] = useState('');
   const [showLeavePolicyModal, setShowLeavePolicyModal] = useState(false);
+  const [showHolidayPolicyModal, setShowHolidayPolicyModal] = useState(false);
   const [showNewLeaveModal, setShowNewLeaveModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [pinResetMsg, setPinResetMsg] = useState<{ id: string; msg: string } | null>(null);
@@ -102,6 +107,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   const [networkConfig, setNetworkConfig] = useState<OfficeNetworkSecurityConfig>(() => getOfficeNetworkConfig());
   const [detectedIp, setDetectedIp] = useState<string>('');
   const [isDetectingIp, setIsDetectingIp] = useState<boolean>(false);
+  const [isSavingSecurity, setIsSavingSecurity] = useState<boolean>(false);
   const [securitySavedToast, setSecuritySavedToast] = useState<boolean>(false);
   const [newIpInput, setNewIpInput] = useState<string>('');
   const [isCapturingGps, setIsCapturingGps] = useState<boolean>(false);
@@ -121,11 +127,31 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
     }
   };
 
-  const handleSaveNetworkConfig = (updated: OfficeNetworkSecurityConfig) => {
-    setNetworkConfig(updated);
-    saveOfficeNetworkConfig(updated);
-    setSecuritySavedToast(true);
-    setTimeout(() => setSecuritySavedToast(false), 3000);
+  const handleSaveNetworkConfig = (updated?: OfficeNetworkSecurityConfig) => {
+    setIsSavingSecurity(true);
+    const targetConfig = updated || networkConfig;
+    
+    // Automatically include any pending IP entered in the input box
+    let finalAllowedIps = [...targetConfig.allowedIps];
+    if (newIpInput.trim() && !finalAllowedIps.includes(newIpInput.trim())) {
+      finalAllowedIps.push(newIpInput.trim());
+      setNewIpInput('');
+    }
+
+    const finalConfig: OfficeNetworkSecurityConfig = {
+      ...targetConfig,
+      allowedIps: finalAllowedIps
+    };
+
+    const cId = getActiveCompanyId();
+    setNetworkConfig(finalConfig);
+    saveOfficeNetworkConfig(finalConfig, cId);
+
+    setTimeout(() => {
+      setIsSavingSecurity(false);
+      setSecuritySavedToast(true);
+      setTimeout(() => setSecuritySavedToast(false), 4000);
+    }, 250);
   };
 
   const handleCaptureOfficeGps = () => {
@@ -159,13 +185,23 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
     setLeaveTypesList(getLeaveTypes(cId));
     setLeaveApplicationsList(getLeaveApplications(cId));
     setAttendanceRecordsList(getAttendanceRecords(cId));
-    setTasksList(getTaskAssignments(cId));
+    setNetworkConfig(getOfficeNetworkConfig(cId));
+    const allTasks = getTaskAssignments(cId);
+    setTasksList(allTasks);
+    if (showTaskDetailModal) {
+      const match = allTasks.find(t => t.id === showTaskDetailModal.id);
+      if (match) {
+        setShowTaskDetailModal(match);
+      }
+    }
   };
 
   useEffect(() => {
     loadData();
 
     const cId = getActiveCompanyId();
+    const unsubRealtime = subscribeToRealtimeTasks(cId);
+
     syncEmployeesFromSupabase(cId).then(remoteEmps => {
       if (remoteEmps && remoteEmps.length > 0) {
         setEmployees(remoteEmps.filter(e => e.status === 'Active'));
@@ -178,17 +214,37 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
     window.addEventListener('deep_pos_leave_apps_updated', handleDataUpdate);
     window.addEventListener('deep_pos_attendance_updated', handleDataUpdate);
     window.addEventListener('deep_pos_tasks_updated', handleDataUpdate);
+    window.addEventListener('deep_pos_network_security_updated', handleDataUpdate);
     window.addEventListener('app:dataLoaded', handleDataUpdate);
 
     return () => {
+      unsubRealtime();
       window.removeEventListener('deep_pos_employees_updated', handleDataUpdate);
       window.removeEventListener('deep_pos_leave_types_updated', handleDataUpdate);
       window.removeEventListener('deep_pos_leave_apps_updated', handleDataUpdate);
       window.removeEventListener('deep_pos_attendance_updated', handleDataUpdate);
       window.removeEventListener('deep_pos_tasks_updated', handleDataUpdate);
+      window.removeEventListener('deep_pos_network_security_updated', handleDataUpdate);
       window.removeEventListener('app:dataLoaded', handleDataUpdate);
     };
   }, []);
+
+  // Super-fast pulse synchronization when task modal or tasks tab is active
+  useEffect(() => {
+    if (!showTaskDetailModal && activeTab !== 'tasks') return;
+    const interval = setInterval(() => {
+      const cId = getActiveCompanyId();
+      const allTasks = getTaskAssignments(cId);
+      setTasksList(allTasks);
+      if (showTaskDetailModal) {
+        const match = allTasks.find(t => t.id === showTaskDetailModal.id);
+        if (match) {
+          setShowTaskDetailModal(match);
+        }
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [showTaskDetailModal?.id, activeTab]);
 
   // Summary Metrics
   const todayRecords = attendanceRecords.filter(r => r.date === selectedDate);
@@ -207,7 +263,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
-  // Leave Policy Toggle & Day Edit Handler
+  // Leave Policy Toggle & Configuration Handler
   const handleToggleLeaveType = (typeId: string, currentEnabled: boolean) => {
     const updated = leaveTypes.map(t => t.id === typeId ? { ...t, enabled: !currentEnabled } : t);
     setLeaveTypesList(updated);
@@ -217,6 +273,23 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   const handleUpdateLeaveDays = (typeId: string, days: number) => {
     const validDays = Math.max(0, days);
     const updated = leaveTypes.map(t => t.id === typeId ? { ...t, defaultDays: validDays } : t);
+    setLeaveTypesList(updated);
+    saveLeaveTypes(updated);
+  };
+
+  const handleUpdateLeaveTypeConfig = (typeId: string, partial: Partial<LeaveTypeConfig>) => {
+    const updated = leaveTypes.map(t => {
+      if (t.id === typeId) {
+        const next = { ...t, ...partial };
+        if (next.allocationMode === 'daily_accrual') {
+          const mRate = next.monthlyAccrualRate || 2.5;
+          next.dailyAccrualRate = Number((mRate / 30.4167).toFixed(4));
+          next.maxAnnualLimit = next.maxAnnualLimit || next.defaultDays || 30;
+        }
+        return next;
+      }
+      return t;
+    });
     setLeaveTypesList(updated);
     saveLeaveTypes(updated);
   };
@@ -233,8 +306,9 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
     e.preventDefault();
     if (!newTaskForm.title.trim() || !newTaskForm.assignedToEmpId) return;
 
+    const cId = getActiveCompanyId();
     const emp = employees.find(e => e.id === newTaskForm.assignedToEmpId);
-    createTaskAssignment({
+    const created = createTaskAssignment({
       title: newTaskForm.title.trim(),
       description: newTaskForm.description.trim(),
       priority: newTaskForm.priority,
@@ -245,7 +319,15 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
       assignedByRole: 'Manager',
       dueDate: newTaskForm.dueDate,
       category: newTaskForm.category
-    });
+    }, cId);
+
+    // If employee has a contact number, offer immediate WhatsApp notification
+    if (emp && emp.contactNo) {
+      const waUrl = generateTaskWhatsAppUrl(created, emp.contactNo, config?.CompanyName || (config as any)?.companyName);
+      if (confirm(`Task ${created.taskNo} assigned to ${emp.fullName}!\n\nWould you like to send task details & deadline to their WhatsApp now?`)) {
+        window.open(waUrl, '_blank');
+      }
+    }
 
     setNewTaskForm({
       title: '',
@@ -262,13 +344,14 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   // Handle Add Comment
   const handleAddComment = () => {
     if (!showTaskDetailModal || !taskCommentInput.trim()) return;
+    const cId = getActiveCompanyId();
     addTaskComment(showTaskDetailModal.id, taskCommentInput, {
       id: 'admin_mgr',
       name: 'Manager / GM',
       role: 'Manager'
-    });
+    }, cId);
     setTaskCommentInput('');
-    const updatedTasks = getTaskAssignments();
+    const updatedTasks = getTaskAssignments(cId);
     setTasksList(updatedTasks);
     const updatedCurrent = updatedTasks.find(t => t.id === showTaskDetailModal.id);
     if (updatedCurrent) setShowTaskDetailModal(updatedCurrent);
@@ -276,12 +359,13 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
 
   // Handle Change Task Status
   const handleUpdateStatus = (taskId: string, newStatus: TaskStatus) => {
+    const cId = getActiveCompanyId();
     updateTaskStatus(taskId, newStatus, `Status updated to ${newStatus}`, {
       id: 'admin_mgr',
       name: 'Manager / GM',
       role: 'Manager'
-    });
-    const updatedTasks = getTaskAssignments();
+    }, cId);
+    const updatedTasks = getTaskAssignments(cId);
     setTasksList(updatedTasks);
     if (showTaskDetailModal && showTaskDetailModal.id === taskId) {
       const updatedCurrent = updatedTasks.find(t => t.id === taskId);
@@ -297,10 +381,13 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
     const lt = leaveTypes.find(t => t.id === adminLeaveForm.leaveTypeId);
     if (!emp || !lt) return;
 
-    const start = new Date(adminLeaveForm.startDate);
-    const end = new Date(adminLeaveForm.endDate);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    const days = adminLeaveForm.isHalfDay ? 0.5 : Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    const cId = getActiveCompanyId();
+    const breakdown = calculateLeaveDeductionBreakdown(
+      adminLeaveForm.startDate,
+      adminLeaveForm.endDate,
+      adminLeaveForm.isHalfDay,
+      cId
+    );
 
     applyForLeave({
       employeeId: emp.id,
@@ -310,10 +397,10 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
       leaveTypeName: lt.name,
       startDate: adminLeaveForm.startDate,
       endDate: adminLeaveForm.endDate,
-      daysCount: days,
+      daysCount: breakdown.effectiveDeductionDays,
       isHalfDay: adminLeaveForm.isHalfDay,
       reason: adminLeaveForm.reason
-    });
+    }, cId);
 
     setShowNewLeaveModal(false);
     setAdminLeaveForm({
@@ -324,8 +411,8 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
       reason: '',
       isHalfDay: false
     });
-    setShowNewLeaveModal(false);
     loadData();
+    if (onDataRefresh) onDataRefresh();
   };
 
   // Reset employee PIN to default 1234
@@ -772,7 +859,15 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                 <p className="text-xs text-slate-500">Review staff leave requests and customize standard company leave quotas.</p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setShowHolidayPolicyModal(true)}
+                  className="px-3.5 py-2 rounded-xl border border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100/60 text-indigo-900 font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Calendar className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Define Holidays & Weekly-Offs</span>
+                </button>
+
                 <button
                   onClick={() => setShowLeavePolicyModal(true)}
                   className="px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
@@ -850,7 +945,18 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                     <tr>
                       <th className="py-2.5 px-3">Employee</th>
                       {leaveTypes.filter(t => t.enabled).map(t => (
-                        <th key={t.id} className="py-2.5 px-3">{t.name} (Rem / Allot)</th>
+                        <th key={t.id} className="py-2.5 px-3">
+                          <div className="flex items-center gap-1">
+                            <span>{t.name}</span>
+                            {t.allocationMode === 'daily_accrual' ? (
+                              <span className="px-1 py-0.2 rounded bg-indigo-100 text-indigo-800 text-[8px] font-bold font-sans">
+                                Daily Accrual ({t.monthlyAccrualRate || 2.5}d/mo)
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-normal font-sans text-[9px]">(Annual)</span>
+                            )}
+                          </div>
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -864,10 +970,19 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                           </td>
                           {leaveTypes.filter(t => t.enabled).map(t => {
                             const b = balance.balances[t.id];
+                            const rem = b ? b.remaining : t.defaultDays;
+                            const alloc = b ? b.allocated : t.defaultDays;
+                            const isAccrual = t.allocationMode === 'daily_accrual';
+
                             return (
                               <td key={t.id} className="py-2.5 px-3 font-mono">
-                                <span className="font-bold text-emerald-700">{b ? b.remaining : t.defaultDays}</span>
-                                <span className="text-slate-400"> / {t.defaultDays} d</span>
+                                <span className="font-bold text-emerald-700">{rem}</span>
+                                <span className="text-slate-400"> / {alloc}d</span>
+                                {isAccrual && (
+                                  <span className="ml-1 text-[9px] text-indigo-600 font-sans font-bold">
+                                    (Accrued)
+                                  </span>
+                                )}
                               </td>
                             );
                           })}
@@ -1115,16 +1230,18 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                       <h2 className="text-lg font-black text-slate-900">
                         Office Network Attendance Restriction
                       </h2>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                         networkConfig.requireOfficeNetwork 
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
-                          : 'bg-slate-100 text-slate-500 border border-slate-200'
+                          ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                          : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                       }`}>
-                        {networkConfig.requireOfficeNetwork ? 'Enforced' : 'Off'}
+                        {networkConfig.requireOfficeNetwork ? 'Enforced (Office WiFi Only)' : 'Off (Home & Remote WiFi Allowed)'}
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 mt-1 max-w-xl leading-relaxed">
-                      Prevent staff from misusing attendance by clocking in from home, while traveling, or outside the shop. Only staff connected to the official office WiFi network can sign in or sign out.
+                      {networkConfig.requireOfficeNetwork
+                        ? 'Office WiFi restriction is active: staff must be connected to the official office WiFi router to sign in or clock in.'
+                        : 'Office WiFi restriction is turned off: staff can clock in and record daily attendance freely from their home WiFi or mobile network.'}
                     </p>
                   </div>
                 </div>
@@ -1401,19 +1518,52 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                 )}
               </div>
 
-              {/* Save Button Bar */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-xs text-slate-500">
-                  Settings are stored per company tenant and enforced across all mobile sign-in requests.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleSaveNetworkConfig(networkConfig)}
-                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-md transition flex items-center gap-2 cursor-pointer"
-                >
-                  <ShieldCheck className="h-4 w-4" />
-                  <span>Save Network Security Settings</span>
-                </button>
+              {/* Save Button Bar & Confirmation */}
+              <div className="pt-5 border-t border-slate-200/80 space-y-3">
+                {securitySavedToast && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold flex items-center justify-between gap-2 shadow-xs animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>Network Security rules have been saved and applied to all mobile attendance requests!</span>
+                    </div>
+                    <span className="text-[10px] uppercase font-black bg-emerald-200/70 text-emerald-900 px-2 py-0.5 rounded-full">
+                      Active
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <span className="text-xs text-slate-500">
+                    Settings are stored per company tenant and enforced across all mobile sign-in & sign-out requests.
+                  </span>
+                  <button
+                    type="button"
+                    disabled={isSavingSecurity}
+                    onClick={() => handleSaveNetworkConfig(networkConfig)}
+                    className={`px-6 py-3 rounded-2xl font-black text-xs shadow-md transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer ${
+                      securitySavedToast 
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-4 ring-emerald-500/20 scale-[1.02]'
+                        : 'bg-blue-600 hover:bg-blue-700 active:scale-95 text-white ring-4 ring-blue-500/10'
+                    } disabled:opacity-70`}
+                  >
+                    {isSavingSecurity ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Saving Settings...</span>
+                      </>
+                    ) : securitySavedToast ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>Settings Saved & Enforced! ✓</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="h-4 w-4" />
+                        <span>Save Network Security Settings</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1653,37 +1803,128 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
               </button>
             </div>
 
-            <div className="space-y-3">
-              {leaveTypes.map(t => (
-                <div key={t.id} className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50/50 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={t.enabled}
-                      onChange={() => handleToggleLeaveType(t.id, t.enabled)}
-                      className="w-4 h-4 text-blue-600 rounded cursor-pointer"
-                    />
-                    <div>
-                      <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                        <span>{t.name}</span>
-                        <span className="text-[10px] font-mono text-slate-400 font-normal">({t.code})</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500">{t.description}</p>
-                    </div>
-                  </div>
+            <div className="space-y-3.5">
+              {leaveTypes.map(t => {
+                const isDailyAccrual = t.allocationMode === 'daily_accrual';
+                const monthlyRate = t.monthlyAccrualRate || 2.5;
 
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-bold text-slate-600">Annual Days:</label>
-                    <input
-                      type="number"
-                      disabled={!t.enabled}
-                      value={t.defaultDays}
-                      onChange={e => handleUpdateLeaveDays(t.id, Number(e.target.value))}
-                      className="w-16 px-2.5 py-1 text-center font-bold font-mono text-xs rounded-lg border border-slate-300 disabled:bg-slate-100 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
+                return (
+                  <div key={t.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={t.enabled}
+                          onChange={() => handleToggleLeaveType(t.id, t.enabled)}
+                          className="w-4 h-4 text-blue-600 rounded cursor-pointer shrink-0"
+                        />
+                        <div>
+                          <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                            <span>{t.name}</span>
+                            <span className="text-[10px] font-mono text-slate-400 font-normal">({t.code})</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500">{t.description}</p>
+                        </div>
+                      </div>
+
+                      {/* Mode Toggle: One-Time vs Daily Accrual */}
+                      {t.enabled && (
+                        <div className="flex items-center bg-white p-0.5 rounded-xl border border-slate-200 self-start sm:self-auto">
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateLeaveTypeConfig(t.id, { allocationMode: 'one_time' })}
+                            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition cursor-pointer ${
+                              !isDailyAccrual ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            📦 One-Time Lump Sum
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateLeaveTypeConfig(t.id, { allocationMode: 'daily_accrual', monthlyAccrualRate: monthlyRate })}
+                            className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition cursor-pointer ${
+                              isDailyAccrual ? 'bg-blue-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            ⚡ Daily / Monthly Accrual
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {t.enabled && (
+                      <div className="pt-2 border-t border-slate-200/70">
+                        {!isDailyAccrual ? (
+                          <div className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-slate-200">
+                            <div>
+                              <div className="text-xs font-bold text-slate-800">Annual Allotted Quota</div>
+                              <div className="text-[10px] text-slate-500">Credited all at once at the start of the year</div>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="number"
+                                min="0"
+                                max="365"
+                                value={t.defaultDays}
+                                onChange={e => handleUpdateLeaveDays(t.id, Number(e.target.value))}
+                                className="w-16 px-2.5 py-1 text-center font-bold font-mono text-xs rounded-lg border border-slate-300 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                              />
+                              <span className="text-[11px] font-bold text-slate-500">Days/Yr</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-200/80 space-y-2.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">Monthly Accrual Rate (Days/Month)</label>
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    min="0.1"
+                                    max="31"
+                                    value={monthlyRate}
+                                    onChange={e => handleUpdateLeaveTypeConfig(t.id, { 
+                                      monthlyAccrualRate: Number(e.target.value),
+                                      allocationMode: 'daily_accrual'
+                                    })}
+                                    className="w-20 px-2.5 py-1 text-center font-bold font-mono text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                                  />
+                                  <span className="text-[11px] text-slate-600 font-semibold">days / month</span>
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-[10px] font-bold text-slate-700 uppercase mb-1">Max Annual Limit</label>
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="365"
+                                    value={t.maxAnnualLimit || (monthlyRate * 12) || 30}
+                                    onChange={e => handleUpdateLeaveTypeConfig(t.id, { 
+                                      maxAnnualLimit: Number(e.target.value),
+                                      allocationMode: 'daily_accrual'
+                                    })}
+                                    className="w-20 px-2.5 py-1 text-center font-bold font-mono text-xs rounded-lg border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                                  />
+                                  <span className="text-[11px] text-slate-600 font-semibold">days max</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="text-[10px] text-blue-800 bg-blue-100/60 p-2 rounded-lg flex items-center justify-between">
+                              <span>
+                                💡 Accrual rate: ~{(monthlyRate / 30.4167).toFixed(4)} days/day. Accumulated continuously day-by-day throughout the year.
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="pt-3 border-t border-slate-100 flex justify-end">
@@ -1831,19 +2072,40 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
               {showTaskDetailModal.description || 'No description provided.'}
             </div>
 
-            {/* Status Change Selector */}
-            <div className="flex items-center gap-2 text-xs">
-              <span className="font-bold text-slate-600">Current Status:</span>
-              <select
-                value={showTaskDetailModal.status}
-                onChange={e => handleUpdateStatus(showTaskDetailModal.id, e.target.value as TaskStatus)}
-                className="px-2.5 py-1 rounded-lg border border-slate-300 font-bold text-slate-800 outline-none"
-              >
-                <option value="Assigned">Assigned</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Under Review">Under Review</option>
-                <option value="Completed">Completed</option>
-              </select>
+            {/* Status Change Selector & WhatsApp Alert */}
+            <div className="flex items-center justify-between gap-2 text-xs flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-slate-600">Current Status:</span>
+                <select
+                  value={showTaskDetailModal.status}
+                  onChange={e => handleUpdateStatus(showTaskDetailModal.id, e.target.value as TaskStatus)}
+                  className="px-2.5 py-1 rounded-lg border border-slate-300 font-bold text-slate-800 outline-none"
+                >
+                  <option value="Assigned">Assigned</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Under Review">Under Review</option>
+                  <option value="Completed">Completed</option>
+                </select>
+              </div>
+
+              {(() => {
+                const emp = employees.find(e => e.id === showTaskDetailModal.assignedToEmpId);
+                const contact = emp?.contactNo;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const waUrl = generateTaskWhatsAppUrl(showTaskDetailModal, contact, config?.CompanyName || (config as any)?.companyName);
+                      window.open(waUrl, '_blank');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                    title="Send task instructions & deadline to employee's WhatsApp"
+                  >
+                    <Smartphone className="h-3.5 w-3.5" />
+                    <span>WhatsApp Staff</span>
+                  </button>
+                );
+              })()}
             </div>
 
             {/* Two-Way Comment Section */}
@@ -1975,6 +2237,37 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                 />
               </div>
 
+              {/* Real-time Leave Deduction Calculation Badge */}
+              {adminLeaveForm.startDate && adminLeaveForm.endDate && (() => {
+                const breakdown = calculateLeaveDeductionBreakdown(adminLeaveForm.startDate, adminLeaveForm.endDate, adminLeaveForm.isHalfDay, getActiveCompanyId());
+                return (
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1 text-[11px]">
+                    <div className="flex items-center justify-between text-slate-600 font-medium">
+                      <span>Total Calendar Days:</span>
+                      <span className="font-mono font-bold text-slate-900">{breakdown.totalCalendarDays} Day(s)</span>
+                    </div>
+                    {breakdown.weeklyOffDaysCount > 0 && (
+                      <div className="flex items-center justify-between text-emerald-700 font-medium">
+                        <span>Weekly Offs Excluded:</span>
+                        <span className="font-mono font-bold">-{breakdown.weeklyOffDaysCount} Day(s)</span>
+                      </div>
+                    )}
+                    {breakdown.holidayDaysCount > 0 && (
+                      <div className="flex items-start justify-between text-indigo-700 font-medium gap-2">
+                        <span className="truncate">Holidays Excluded ({breakdown.holidayDetails.map(h => h.name).join(', ')}):</span>
+                        <span className="font-mono font-bold shrink-0">-{breakdown.holidayDaysCount} Day(s)</span>
+                      </div>
+                    )}
+                    <div className="pt-1.5 border-t border-slate-200 flex items-center justify-between font-black text-xs text-blue-700">
+                      <span>Effective Leave Deduction:</span>
+                      <span className="px-2 py-0.5 rounded-lg bg-blue-100 text-blue-900 font-mono">
+                        {breakdown.effectiveDeductionDays} Day(s)
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                 <button
                   type="button"
@@ -1994,6 +2287,15 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* ============================================================== */}
+      {/* MODAL 5: CONFIGURE HOLIDAYS & WEEKLY-OFF POLICY */}
+      {/* ============================================================== */}
+      <HolidayPolicyModal
+        isOpen={showHolidayPolicyModal}
+        onClose={() => setShowHolidayPolicyModal(false)}
+        onPolicyUpdated={() => loadData()}
+      />
     </div>
   );
 };

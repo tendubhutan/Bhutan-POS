@@ -1,14 +1,14 @@
 {
   "id": "/",
-  "name": "Ezee ERP - Everything Your Business Needs, in One Place",
-  "short_name": "Ezee ERP",
-  "description": "Everything Your Business Needs, in One Place. High-performance retail POS, multi-counter shop LAN dispatcher, and accounting ERP.",
-  "start_url": "./",
+  "name": "Ezee ERP & Staff Portal",
+  "short_name": "Ezee Staff",
+  "description": "Dedicated Mobile Staff Portal for attendance clock-in/out, live task assignments, leave applications, and instant notifications.",
+  "start_url": "./?portal=employee",
   "scope": "./",
   "display": "standalone",
-  "orientation": "any",
-  "background_color": "#1e293b",
-  "theme_color": "#1d4ed8",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
   "icons": [
     {
       "src": "./icon.svg",
@@ -21,6 +21,20 @@
       "sizes": "192x192 512x512",
       "type": "image/svg+xml",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Clock In / Clock Out",
+      "short_name": "Clock",
+      "description": "Log attendance shift clock in or clock out",
+      "url": "./?portal=employee#clock"
+    },
+    {
+      "name": "Task Assignments",
+      "short_name": "Tasks",
+      "description": "View and reply to assigned tasks",
+      "url": "./?portal=employee#tasks"
     }
   ]
 }

@@ -64,7 +64,7 @@ function updateStatus(status: SupabaseStatus, message: string) {
  * Delivers data across devices in < 20 milliseconds without UI lag or spinning tabs.
  */
 export function broadcastEntityMutation(mutation: {
-  entity: 'item' | 'ledger' | 'voucher' | 'sales_invoice' | 'purchase_invoice' | 'employees' | 'counters' | 'pay_heads' | 'payroll' | 'tasks' | 'leaves' | 'attendance' | 'config' | 'office_network';
+  entity: 'item' | 'ledger' | 'voucher' | 'sales_invoice' | 'purchase_invoice' | 'employees' | 'counters' | 'pay_heads' | 'payroll' | 'tasks' | 'staff_notifications' | 'leaves' | 'attendance' | 'config' | 'office_network';
   action?: 'upsert' | 'delete';
   data: any;
   companyId?: string;
@@ -107,6 +107,28 @@ export function handleIncomingInstantMutation(payload: any) {
 
   try {
     switch (entity) {
+      case 'purge_transactions': {
+        saveLocalArray(STORAGE_KEYS.SALES_INVOICES, [], targetCompanyId);
+        saveLocalArray(STORAGE_KEYS.PURCHASE_INVOICES, [], targetCompanyId);
+        saveLocalArray(STORAGE_KEYS.VOUCHERS, [], targetCompanyId);
+        saveLocalArray(STORAGE_KEYS.QUOTATIONS, [], targetCompanyId);
+        saveLocalArray(STORAGE_KEYS.DELIVERY_NOTES, [], targetCompanyId);
+        saveLocalArray(STORAGE_KEYS.PHYSICAL_STOCK, [], targetCompanyId);
+        saveLocalArray(STORAGE_KEYS.LEDGER_LOG, [], targetCompanyId);
+        saveLocalArray(STORAGE_KEYS.STOCK_LEDGER, [], targetCompanyId);
+        saveLocalArray(STORAGE_KEYS.HELD_BILLS, [], targetCompanyId);
+        saveLocalArray(STORAGE_KEYS.MONTHLY_PAYROLLS, [], targetCompanyId);
+        saveLocalArray(STORAGE_KEYS.EMPLOYEE_ADVANCES, [], targetCompanyId);
+        saveLocalArray(STORAGE_KEYS.TRASH_LOG, [], targetCompanyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_sales_updated', { detail: { sales: [], companyId: targetCompanyId } }));
+          window.dispatchEvent(new CustomEvent('deep_pos_vouchers_updated', { detail: { vouchers: [], companyId: targetCompanyId } }));
+          window.dispatchEvent(new CustomEvent('deep_pos_purchases_updated', { detail: { purchases: [], companyId: targetCompanyId } }));
+          window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+          window.dispatchEvent(new CustomEvent('app:refresh-data'));
+        }
+        break;
+      }
       case 'employees': {
         const emps = Array.isArray(data) ? data : [];
         saveLocalArray(STORAGE_KEYS.EMPLOYEES, emps, targetCompanyId);
@@ -237,6 +259,13 @@ export function handleIncomingInstantMutation(payload: any) {
         }
         break;
       }
+      case 'staff_notifications': {
+        saveLocalArray(STORAGE_KEYS.STAFF_NOTIFICATIONS, data, targetCompanyId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('deep_pos_staff_notifications_updated', { detail: { notifications: data, companyId: targetCompanyId } }));
+        }
+        break;
+      }
       case 'leaves': {
         saveLocalArray(STORAGE_KEYS.LEAVE_APPLICATIONS, data, targetCompanyId);
         if (typeof window !== 'undefined') {
@@ -248,6 +277,20 @@ export function handleIncomingInstantMutation(payload: any) {
         saveLocalArray(STORAGE_KEYS.ATTENDANCE_RECORDS, data, targetCompanyId);
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('deep_pos_attendance_updated', { detail: { records: data, companyId: targetCompanyId } }));
+        }
+        break;
+      }
+      case 'office_network': {
+        if (data && typeof data === 'object') {
+          if (typeof localStorage !== 'undefined') {
+            try {
+              localStorage.setItem(`deep_pos_office_network_config_${targetCompanyId}`, JSON.stringify(data));
+              localStorage.setItem('deep_pos_current_office_network_config', JSON.stringify({ companyId: targetCompanyId, ...data }));
+            } catch {}
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('deep_pos_network_security_updated', { detail: { config: data, companyId: targetCompanyId } }));
+          }
         }
         break;
       }
@@ -291,6 +334,61 @@ function saveLocalArray<T>(key: string, data: T[], companyId?: string): void {
     localStorage.setItem(effectiveKey, JSON.stringify(data));
   } catch (err) {
     console.warn(`[SupabaseSync] Failed to save localStorage key "${key}":`, err);
+  }
+}
+
+/**
+ * Helper to record a deleted record ID in cloud tenant settings so all devices know it was deleted
+ */
+export async function recordRemoteTombstone(
+  companyId: string,
+  entity: 'sales' | 'purchases' | 'vouchers' | 'items' | 'ledgers',
+  recordId: string
+): Promise<void> {
+  if (!companyId || !recordId) return;
+  const cleanId = recordId.trim().toLowerCase();
+
+  // 1. Firestore tombstone
+  try {
+    const docRef = doc(db, 'tenant_settings', `${companyId}_company_deleted_records`);
+    const snap = await getDoc(docRef);
+    const existing = snap.exists() ? (snap.data()?.deleted || {}) : {};
+    const list = Array.isArray(existing[entity]) ? existing[entity] : [];
+    if (!list.includes(cleanId)) {
+      list.push(cleanId);
+      existing[entity] = list;
+      await setDoc(docRef, {
+        companyId,
+        company_id: companyId,
+        recordId: 'company_deleted_records',
+        deleted: existing,
+        updatedAt: new Date().toISOString()
+      });
+    }
+  } catch {}
+
+  // 2. Supabase tombstone
+  if (isSupabaseConfigured) {
+    try {
+      const { data: row } = await supabase
+        .from('tenant_settings')
+        .select('data')
+        .eq('company_id', companyId)
+        .eq('record_id', 'company_deleted_records')
+        .maybeSingle();
+      const existing = row?.data?.deleted || {};
+      const list = Array.isArray(existing[entity]) ? existing[entity] : [];
+      if (!list.includes(cleanId)) {
+        list.push(cleanId);
+        existing[entity] = list;
+        await supabase.from('tenant_settings').upsert({
+          company_id: companyId,
+          record_id: 'company_deleted_records',
+          data: { deleted: existing },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'company_id, record_id' });
+      }
+    } catch {}
   }
 }
 
@@ -385,6 +483,8 @@ export async function deleteItemFromSupabase(itemCode: string, targetCompanyId?:
   const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const cleanCode = (itemCode || '').trim();
   if (!cleanCode) return;
+
+  recordRemoteTombstone(companyId, 'items', cleanCode).catch(() => {});
 
   try {
     const docId = `${companyId}_${cleanCode.replace(/[\/\\]/g, '_')}`;
@@ -482,6 +582,8 @@ export async function deleteLedgerFromSupabase(ledgerName: string, targetCompany
   const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const cleanName = (ledgerName || '').trim();
   if (!cleanName) return;
+
+  recordRemoteTombstone(companyId, 'ledgers', cleanName).catch(() => {});
 
   try {
     const docId = `${companyId}_${cleanName.replace(/[\/\\]/g, '_')}`;
@@ -605,6 +707,8 @@ export async function deleteSalesInvoiceFromSupabase(invoiceNo: string, targetCo
   const companyId = targetCompanyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
   const cleanNo = (invoiceNo || '').trim();
   if (!cleanNo) return;
+
+  recordRemoteTombstone(companyId, 'sales', cleanNo).catch(() => {});
 
   // 1. Delete from Firestore
   try {
@@ -749,6 +853,8 @@ export async function deletePurchaseInvoiceFromSupabase(billNo: string, targetCo
   const cleanNo = (billNo || '').trim();
   if (!cleanNo) return;
 
+  recordRemoteTombstone(companyId, 'purchases', cleanNo).catch(() => {});
+
   // 1. Delete from Firestore
   try {
     const docId = `${companyId}_${cleanNo.replace(/[\/\\]/g, '_')}`;
@@ -890,6 +996,8 @@ export async function deleteVoucherFromSupabase(voucherNo: string, targetCompany
   const cleanNo = (voucherNo || '').trim();
   if (!cleanNo) return;
 
+  recordRemoteTombstone(companyId, 'vouchers', cleanNo).catch(() => {});
+
   // 1. Delete from Firestore
   try {
     const docId = `${companyId}_${cleanNo.replace(/[\/\\]/g, '_')}`;
@@ -946,12 +1054,62 @@ export async function deleteVoucherFromSupabase(voucherNo: string, targetCompany
 export async function purgeRemoteCompanyData(companyId: string): Promise<void> {
   if (!companyId || companyId === DEFAULT_TENANT_COMPANY.id) return;
   try {
-    const tables = ['sales_invoices', 'purchase_invoices', 'vouchers', 'items', 'ledgers', 'stock_ledger', 'ledger_log'];
+    // 1. Supabase tables & settings purge
     if (isSupabaseConfigured) {
+      const tables = ['sales_invoices', 'purchase_invoices', 'vouchers', 'items', 'ledgers', 'stock_ledger', 'ledger_log'];
       for (const tbl of tables) {
-        await supabase.from(tbl).delete().eq('company_id', companyId);
+        try {
+          await supabase.from(tbl).delete().eq('company_id', companyId);
+        } catch {}
+      }
+      const settingRecords = [
+        'company_sales_invoices',
+        'company_purchase_invoices',
+        'company_vouchers',
+        'company_monthly_payrolls',
+        'company_employee_advances',
+        'company_held_bills'
+      ];
+      for (const rec of settingRecords) {
+        try {
+          await supabase.from('tenant_settings').delete().eq('company_id', companyId).eq('record_id', rec);
+        } catch {}
       }
     }
+
+    // 2. Firestore collections & settings purge
+    try {
+      const fsCollections = ['sales_invoices', 'purchase_invoices', 'vouchers', 'stock_ledger', 'ledger_log', 'held_bills'];
+      for (const colName of fsCollections) {
+        const q = query(collection(db, colName), where('companyId', '==', companyId));
+        const snap = await getDocs(q);
+        const deletes = snap.docs.map(d => deleteDoc(d.ref));
+        await Promise.allSettled(deletes);
+      }
+      const fsSettings = [
+        `${companyId}_company_sales_invoices`,
+        `${companyId}_company_purchase_invoices`,
+        `${companyId}_company_vouchers`,
+        `${companyId}_company_monthly_payrolls`,
+        `${companyId}_company_employee_advances`,
+        `${companyId}_company_held_bills`
+      ];
+      for (const sDoc of fsSettings) {
+        await deleteDoc(doc(db, 'tenant_settings', sDoc)).catch(() => {});
+      }
+    } catch (fsPurgeErr) {
+      console.warn('[Firestore Purge Notice]:', fsPurgeErr);
+    }
+
+    // 3. Real-time broadcast to instantly clear data across all connected PC terminals
+    try {
+      broadcastEntityMutation({
+        entity: 'purge_transactions' as any,
+        action: 'delete',
+        data: { purged: true },
+        companyId
+      });
+    } catch {}
   } catch (err: any) {
     console.warn('[Purge Remote Data Warning]:', err?.message || err);
   }
@@ -1097,6 +1255,45 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
       const deletedPurchases = new Set(loadLocalArray<string>(STORAGE_KEYS.DELETED_PURCHASE_INVOICES, companyId).map(d => (d || '').trim().toLowerCase()));
       const deletedVouchers = new Set(loadLocalArray<string>(STORAGE_KEYS.DELETED_VOUCHERS, companyId).map(d => (d || '').trim().toLowerCase()));
       const deletedItems = new Set(loadLocalArray<string>(STORAGE_KEYS.DELETED_ITEMS, companyId).map(d => (d || '').trim().toLowerCase()));
+      const deletedLedgers = new Set(loadLocalArray<string>(STORAGE_KEYS.DELETED_LEDGERS, companyId).map(d => (d || '').trim().toLowerCase()));
+
+      // 0. Pull remote tombstones from Firestore & Supabase first
+      try {
+        const docRef = doc(db, 'tenant_settings', `${companyId}_company_deleted_records`);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const remoteDel = snap.data()?.deleted || {};
+          (remoteDel.sales || []).forEach((id: string) => deletedSales.add(String(id).trim().toLowerCase()));
+          (remoteDel.purchases || []).forEach((id: string) => deletedPurchases.add(String(id).trim().toLowerCase()));
+          (remoteDel.vouchers || []).forEach((id: string) => deletedVouchers.add(String(id).trim().toLowerCase()));
+          (remoteDel.items || []).forEach((id: string) => deletedItems.add(String(id).trim().toLowerCase()));
+          (remoteDel.ledgers || []).forEach((id: string) => deletedLedgers.add(String(id).trim().toLowerCase()));
+        }
+      } catch {}
+
+      if (isSupabaseConfigured) {
+        try {
+          const { data: tombstoneRow } = await supabase
+            .from('tenant_settings')
+            .select('data')
+            .eq('company_id', companyId)
+            .eq('record_id', 'company_deleted_records')
+            .maybeSingle();
+          const remoteDel = tombstoneRow?.data?.deleted || {};
+          (remoteDel.sales || []).forEach((id: string) => deletedSales.add(String(id).trim().toLowerCase()));
+          (remoteDel.purchases || []).forEach((id: string) => deletedPurchases.add(String(id).trim().toLowerCase()));
+          (remoteDel.vouchers || []).forEach((id: string) => deletedVouchers.add(String(id).trim().toLowerCase()));
+          (remoteDel.items || []).forEach((id: string) => deletedItems.add(String(id).trim().toLowerCase()));
+          (remoteDel.ledgers || []).forEach((id: string) => deletedLedgers.add(String(id).trim().toLowerCase()));
+        } catch {}
+      }
+
+      // Sync updated tombstones to local storage
+      saveLocalArray(STORAGE_KEYS.DELETED_SALES_INVOICES, Array.from(deletedSales), companyId);
+      saveLocalArray(STORAGE_KEYS.DELETED_PURCHASE_INVOICES, Array.from(deletedPurchases), companyId);
+      saveLocalArray(STORAGE_KEYS.DELETED_VOUCHERS, Array.from(deletedVouchers), companyId);
+      saveLocalArray(STORAGE_KEYS.DELETED_ITEMS, Array.from(deletedItems), companyId);
+      saveLocalArray(STORAGE_KEYS.DELETED_LEDGERS, Array.from(deletedLedgers), companyId);
 
       // 1. Pull Items
       const itemsMap = new Map<string, Item>();
@@ -1139,12 +1336,15 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
           }
         }
       } catch {}
-      const localItems = loadLocalArray<Item>(STORAGE_KEYS.ITEMS, companyId);
-      for (const it of localItems) {
-        const code = (it?.['Item Code'] || (it as any)?.itemCode || (it as any)?.code || '').trim().toLowerCase();
-        if (code && !itemsMap.has(code) && !deletedItems.has(code)) {
-          itemsMap.set(code, it);
-          syncItemToSupabase(it, companyId).catch(() => {});
+
+      if (isDemo && itemsMap.size === 0) {
+        const localItems = loadLocalArray<Item>(STORAGE_KEYS.ITEMS, companyId);
+        for (const it of localItems) {
+          const code = (it?.['Item Code'] || (it as any)?.itemCode || (it as any)?.code || '').trim().toLowerCase();
+          if (code && !itemsMap.has(code) && !deletedItems.has(code)) {
+            itemsMap.set(code, it);
+            syncItemToSupabase(it, companyId).catch(() => {});
+          }
         }
       }
 
@@ -1207,16 +1407,23 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
           }
         }
       } catch {}
-      const localLedgers = loadLocalArray<Ledger>(STORAGE_KEYS.LEDGERS, companyId);
-      for (const lg of localLedgers) {
-        const name = (lg?.['Ledger Name'] || (lg as any)?.ledgerName || (lg as any)?.name || '').trim().toLowerCase();
-        if (name && !ledgersMap.has(name)) {
-          ledgersMap.set(name, lg);
-          syncLedgerToSupabase(lg, companyId).catch(() => {});
+
+      if (isDemo && ledgersMap.size === 0) {
+        const localLedgers = loadLocalArray<Ledger>(STORAGE_KEYS.LEDGERS, companyId);
+        for (const lg of localLedgers) {
+          const name = (lg?.['Ledger Name'] || (lg as any)?.ledgerName || (lg as any)?.name || '').trim().toLowerCase();
+          if (name && !ledgersMap.has(name) && !deletedLedgers.has(name)) {
+            ledgersMap.set(name, lg);
+            syncLedgerToSupabase(lg, companyId).catch(() => {});
+          }
         }
       }
       if (ledgersMap.size > 0) {
-        saveLocalArray(STORAGE_KEYS.LEDGERS, Array.from(ledgersMap.values()), companyId);
+        const filteredLedgers = Array.from(ledgersMap.values()).filter(l => {
+          const name = (l['Ledger Name'] || '').trim().toLowerCase();
+          return !deletedLedgers.has(name);
+        });
+        saveLocalArray(STORAGE_KEYS.LEDGERS, filteredLedgers, companyId);
       }
 
       // 3. Pull Vouchers
@@ -1260,27 +1467,19 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
           }
         }
       } catch {}
-      const localVouchers = loadLocalArray<Voucher>(STORAGE_KEYS.VOUCHERS, companyId);
-      for (const vch of localVouchers) {
-        const no = (vch?.voucherNo || '').trim().toLowerCase();
-        if (no && !vouchersMap.has(no) && !deletedVouchers.has(no)) {
-          vouchersMap.set(no, vch);
-          syncVoucherToSupabase(vch, companyId).catch(() => {});
+
+      // Filter vouchers by tombstones
+      const filteredVouchers = Array.from(vouchersMap.values()).filter(v => {
+        const vNo = (v.voucherNo || '').trim().toLowerCase();
+        if (deletedVouchers.has(vNo)) {
+          deleteVoucherFromSupabase(v.voucherNo, companyId);
+          return false;
         }
-      }
-      if (vouchersMap.size > 0) {
-        const filteredVouchers = Array.from(vouchersMap.values()).filter(v => {
-          const vNo = (v.voucherNo || '').trim().toLowerCase();
-          if (deletedVouchers.has(vNo)) {
-            deleteVoucherFromSupabase(v.voucherNo, companyId);
-            return false;
-          }
-          return true;
-        });
-        saveLocalArray(STORAGE_KEYS.VOUCHERS, filteredVouchers, companyId);
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('deep_pos_vouchers_updated', { detail: { vouchers: filteredVouchers, companyId } }));
-        }
+        return true;
+      });
+      saveLocalArray(STORAGE_KEYS.VOUCHERS, filteredVouchers, companyId);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('deep_pos_vouchers_updated', { detail: { vouchers: filteredVouchers, companyId } }));
       }
 
       // 4. Pull Sales Invoices
@@ -1324,32 +1523,23 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
           }
         }
       } catch {}
-      const localSales = loadLocalArray<SalesInvoice>(STORAGE_KEYS.SALES_INVOICES, companyId);
-      for (const s of localSales) {
-        const invNo = (s?.invoiceNo || (s as any)?.billNo || '').trim().toLowerCase();
-        if (invNo && !salesMap.has(invNo) && !deletedSales.has(invNo)) {
-          salesMap.set(invNo, { ...s, companyId });
-          syncSalesInvoiceToSupabase(s, companyId).catch(() => {});
-        }
-      }
 
-      if (salesMap.size > 0) {
-        const filteredSales = Array.from(salesMap.values()).filter(s => {
-          const invNo = (s.invoiceNo || '').trim().toLowerCase();
-          if (deletedSales.has(invNo)) {
-            deleteSalesInvoiceFromSupabase(s.invoiceNo, companyId);
-            return false;
-          }
-          if (!isDemo && (s as any).isDemo === true) {
-            deleteSalesInvoiceFromSupabase(s.invoiceNo || invNo, companyId);
-            return false;
-          }
-          return true;
-        });
-        saveLocalArray(STORAGE_KEYS.SALES_INVOICES, filteredSales, companyId);
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('deep_pos_sales_updated', { detail: { sales: filteredSales, companyId } }));
+      // Filter sales by tombstones & sanitize
+      const filteredSales = Array.from(salesMap.values()).filter(s => {
+        const invNo = (s.invoiceNo || '').trim().toLowerCase();
+        if (deletedSales.has(invNo)) {
+          deleteSalesInvoiceFromSupabase(s.invoiceNo, companyId);
+          return false;
         }
+        if (!isDemo && (s as any).isDemo === true) {
+          deleteSalesInvoiceFromSupabase(s.invoiceNo || invNo, companyId);
+          return false;
+        }
+        return true;
+      });
+      saveLocalArray(STORAGE_KEYS.SALES_INVOICES, filteredSales, companyId);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('deep_pos_sales_updated', { detail: { sales: filteredSales, companyId } }));
       }
 
       // 5. Pull Purchase Invoices
@@ -1393,32 +1583,22 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
           }
         }
       } catch {}
-      const localPurchases = loadLocalArray<PurchaseInvoice>(STORAGE_KEYS.PURCHASE_INVOICES, companyId);
-      for (const p of localPurchases) {
-        const bNo = (p?.billNo || p?.invoiceNo || '').trim().toLowerCase();
-        if (bNo && !purchasesMap.has(bNo) && !deletedPurchases.has(bNo)) {
-          purchasesMap.set(bNo, { ...p, companyId });
-          syncPurchaseInvoiceToSupabase(p, companyId).catch(() => {});
-        }
-      }
 
-      if (purchasesMap.size > 0) {
-        const filteredPurchases = Array.from(purchasesMap.values()).filter(p => {
-          const bNo = (p.billNo || p.invoiceNo || '').trim().toLowerCase();
-          if (deletedPurchases.has(bNo)) {
-            deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
-            return false;
-          }
-          if (!isDemo && (p as any).isDemo === true) {
-            deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
-            return false;
-          }
-          return true;
-        });
-        saveLocalArray(STORAGE_KEYS.PURCHASE_INVOICES, filteredPurchases, companyId);
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('deep_pos_purchases_updated', { detail: { purchases: filteredPurchases, companyId } }));
+      const filteredPurchases = Array.from(purchasesMap.values()).filter(p => {
+        const bNo = (p.billNo || p.invoiceNo || '').trim().toLowerCase();
+        if (deletedPurchases.has(bNo)) {
+          deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
+          return false;
         }
+        if (!isDemo && (p as any).isDemo === true) {
+          deletePurchaseInvoiceFromSupabase(p.billNo || p.invoiceNo, companyId);
+          return false;
+        }
+        return true;
+      });
+      saveLocalArray(STORAGE_KEYS.PURCHASE_INVOICES, filteredPurchases, companyId);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('deep_pos_purchases_updated', { detail: { purchases: filteredPurchases, companyId } }));
       }
 
       // 6. Pull Staff Users from tenant_settings
@@ -1548,6 +1728,19 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
           }
         }
 
+        const { data: notifSettings } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', companyId)
+          .eq('record_id', 'company_staff_notifications')
+          .maybeSingle();
+        if (notifSettings?.data?.notifications && Array.isArray(notifSettings.data.notifications)) {
+          saveLocalArray(STORAGE_KEYS.STAFF_NOTIFICATIONS, notifSettings.data.notifications, companyId);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('deep_pos_staff_notifications_updated', { detail: { notifications: notifSettings.data.notifications } }));
+          }
+        }
+
         const { data: netSettings } = await supabase
           .from('tenant_settings')
           .select('data')
@@ -1657,6 +1850,48 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
   let fsUnsubSales = () => {};
   let fsUnsubPurchases = () => {};
   let fsUnsubVouchers = () => {};
+  let fsUnsubTasks = () => {};
+  let fsUnsubNotifs = () => {};
+
+  try {
+    const taskDocRef = doc(db, 'tenant_tasks', companyId);
+    fsUnsubTasks = onSnapshot(taskDocRef, (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        if (d && Array.isArray(d.tasks)) {
+          const localTasks = loadLocalArray<any>(STORAGE_KEYS.TASK_ASSIGNMENTS, companyId);
+          if (JSON.stringify(localTasks) !== JSON.stringify(d.tasks)) {
+            saveLocalArray(STORAGE_KEYS.TASK_ASSIGNMENTS, d.tasks, companyId);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('deep_pos_tasks_updated', { detail: { tasks: d.tasks, companyId } }));
+            }
+          }
+        }
+      }
+    }, (err) => console.warn('[Firestore Tasks Listener Notice]:', err));
+  } catch (fsErr) {
+    console.warn('[Firestore Tasks Listener Setup Notice]:', fsErr);
+  }
+
+  try {
+    const notifDocRef = doc(db, 'tenant_notifications', companyId);
+    fsUnsubNotifs = onSnapshot(notifDocRef, (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        if (d && Array.isArray(d.notifications)) {
+          const localNotifs = loadLocalArray<any>(STORAGE_KEYS.STAFF_NOTIFICATIONS, companyId);
+          if (JSON.stringify(localNotifs) !== JSON.stringify(d.notifications)) {
+            saveLocalArray(STORAGE_KEYS.STAFF_NOTIFICATIONS, d.notifications, companyId);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('deep_pos_staff_notifications_updated', { detail: { notifications: d.notifications, companyId } }));
+            }
+          }
+        }
+      }
+    }, (err) => console.warn('[Firestore Notifications Listener Notice]:', err));
+  } catch (fsErr) {
+    console.warn('[Firestore Notifications Listener Setup Notice]:', fsErr);
+  }
 
   try {
     const qItems = query(collection(db, 'items'), where('companyId', '==', companyId));
@@ -1880,6 +2115,8 @@ export function initSupabaseSync(onDataLoaded?: () => void): () => void {
     fsUnsubSales();
     fsUnsubPurchases();
     fsUnsubVouchers();
+    fsUnsubTasks();
+    fsUnsubNotifs();
     if (activeRealtimeChannel === channel && channel) {
       activeRealtimeChannel = null;
       supabase.removeChannel(channel);

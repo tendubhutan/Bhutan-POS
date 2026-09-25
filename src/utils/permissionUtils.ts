@@ -117,28 +117,14 @@ export function isModulePermitted(
   if (normMod === 'bankrecon' as any) normMod = 'vouchers';
   if (normMod === 'assets' as any) normMod = 'masters';
 
-  // If user has permissions array, evaluate strict match first
+  // If user has permissions array, evaluate strict match
   if (user.permissions && Array.isArray(user.permissions) && user.permissions.length > 0) {
     const perm = user.permissions.find(p => p.module === normMod);
     if (perm !== undefined) {
       return Boolean(perm[action]);
     }
-
-    // Fallbacks for legacy/unconfigured entries in permission array:
-    if (normMod === 'normalsale') {
-      const posPerm = user.permissions.find(p => p.module === 'pos');
-      if (posPerm) return Boolean(posPerm[action]);
-    }
-    if (normMod === 'schemes' || normMod === 'barcode') {
-      const mastersPerm = user.permissions.find(p => p.module === 'masters');
-      if (mastersPerm) return Boolean(mastersPerm[action]);
-      return isAdministrator;
-    }
-    if (normMod === 'staff') {
-      const payrollPerm = user.permissions.find(p => p.module === 'payroll');
-      if (payrollPerm) return Boolean(payrollPerm[action]);
-      return isAdministrator;
-    }
+    // If user has explicit permissions configured, any unlisted module is strictly disallowed
+    return false;
   }
 
   // Fallback based on user role when permissions array is not set

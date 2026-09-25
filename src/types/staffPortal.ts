@@ -1,3 +1,5 @@
+export type LeaveAllocationMode = 'one_time' | 'daily_accrual';
+
 export interface LeaveTypeConfig {
   id: string; // 'annual' | 'casual' | 'medical' | 'maternity' | 'paternity' | 'bereavement' | custom string
   name: string;
@@ -7,6 +9,40 @@ export interface LeaveTypeConfig {
   carryForward: boolean;
   color: string;
   description?: string;
+  allocationMode?: LeaveAllocationMode; // 'one_time' (annual lump-sum) | 'daily_accrual' (earned on daily/monthly basis)
+  monthlyAccrualRate?: number; // e.g. 2.5 days per month
+  dailyAccrualRate?: number; // e.g. 0.0822 days per day
+  maxAnnualLimit?: number; // annual ceiling limit (e.g. 30 days)
+}
+
+export type WeeklyOffMode = 'saturday_sunday' | 'sunday_only' | 'none' | 'custom';
+
+export interface CompanyHoliday {
+  id: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  isRecurringYearly?: boolean;
+  isGovernmentHoliday?: boolean;
+  enabled: boolean;
+  description?: string;
+}
+
+export interface CompanyHolidayPolicy {
+  weeklyOffMode: WeeklyOffMode; // 'saturday_sunday' | 'sunday_only' | 'none' | 'custom'
+  customWeeklyOffDays: number[]; // 0=Sunday, 1=Monday, ..., 6=Saturday
+  enableGovernmentHolidays: boolean; // whether govt holidays are observed
+  holidays: CompanyHoliday[]; // list of active & customizable holidays
+  autoExcludeHolidaysFromLeave: boolean; // default: true
+  autoExcludeWeeklyOffFromLeave: boolean; // default: true
+}
+
+export interface LeaveDeductionBreakdown {
+  totalCalendarDays: number;
+  weeklyOffDaysCount: number;
+  weeklyOffDates: string[];
+  holidayDaysCount: number;
+  holidayDetails: { date: string; name: string }[];
+  effectiveDeductionDays: number;
 }
 
 export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
@@ -41,6 +77,11 @@ export interface EmployeeLeaveBalance {
       used: number;
       pending: number;
       remaining: number;
+      allocationMode?: LeaveAllocationMode;
+      monthlyAccrualRate?: number;
+      dailyAccrualRate?: number;
+      daysElapsedInYear?: number;
+      fullYearQuota?: number;
     };
   };
 }
@@ -144,4 +185,18 @@ export interface MonthlyAttendanceSummary {
   totalWorkingDays: number;
   lossOfPayDays: number;
   effectiveWorkingDays: number;
+}
+
+export interface StaffInAppNotification {
+  id: string;
+  companyId: string;
+  employeeId: string;
+  type: 'task_assigned' | 'task_comment' | 'task_status' | 'leave_status' | 'general';
+  title: string;
+  message: string;
+  taskId?: string;
+  linkTab?: 'tasks' | 'leaves' | 'clock' | 'profile';
+  createdAt: string;
+  read: boolean;
+  priority?: 'Urgent' | 'High' | 'Medium' | 'Low';
 }

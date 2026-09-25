@@ -131,7 +131,9 @@ export const STORAGE_KEYS = {
   LEAVE_APPLICATIONS: 'deep_pos_leave_applications',
   ATTENDANCE_RECORDS: 'deep_pos_attendance_records',
   TASK_ASSIGNMENTS: 'deep_pos_task_assignments',
-  OFFICE_NETWORK_CONFIG: 'deep_pos_office_network_config'
+  STAFF_NOTIFICATIONS: 'deep_pos_staff_notifications',
+  OFFICE_NETWORK_CONFIG: 'deep_pos_office_network_config',
+  HOLIDAY_POLICY: 'deep_pos_holiday_policy'
 };
 
 export const DEFAULT_BRANCHES: Branch[] = [
@@ -5311,18 +5313,30 @@ export function bulkDeleteData(options: BulkDeleteOptions) {
 
       // 1. Sales Invoices
       const sales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, []);
-      const remainingSales = sales.filter(s => {
+      const remainingSales: SalesInvoice[] = [];
+      const cId = getActiveCompanyId();
+      sales.forEach(s => {
         const cat = s.isPOS ? 'sale_pos' : 'sale_b2b';
         const shouldDelete = cats.has(cat) && inRange(s.date);
-        return !shouldDelete;
+        if (shouldDelete) {
+          if (s.invoiceNo) deleteSalesInvoiceFromFirestore(s.invoiceNo, cId).catch(() => {});
+        } else {
+          remainingSales.push(s);
+        }
       });
       saveJson(STORAGE_KEYS.SALES_INVOICES, remainingSales);
 
       // 2. Purchase Invoices
       const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
-      const remainingPurchases = purchases.filter(p => {
+      const remainingPurchases: PurchaseInvoice[] = [];
+      purchases.forEach(p => {
         const shouldDelete = cats.has('purchase') && inRange(p.date);
-        return !shouldDelete;
+        if (shouldDelete) {
+          const bNo = p.billNo || p.invoiceNo;
+          if (bNo) deletePurchaseInvoiceFromFirestore(bNo, cId).catch(() => {});
+        } else {
+          remainingPurchases.push(p);
+        }
       });
       saveJson(STORAGE_KEYS.PURCHASE_INVOICES, remainingPurchases);
 
@@ -5337,10 +5351,15 @@ export function bulkDeleteData(options: BulkDeleteOptions) {
         if (type === 'DN' || type === 'DebitNote') return 'debit_note';
         return 'journal';
       };
-      const remainingVouchers = vouchers.filter(v => {
+      const remainingVouchers: Voucher[] = [];
+      vouchers.forEach(v => {
         const cat = mapVoucherTypeToCat(v.type);
         const shouldDelete = cats.has(cat) && inRange(v.date);
-        return !shouldDelete;
+        if (shouldDelete) {
+          if (v.voucherNo) deleteVoucherFromFirestore(v.voucherNo, cId).catch(() => {});
+        } else {
+          remainingVouchers.push(v);
+        }
       });
       saveJson(STORAGE_KEYS.VOUCHERS, remainingVouchers);
 

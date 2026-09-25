@@ -27,7 +27,9 @@ import {
   AlertCircle,
   RotateCcw,
   Building2,
-  Lock
+  Lock,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import {
   getDeviceCounterId,
@@ -42,9 +44,14 @@ import {
 } from '../services/storageService';
 import { isSuperAdmin } from '../services/authTenantContext';
 import { promptPwaInstall, isPwaInstalled, subscribePwaState, canInstallPwa } from '../services/pwaService';
-import { getDedicatedEmployeePortalUrl } from '../services/employeeStaffService';
+import { 
+  getDedicatedEmployeePortalUrl, 
+  getOfficeNetworkConfig, 
+  saveOfficeNetworkConfig 
+} from '../services/employeeStaffService';
 import { getActiveCompanyId } from '../services/supabaseTenantService';
 import { TerminalConfig, Branch } from '../types';
+import { OfficeNetworkSecurityConfig } from '../types/staffPortal';
 
 interface ClientLinkAndPwaModalProps {
   isOpen: boolean;
@@ -140,6 +147,15 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
   };
 
   const currentCompanyId = getActiveCompanyId();
+  const [staffNetworkConfig, setStaffNetworkConfig] = useState<OfficeNetworkSecurityConfig>(() => getOfficeNetworkConfig(currentCompanyId));
+
+  useEffect(() => {
+    const handleNetUpdate = (e: any) => {
+      setStaffNetworkConfig(e.detail?.config || getOfficeNetworkConfig(currentCompanyId));
+    };
+    window.addEventListener('deep_pos_network_security_updated', handleNetUpdate);
+    return () => window.removeEventListener('deep_pos_network_security_updated', handleNetUpdate);
+  }, [currentCompanyId]);
 
   const getCompanyAppUrl = () => {
     const base = getBaseAppUrl();
@@ -1041,6 +1057,56 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
                         <p className="text-slate-600">
                           Employees only see their own attendance, leave balances, and assigned tasks. POS billing, inventory, ledgers, and profits are strictly hidden and inaccessible.
                         </p>
+                      </div>
+
+                      {/* Staff Clock-In Network Enforcement Setting */}
+                      <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                              <Wifi className="h-3.5 w-3.5 text-blue-600" />
+                              Staff Clock-In WiFi Restriction
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              staffNetworkConfig.requireOfficeNetwork 
+                                ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+                                : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            }`}>
+                              {staffNetworkConfig.requireOfficeNetwork ? 'Office WiFi Enforced' : 'Home & Remote WiFi Allowed'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500">
+                            {staffNetworkConfig.requireOfficeNetwork 
+                              ? 'Staff must be connected to the official office WiFi router to clock in.'
+                              : 'Staff can clock in freely from their home WiFi, mobile data, or outside premises.'}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2.5 self-end sm:self-auto shrink-0">
+                          <span className="text-[11px] font-bold text-slate-600">
+                            {staffNetworkConfig.requireOfficeNetwork ? 'Enforce Office' : 'Allow Home'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated: OfficeNetworkSecurityConfig = {
+                                ...staffNetworkConfig,
+                                requireOfficeNetwork: !staffNetworkConfig.requireOfficeNetwork
+                              };
+                              setStaffNetworkConfig(updated);
+                              saveOfficeNetworkConfig(updated, currentCompanyId);
+                            }}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                              staffNetworkConfig.requireOfficeNetwork ? 'bg-blue-600' : 'bg-slate-300'
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                staffNetworkConfig.requireOfficeNetwork ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

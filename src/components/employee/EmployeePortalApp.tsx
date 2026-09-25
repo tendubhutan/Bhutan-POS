@@ -4,7 +4,8 @@ import {
   Send, MessageSquare, Plus, Check, X, AlertCircle, ChevronRight,
   Coffee, ShieldCheck, ArrowRight, Sparkles, Download, CheckCircle2,
   CalendarCheck, Timer, Briefcase, Award, Info, Wifi, WifiOff, RefreshCw, MapPin, Lock,
-  Phone, KeyRound, Eye, EyeOff, UserCheck, Shield, ChevronDown, Fingerprint, ScanFace
+  Phone, KeyRound, Eye, EyeOff, UserCheck, Shield, ChevronDown, Fingerprint, ScanFace,
+  Bell
 } from 'lucide-react';
 import { 
   getEmployees, saveEmployees, syncEmployeesFromSupabase 
@@ -18,8 +19,12 @@ import {
   getEmployeeTodayAttendance, getTaskAssignments, updateTaskStatus,
   addTaskComment, getEmployeeStaffSession, setEmployeeStaffSession,
   clearEmployeeStaffSession, getOfficeNetworkConfig, verifyOfficeNetwork,
+  fetchRemoteOfficeNetworkConfig,
   findEmployeeByMobileOrCode, updateEmployeePortalPin, normalizePhoneNumber,
-  requestStaffPinResetOtp, verifyOtpAndResetPin, maskPhoneNumber
+  requestStaffPinResetOtp, verifyOtpAndResetPin, maskPhoneNumber,
+  getStaffNotifications, markStaffNotificationRead, clearStaffNotifications,
+  generateTaskWhatsAppUrl, subscribeToRealtimeTasks,
+  calculateLeaveDeductionBreakdown, getCompanyHolidayPolicy
 } from '../../services/employeeStaffService';
 import {
   isWebAuthnSupported,
@@ -34,9 +39,13 @@ import {
 import { Employee, Config } from '../../types';
 import { 
   LeaveTypeConfig, LeaveApplication, AttendanceRecord, 
-  TaskAssignment, TaskStatus, OfficeNetworkSecurityConfig, NetworkVerificationResult
+  TaskAssignment, TaskStatus, OfficeNetworkSecurityConfig, NetworkVerificationResult,
+  StaffInAppNotification, CompanyHolidayPolicy
 } from '../../types/staffPortal';
 import { SupabaseCompany } from '../../lib/supabase';
+import { StaffPWAInstallModal } from './StaffPWAInstallModal';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 
 interface EmployeePortalAppProps {
   activeCompany?: SupabaseCompany | null;
@@ -49,7 +58,8 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
   config,
   onExitPortal
 }) => {
-  const companyId = activeCompany?.id || getActiveCompanyId() || 'default';
+  const urlCompanyParam = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('company') : null;
+  const companyId = activeCompany?.id || urlCompanyParam || getActiveCompanyId() || 'default';
   const effectiveConfig = config || getCompanyConfig(companyId);
 
   const isAttendanceAllowed = isFeatureAllowed(effectiveConfig, 'EnableStaffAttendanceAndLeave') && effectiveConfig.EnableStaffAttendanceAndLeave !== 'false';
@@ -152,10 +162,16 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
   const [myTasks, setMyTasks] = useState<TaskAssignment[]>([]);
   const [selectedTask, setSelectedTask] = useState<TaskAssignment | null>(null);
   const [taskCommentText, setTaskCommentText] = useState('');
+  const [taskReplySuccess, setTaskReplySuccess] = useState<string | null>(null);
+
+  // In-App Staff Notifications
+  const [staffNotifications, setStaffNotifications] = useState<StaffInAppNotification[]>([]);
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
 
   // PWA Install prompt
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [showPWAInstallModal, setShowPWAInstallModal] = useState(false);
 
   // Network Verification State (Office Network Enforcement)
   const [networkStatus, setNetworkStatus] = useState<NetworkVerificationResult | null>(null);
@@ -165,14 +181,25 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
 
   const runNetworkVerification = async (): Promise<NetworkVerificationResult> => {
     setIsCheckingNetwork(true);
-    const cfg = getOfficeNetworkConfig(companyId);
+    let cfg = getOfficeNetworkConfig(companyId);
+
+    // Verify with remote cloud to ensure we immediately catch when management turned off the restriction from PC
+    try {
+      const remoteCfg = await fetchRemoteOfficeNetworkConfig(companyId);
+      if (remoteCfg) {
+        cfg = remoteCfg;
+      }
+    } catch {}
+
     setOfficeSecurityConfig(cfg);
 
+    // If network restriction is toggled OFF by admin, staff can clock in freely from home WiFi or anywhere
     if (!cfg.requireOfficeNetwork) {
       const allowedRes: NetworkVerificationResult = {
         allowed: true,
         isOfficeNetwork: true,
-        reason: 'Office network restriction is disabled by management.'
+        networkType: 'external',
+        reason: 'Office network restriction is disabled by management. Clock-in from home & any network is allowed.'
       };
       setNetworkStatus(allowedRes);
       setIsCheckingNetwork(false);
@@ -219,6 +246,102 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
     }
   };
 
+  // Real-time network security & office WiFi enforcement sync listener
+  useEffect(() => {
+    // 1. Fetch remote settings immediately on mount so mobile receives latest PC setting
+    fetchRemoteOfficeNetworkConfig(companyId).then(remoteCfg => {
+      if (remoteCfg) {
+        setOfficeSecurityConfig(remoteCfg);
+        if (!remoteCfg.requireOfficeNetwork) {
+          setNetworkStatus({
+            allowed: true,
+            isOfficeNetwork: true,
+            networkType: 'external',
+            reason: 'Office network restriction is disabled by management. Clock-in from home & any network is allowed.'
+          });
+          setIsCheckingNetwork(false);
+        } else {
+          runNetworkVerification();
+        }
+      }
+    });
+
+    // 2. Real-time Firestore snapshot listener for instant cross-device updates
+    let unsubFsTenant: (() => void) | null = null;
+    let unsubFsDefault: (() => void) | null = null;
+
+    try {
+      const cId = companyId || 'default';
+      const tenantDocRef = doc(db, 'tenant_office_network', cId);
+      unsubFsTenant = onSnapshot(tenantDocRef, (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data?.config) {
+            const clean = { ...data.config, requireOfficeNetwork: Boolean(data.config.requireOfficeNetwork) };
+            setOfficeSecurityConfig(clean);
+            if (!clean.requireOfficeNetwork) {
+              setNetworkStatus({
+                allowed: true,
+                isOfficeNetwork: true,
+                networkType: 'external',
+                reason: 'Office network restriction is disabled by management. Clock-in from home & any network is allowed.'
+              });
+              setIsCheckingNetwork(false);
+            }
+          }
+        }
+      }, (err) => console.warn('[EmployeePortalApp Firestore net listener notice]:', err));
+
+      if (cId !== 'default') {
+        const defaultDocRef = doc(db, 'tenant_office_network', 'default');
+        unsubFsDefault = onSnapshot(defaultDocRef, (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data?.config) {
+              const clean = { ...data.config, requireOfficeNetwork: Boolean(data.config.requireOfficeNetwork) };
+              setOfficeSecurityConfig(clean);
+              if (!clean.requireOfficeNetwork) {
+                setNetworkStatus({
+                  allowed: true,
+                  isOfficeNetwork: true,
+                  networkType: 'external',
+                  reason: 'Office network restriction is disabled by management. Clock-in from home & any network is allowed.'
+                });
+                setIsCheckingNetwork(false);
+              }
+            }
+          }
+        }, (err) => console.warn('[EmployeePortalApp Firestore default net listener notice]:', err));
+      }
+    } catch (e) {
+      console.warn('[EmployeePortalApp Firestore listener setup notice]:', e);
+    }
+
+    // 3. Real-time event listener for instant updates across tabs/devices
+    const handleNetUpdate = (e: any) => {
+      const cfg = e.detail?.config || getOfficeNetworkConfig(companyId);
+      setOfficeSecurityConfig(cfg);
+      if (!cfg.requireOfficeNetwork) {
+        setNetworkStatus({
+          allowed: true,
+          isOfficeNetwork: true,
+          networkType: 'external',
+          reason: 'Office network restriction is disabled by management. Clock-in from home & any network is allowed.'
+        });
+        setIsCheckingNetwork(false);
+      } else {
+        runNetworkVerification();
+      }
+    };
+
+    window.addEventListener('deep_pos_network_security_updated', handleNetUpdate);
+    return () => {
+      if (unsubFsTenant) unsubFsTenant();
+      if (unsubFsDefault) unsubFsDefault();
+      window.removeEventListener('deep_pos_network_security_updated', handleNetUpdate);
+    };
+  }, [companyId]);
+
   // Run network check on mount and when employee logs in
   useEffect(() => {
     runNetworkVerification();
@@ -230,8 +353,13 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Listen for PWA install prompt
+  // Listen for PWA install prompt & detect standalone mode
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const standalone = window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+      setIsInstalled(standalone);
+    }
     const handler = (e: any) => {
       e.preventDefault();
       setInstallPrompt(e);
@@ -313,24 +441,46 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
 
     const tasks = getTaskAssignments(companyId).filter(t => t.assignedToEmpId === currentEmployee.id);
     setMyTasks(tasks);
+    if (selectedTask) {
+      const match = tasks.find(t => t.id === selectedTask.id);
+      if (match) {
+        setSelectedTask(match);
+      }
+    }
+
+    const notifs = getStaffNotifications(currentEmployee.id, companyId);
+    setStaffNotifications(notifs);
   };
 
   useEffect(() => {
     loadEmployeeData();
+    const unsubRealtime = subscribeToRealtimeTasks(companyId);
 
     const handleDataUpdate = () => loadEmployeeData();
     window.addEventListener('deep_pos_leave_types_updated', handleDataUpdate);
     window.addEventListener('deep_pos_leave_apps_updated', handleDataUpdate);
     window.addEventListener('deep_pos_attendance_updated', handleDataUpdate);
     window.addEventListener('deep_pos_tasks_updated', handleDataUpdate);
+    window.addEventListener('deep_pos_staff_notifications_updated', handleDataUpdate);
 
     return () => {
+      unsubRealtime();
       window.removeEventListener('deep_pos_leave_types_updated', handleDataUpdate);
       window.removeEventListener('deep_pos_leave_apps_updated', handleDataUpdate);
       window.removeEventListener('deep_pos_attendance_updated', handleDataUpdate);
       window.removeEventListener('deep_pos_tasks_updated', handleDataUpdate);
+      window.removeEventListener('deep_pos_staff_notifications_updated', handleDataUpdate);
     };
   }, [currentEmployee, companyId]);
+
+  // Fast pulse sync for tasks and replies when viewing assignments
+  useEffect(() => {
+    if (!currentEmployee || (!selectedTask && activeTab !== 'tasks')) return;
+    const interval = setInterval(() => {
+      loadEmployeeData();
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [currentEmployee, selectedTask?.id, activeTab, companyId]);
 
   // Detected employee based on mobile number or code input
   const detectedEmployee = useMemo(() => {
@@ -628,13 +778,22 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
     if (!currentEmployee) return;
 
     // Check office network
+    let currentCfg = getOfficeNetworkConfig(companyId);
+    if (currentCfg.requireOfficeNetwork) {
+      try {
+        const remoteCfg = await fetchRemoteOfficeNetworkConfig(companyId);
+        if (remoteCfg) currentCfg = remoteCfg;
+      } catch {}
+    }
+    setOfficeSecurityConfig(currentCfg);
+
     let netResult = networkStatus;
-    if (officeSecurityConfig.requireOfficeNetwork) {
+    if (currentCfg.requireOfficeNetwork) {
       netResult = await runNetworkVerification();
       if (!netResult.allowed) {
         setShiftActionMsg({ 
           type: 'error', 
-          text: netResult.reason || '🚫 Access Blocked: You must be connected to the Office WiFi/Network to record attendance. Signing in from home is prohibited.' 
+          text: netResult.reason || '🚫 Access Blocked: You must be connected to the Office WiFi/Network to record attendance.' 
         });
         setTimeout(() => setShiftActionMsg(null), 5000);
         return;
@@ -649,6 +808,7 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
       note: shiftNote.trim(),
       source: 'mobile_pwa',
       companyId,
+      bypassNetworkCheck: !currentCfg.requireOfficeNetwork,
       networkVerification: netResult || undefined
     });
 
@@ -667,8 +827,17 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
     if (!currentEmployee) return;
 
     // Check office network
+    let currentCfg = getOfficeNetworkConfig(companyId);
+    if (currentCfg.requireOfficeNetwork) {
+      try {
+        const remoteCfg = await fetchRemoteOfficeNetworkConfig(companyId);
+        if (remoteCfg) currentCfg = remoteCfg;
+      } catch {}
+    }
+    setOfficeSecurityConfig(currentCfg);
+
     let netResult = networkStatus;
-    if (officeSecurityConfig.requireOfficeNetwork) {
+    if (currentCfg.requireOfficeNetwork) {
       netResult = await runNetworkVerification();
       if (!netResult.allowed) {
         setShiftActionMsg({ 
@@ -685,6 +854,7 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
       note: shiftNote.trim(),
       companyId,
       source: 'mobile_pwa',
+      bypassNetworkCheck: !currentCfg.requireOfficeNetwork,
       networkVerification: netResult || undefined
     });
 
@@ -704,10 +874,12 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
     if (!currentEmployee || !leaveForm.reason.trim()) return;
 
     const selectedType = leaveTypes.find(t => t.id === leaveForm.leaveTypeId) || leaveTypes[0];
-    const start = new Date(leaveForm.startDate);
-    const end = new Date(leaveForm.endDate);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    const days = leaveForm.isHalfDay ? 0.5 : Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    const breakdown = calculateLeaveDeductionBreakdown(
+      leaveForm.startDate,
+      leaveForm.endDate,
+      leaveForm.isHalfDay,
+      companyId
+    );
 
     applyForLeave({
       employeeId: currentEmployee.id,
@@ -717,10 +889,10 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
       leaveTypeName: selectedType.name,
       startDate: leaveForm.startDate,
       endDate: leaveForm.endDate,
-      daysCount: days,
+      daysCount: breakdown.effectiveDeductionDays,
       isHalfDay: leaveForm.isHalfDay,
       reason: leaveForm.reason.trim()
-    });
+    }, companyId);
 
     setShowApplyLeaveModal(false);
     setLeaveForm({
@@ -740,8 +912,8 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
       id: currentEmployee.id,
       name: currentEmployee.fullName,
       role: 'Employee'
-    });
-    const updated = getTaskAssignments().filter(t => t.assignedToEmpId === currentEmployee.id);
+    }, companyId);
+    const updated = getTaskAssignments(companyId).filter(t => t.assignedToEmpId === currentEmployee.id);
     setMyTasks(updated);
     if (selectedTask && selectedTask.id === taskId) {
       const match = updated.find(t => t.id === taskId);
@@ -749,30 +921,45 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
     }
   };
 
-  // Post Task Comment
+  // Post Task Comment / Reply
   const handleSendComment = () => {
     if (!selectedTask || !taskCommentText.trim() || !currentEmployee) return;
-    addTaskComment(selectedTask.id, taskCommentText.trim(), {
+    const added = addTaskComment(selectedTask.id, taskCommentText.trim(), {
       id: currentEmployee.id,
       name: currentEmployee.fullName,
       role: 'Employee'
-    });
+    }, companyId);
     setTaskCommentText('');
-    const updated = getTaskAssignments().filter(t => t.assignedToEmpId === currentEmployee.id);
+    const updated = getTaskAssignments(companyId).filter(t => t.assignedToEmpId === currentEmployee.id);
     setMyTasks(updated);
-    const match = updated.find(t => t.id === selectedTask.id);
-    if (match) setSelectedTask(match);
+    if (added && selectedTask) {
+      setSelectedTask({
+        ...selectedTask,
+        comments: [...(selectedTask.comments || []), added]
+      });
+      setTaskReplySuccess('Reply sent to manager successfully!');
+      setTimeout(() => setTaskReplySuccess(null), 3500);
+    } else {
+      const match = updated.find(t => t.id === selectedTask.id);
+      if (match) setSelectedTask(match);
+    }
   };
 
   // Install PWA
   const handleInstallApp = async () => {
     if (installPrompt) {
-      installPrompt.prompt();
-      const choice = await installPrompt.userChoice;
-      if (choice.outcome === 'accepted') {
-        setIsInstalled(true);
+      try {
+        await installPrompt.prompt();
+        const choice = await installPrompt.userChoice;
+        if (choice && choice.outcome === 'accepted') {
+          setIsInstalled(true);
+        }
+        setInstallPrompt(null);
+      } catch {
+        setShowPWAInstallModal(true);
       }
-      setInstallPrompt(null);
+    } else {
+      setShowPWAInstallModal(true);
     }
   };
 
@@ -1352,12 +1539,39 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
               Bhutan Cloud POS • Employee Mobile Gateway
             </div>
           </div>
+
+          {/* Quick PWA Install Card on Mobile Login Screen */}
+          {!isInstalled && (
+            <div 
+              onClick={() => setShowPWAInstallModal(true)}
+              className="mt-4 p-3.5 rounded-2xl bg-gradient-to-r from-blue-950/90 to-indigo-950/90 border border-blue-500/30 text-white text-xs flex items-center justify-between cursor-pointer hover:border-blue-400/60 transition shadow-xl group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/30 shrink-0 group-hover:scale-105 transition">
+                  <Download className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="font-bold text-slate-100 block">Install Staff Mobile App</span>
+                  <span className="text-[10px] text-blue-300">1-Tap Attendance & Instant Task Alerts</span>
+                </div>
+              </div>
+              <ChevronRight className="h-4 w-4 text-blue-400 group-hover:translate-x-0.5 transition shrink-0" />
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="text-center text-[10px] text-slate-400 pb-2">
           Protected & Encrypted • {activeCompany?.company_name || 'ERP System'}
         </div>
+
+        {/* Staff PWA Install Modal */}
+        <StaffPWAInstallModal
+          isOpen={showPWAInstallModal}
+          onClose={() => setShowPWAInstallModal(false)}
+          installPrompt={installPrompt}
+          onInstallAccepted={() => setIsInstalled(true)}
+        />
 
         {/* Simulated SMS Alert & Forgot PIN Modal */}
         {renderSimulatedSmsToast()}
@@ -1388,13 +1602,29 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {installPrompt && (
+          {/* In-App Notifications Bell */}
+          <button
+            onClick={() => setShowNotificationsModal(true)}
+            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer relative"
+            title="App Notifications"
+          >
+            <Bell className="h-4 w-4" />
+            {staffNotifications.filter(n => !n.read).length > 0 && (
+              <span className="absolute -top-1 -right-1 h-4 min-w-[16px] px-1 rounded-full bg-rose-500 text-[9px] font-bold text-white flex items-center justify-center animate-pulse shadow-sm">
+                {staffNotifications.filter(n => !n.read).length}
+              </span>
+            )}
+          </button>
+
+          {/* PWA Install Button */}
+          {!isInstalled && (
             <button
-              onClick={handleInstallApp}
-              className="p-2 rounded-xl bg-blue-600/30 text-blue-400 hover:bg-blue-600/50 transition cursor-pointer"
-              title="Install App to Home Screen"
+              onClick={() => setShowPWAInstallModal(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md shadow-blue-500/25 transition cursor-pointer active:scale-95"
+              title="Install Staff Mobile App"
             >
-              <Download className="h-4 w-4" />
+              <Download className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Install</span>
             </button>
           )}
 
@@ -1427,6 +1657,30 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
         {/* ============================================================== */}
         {activeTab === 'clock' && isAttendanceAllowed && (
           <div className="space-y-4">
+            {/* Quick Install Banner if not installed */}
+            {!isInstalled && (
+              <div 
+                onClick={() => setShowPWAInstallModal(true)}
+                className="p-3 rounded-2xl bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border border-blue-500/30 text-blue-200 text-xs flex items-center justify-between cursor-pointer hover:bg-blue-900/50 transition shadow-sm group"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="h-7 w-7 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                    <Download className="h-4 w-4" />
+                  </div>
+                  <div className="truncate">
+                    <span className="font-bold block text-white">Install Staff App to Home Screen</span>
+                    <span className="text-[10px] text-blue-300">1-Tap Fast Clock In & Assignment Alerts</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white shrink-0 shadow-sm cursor-pointer"
+                >
+                  Install
+                </button>
+              </div>
+            )}
+
             {/* Friendly reminder banner if still using default PIN 1234 */}
             {(!currentEmployee.pin || currentEmployee.pin === '1234') && (
               <div 
@@ -1489,7 +1743,7 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
               </div>
 
               {/* Office Network Verification Banner */}
-              {officeSecurityConfig.requireOfficeNetwork && (
+              {officeSecurityConfig.requireOfficeNetwork ? (
                 <div className="py-1">
                   {isCheckingNetwork ? (
                     <div className="flex items-center justify-center gap-2 py-2 px-3 rounded-2xl bg-slate-800/60 border border-slate-700/60 text-[11px] text-slate-300 animate-pulse">
@@ -1541,6 +1795,18 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
                       </p>
                     </div>
                   )}
+                </div>
+              ) : (
+                <div className="py-1">
+                  <div className="flex items-center justify-between py-2 px-3 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[11px]">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                      <span className="font-semibold truncate">Network Restriction: Off (Home & Remote Clock In Allowed)</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-900/60 px-2 py-0.5 rounded-full font-bold">
+                      Open
+                    </span>
+                  </div>
                 </div>
               )}
 
@@ -1662,18 +1928,32 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
             </div>
 
             {/* Leave Balance Grid */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2.5">
               {leaveTypes.map(t => {
                 const b = myBalances?.balances[t.id];
                 const rem = b ? b.remaining : t.defaultDays;
+                const isDailyAccrual = t.allocationMode === 'daily_accrual' || b?.allocationMode === 'daily_accrual';
 
                 return (
-                  <div key={t.id} className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t.code}</span>
-                    <div className="text-xs font-black text-white">{t.name}</div>
+                  <div key={t.id} className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-1 relative overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t.code}</span>
+                      {isDailyAccrual && (
+                        <span className="px-1.5 py-0.2 rounded bg-blue-950/80 border border-blue-500/40 text-blue-400 text-[9px] font-bold flex items-center gap-1">
+                          ⚡ Daily Earned
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs font-black text-white truncate">{t.name}</div>
                     <div className="text-lg font-black text-emerald-400 font-mono">
                       {rem} <span className="text-xs text-slate-500 font-normal">days left</span>
                     </div>
+                    {isDailyAccrual && b && (
+                      <div className="text-[10px] text-slate-400 pt-0.5 border-t border-slate-800/60 flex items-center justify-between">
+                        <span>Accrued YTD:</span>
+                        <span className="font-mono font-bold text-slate-300">{b.allocated}d</span>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1721,6 +2001,45 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Company Holidays & Weekly-Off Schedule for Staff Information */}
+            {(() => {
+              const policy = getCompanyHolidayPolicy(companyId);
+              const activeHolidays = (policy.holidays || []).filter(h => h.enabled);
+              return (
+                <div className="p-4 rounded-3xl bg-slate-900/80 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                        <Calendar className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-xs text-white">Company Holidays & Weekly-Offs</h4>
+                        <p className="text-[10px] text-slate-400">
+                          {policy.weeklyOffMode === 'saturday_sunday' 
+                            ? '5-Day Work Week (Sat & Sun Off)' 
+                            : policy.weeklyOffMode === 'sunday_only'
+                            ? '6-Day Work Week (Sunday Only Off)'
+                            : 'Standard Schedule'} • Auto-excluded from leave
+                        </p>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[10px] font-bold border border-indigo-500/30">
+                      {activeHolidays.length} Holidays
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {activeHolidays.map(h => (
+                      <div key={h.id} className="p-2 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between text-[11px]">
+                        <span className="font-medium text-slate-200 truncate pr-2">{h.name}</span>
+                        <span className="font-mono text-[10px] text-indigo-400 shrink-0">📅 {h.date}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1762,10 +2081,23 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
 
                     <div className="flex items-center justify-between text-[11px] pt-2 border-t border-slate-800 text-slate-400">
                       <span>Due: <strong className={isOverdue ? 'text-rose-400' : 'text-slate-300'}>{task.dueDate}</strong></span>
-                      <span className="flex items-center gap-1 text-blue-400">
-                        <MessageSquare className="h-3.5 w-3.5" />
-                        <span>{task.comments.length} Notes</span>
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1 text-slate-400">
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          <span>{task.comments ? task.comments.length : 0} Notes</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTask(task);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1"
+                        >
+                          <Send className="h-3 w-3" />
+                          <span>Reply</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -2033,22 +2365,46 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
                 )}
               </div>
 
-              {/* Install PWA Button if available */}
-              {installPrompt && !isInstalled && (
-                <button
-                  onClick={async () => {
-                    installPrompt.prompt();
-                    const choice = await installPrompt.userChoice;
-                    if (choice.outcome === 'accepted') {
-                      setIsInstalled(true);
-                    }
-                  }}
-                  className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-400 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer border border-blue-500/30"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Add App to Phone Home Screen</span>
-                </button>
-              )}
+              {/* Install PWA Button / Status Card */}
+              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-8 w-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                      <Smartphone className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-xs text-white">Staff Mobile App (PWA)</h4>
+                      <p className="text-[11px] text-slate-400">
+                        {isInstalled ? 'Running as standalone installed app' : 'Install for 1-tap clock & task notifications'}
+                      </p>
+                    </div>
+                  </div>
+                  {isInstalled ? (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
+                      Installed ✓
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowPWAInstallModal(true)}
+                      className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-[10px] cursor-pointer"
+                    >
+                      Install
+                    </button>
+                  )}
+                </div>
+
+                {!isInstalled && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPWAInstallModal(true)}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-blue-500/20"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Add App to Phone Home Screen</span>
+                  </button>
+                )}
+              </div>
 
               <button
                 onClick={handleLogout}
@@ -2188,7 +2544,7 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 mb-1">Reason *</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   required
                   placeholder="Detail reason for leave..."
                   value={leaveForm.reason}
@@ -2196,6 +2552,37 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white outline-none"
                 />
               </div>
+
+              {/* Dynamic Auto-Exclusion Breakdown Badge */}
+              {leaveForm.startDate && leaveForm.endDate && (() => {
+                const breakdown = calculateLeaveDeductionBreakdown(leaveForm.startDate, leaveForm.endDate, leaveForm.isHalfDay, companyId);
+                return (
+                  <div className="p-3 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-1 text-[11px] text-slate-300">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span>Total Calendar Days:</span>
+                      <span className="font-mono font-bold text-white">{breakdown.totalCalendarDays} Day(s)</span>
+                    </div>
+                    {breakdown.weeklyOffDaysCount > 0 && (
+                      <div className="flex items-center justify-between text-emerald-400">
+                        <span>Weekly Offs Excluded:</span>
+                        <span className="font-mono font-bold">-{breakdown.weeklyOffDaysCount} Day(s)</span>
+                      </div>
+                    )}
+                    {breakdown.holidayDaysCount > 0 && (
+                      <div className="flex items-start justify-between text-indigo-400 gap-2">
+                        <span className="truncate">Holidays Excluded ({breakdown.holidayDetails.map(h => h.name).join(', ')}):</span>
+                        <span className="font-mono font-bold shrink-0">-{breakdown.holidayDaysCount} Day(s)</span>
+                      </div>
+                    )}
+                    <div className="pt-1.5 border-t border-slate-800 flex items-center justify-between font-black text-xs text-blue-400">
+                      <span>Actual Leave Deduction:</span>
+                      <span className="px-2 py-0.5 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-300 font-mono">
+                        {breakdown.effectiveDeductionDays} Day(s)
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
@@ -2286,22 +2673,130 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
               )}
             </div>
 
-            {/* Reply Input */}
-            <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+            {/* Reply Success Feedback Toast */}
+            {taskReplySuccess && (
+              <div className="p-2.5 rounded-xl bg-emerald-950/90 border border-emerald-500/50 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in duration-150">
+                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                <span className="font-semibold">{taskReplySuccess}</span>
+              </div>
+            )}
+
+            {/* Reply Input Form */}
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendComment();
+              }} 
+              className="flex items-center gap-2 pt-2 border-t border-slate-800"
+            >
               <input
                 type="text"
-                placeholder="Reply to manager..."
+                placeholder="Type your reply to manager..."
                 value={taskCommentText}
                 onChange={e => setTaskCommentText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleSendComment(); }}
-                className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white outline-none focus:border-blue-500"
+                className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 outline-none focus:border-blue-500"
               />
               <button
-                onClick={handleSendComment}
-                className="p-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition cursor-pointer"
+                type="submit"
+                disabled={!taskCommentText.trim()}
+                className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shrink-0 active:scale-95"
               >
-                <Send className="h-4 w-4" />
+                <Send className="h-3.5 w-3.5" />
+                <span>Reply</span>
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL 2B: IN-APP STAFF NOTIFICATIONS DRAWER */}
+      {/* ============================================================== */}
+      {showNotificationsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full space-y-3.5 max-h-[85vh] flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                  <Bell className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-white">Notifications</h3>
+                  <p className="text-[10px] text-slate-400">
+                    {staffNotifications.filter(n => !n.read).length} unread alerts
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1">
+                {staffNotifications.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearStaffNotifications(currentEmployee.id, companyId);
+                      setStaffNotifications([]);
+                    }}
+                    className="text-[10px] text-slate-400 hover:text-rose-400 px-2 py-1 rounded-lg hover:bg-slate-800 cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowNotificationsModal(false)}
+                  className="h-7 w-7 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Notifications List */}
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 text-xs">
+              {staffNotifications.map(n => (
+                <div
+                  key={n.id}
+                  onClick={() => {
+                    markStaffNotificationRead(n.id, companyId);
+                    setStaffNotifications(prev => prev.map(item => item.id === n.id ? { ...item, read: true } : item));
+                    if (n.taskId) {
+                      const match = myTasks.find(t => t.id === n.taskId);
+                      if (match) {
+                        setSelectedTask(match);
+                        setShowNotificationsModal(false);
+                        setActiveTab('tasks');
+                      }
+                    } else if (n.linkTab) {
+                      setActiveTab(n.linkTab);
+                      setShowNotificationsModal(false);
+                    }
+                  }}
+                  className={`p-3 rounded-2xl border transition cursor-pointer space-y-1 ${
+                    !n.read 
+                      ? 'bg-slate-800/90 border-blue-500/40 shadow-sm' 
+                      : 'bg-slate-950/60 border-slate-800/80 text-slate-400'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[11px] font-bold ${!n.read ? 'text-white' : 'text-slate-300'}`}>
+                      {n.title}
+                    </span>
+                    {!n.read && (
+                      <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+                    )}
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-slate-300">{n.message}</p>
+                  <div className="text-[9px] text-slate-500 font-mono pt-1">
+                    {new Date(n.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              ))}
+
+              {staffNotifications.length === 0 && (
+                <div className="text-center py-10 text-slate-500 text-xs border border-dashed border-slate-800 rounded-2xl">
+                  No notifications yet.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2427,6 +2922,14 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
           </div>
         </div>
       )}
+
+      {/* Staff PWA Install Modal */}
+      <StaffPWAInstallModal
+        isOpen={showPWAInstallModal}
+        onClose={() => setShowPWAInstallModal(false)}
+        installPrompt={installPrompt}
+        onInstallAccepted={() => setIsInstalled(true)}
+      />
 
       {/* Simulated SMS Alert & Forgot PIN Modal */}
       {renderSimulatedSmsToast()}

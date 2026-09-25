@@ -4,13 +4,15 @@ import {
   Clock, CheckCircle2, AlertCircle, AlertTriangle, MessageSquare, 
   User, Users, ArrowUpDown, ChevronRight, X, Sparkles, SlidersHorizontal,
   ChevronDown, Send, Edit3, Trash2, Eye, FileSpreadsheet, Layers,
-  BarChart2, PieChart, Check, Phone, ArrowUpRight, TrendingUp, RefreshCw
+  BarChart2, PieChart, Check, Phone, ArrowUpRight, TrendingUp, RefreshCw,
+  Smartphone, Share2
 } from 'lucide-react';
 import { TaskAssignment, TaskStatus, TaskPriority, TaskAssignmentComment } from '../../types/staffPortal';
 import { Employee, Config } from '../../types';
 import { 
   getTaskAssignments, createTaskAssignment, updateTaskStatus, 
   addTaskComment, updateTaskAssignment, deleteTaskAssignment,
+  generateTaskWhatsAppUrl,
   getTodayDateString 
 } from '../../services/employeeStaffService';
 import { getActiveCompanyId } from '../../services/supabaseTenantService';
@@ -407,6 +409,14 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
       dueDate: newTaskForm.dueDate,
       category: newTaskForm.category
     }, companyId);
+
+    // Offer instant WhatsApp notification to staff
+    if (targetEmp.contactNo) {
+      const waUrl = generateTaskWhatsAppUrl(created, targetEmp.contactNo, config?.CompanyName || (config as any)?.companyName);
+      if (confirm(`Task ${created.taskNo} assigned to ${targetEmp.fullName}!\n\nWould you like to send assignment details & deadline to their WhatsApp now?`)) {
+        window.open(waUrl, '_blank');
+      }
+    }
 
     setShowNewModal(false);
     setNewTaskForm({
@@ -1087,6 +1097,19 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                         <div className="flex items-center justify-end gap-1">
                           <button
                             type="button"
+                            onClick={() => {
+                              const emp = employees.find(e => e.id === task.assignedToEmpId);
+                              const waUrl = generateTaskWhatsAppUrl(task, emp?.contactNo, config?.CompanyName || (config as any)?.companyName);
+                              window.open(waUrl, '_blank');
+                            }}
+                            className="p-1 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition cursor-pointer"
+                            title="Send WhatsApp assignment notification to staff"
+                          >
+                            <Smartphone className="h-3.5 w-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => setSelectedTaskDetail(task)}
                             className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
                             title="View full task & conversation"
@@ -1508,6 +1531,33 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                 </select>
               </div>
             </div>
+
+            {/* WhatsApp Staff Button */}
+            {(() => {
+              const emp = employees.find(e => e.id === selectedTaskDetail.assignedToEmpId);
+              const contact = emp?.contactNo;
+              return (
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Smartphone className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <span className="font-bold text-emerald-950 block">Notify Staff on WhatsApp</span>
+                      <span className="text-[10px] text-emerald-700">{contact ? `Mobile: ${contact}` : 'No mobile registered for employee'}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const waUrl = generateTaskWhatsAppUrl(selectedTaskDetail, contact, config?.CompanyName || (config as any)?.companyName);
+                      window.open(waUrl, '_blank');
+                    }}
+                    className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                  >
+                    Open WhatsApp
+                  </button>
+                </div>
+              );
+            })()}
 
             {/* Description */}
             {selectedTaskDetail.description && (

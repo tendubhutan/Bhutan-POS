@@ -38,7 +38,9 @@ import {
   setDeviceCounterId,
   getDesignatedOfflineCounter,
   canCurrentDeviceBillOffline,
-  isSystemOnline
+  isSystemOnline,
+  getTerminalsConfig,
+  DEFAULT_TERMINALS
 } from '../services/storageService';
 import {
   findBestItemScheme,
@@ -206,6 +208,21 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   const [batchSelectModalIdx, setBatchSelectModalIdx] = useState<number | null>(null);
 
   const [deviceCounterId, setLocalDeviceCounterId] = useState<string>(() => getDeviceCounterId());
+
+  // Allowed terminals strictly filtered based on company configuration / terminal limit
+  const allowedTerminals = useMemo(() => {
+    const list = getTerminalsConfig().filter(t => t.isActive !== false);
+    return list.length > 0 ? list : [DEFAULT_TERMINALS[0]];
+  }, [config]);
+
+  // Ensure active selected terminal is valid within the allowed terminals list
+  useEffect(() => {
+    if (allowedTerminals.length > 0 && !allowedTerminals.some(t => t.code === deviceCounterId || t.id === deviceCounterId)) {
+      const firstCode = allowedTerminals[0].code || allowedTerminals[0].id || 'C1';
+      setLocalDeviceCounterId(firstCode);
+      setDeviceCounterId(firstCode);
+    }
+  }, [allowedTerminals, deviceCounterId]);
 
   // Keep posBillNo and posBillDate synchronized with editing state and active voucher series
   useEffect(() => {
@@ -2154,13 +2171,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 className="bg-white border border-indigo-200 text-indigo-900 text-xs font-bold font-mono rounded px-1.5 py-0.5 outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
                 title="Local Terminal / Counter Identifier (For offline multi-device safety without creating extra voucher types)"
               >
-                <option value="C1">Counter 1 (C1)</option>
-                <option value="C2">Counter 2 (C2)</option>
-                <option value="C3">Counter 3 (C3)</option>
-                <option value="C4">Counter 4 (C4)</option>
-                <option value="ACC1">Accountant 1 (ACC1)</option>
-                <option value="ACC2">Accountant 2 (ACC2)</option>
-                <option value="MOB">Owner Mobile (MOB)</option>
+                {allowedTerminals.map(term => (
+                  <option key={term.code || term.id} value={term.code || term.id}>
+                    {term.name || `${term.tag} (${term.code})`}
+                  </option>
+                ))}
               </select>
               {!isSystemOnline() && (
                 <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg flex items-center gap-1 border ${

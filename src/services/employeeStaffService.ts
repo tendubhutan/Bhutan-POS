@@ -5,15 +5,210 @@ import {
   AttendanceRecord, 
   TaskAssignment, 
   TaskAssignmentComment,
+  StaffInAppNotification,
   MonthlyAttendanceSummary,
   AttendanceStatus,
   OfficeNetworkSecurityConfig,
-  NetworkVerificationResult
+  NetworkVerificationResult,
+  CompanyHoliday,
+  CompanyHolidayPolicy,
+  WeeklyOffMode,
+  LeaveDeductionBreakdown
 } from '../types/staffPortal';
 import { Employee } from '../types';
 import { loadJson, saveJson, STORAGE_KEYS, getEmployees, saveEmployees } from './storageService';
 import { DEFAULT_TENANT_COMPANY, getActiveCompanyId } from './supabaseTenantService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { broadcastEntityMutation } from './supabaseSyncService';
+
+// ---------------------------------------------------------------------------
+// CROSS-TAB / MULTI-DEVICE INSTANT SYNC BUS (0ms inter-tab, <50ms cloud)
+// ---------------------------------------------------------------------------
+let taskBroadcastChannel: BroadcastChannel | null = null;
+
+function initTaskBroadcastChannel() {
+  if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return;
+  if (taskBroadcastChannel) return;
+  try {
+    taskBroadcastChannel = new BroadcastChannel('deep_pos_task_sync_bus');
+    taskBroadcastChannel.onmessage = (event) => {
+      const msg = event.data;
+      if (!msg || !msg.type) return;
+      const currentCompanyId = getActiveCompanyId();
+      if (msg.companyId && msg.companyId !== currentCompanyId) return;
+
+      if (msg.type === 'TASKS_UPDATED' && Array.isArray(msg.tasks)) {
+        saveJson(STORAGE_KEYS.TASK_ASSIGNMENTS, msg.tasks, msg.companyId);
+        window.dispatchEvent(new CustomEvent('deep_pos_tasks_updated', { detail: { tasks: msg.tasks, companyId: msg.companyId } }));
+      } else if (msg.type === 'NOTIFICATIONS_UPDATED' && Array.isArray(msg.notifications)) {
+        saveJson(STORAGE_KEYS.STAFF_NOTIFICATIONS, msg.notifications, msg.companyId);
+        window.dispatchEvent(new CustomEvent('deep_pos_staff_notifications_updated', { detail: { notifications: msg.notifications, companyId: msg.companyId } }));
+      } else if (msg.type === 'NETWORK_SECURITY_UPDATED' && msg.config) {
+        if (typeof localStorage !== 'undefined') {
+          try {
+            localStorage.setItem(`deep_pos_office_network_config_${msg.companyId}`, JSON.stringify(msg.config));
+            localStorage.setItem('deep_pos_current_office_network_config', JSON.stringify({ companyId: msg.companyId, ...msg.config }));
+          } catch {}
+        }
+        window.dispatchEvent(new CustomEvent('deep_pos_network_security_updated', { detail: { config: msg.config, companyId: msg.companyId } }));
+      }
+    };
+  } catch (err) {
+    console.warn('[Task BroadcastChannel init error]:', err);
+  }
+}
+
+function broadcastNetworkSecurityToTabs(config: OfficeNetworkSecurityConfig, companyId: string) {
+  initTaskBroadcastChannel();
+  try {
+    if (taskBroadcastChannel) {
+      taskBroadcastChannel.postMessage({
+        type: 'NETWORK_SECURITY_UPDATED',
+        config,
+        companyId,
+        timestamp: Date.now()
+      });
+    }
+  } catch (err) {
+    console.warn('[Network Security BroadcastChannel send error]:', err);
+  }
+}
+
+function broadcastTasksToTabs(tasks: TaskAssignment[], companyId: string) {
+  initTaskBroadcastChannel();
+  try {
+    if (taskBroadcastChannel) {
+      taskBroadcastChannel.postMessage({
+        type: 'TASKS_UPDATED',
+        tasks,
+        companyId,
+        timestamp: Date.now()
+      });
+    }
+  } catch (err) {
+    console.warn('[Task BroadcastChannel send error]:', err);
+  }
+}
+
+function broadcastNotificationsToTabs(notifications: StaffInAppNotification[], companyId: string) {
+  initTaskBroadcastChannel();
+  try {
+    if (taskBroadcastChannel) {
+      taskBroadcastChannel.postMessage({
+        type: 'NOTIFICATIONS_UPDATED',
+        notifications,
+        companyId,
+        timestamp: Date.now()
+      });
+    }
+  } catch (err) {
+    console.warn('[Notification BroadcastChannel send error]:', err);
+  }
+}
+
+// Active Firestore listeners for ultra-fast instant task & notification updates
+let activeTaskUnsub: (() => void) | null = null;
+let activeNotifUnsub: (() => void) | null = null;
+let activeNetworkUnsub: (() => void) | null = null;
+let activeSubscribedCompanyId: string | null = null;
+
+export function subscribeToRealtimeTasks(companyId?: string): () => void {
+  const cId = companyId || getActiveCompanyId();
+  if (!cId) return () => {};
+
+  initTaskBroadcastChannel();
+
+  if (activeSubscribedCompanyId === cId && activeTaskUnsub) {
+    return () => {};
+  }
+
+  if (activeTaskUnsub) {
+    activeTaskUnsub();
+    activeTaskUnsub = null;
+  }
+  if (activeNotifUnsub) {
+    activeNotifUnsub();
+    activeNotifUnsub = null;
+  }
+  if (activeNetworkUnsub) {
+    activeNetworkUnsub();
+    activeNetworkUnsub = null;
+  }
+
+  activeSubscribedCompanyId = cId;
+
+  try {
+    const taskDocRef = doc(db, 'tenant_tasks', cId);
+    activeTaskUnsub = onSnapshot(taskDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data && Array.isArray(data.tasks)) {
+          const localTasks = getTaskAssignments(cId);
+          if (JSON.stringify(localTasks) !== JSON.stringify(data.tasks)) {
+            saveJson(STORAGE_KEYS.TASK_ASSIGNMENTS, data.tasks, cId);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('deep_pos_tasks_updated', { detail: { tasks: data.tasks, companyId: cId } }));
+            }
+          }
+        }
+      }
+    }, (err) => console.warn('[Firestore Realtime Tasks notice]:', err));
+
+    const notifDocRef = doc(db, 'tenant_notifications', cId);
+    activeNotifUnsub = onSnapshot(notifDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data && Array.isArray(data.notifications)) {
+          const localNotifs = getStaffNotifications(undefined, cId);
+          if (JSON.stringify(localNotifs) !== JSON.stringify(data.notifications)) {
+            saveJson(STORAGE_KEYS.STAFF_NOTIFICATIONS, data.notifications, cId);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('deep_pos_staff_notifications_updated', { detail: { notifications: data.notifications, companyId: cId } }));
+            }
+          }
+        }
+      }
+    }, (err) => console.warn('[Firestore Realtime Notifications notice]:', err));
+
+    const netDocRef = doc(db, 'tenant_office_network', cId);
+    activeNetworkUnsub = onSnapshot(netDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data && data.config) {
+          if (typeof localStorage !== 'undefined') {
+            try {
+              localStorage.setItem(`deep_pos_office_network_config_${cId}`, JSON.stringify(data.config));
+              localStorage.setItem('deep_pos_current_office_network_config', JSON.stringify({ companyId: cId, ...data.config }));
+            } catch {}
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('deep_pos_network_security_updated', { detail: { config: data.config, companyId: cId } }));
+          }
+        }
+      }
+    }, (err) => console.warn('[Firestore Realtime Network Security notice]:', err));
+  } catch (err) {
+    console.warn('[subscribeToRealtimeTasks setup error]:', err);
+  }
+
+  return () => {
+    if (activeTaskUnsub) {
+      activeTaskUnsub();
+      activeTaskUnsub = null;
+    }
+    if (activeNotifUnsub) {
+      activeNotifUnsub();
+      activeNotifUnsub = null;
+    }
+    if (activeNetworkUnsub) {
+      activeNetworkUnsub();
+      activeNetworkUnsub = null;
+    }
+    activeSubscribedCompanyId = null;
+  };
+}
 
 export const getBaseAppUrl = (): string => {
   if (typeof window !== 'undefined') {
@@ -27,7 +222,7 @@ export const getBaseAppUrl = (): string => {
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_OFFICE_NETWORK_CONFIG: OfficeNetworkSecurityConfig = {
-  requireOfficeNetwork: true,
+  requireOfficeNetwork: false, // Default is false: staff can clock in freely from home/any network unless admin explicitly enables enforcement
   officeWifiSsid: '',
   allowedIps: [],
   allowLocalLan: true,
@@ -39,33 +234,234 @@ export const DEFAULT_OFFICE_NETWORK_CONFIG: OfficeNetworkSecurityConfig = {
 };
 
 export function getOfficeNetworkConfig(companyId?: string): OfficeNetworkSecurityConfig {
-  const cId = companyId || getActiveCompanyId();
-  const allConfigs = loadJson<Record<string, OfficeNetworkSecurityConfig>>(STORAGE_KEYS.OFFICE_NETWORK_CONFIG, {});
-  const existing = allConfigs[cId];
-  if (!existing) {
-    return { ...DEFAULT_OFFICE_NETWORK_CONFIG };
+  const cId = companyId || 
+    (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('company') : null) || 
+    getActiveCompanyId() || 
+    'default';
+
+  if (typeof localStorage !== 'undefined') {
+    // 1. Check direct scoped key: deep_pos_office_network_config_${cId}
+    try {
+      const rawDirect = localStorage.getItem(`deep_pos_office_network_config_${cId}`);
+      if (rawDirect) {
+        const parsed = JSON.parse(rawDirect);
+        if (parsed && typeof parsed === 'object' && parsed.requireOfficeNetwork !== undefined) {
+          return { ...DEFAULT_OFFICE_NETWORK_CONFIG, ...parsed, requireOfficeNetwork: Boolean(parsed.requireOfficeNetwork) };
+        }
+      }
+    } catch {}
+
+    // 2. Check current active network snapshot
+    try {
+      const rawCurrent = localStorage.getItem('deep_pos_current_office_network_config');
+      if (rawCurrent) {
+        const parsed = JSON.parse(rawCurrent);
+        if (parsed && typeof parsed === 'object' && parsed.requireOfficeNetwork !== undefined) {
+          if (!parsed.companyId || parsed.companyId === cId || cId === 'default') {
+            return { ...DEFAULT_OFFICE_NETWORK_CONFIG, ...parsed, requireOfficeNetwork: Boolean(parsed.requireOfficeNetwork) };
+          }
+        }
+      }
+    } catch {}
+
+    // 3. Check default fallback key: deep_pos_office_network_config_default
+    try {
+      const rawDefault = localStorage.getItem('deep_pos_office_network_config_default');
+      if (rawDefault) {
+        const parsed = JSON.parse(rawDefault);
+        if (parsed && typeof parsed === 'object' && parsed.requireOfficeNetwork !== undefined) {
+          return { ...DEFAULT_OFFICE_NETWORK_CONFIG, ...parsed, requireOfficeNetwork: Boolean(parsed.requireOfficeNetwork) };
+        }
+      }
+    } catch {}
+
+    // 4. Check global map key: deep_pos_office_network_config
+    try {
+      const rawMap = localStorage.getItem(STORAGE_KEYS.OFFICE_NETWORK_CONFIG);
+      if (rawMap) {
+        const parsed = JSON.parse(rawMap);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed[cId] && parsed[cId].requireOfficeNetwork !== undefined) {
+            return { ...DEFAULT_OFFICE_NETWORK_CONFIG, ...parsed[cId], requireOfficeNetwork: Boolean(parsed[cId].requireOfficeNetwork) };
+          }
+          if (parsed['default'] && parsed['default'].requireOfficeNetwork !== undefined) {
+            return { ...DEFAULT_OFFICE_NETWORK_CONFIG, ...parsed['default'], requireOfficeNetwork: Boolean(parsed['default'].requireOfficeNetwork) };
+          }
+          if (parsed.requireOfficeNetwork !== undefined) {
+            return { ...DEFAULT_OFFICE_NETWORK_CONFIG, ...parsed, requireOfficeNetwork: Boolean(parsed.requireOfficeNetwork) };
+          }
+        }
+      }
+    } catch {}
   }
-  return {
-    ...DEFAULT_OFFICE_NETWORK_CONFIG,
-    ...existing
-  };
+
+  return { ...DEFAULT_OFFICE_NETWORK_CONFIG };
+}
+
+export async function fetchRemoteOfficeNetworkConfig(companyId?: string): Promise<OfficeNetworkSecurityConfig | null> {
+  const cId = companyId || 
+    (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('company') : null) || 
+    getActiveCompanyId() || 
+    'default';
+  if (!cId) return null;
+
+  try {
+    // 1. Try Firestore first (<30ms instant cloud sync across devices)
+    try {
+      // Try tenant doc first
+      let netDocRef = doc(db, 'tenant_office_network', cId);
+      let snap = await getDoc(netDocRef);
+      
+      // Fallback to default doc if tenant doc does not exist
+      if (!snap.exists() && cId !== 'default') {
+        netDocRef = doc(db, 'tenant_office_network', 'default');
+        snap = await getDoc(netDocRef);
+      }
+
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data && data.config) {
+          const cleanConfig = { ...DEFAULT_OFFICE_NETWORK_CONFIG, ...data.config, requireOfficeNetwork: Boolean(data.config.requireOfficeNetwork) };
+          if (typeof localStorage !== 'undefined') {
+            try {
+              localStorage.setItem(`deep_pos_office_network_config_${cId}`, JSON.stringify(cleanConfig));
+              localStorage.setItem('deep_pos_office_network_config_default', JSON.stringify(cleanConfig));
+              localStorage.setItem('deep_pos_current_office_network_config', JSON.stringify({ companyId: cId, ...cleanConfig }));
+            } catch {}
+          }
+          return cleanConfig;
+        }
+      }
+    } catch (fsErr) {
+      console.warn('[Firestore fetchRemoteOfficeNetworkConfig notice]:', fsErr);
+    }
+
+    // 2. Try Supabase tenant_settings
+    if (isSupabaseConfigured) {
+      let { data: row } = await supabase
+        .from('tenant_settings')
+        .select('data')
+        .eq('company_id', cId)
+        .eq('record_id', 'company_office_network_config')
+        .maybeSingle();
+
+      if (!row?.data?.config && cId !== 'default') {
+        const res = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', 'default')
+          .eq('record_id', 'company_office_network_config')
+          .maybeSingle();
+        row = res.data;
+      }
+
+      if (row?.data?.config) {
+        const cleanConfig = { ...DEFAULT_OFFICE_NETWORK_CONFIG, ...row.data.config, requireOfficeNetwork: Boolean(row.data.config.requireOfficeNetwork) };
+        if (typeof localStorage !== 'undefined') {
+          try {
+            localStorage.setItem(`deep_pos_office_network_config_${cId}`, JSON.stringify(cleanConfig));
+            localStorage.setItem('deep_pos_office_network_config_default', JSON.stringify(cleanConfig));
+            localStorage.setItem('deep_pos_current_office_network_config', JSON.stringify({ companyId: cId, ...cleanConfig }));
+          } catch {}
+        }
+        return cleanConfig;
+      }
+    }
+  } catch (err) {
+    console.warn('[fetchRemoteOfficeNetworkConfig notice]:', err);
+  }
+
+  return null;
 }
 
 export function saveOfficeNetworkConfig(config: OfficeNetworkSecurityConfig, companyId?: string): void {
-  const cId = companyId || getActiveCompanyId();
-  const allConfigs = loadJson<Record<string, OfficeNetworkSecurityConfig>>(STORAGE_KEYS.OFFICE_NETWORK_CONFIG, {});
-  allConfigs[cId] = { ...config };
-  saveJson(STORAGE_KEYS.OFFICE_NETWORK_CONFIG, allConfigs);
+  const cId = companyId || 
+    (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('company') : null) || 
+    getActiveCompanyId() || 
+    'default';
 
-  // Cross-PC sync
-  if (isSupabaseConfigured && cId) {
-    Promise.resolve(
-      supabase.from('tenant_settings').upsert({
-        company_id: cId,
-        record_id: 'company_office_network_config',
-        data: { config, updated_at: new Date().toISOString() }
-      }, { onConflict: 'company_id,record_id' })
-    ).catch(err => console.warn('[Supabase saveOfficeNetworkConfig cloud sync error]:', err));
+  const cleanConfig: OfficeNetworkSecurityConfig = {
+    ...DEFAULT_OFFICE_NETWORK_CONFIG,
+    ...config,
+    requireOfficeNetwork: Boolean(config.requireOfficeNetwork)
+  };
+
+  // 1. Save directly to local storage (both company-specific and universal default keys)
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(`deep_pos_office_network_config_${cId}`, JSON.stringify(cleanConfig));
+      localStorage.setItem('deep_pos_office_network_config_default', JSON.stringify(cleanConfig));
+      
+      let allConfigs: Record<string, any> = {};
+      const raw = localStorage.getItem(STORAGE_KEYS.OFFICE_NETWORK_CONFIG);
+      if (raw) {
+        try { allConfigs = JSON.parse(raw) || {}; } catch {}
+      }
+      allConfigs[cId] = { ...cleanConfig };
+      allConfigs['default'] = { ...cleanConfig };
+      localStorage.setItem(STORAGE_KEYS.OFFICE_NETWORK_CONFIG, JSON.stringify(allConfigs));
+      localStorage.setItem('deep_pos_current_office_network_config', JSON.stringify({ companyId: cId, ...cleanConfig, updatedAt: new Date().toISOString() }));
+    } catch (e) {
+      console.warn('[saveOfficeNetworkConfig localStorage error]:', e);
+    }
+  }
+
+  // 2. Broadcast across tabs & PWA instances on the same device
+  broadcastNetworkSecurityToTabs(cleanConfig, cId);
+
+  // 3. Dispatch local window event
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('deep_pos_network_security_updated', { detail: { config: cleanConfig, companyId: cId } }));
+  }
+
+  // 4. Firestore real-time sync across PC, mobile phones, and remote tablets
+  try {
+    const netDocRef = doc(db, 'tenant_office_network', cId);
+    setDoc(netDocRef, {
+      config: cleanConfig,
+      companyId: cId,
+      updatedAt: new Date().toISOString()
+    }, { merge: true }).catch(err => console.warn('[Firestore saveOfficeNetworkConfig error]:', err));
+
+    if (cId !== 'default') {
+      const defaultDocRef = doc(db, 'tenant_office_network', 'default');
+      setDoc(defaultDocRef, {
+        config: cleanConfig,
+        companyId: 'default',
+        updatedAt: new Date().toISOString()
+      }, { merge: true }).catch(err => console.warn('[Firestore default saveOfficeNetworkConfig error]:', err));
+    }
+  } catch (err) {
+    console.warn('[Firestore saveOfficeNetworkConfig exception]:', err);
+  }
+
+  // 5. Cross-PC sync via Supabase
+  if (isSupabaseConfigured) {
+    if (cId) {
+      Promise.resolve(
+        supabase.from('tenant_settings').upsert({
+          company_id: cId,
+          record_id: 'company_office_network_config',
+          data: { config: cleanConfig, updated_at: new Date().toISOString() }
+        }, { onConflict: 'company_id,record_id' })
+      ).catch(err => console.warn('[Supabase saveOfficeNetworkConfig cloud sync error]:', err));
+    }
+
+    if (cId !== 'default') {
+      Promise.resolve(
+        supabase.from('tenant_settings').upsert({
+          company_id: 'default',
+          record_id: 'company_office_network_config',
+          data: { config: cleanConfig, updated_at: new Date().toISOString() }
+        }, { onConflict: 'company_id,record_id' })
+      ).catch(err => console.warn('[Supabase default saveOfficeNetworkConfig cloud sync error]:', err));
+    }
+
+    broadcastEntityMutation({
+      entity: 'office_network',
+      data: cleanConfig,
+      companyId: cId
+    });
   }
 }
 
@@ -88,12 +484,13 @@ export async function verifyOfficeNetwork(
 ): Promise<NetworkVerificationResult> {
   const cfg = getOfficeNetworkConfig(companyId);
 
-  // If network restriction is toggled OFF by admin, permit attendance
+  // If network restriction is toggled OFF by admin, permit attendance from home & any network
   if (!cfg.requireOfficeNetwork) {
     return {
       allowed: true,
       isOfficeNetwork: true,
-      reason: 'Office network restriction is disabled by management.'
+      networkType: 'external',
+      reason: 'Office network restriction is disabled by management. Clock-in from home & any network is permitted.'
     };
   }
 
@@ -210,7 +607,11 @@ export const DEFAULT_LEAVE_TYPES: LeaveTypeConfig[] = [
     enabled: true,
     carryForward: true,
     color: 'emerald',
-    description: 'Standard paid annual leave for rest and recuperation.'
+    description: 'Standard paid annual leave for rest and recuperation. Can be allocated one-time upfront or accrued on a daily/monthly basis.',
+    allocationMode: 'one_time',
+    monthlyAccrualRate: 2.5,
+    dailyAccrualRate: 0.0822,
+    maxAnnualLimit: 30
   },
   {
     id: 'casual',
@@ -220,7 +621,8 @@ export const DEFAULT_LEAVE_TYPES: LeaveTypeConfig[] = [
     enabled: true,
     carryForward: false,
     color: 'blue',
-    description: 'For unforeseen personal matters and short emergencies.'
+    description: 'For unforeseen personal matters and short emergencies.',
+    allocationMode: 'one_time'
   },
   {
     id: 'medical',
@@ -230,7 +632,8 @@ export const DEFAULT_LEAVE_TYPES: LeaveTypeConfig[] = [
     enabled: true,
     carryForward: false,
     color: 'rose',
-    description: 'For illness or medical treatment (may require medical fitness certificate).'
+    description: 'For illness or medical treatment (may require medical fitness certificate).',
+    allocationMode: 'one_time'
   },
   {
     id: 'maternity',
@@ -240,7 +643,8 @@ export const DEFAULT_LEAVE_TYPES: LeaveTypeConfig[] = [
     enabled: true,
     carryForward: false,
     color: 'purple',
-    description: 'For female employees on childbirth (standard 3 months).'
+    description: 'For female employees on childbirth (standard 3 months).',
+    allocationMode: 'one_time'
   },
   {
     id: 'paternity',
@@ -250,7 +654,8 @@ export const DEFAULT_LEAVE_TYPES: LeaveTypeConfig[] = [
     enabled: true,
     carryForward: false,
     color: 'indigo',
-    description: 'For male employees on birth of their child.'
+    description: 'For male employees on birth of their child.',
+    allocationMode: 'one_time'
   },
   {
     id: 'bereavement',
@@ -260,7 +665,8 @@ export const DEFAULT_LEAVE_TYPES: LeaveTypeConfig[] = [
     enabled: true,
     carryForward: false,
     color: 'slate',
-    description: 'For bereavement or funeral of immediate family members.'
+    description: 'For bereavement or funeral of immediate family members.',
+    allocationMode: 'one_time'
   }
 ];
 
@@ -306,6 +712,231 @@ export function updateLeaveType(updatedType: LeaveTypeConfig, companyId?: string
     types.push(updatedType);
   }
   saveLeaveTypes(types, companyId);
+}
+
+// ---------------------------------------------------------------------------
+// COMPANY HOLIDAY LIST & WEEKLY-OFF POLICY MANAGEMENT
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_BHUTAN_GOVERNMENT_HOLIDAYS: CompanyHoliday[] = [
+  { id: 'hol_nyinlong', name: 'Winter Solstice (Nyinlong)', date: '2026-01-02', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'Traditional winter solstice holiday' },
+  { id: 'hol_traditional_offerings', name: 'Traditional Day of Offerings', date: '2026-02-05', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'National traditional day of offerings' },
+  { id: 'hol_king_bday_1', name: "Birth Anniversary of His Majesty The King (Day 1)", date: '2026-02-21', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: "Official 3-day royal anniversary celebration" },
+  { id: 'hol_king_bday_2', name: "Birth Anniversary of His Majesty The King (Day 2)", date: '2026-02-22', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: "Official 3-day royal anniversary celebration" },
+  { id: 'hol_king_bday_3', name: "Birth Anniversary of His Majesty The King (Day 3)", date: '2026-02-23', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: "Official 3-day royal anniversary celebration" },
+  { id: 'hol_losar_1', name: 'Losar - National New Year (Day 1)', date: '2026-03-01', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'Bhutanese Lunar New Year' },
+  { id: 'hol_losar_2', name: 'Losar - National New Year (Day 2)', date: '2026-03-02', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'Bhutanese Lunar New Year' },
+  { id: 'hol_zhabdrung', name: 'Zhabdrung Kuchoe', date: '2026-04-27', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'Death anniversary of Zhabdrung Ngawang Namgyel' },
+  { id: 'hol_king3_bday', name: 'Birth Anniversary of Third Druk Gyalpo', date: '2026-05-02', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'Teachers Day / Third King Birthday' },
+  { id: 'hol_buddha_parinirvana', name: 'Lord Buddha Parinirvana (Saga Dawa)', date: '2026-05-24', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'Holy Buddhist Parinirvana celebration' },
+  { id: 'hol_guru_bday', name: 'Birth Anniversary of Guru Rinpoche', date: '2026-07-10', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'Tshechu celebration of Guru Padmasambhava' },
+  { id: 'hol_buddha_sermon', name: 'First Sermon of Lord Buddha (Drukpa Tshe-Zhi)', date: '2026-08-04', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'Commemoration of Buddha first turning wheel of dharma' },
+  { id: 'hol_blessed_rainy_day', name: 'Blessed Rainy Day (Thruebab)', date: '2026-09-23', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'Traditional autumnal cleansing holiday' },
+  { id: 'hol_dashain', name: 'Dashain Festival', date: '2026-10-02', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'Hindu community festival holiday' },
+  { id: 'hol_coronation_day', name: 'Coronation Day of His Majesty The King', date: '2026-11-01', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'National celebration of royal coronation' },
+  { id: 'hol_king4_bday', name: 'Birth Anniversary of Fourth Druk Gyalpo / Constitution Day', date: '2026-11-11', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: 'National Youth Day and Constitution Day' },
+  { id: 'hol_national_day', name: 'National Day of Bhutan', date: '2026-12-17', isRecurringYearly: true, isGovernmentHoliday: true, enabled: true, description: '1907 Coronation of first King Ugyen Wangchuck' }
+];
+
+export const DEFAULT_HOLIDAY_POLICY: CompanyHolidayPolicy = {
+  weeklyOffMode: 'saturday_sunday',
+  customWeeklyOffDays: [0, 6],
+  enableGovernmentHolidays: true,
+  holidays: DEFAULT_BHUTAN_GOVERNMENT_HOLIDAYS,
+  autoExcludeHolidaysFromLeave: true,
+  autoExcludeWeeklyOffFromLeave: true
+};
+
+export function getCompanyHolidayPolicy(companyId?: string): CompanyHolidayPolicy {
+  const cId = companyId || getActiveCompanyId();
+  const policy = loadJson<CompanyHolidayPolicy | null>(STORAGE_KEYS.HOLIDAY_POLICY, null, cId);
+  if (!policy || !policy.holidays) {
+    return { ...DEFAULT_HOLIDAY_POLICY };
+  }
+  return {
+    weeklyOffMode: policy.weeklyOffMode || 'saturday_sunday',
+    customWeeklyOffDays: Array.isArray(policy.customWeeklyOffDays) ? policy.customWeeklyOffDays : [0, 6],
+    enableGovernmentHolidays: policy.enableGovernmentHolidays !== false,
+    holidays: Array.isArray(policy.holidays) ? policy.holidays : DEFAULT_BHUTAN_GOVERNMENT_HOLIDAYS,
+    autoExcludeHolidaysFromLeave: policy.autoExcludeHolidaysFromLeave !== false,
+    autoExcludeWeeklyOffFromLeave: policy.autoExcludeWeeklyOffFromLeave !== false
+  };
+}
+
+export function saveCompanyHolidayPolicy(policy: CompanyHolidayPolicy, companyId?: string): void {
+  const cId = companyId || getActiveCompanyId();
+  saveJson(STORAGE_KEYS.HOLIDAY_POLICY, policy, cId);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('deep_pos_holiday_policy_updated', { detail: { policy } }));
+  }
+
+  // Multi-Terminal Cloud sync
+  if (cId) {
+    try {
+      setDoc(doc(db, 'tenant_holiday_policy', cId), {
+        policy,
+        updatedAt: new Date().toISOString()
+      }, { merge: true }).catch(err => console.warn('[Firestore saveCompanyHolidayPolicy error]:', err));
+    } catch (err) {
+      console.warn('[Firestore saveCompanyHolidayPolicy error]:', err);
+    }
+  }
+
+  if (isSupabaseConfigured && cId) {
+    Promise.resolve(
+      supabase.from('tenant_settings').upsert({
+        company_id: cId,
+        record_id: 'company_holiday_policy',
+        data: { policy, updated_at: new Date().toISOString() }
+      }, { onConflict: 'company_id,record_id' })
+    ).catch(err => console.warn('[Supabase saveCompanyHolidayPolicy error]:', err));
+  }
+}
+
+export function toggleHolidayEnabled(holidayId: string, companyId?: string): CompanyHolidayPolicy {
+  const policy = getCompanyHolidayPolicy(companyId);
+  const updatedHolidays = policy.holidays.map(h => {
+    if (h.id === holidayId) {
+      return { ...h, enabled: !h.enabled };
+    }
+    return h;
+  });
+  const updatedPolicy = { ...policy, holidays: updatedHolidays };
+  saveCompanyHolidayPolicy(updatedPolicy, companyId);
+  return updatedPolicy;
+}
+
+export function addCustomCompanyHoliday(
+  holiday: Omit<CompanyHoliday, 'id' | 'isGovernmentHoliday'>,
+  companyId?: string
+): CompanyHolidayPolicy {
+  const policy = getCompanyHolidayPolicy(companyId);
+  const newHoliday: CompanyHoliday = {
+    ...holiday,
+    id: `HOL-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`,
+    isGovernmentHoliday: false,
+    enabled: true
+  };
+  const updatedPolicy = {
+    ...policy,
+    holidays: [...policy.holidays, newHoliday]
+  };
+  saveCompanyHolidayPolicy(updatedPolicy, companyId);
+  return updatedPolicy;
+}
+
+export function deleteCompanyHoliday(holidayId: string, companyId?: string): CompanyHolidayPolicy {
+  const policy = getCompanyHolidayPolicy(companyId);
+  const updatedPolicy = {
+    ...policy,
+    holidays: policy.holidays.filter(h => h.id !== holidayId)
+  };
+  saveCompanyHolidayPolicy(updatedPolicy, companyId);
+  return updatedPolicy;
+}
+
+/**
+ * Accurately calculates effective deductible leave days for any date range
+ * by automatically excluding configured weekly off days (Sat/Sun or Sun)
+ * and active company/government holidays.
+ */
+export function calculateLeaveDeductionBreakdown(
+  startDate: string,
+  endDate: string,
+  isHalfDay = false,
+  companyId?: string
+): LeaveDeductionBreakdown {
+  if (!startDate || !endDate) {
+    return {
+      totalCalendarDays: 0,
+      weeklyOffDaysCount: 0,
+      weeklyOffDates: [],
+      holidayDaysCount: 0,
+      holidayDetails: [],
+      effectiveDeductionDays: 0
+    };
+  }
+
+  const policy = getCompanyHolidayPolicy(companyId);
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+    return {
+      totalCalendarDays: 0,
+      weeklyOffDaysCount: 0,
+      weeklyOffDates: [],
+      holidayDaysCount: 0,
+      holidayDetails: [],
+      effectiveDeductionDays: 0
+    };
+  }
+
+  const weeklyOffDaysSet = new Set<number>();
+  if (policy.weeklyOffMode === 'saturday_sunday') {
+    weeklyOffDaysSet.add(0); // Sunday
+    weeklyOffDaysSet.add(6); // Saturday
+  } else if (policy.weeklyOffMode === 'sunday_only') {
+    weeklyOffDaysSet.add(0); // Sunday
+  } else if (policy.weeklyOffMode === 'custom' && Array.isArray(policy.customWeeklyOffDays)) {
+    policy.customWeeklyOffDays.forEach(d => weeklyOffDaysSet.add(d));
+  }
+
+  const enabledHolidays = (policy.holidays || []).filter(h => h.enabled);
+  const holidayFullMap = new Map<string, CompanyHoliday>();
+  const holidayRecurringMap = new Map<string, CompanyHoliday>();
+
+  enabledHolidays.forEach(h => {
+    if (h.date.length === 10) {
+      holidayFullMap.set(h.date, h);
+      const mmdd = h.date.slice(5);
+      if (h.isRecurringYearly) holidayRecurringMap.set(mmdd, h);
+    } else if (h.date.length === 5) {
+      holidayRecurringMap.set(h.date, h);
+    }
+  });
+
+  let totalCalendarDays = 0;
+  const weeklyOffDates: string[] = [];
+  const holidayDetails: { date: string; name: string }[] = [];
+  let deductibleDays = 0;
+
+  const current = new Date(start);
+  while (current <= end) {
+    totalCalendarDays += 1;
+    const yyyy = current.getFullYear();
+    const mm = String(current.getMonth() + 1).padStart(2, '0');
+    const dd = String(current.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    const mmddStr = `${mm}-${dd}`;
+    const dayOfWeek = current.getDay(); // 0=Sun, 6=Sat
+
+    const isWeeklyOff = policy.autoExcludeWeeklyOffFromLeave && weeklyOffDaysSet.has(dayOfWeek);
+    const holidayMatch = policy.autoExcludeHolidaysFromLeave ? (holidayFullMap.get(dateStr) || holidayRecurringMap.get(mmddStr)) : null;
+
+    if (isWeeklyOff) {
+      weeklyOffDates.push(dateStr);
+    } else if (holidayMatch) {
+      holidayDetails.push({ date: dateStr, name: holidayMatch.name });
+    } else {
+      deductibleDays += 1;
+    }
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  if (isHalfDay) {
+    deductibleDays = deductibleDays > 0 ? 0.5 : 0;
+  }
+
+  return {
+    totalCalendarDays,
+    weeklyOffDaysCount: weeklyOffDates.length,
+    weeklyOffDates,
+    holidayDaysCount: holidayDetails.length,
+    holidayDetails,
+    effectiveDeductionDays: deductibleDays
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -393,8 +1024,46 @@ export function calculateEmployeeLeaveBalance(employeeId: string, year = new Dat
 
   const balances: EmployeeLeaveBalance['balances'] = {};
 
+  const now = new Date();
+  const currentYr = now.getFullYear();
+  
+  // Calculate days elapsed in the target year
+  const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+  const totalDaysInYear = isLeapYear ? 366 : 365;
+  let daysElapsed = totalDaysInYear;
+
+  if (year === currentYr) {
+    const startOfYear = new Date(year, 0, 1);
+    const diffMs = now.getTime() - startOfYear.getTime();
+    daysElapsed = Math.max(1, Math.min(totalDaysInYear, Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1));
+  } else if (year > currentYr) {
+    daysElapsed = 0;
+  } else {
+    daysElapsed = totalDaysInYear;
+  }
+
   leaveTypes.forEach(lt => {
-    const allocated = lt.enabled ? lt.defaultDays : 0;
+    let allocated = 0;
+
+    if (lt.enabled) {
+      if (lt.allocationMode === 'daily_accrual') {
+        // Daily accrual calculation:
+        // Priority 1: user-specified daily rate (e.g. 0.0822 days/day)
+        // Priority 2: user-specified monthly rate (e.g. 2.5 days/month => 2.5 / (365/12) days/day)
+        // Priority 3: defaultDays / totalDaysInYear
+        const dailyRate = lt.dailyAccrualRate || 
+          (lt.monthlyAccrualRate ? (lt.monthlyAccrualRate / (totalDaysInYear / 12)) : (lt.defaultDays / totalDaysInYear));
+        
+        const rawAccrued = daysElapsed * dailyRate;
+        const maxLimit = lt.maxAnnualLimit || (lt.monthlyAccrualRate ? lt.monthlyAccrualRate * 12 : lt.defaultDays) || 30;
+        
+        // Round to 1 decimal place (e.g. 2.5, 5.0, 7.5, etc.)
+        allocated = Math.min(maxLimit, Math.round(rawAccrued * 10) / 10);
+      } else {
+        // One-time upfront annual allocation
+        allocated = lt.defaultDays;
+      }
+    }
     
     // Find all applications in this year
     const appsForType = apps.filter(a => {
@@ -411,13 +1080,18 @@ export function calculateEmployeeLeaveBalance(employeeId: string, year = new Dat
       .filter(a => a.status === 'Pending')
       .reduce((sum, a) => sum + (a.daysCount || 0), 0);
 
-    const remaining = Math.max(0, allocated - used);
+    const remaining = Math.max(0, Math.round((allocated - used) * 10) / 10);
 
     balances[lt.id] = {
       allocated,
       used,
       pending,
-      remaining
+      remaining,
+      allocationMode: lt.allocationMode || 'one_time',
+      monthlyAccrualRate: lt.monthlyAccrualRate,
+      dailyAccrualRate: lt.dailyAccrualRate,
+      daysElapsedInYear: daysElapsed,
+      fullYearQuota: lt.defaultDays
     };
   });
 
@@ -510,9 +1184,11 @@ export function employeeClockIn(params: {
   const mins = now.getMinutes();
   const isLate = hours > 9 || (hours === 9 && mins > 30);
 
-  const networkDetails = params.networkVerification?.networkType 
-    ? `Office Network (${params.networkVerification.networkType.toUpperCase()})` 
-    : (params.source === 'pos_terminal' ? 'POS Counter Terminal' : 'Office Verified');
+  const networkDetails = !netCfg.requireOfficeNetwork
+    ? 'Home / Remote Network (Enforcement Off)'
+    : (params.networkVerification?.networkType 
+        ? `Office Network (${params.networkVerification.networkType.toUpperCase()})` 
+        : (params.source === 'pos_terminal' ? 'POS Counter Terminal' : 'Office Verified'));
 
   if (!existing) {
     existing = {
@@ -679,14 +1355,46 @@ export function calculateMonthlyAttendanceSummary(
     else if (r.status === 'Absent') unpaidLeaveDays += 1;
   });
 
-  // Calculate Sundays / standard off days
-  let sundaysCount = 0;
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dayOfWeek = new Date(year, month - 1, d).getDay();
-    if (dayOfWeek === 0) sundaysCount += 1; // Sunday
+  // Calculate weekly-offs and holidays based on company policy
+  const policy = getCompanyHolidayPolicy(cId);
+  const weeklyOffDaysSet = new Set<number>();
+  if (policy.weeklyOffMode === 'saturday_sunday') {
+    weeklyOffDaysSet.add(0); // Sunday
+    weeklyOffDaysSet.add(6); // Saturday
+  } else if (policy.weeklyOffMode === 'sunday_only') {
+    weeklyOffDaysSet.add(0); // Sunday
+  } else if (policy.weeklyOffMode === 'custom' && Array.isArray(policy.customWeeklyOffDays)) {
+    policy.customWeeklyOffDays.forEach(d => weeklyOffDaysSet.add(d));
   }
 
-  const standardWorkingDays = daysInMonth - sundaysCount;
+  const enabledHolidays = (policy.holidays || []).filter(h => h.enabled);
+  const holidayDatesInMonth = new Set<number>();
+
+  enabledHolidays.forEach(h => {
+    if (h.date.length === 10) {
+      const [hY, hM, hD] = h.date.split('-').map(Number);
+      if (hM === month && (hY === year || h.isRecurringYearly)) {
+        holidayDatesInMonth.add(hD);
+      }
+    } else if (h.date.length === 5) {
+      const [hM, hD] = h.date.split('-').map(Number);
+      if (hM === month) {
+        holidayDatesInMonth.add(hD);
+      }
+    }
+  });
+
+  let nonWorkingDaysCount = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayOfWeek = new Date(year, month - 1, d).getDay();
+    const isWeeklyOff = weeklyOffDaysSet.has(dayOfWeek);
+    const isHoliday = holidayDatesInMonth.has(d);
+    if (isWeeklyOff || isHoliday) {
+      nonWorkingDaysCount += 1;
+    }
+  }
+
+  const standardWorkingDays = Math.max(0, daysInMonth - nonWorkingDaysCount);
   
   // Total accounted days
   const accountedDays = presentDays + paidLeaveDays + unpaidLeaveDays;
@@ -695,8 +1403,8 @@ export function calculateMonthlyAttendanceSummary(
   const daysPassed = isCurrentMonth ? Math.min(new Date().getDate(), daysInMonth) : daysInMonth;
   
   let unrecordedDays = 0;
-  if (daysPassed > accountedDays + sundaysCount) {
-    unrecordedDays = Math.max(0, daysPassed - sundaysCount - accountedDays);
+  if (daysPassed > accountedDays + nonWorkingDaysCount) {
+    unrecordedDays = Math.max(0, daysPassed - nonWorkingDaysCount - accountedDays);
   }
 
   const absentDays = unpaidLeaveDays + unrecordedDays;
@@ -723,6 +1431,148 @@ export function calculateMonthlyAttendanceSummary(
 }
 
 // ---------------------------------------------------------------------------
+// STAFF IN-APP NOTIFICATIONS & WHATSAPP ALERTS
+// ---------------------------------------------------------------------------
+
+export function getStaffNotifications(employeeId?: string, companyId?: string): StaffInAppNotification[] {
+  const cId = companyId || getActiveCompanyId();
+  const all = loadJson<StaffInAppNotification[]>(STORAGE_KEYS.STAFF_NOTIFICATIONS, [], cId);
+  if (employeeId) {
+    return all.filter(n => n.employeeId === employeeId);
+  }
+  return all;
+}
+
+export function saveStaffNotifications(notifications: StaffInAppNotification[], companyId?: string): void {
+  const cId = companyId || getActiveCompanyId();
+  saveJson(STORAGE_KEYS.STAFF_NOTIFICATIONS, notifications, cId);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('deep_pos_staff_notifications_updated', { detail: { notifications } }));
+  }
+
+  // 1. Instant 0ms same-origin / cross-tab broadcast
+  broadcastNotificationsToTabs(notifications, cId);
+
+  // 2. High-speed Supabase Realtime websocket broadcast
+  broadcastEntityMutation({
+    entity: 'staff_notifications',
+    data: notifications,
+    companyId: cId
+  });
+
+  // 3. Guaranteed instant Firestore cloud sync
+  if (cId) {
+    try {
+      setDoc(doc(db, 'tenant_notifications', cId), {
+        notifications,
+        updatedAt: new Date().toISOString()
+      }, { merge: true }).catch(err => console.warn('[Firestore saveStaffNotifications error]:', err));
+    } catch (err) {
+      console.warn('[Firestore saveStaffNotifications sync error]:', err);
+    }
+  }
+
+  // 4. Supabase DB persistence
+  if (isSupabaseConfigured && cId) {
+    Promise.resolve(
+      supabase.from('tenant_settings').upsert({
+        company_id: cId,
+        record_id: 'company_staff_notifications',
+        data: { notifications, updated_at: new Date().toISOString() }
+      }, { onConflict: 'company_id,record_id' })
+    ).catch(err => console.warn('[Supabase saveStaffNotifications error]:', err));
+  }
+}
+
+export function addStaffNotification(
+  notification: Omit<StaffInAppNotification, 'id' | 'createdAt' | 'read'>,
+  companyId?: string
+): StaffInAppNotification {
+  const cId = companyId || notification.companyId || getActiveCompanyId();
+  const all = getStaffNotifications(undefined, cId);
+  
+  const newNotif: StaffInAppNotification = {
+    ...notification,
+    id: `NOTIF-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)}`,
+    companyId: cId,
+    createdAt: new Date().toISOString(),
+    read: false
+  };
+
+  all.unshift(newNotif);
+  // Keep latest 100 notifications per company
+  saveStaffNotifications(all.slice(0, 100), cId);
+
+  // Trigger web notification if available
+  triggerBrowserNotification(newNotif.title, newNotif.message);
+
+  return newNotif;
+}
+
+export function markStaffNotificationRead(notificationId: string, companyId?: string): void {
+  const cId = companyId || getActiveCompanyId();
+  const all = getStaffNotifications(undefined, cId);
+  const target = all.find(n => n.id === notificationId);
+  if (target) {
+    target.read = true;
+    saveStaffNotifications(all, cId);
+  }
+}
+
+export function clearStaffNotifications(employeeId?: string, companyId?: string): void {
+  const cId = companyId || getActiveCompanyId();
+  if (employeeId) {
+    const all = getStaffNotifications(undefined, cId);
+    const next = all.filter(n => n.employeeId !== employeeId);
+    saveStaffNotifications(next, cId);
+  } else {
+    saveStaffNotifications([], cId);
+  }
+}
+
+export function triggerBrowserNotification(title: string, body: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, {
+        body,
+        icon: '/favicon.ico'
+      });
+    }
+    if ('vibrate' in navigator) {
+      navigator.vibrate([100, 50, 100]);
+    }
+  } catch {}
+}
+
+export function generateTaskWhatsAppUrl(
+  task: TaskAssignment,
+  employeeMobile?: string,
+  companyName?: string
+): string {
+  let cleanPhone = (employeeMobile || '').replace(/\D/g, '');
+  if (cleanPhone.length === 8 && !cleanPhone.startsWith('975')) {
+    // Bhutan 8-digit mobile number prefix with 975
+    cleanPhone = `975${cleanPhone}`;
+  }
+  const portalUrl = typeof window !== 'undefined' ? `${window.location.origin}/employee-portal` : '';
+  const text = `📋 *NEW TASK ASSIGNMENT*\n\n` +
+    `🏢 *Company:* ${companyName || 'Business Operations'}\n` +
+    `📌 *Task:* ${task.title} (${task.taskNo})\n` +
+    `⚡ *Priority:* ${task.priority}\n` +
+    `📅 *Due Date:* ${task.dueDate}\n` +
+    `👤 *Assigned By:* ${task.assignedByName || 'Management'}\n` +
+    (task.description ? `📝 *Instructions:* ${task.description}\n` : '') +
+    `\n👉 *View & Reply in Employee Portal:* ${portalUrl}`;
+
+  const encoded = encodeURIComponent(text);
+  if (cleanPhone) {
+    return `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`;
+  }
+  return `https://api.whatsapp.com/send?text=${encoded}`;
+}
+
+// ---------------------------------------------------------------------------
 // TASK & ASSIGNMENT / NOTE TRACKING
 // ---------------------------------------------------------------------------
 
@@ -738,7 +1588,29 @@ export function saveTaskAssignments(tasks: TaskAssignment[], companyId?: string)
     window.dispatchEvent(new CustomEvent('deep_pos_tasks_updated', { detail: { tasks } }));
   }
 
-  // Cross-PC sync
+  // 1. Instant 0ms same-origin / cross-tab broadcast
+  broadcastTasksToTabs(tasks, cId);
+
+  // 2. High-speed Supabase Realtime websocket broadcast (<20ms)
+  broadcastEntityMutation({
+    entity: 'tasks',
+    data: tasks,
+    companyId: cId
+  });
+
+  // 3. Guaranteed instant Firestore cloud sync
+  if (cId) {
+    try {
+      setDoc(doc(db, 'tenant_tasks', cId), {
+        tasks,
+        updatedAt: new Date().toISOString()
+      }, { merge: true }).catch(err => console.warn('[Firestore saveTaskAssignments error]:', err));
+    } catch (err) {
+      console.warn('[Firestore saveTaskAssignments sync error]:', err);
+    }
+  }
+
+  // 4. Supabase DB persistence
   if (isSupabaseConfigured && cId) {
     Promise.resolve(
       supabase.from('tenant_settings').upsert({
@@ -771,6 +1643,21 @@ export function createTaskAssignment(
 
   all.unshift(newTask);
   saveTaskAssignments(all, cId);
+
+  // Create in-app notification for the assigned employee
+  if (newTask.assignedToEmpId) {
+    addStaffNotification({
+      companyId: cId,
+      employeeId: newTask.assignedToEmpId,
+      type: 'task_assigned',
+      title: `New Task: ${newTask.title} (${newTask.taskNo})`,
+      message: `Assigned by ${newTask.assignedByName || 'Manager'} • Due: ${newTask.dueDate}`,
+      taskId: newTask.id,
+      linkTab: 'tasks',
+      priority: newTask.priority
+    }, cId);
+  }
+
   return newTask;
 }
 
@@ -805,6 +1692,36 @@ export function updateTaskStatus(
   }
 
   saveTaskAssignments(all, cId);
+
+  // Notify the other party
+  if (author) {
+    if (author.role === 'Employee') {
+      // Employee changed status -> notify manager/admin
+      addStaffNotification({
+        companyId: cId,
+        employeeId: 'management',
+        type: 'task_status',
+        title: `Task ${target.taskNo} Status: ${status}`,
+        message: `${author.name} updated task "${target.title}" to ${status}`,
+        taskId: target.id,
+        linkTab: 'tasks',
+        priority: target.priority
+      }, cId);
+    } else {
+      // Manager changed status -> notify assigned employee
+      addStaffNotification({
+        companyId: cId,
+        employeeId: target.assignedToEmpId,
+        type: 'task_status',
+        title: `Task ${target.taskNo} Status: ${status}`,
+        message: `${author.name} updated status of "${target.title}" to ${status}`,
+        taskId: target.id,
+        linkTab: 'tasks',
+        priority: target.priority
+      }, cId);
+    }
+  }
+
   return true;
 }
 
@@ -835,6 +1752,34 @@ export function addTaskComment(
   target.updatedAt = new Date().toISOString();
 
   saveTaskAssignments(all, cId);
+
+  // In-app notification for the recipient
+  if (author.role === 'Employee') {
+    // Employee replied -> send notification to management
+    addStaffNotification({
+      companyId: cId,
+      employeeId: 'management',
+      type: 'task_comment',
+      title: `Staff Reply on ${target.taskNo}`,
+      message: `${author.name}: "${message.length > 50 ? message.slice(0, 50) + '...' : message}"`,
+      taskId: target.id,
+      linkTab: 'tasks',
+      priority: target.priority
+    }, cId);
+  } else {
+    // Manager replied/commented -> send notification to assigned employee
+    addStaffNotification({
+      companyId: cId,
+      employeeId: target.assignedToEmpId,
+      type: 'task_comment',
+      title: `Manager Note on ${target.taskNo}`,
+      message: `${author.name}: "${message.length > 50 ? message.slice(0, 50) + '...' : message}"`,
+      taskId: target.id,
+      linkTab: 'tasks',
+      priority: target.priority
+    }, cId);
+  }
+
   return comment;
 }
 
