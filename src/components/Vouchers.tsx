@@ -41,6 +41,7 @@ import {
   Share2,
   Download,
   ArrowLeft,
+  ArrowRight,
   Ban,
   Eye,
   Check,
@@ -362,6 +363,44 @@ export const Vouchers: React.FC<VouchersProps> = ({
     if (!partyLedger || (activeVType !== 'P' && activeVType !== 'R')) return [];
     return getPartyOutstandingBills(partyLedger, activeVType === 'P' ? 'creditor' : 'debtor');
   }, [partyLedger, activeVType, config.EnableBillWiseDetails]);
+
+  // Intelligent Accounting Narration Auto-Generator
+  const getSuggestedNarration = (
+    vType: string,
+    party: string,
+    mode: string,
+    allocs: BillAllocation[] = [],
+    amt?: number | string
+  ): string => {
+    const cleanParty = (party || '').trim();
+    const cleanMode = (mode || '').trim();
+    const billsText = allocs.length > 0 ? ` against Bill #${allocs.map(a => a.billNo).join(', ')}` : '';
+    const viaText = cleanMode ? ` via ${cleanMode}` : '';
+
+    if (vType === 'R') {
+      if (cleanParty) {
+        return `Being payment received from ${cleanParty}${billsText}${viaText}`;
+      }
+      return `Being amount received${viaText}`;
+    }
+
+    if (vType === 'P') {
+      if (cleanParty) {
+        return `Being payment made to ${cleanParty}${billsText}${viaText}`;
+      }
+      return `Being payment made for expenses${viaText}`;
+    }
+
+    if (vType === 'C') {
+      return cleanParty && cleanMode ? `Being transfer from ${cleanMode} to ${cleanParty}` : 'Being cash/bank contra transfer';
+    }
+
+    if (vType === 'J') {
+      return cleanParty ? `Being journal adjustment passed for ${cleanParty}` : 'Being journal adjustment entry passed';
+    }
+
+    return '';
+  };
 
   const checkAndPromptBankLedger = (ledgerName: string, focusNextElementId?: string) => {
     if (isBankLedger(ledgerName, ledgers, config)) {
@@ -2399,14 +2438,41 @@ export const Vouchers: React.FC<VouchersProps> = ({
                                 value={line.ledger}
                                 restrictToGroups={activeVType === 'C' ? ['Bank Accounts', 'Cash-in-Hand'] : undefined}
                                 prioritizeGroups={
-                                  activeVType === 'P' && line.type === 'Cr'
-                                    ? ['Bank Accounts', 'Cash-in-Hand']
+                                  // Receipt Voucher: Dr -> Bank + Cash, Cr -> Sundry Debtors + Incomes
+                                  activeVType === 'R' && line.type === 'Cr'
+                                    ? ['Sundry Debtors', 'Debtors', 'Direct Incomes', 'Indirect Incomes', 'Sales Accounts', 'Sales Account']
                                     : activeVType === 'R' && line.type === 'Dr'
-                                    ? ['Bank Accounts', 'Cash-in-Hand']
+                                    ? ['Bank Accounts', 'Cash-in-Hand', 'Bank OD/OCC A/c', 'Cash']
+                                    // Payment Voucher: Cr -> Bank + Cash, Dr -> Expenses + Sundry Creditors
+                                    : activeVType === 'P' && line.type === 'Cr'
+                                    ? ['Bank Accounts', 'Cash-in-Hand', 'Bank OD/OCC A/c', 'Cash']
+                                    : activeVType === 'P' && line.type === 'Dr'
+                                    ? [
+                                        'Direct Expenses',
+                                        'Indirect Expenses',
+                                        'Administrative Expenses',
+                                        'Selling & Distribution Expenses',
+                                        'Financial Expenses',
+                                        'Wages & Factory Expenses',
+                                        'Freight & Carriage Inwards',
+                                        'Expenses',
+                                        'Sundry Creditors',
+                                        'Creditors'
+                                      ]
+                                    // Contra Voucher: Bank + Cash both sides
+                                    : activeVType === 'C'
+                                    ? ['Bank Accounts', 'Cash-in-Hand', 'Bank OD/OCC A/c', 'Cash']
+                                    // Journal Voucher: Dr -> Expenses, Assets, Debtors; Cr -> Creditors, Capital, Incomes
+                                    : activeVType === 'J' && line.type === 'Dr'
+                                    ? ['Direct Expenses', 'Indirect Expenses', 'Expenses', 'Fixed Assets', 'Sundry Debtors', 'Debtors', 'Current Assets']
+                                    : activeVType === 'J' && line.type === 'Cr'
+                                    ? ['Sundry Creditors', 'Creditors', 'Capital Account', 'Direct Incomes', 'Indirect Incomes', 'Current Liabilities']
+                                    // Sales / Quotation / Delivery Note: Dr -> Debtors, Cr -> Sales
                                     : (activeVType as string) === 'S' || (activeVType as string) === 'SL' || (activeVType as string) === 'Q' || (activeVType as string) === 'DN'
-                                    ? ['Sundry Debtors', 'Debtors']
+                                    ? (line.type === 'Dr' ? ['Sundry Debtors', 'Debtors'] : ['Sales Accounts', 'Direct Incomes'])
+                                    // Purchase / Credit Note: Cr -> Creditors, Dr -> Purchases
                                     : (activeVType as string) === 'PU' || (activeVType as string) === 'CN'
-                                    ? ['Sundry Creditors', 'Creditors']
+                                    ? (line.type === 'Cr' ? ['Sundry Creditors', 'Creditors'] : ['Purchase Accounts', 'Direct Expenses'])
                                     : undefined
                                 }
                                 onChange={val => updateGridLine(line.id, 'ledger', val)}
@@ -2645,6 +2711,28 @@ export const Vouchers: React.FC<VouchersProps> = ({
                     id="single-ledger-1"
                     ledgers={ledgers}
                     restrictToGroups={activeVType === 'C' ? ['Bank Accounts', 'Cash-in-Hand'] : undefined}
+                    prioritizeGroups={
+                      activeVType === 'P'
+                        ? [
+                            'Direct Expenses',
+                            'Indirect Expenses',
+                            'Administrative Expenses',
+                            'Selling & Distribution Expenses',
+                            'Financial Expenses',
+                            'Wages & Factory Expenses',
+                            'Freight & Carriage Inwards',
+                            'Expenses',
+                            'Sundry Creditors',
+                            'Creditors'
+                          ]
+                        : activeVType === 'R'
+                        ? ['Sundry Debtors', 'Debtors', 'Direct Incomes', 'Indirect Incomes', 'Sales Accounts', 'Sales Account']
+                        : activeVType === 'J'
+                        ? ['Direct Expenses', 'Indirect Expenses', 'Expenses', 'Fixed Assets', 'Sundry Debtors', 'Debtors', 'Current Assets']
+                        : activeVType === 'C'
+                        ? ['Bank Accounts', 'Cash-in-Hand', 'Bank OD/OCC A/c', 'Cash']
+                        : undefined
+                    }
                     value={
                       activeVType === 'P' || activeVType === 'R'
                         ? partyLedger
@@ -2656,6 +2744,11 @@ export const Vouchers: React.FC<VouchersProps> = ({
                       if (activeVType === 'P' || activeVType === 'R') {
                         setPartyLedger(val);
                         setBillAllocations([]);
+                        // Smart auto-generate narration if blank or previously auto-generated
+                        if (!narration || narration.startsWith('Being payment') || narration.startsWith('Being amount')) {
+                          const suggested = getSuggestedNarration(activeVType, val, modeLedger, []);
+                          if (suggested) setNarration(suggested);
+                        }
                       }
                       else if (activeVType === 'J') setDebitLedger(val);
                       else setToAccount(val);
@@ -2672,7 +2765,14 @@ export const Vouchers: React.FC<VouchersProps> = ({
                   {config.EnableBillWiseDetails !== 'false' && (activeVType === 'P' || activeVType === 'R') && partyLedger && (
                     <div className="mt-1.5 space-y-1">
                       {partyOutstandingBills.length > 0 && (
-                        <div className="flex items-center justify-between bg-indigo-50/80 border border-indigo-200 rounded-lg px-2.5 py-1 text-xs">
+                        <div 
+                          onClick={() => {
+                            setBillModalParty(partyLedger);
+                            setBillModalOpen(true);
+                          }}
+                          className="flex items-center justify-between bg-indigo-50/90 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs cursor-pointer transition shadow-2xs group"
+                          title="Click to view and settle pending bills"
+                        >
                           <div className="flex items-center gap-1.5">
                             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
                             <span className="text-slate-700 font-medium">
@@ -2682,6 +2782,10 @@ export const Vouchers: React.FC<VouchersProps> = ({
                               {currencySymbol}{partyOutstandingBills.reduce((s, b) => s + b.pendingAmount, 0).toLocaleString()}
                             </span>
                           </div>
+                          <span className="text-[10px] font-bold text-indigo-600 group-hover:text-indigo-800 flex items-center gap-1">
+                            <span>Settle Bills</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </span>
                         </div>
                       )}
 
@@ -2733,7 +2837,13 @@ export const Vouchers: React.FC<VouchersProps> = ({
                     id="single-ledger-2"
                     ledgers={ledgers}
                     restrictToGroups={activeVType === 'C' ? ['Bank Accounts', 'Cash-in-Hand'] : undefined}
-                    prioritizeGroups={(activeVType === 'P' || activeVType === 'R') ? ['Bank Accounts', 'Cash-in-Hand'] : undefined}
+                    prioritizeGroups={
+                      activeVType === 'P' || activeVType === 'R' || activeVType === 'C'
+                        ? ['Bank Accounts', 'Cash-in-Hand', 'Bank OD/OCC A/c', 'Cash']
+                        : activeVType === 'J'
+                        ? ['Sundry Creditors', 'Creditors', 'Capital Account', 'Direct Incomes', 'Indirect Incomes', 'Current Liabilities']
+                        : undefined
+                    }
                     value={
                       activeVType === 'P' || activeVType === 'R'
                         ? modeLedger
@@ -2742,7 +2852,13 @@ export const Vouchers: React.FC<VouchersProps> = ({
                         : fromAccount
                     }
                     onChange={val => {
-                      if (activeVType === 'P' || activeVType === 'R') setModeLedger(val);
+                      if (activeVType === 'P' || activeVType === 'R') {
+                        setModeLedger(val);
+                        if (!narration || narration.startsWith('Being payment') || narration.startsWith('Being amount')) {
+                          const suggested = getSuggestedNarration(activeVType, partyLedger, val, billAllocations, amount);
+                          if (suggested) setNarration(suggested);
+                        }
+                      }
                       else if (activeVType === 'J') setCreditLedger(val);
                       else setFromAccount(val);
                       checkAndPromptBankLedger(val, 'single-amount');
@@ -2916,7 +3032,25 @@ export const Vouchers: React.FC<VouchersProps> = ({
           {/* Overall Narration at bottom of voucher entry */}
           <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs text-xs shrink-0">
             <div className="flex items-center justify-between mb-1">
-              <label className="block font-bold text-slate-700 text-[11px]">Overall Narration</label>
+              <div className="flex items-center gap-2">
+                <label className="block font-bold text-slate-700 text-[11px]">Overall Narration</label>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => {
+                    const activeParty = partyLedger || (lines.find(l => l.ledger && l.ledger !== 'Cash' && !isBankLedger(l.ledger, ledgers, config))?.ledger) || '';
+                    const activeMode = modeLedger || (lines.find(l => isBankLedger(l.ledger, ledgers, config) || l.ledger === 'Cash')?.ledger) || '';
+                    const generated = getSuggestedNarration(activeVType, activeParty, activeMode, billAllocations, amount);
+                    if (generated) setNarration(generated);
+                  }}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border border-indigo-200 transition cursor-pointer"
+                  title="Auto-generate standard accounting narration based on party, bills and payment mode"
+                >
+                  <Sparkles className="w-3 h-3 text-indigo-500" />
+                  <span>Auto-Suggest</span>
+                </button>
+              </div>
+
               {isBankInvolved && transactionId && (
                 <div 
                   onClick={() => {
@@ -2934,7 +3068,15 @@ export const Vouchers: React.FC<VouchersProps> = ({
             <input
               id="v-overall-narration"
               type="text"
-              placeholder="e.g. Paid office rent for the month"
+              placeholder={
+                activeVType === 'R'
+                  ? (partyLedger ? `e.g. Being payment received from ${partyLedger} against bill` : "e.g. Being payment received from customer against Invoice")
+                  : activeVType === 'P'
+                  ? (partyLedger ? `e.g. Being payment made to ${partyLedger} against bill` : "e.g. Being payment made to vendor / expense")
+                  : activeVType === 'C'
+                  ? "e.g. Being cash deposited into bank / cash withdrawal"
+                  : "e.g. Being journal adjustment entry passed"
+              }
               value={narration || ''}
               onFocus={e => e.target.select()}
               onChange={e => setNarration(e.target.value)}
@@ -3799,6 +3941,15 @@ export const Vouchers: React.FC<VouchersProps> = ({
             if ((!amount || Number(amount) === 0) && totalAllocated > 0) {
               setAmount(totalAllocated);
             }
+          }
+
+          // Intelligent Auto-Narration Generation upon bill allocation
+          const activeParty = billModalParty || partyLedger || (billModalTargetLineId ? lines.find(l => l.id === billModalTargetLineId)?.ledger : '') || '';
+          const activeMode = modeLedger || (lines.find(l => isBankLedger(l.ledger, ledgers, config) || l.ledger === 'Cash')?.ledger) || '';
+          const smartNarration = getSuggestedNarration(activeVType, activeParty, activeMode, allocs, totalAllocated);
+
+          if (smartNarration) {
+            setNarration(prev => (!prev || prev.startsWith('Being payment') || prev.startsWith('Being amount') ? smartNarration : prev));
           }
         }}
         onClose={() => {

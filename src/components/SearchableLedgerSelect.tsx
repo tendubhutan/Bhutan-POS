@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Ledger } from '../types';
 import { Plus, Pencil, Check, ChevronDown, Sparkles } from 'lucide-react';
+import { getPartyOutstandingBills } from '../services/storageService';
 
 interface SearchableLedgerSelectProps {
   id?: string;
@@ -119,13 +120,132 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
     }
   }, [value, isOpen]);
 
-  // Filter ledgers based on filterGroups/restrictToGroups and active user query
-  const filteredLedgers = React.useMemo(() => {
+  // Accounts that should NEVER be treated as a debtor customer or creditor vendor party
+  const isNonPartyAccount = (ledgerName: string = '', ledgerGroup: string = ''): boolean => {
+    const ln = ledgerName.trim().toLowerCase();
+    const lg = ledgerGroup.trim().toLowerCase();
+
+    if (
+      ln.includes('accumulated') ||
+      ln.includes('depreciation') ||
+      ln.includes('suspense') ||
+      ln.includes('provision') ||
+      ln.includes('tax') ||
+      ln.includes('gst') ||
+      ln.includes('tds') ||
+      ln.includes('pit') ||
+      ln.includes('nppf') ||
+      ln.includes('gis') ||
+      ln.includes('duty') ||
+      ln.includes('duties') ||
+      ln.includes('capital') ||
+      ln.includes('loan') ||
+      ln.includes('drawing') ||
+      ln.includes('bank') ||
+      ln.includes('cash') ||
+      ln.includes('discount received') ||
+      ln.includes('discount allowed') ||
+      ln.includes('round off')
+    ) {
+      return true;
+    }
+
+    if (
+      lg.includes('fixed asset') ||
+      lg.includes('bank account') ||
+      lg.includes('cash-in-hand') ||
+      lg.includes('duties & taxes') ||
+      lg.includes('loans') ||
+      lg.includes('capital account') ||
+      lg.includes('provisions') ||
+      lg.includes('suspense')
+    ) {
+      return true;
+    }
+
+    return false;
+  };
+
+  // Intelligent matching helper covering common ERP naming variations, aliases, and sub-groups
+  const matchesPriorityGroup = (ledgerGroup: string = '', targetGroup: string = '', ledgerName: string = ''): boolean => {
+    if (!ledgerGroup || !targetGroup) return false;
+    const lg = ledgerGroup.trim().toLowerCase();
+    const tg = targetGroup.trim().toLowerCase();
+
+    // Debtors / Customers / Receivables - MUST be genuine party
+    if (tg.includes('debtor') || tg.includes('customer') || tg.includes('receivable')) {
+      if (isNonPartyAccount(ledgerName, ledgerGroup)) return false;
+      return lg.includes('debtor') || lg.includes('customer') || lg.includes('receivable');
+    }
+
+    // Creditors / Vendors / Suppliers / Payables - MUST be genuine party
+    if (tg.includes('creditor') || tg.includes('vendor') || tg.includes('supplier') || tg.includes('payable')) {
+      if (isNonPartyAccount(ledgerName, ledgerGroup)) return false;
+      return lg.includes('creditor') || lg.includes('vendor') || lg.includes('supplier') || lg.includes('payable');
+    }
+
+    // Exact or normalized match
+    if (lg === tg) return true;
+    if (lg.replace(/[-_\s]/g, '') === tg.replace(/[-_\s]/g, '')) return true;
+
+    // Bank Accounts / Bank OD / OCC
+    if (tg.includes('bank')) {
+      return lg.includes('bank') || lg.includes('od') || lg.includes('occ');
+    }
+
+    // Cash-in-Hand / Cash Accounts
+    if (tg.includes('cash')) {
+      return lg.includes('cash');
+    }
+
+    // Expenses (Direct & Indirect & specific cost centers)
+    if (tg.includes('expense')) {
+      if (tg.includes('direct')) {
+        return lg.includes('direct exp') || lg.includes('wages') || lg.includes('freight') || lg.includes('carriage');
+      }
+      if (tg.includes('indirect')) {
+        return (
+          lg.includes('indirect exp') ||
+          lg.includes('admin') ||
+          lg.includes('selling') ||
+          lg.includes('financial') ||
+          lg.includes('operating') ||
+          lg.includes('rent') ||
+          lg.includes('office')
+        );
+      }
+      return lg.includes('expense') || lg.includes('wages') || lg.includes('freight');
+    }
+
+    // Incomes & Revenue & Sales
+    if (tg.includes('income') || tg.includes('sales') || tg.includes('revenue')) {
+      if (tg.includes('direct')) {
+        return lg.includes('direct inc') || lg.includes('sales account') || lg.includes('sales');
+      }
+      if (tg.includes('indirect')) {
+        return lg.includes('indirect inc') || lg.includes('interest') || lg.includes('commission') || lg.includes('discount received');
+      }
+      return lg.includes('income') || lg.includes('sales') || lg.includes('revenue');
+    }
+
+    // Assets & Liabilities
+    if (tg.includes('asset')) {
+      return lg.includes('asset');
+    }
+    if (tg.includes('liabilit')) {
+      return lg.includes('liabilit');
+    }
+
+    return false;
+  };
+
+  // Filter ledgers based on filterGroups/restrictToGroups and active user query with intelligent prioritization
+  const { filteredLedgers, prioritizedCount, hasPriority, partyDueMap } = React.useMemo(() => {
     let list = ledgers || [];
     if (restrictToGroups && restrictToGroups.length > 0) {
-      list = list.filter(l => restrictToGroups.includes(l.Group));
+      list = list.filter(l => restrictToGroups.some(rg => matchesPriorityGroup(l.Group, rg, l['Ledger Name'])));
     } else if (effectiveFilterGroups && effectiveFilterGroups.length > 0) {
-      list = list.filter(l => effectiveFilterGroups.includes(l.Group));
+      list = list.filter(l => effectiveFilterGroups.some(eg => matchesPriorityGroup(l.Group, eg, l['Ledger Name'])));
     }
 
     const q = userQuery.trim().toLowerCase();
@@ -140,31 +260,93 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
       });
     }
 
-    if (prioritizeGroups && prioritizeGroups.length > 0) {
-      const groupBuckets: { [grp: string]: Ledger[] } = {};
-      const otherItems: Ledger[] = [];
-      prioritizeGroups.forEach(g => { groupBuckets[g] = []; });
+    // Pre-calculate party due bills so debtors/creditors with pending unpaid invoices (like Prakash) rank at the very top!
+    const dueMap: Record<string, { count: number; amount: number }> = {};
+    const isDebtorPrioritized = prioritizeGroups?.some(g => g.toLowerCase().includes('debtor') || g.toLowerCase().includes('customer'));
+    const isCreditorPrioritized = prioritizeGroups?.some(g => g.toLowerCase().includes('creditor') || g.toLowerCase().includes('supplier'));
 
+    if (isDebtorPrioritized || isCreditorPrioritized) {
+      list.forEach(l => {
+        const lName = l['Ledger Name'];
+        if (lName && !isNonPartyAccount(lName, l.Group)) {
+          try {
+            const pType = isDebtorPrioritized ? 'debtor' : 'creditor';
+            const dueBills = getPartyOutstandingBills(lName, pType);
+            if (dueBills && dueBills.length > 0) {
+              const totalDue = dueBills.reduce((s, b) => s + (Number(b.pendingAmount) || 0), 0);
+              dueMap[lName] = { count: dueBills.length, amount: Math.round(totalDue * 100) / 100 };
+            }
+          } catch {
+            // ignore
+          }
+        }
+      });
+    }
+
+    if (prioritizeGroups && prioritizeGroups.length > 0) {
+      const assigned = new Set<string>();
+      const prioritizedList: Ledger[] = [];
+
+      prioritizeGroups.forEach(targetGroup => {
+        const matchesForTarget: Ledger[] = [];
+        for (const l of list) {
+          const lName = l['Ledger Name'];
+          if (assigned.has(lName)) continue;
+          if (matchesPriorityGroup(l.Group, targetGroup, lName)) {
+            assigned.add(lName);
+            matchesForTarget.push(l);
+          }
+        }
+
+        // Rank candidate matches:
+        // 1. Parties with PENDING BILLS DUE (e.g. Prakash) rank first by highest pending amount!
+        // 2. Ledgers with active non-zero balances rank next
+        // 3. Alphabetical order
+        matchesForTarget.sort((a, b) => {
+          const aName = a['Ledger Name'] || '';
+          const bName = b['Ledger Name'] || '';
+          const dueA = dueMap[aName]?.amount || 0;
+          const dueB = dueMap[bName]?.amount || 0;
+          if (dueA > 0 && dueB === 0) return -1;
+          if (dueB > 0 && dueA === 0) return 1;
+          if (dueA > 0 && dueB > 0 && dueA !== dueB) return dueB - dueA;
+
+          const balA = Math.abs(Number(a['Current Balance']) || 0);
+          const balB = Math.abs(Number(b['Current Balance']) || 0);
+          if (balA > 0 && balB === 0) return -1;
+          if (balB > 0 && balA === 0) return 1;
+          if (balA > 0 && balB > 0 && balA !== balB) return balB - balA;
+
+          return aName.localeCompare(bName);
+        });
+
+        prioritizedList.push(...matchesForTarget);
+      });
+
+      const otherItems: Ledger[] = [];
       for (const l of list) {
-        if (prioritizeGroups.includes(l.Group)) {
-          if (!groupBuckets[l.Group]) groupBuckets[l.Group] = [];
-          groupBuckets[l.Group].push(l);
-        } else {
+        if (!assigned.has(l['Ledger Name'])) {
           otherItems.push(l);
         }
       }
 
-      const prioritizedList: Ledger[] = [];
-      prioritizeGroups.forEach(g => {
-        if (groupBuckets[g]) {
-          prioritizedList.push(...groupBuckets[g]);
-        }
-      });
+      // Sort remaining ledgers alphabetically
+      otherItems.sort((a, b) => (a['Ledger Name'] || '').localeCompare(b['Ledger Name'] || ''));
 
-      return [...prioritizedList, ...otherItems];
+      return {
+        filteredLedgers: [...prioritizedList, ...otherItems],
+        prioritizedCount: prioritizedList.length,
+        hasPriority: prioritizedList.length > 0 && otherItems.length > 0,
+        partyDueMap: dueMap
+      };
     }
 
-    return list;
+    return {
+      filteredLedgers: list,
+      prioritizedCount: 0,
+      hasPriority: false,
+      partyDueMap: dueMap
+    };
   }, [ledgers, restrictToGroups, effectiveFilterGroups, userQuery, prioritizeGroups]);
 
   // Total items in dropdown = (Create New option if present) + filteredLedgers.length
@@ -588,71 +770,111 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
               const itemIdx = (hasCreateOption ? 1 : 0) + idx;
               const isSelected = l['Ledger Name'] === value;
               const isHighlighted = highlightedIndex === itemIdx;
+              const isPrioritized = hasPriority && idx < prioritizedCount;
               const bal = getLedgerBalance(l);
 
               return (
-                <div
-                  key={l['Ledger Name']}
-                  data-index={itemIdx}
-                  onClick={() => selectLedger(l['Ledger Name'])}
-                  onMouseMove={() => {
-                    if (highlightedIndex !== itemIdx) setHighlightedIndex(itemIdx);
-                  }}
-                  onMouseEnter={() => setHighlightedIndex(itemIdx)}
-                  className={`px-3 py-1.5 flex items-center justify-between gap-2 cursor-pointer transition-colors text-xs ${
-                    isHighlighted
-                      ? 'bg-indigo-600 text-white'
-                      : isSelected
-                      ? 'bg-indigo-50/90 text-indigo-950 font-bold'
-                      : 'text-slate-800 hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex flex-col min-w-0 flex-1 pr-1">
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        title={l['Ledger Name']}
-                        className={`font-bold text-[12px] leading-snug break-words ${
-                          isHighlighted ? 'text-white' : 'text-slate-900'
-                        }`}
-                      >
-                        {l['Ledger Name']}
+                <React.Fragment key={l['Ledger Name']}>
+                  {/* Intelligent Priority Section Header */}
+                  {hasPriority && idx === 0 && (
+                    <div className="sticky top-[37px] z-10 px-3 py-1.5 bg-gradient-to-r from-amber-50 to-indigo-50 border-b border-amber-200/80 flex items-center justify-between text-[10.5px] font-bold text-amber-950 shadow-2xs">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles className="h-3 w-3 text-amber-600 animate-pulse" />
+                        <span>Recommended Accounts ({prioritizedCount})</span>
+                      </div>
+                      <span className="text-[9px] px-1.5 py-0.5 bg-white/90 rounded border border-amber-300 font-mono text-amber-800 font-bold">
+                        Intelligent Match
                       </span>
-                      {isSelected && (
-                        <Check className={`h-3 w-3 shrink-0 ${isHighlighted ? 'text-indigo-200' : 'text-indigo-600'}`} />
-                      )}
                     </div>
-                    <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[10px]">
-                      <span className={`font-medium ${
-                        isHighlighted ? 'text-indigo-100' : 'text-slate-500'
-                      }`}>
-                        {l.Group}
-                      </span>
-                      {(l['TPN No'] || l['GST No']) && (
-                        <span className={`font-mono text-[9.5px] ${isHighlighted ? 'text-indigo-200' : 'text-slate-400'}`}>
-                          • {l['TPN No'] || l['GST No']}
-                        </span>
-                      )}
-                      {l['Contact No'] && (
-                        <span className={`${isHighlighted ? 'text-indigo-200' : 'text-slate-400'}`}>
-                          • 📞 {l['Contact No']}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  )}
 
-                  <div className="text-right shrink-0 pl-1 self-center">
-                    <span className={`inline-flex items-center gap-0.5 font-mono text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
+                  {/* General Master Accounts Section Divider */}
+                  {hasPriority && idx === prioritizedCount && (
+                    <div className="px-3 py-1 bg-slate-100 border-y border-slate-200 text-[10px] font-bold text-slate-600 flex items-center justify-between">
+                      <span>Other Accounts ({filteredLedgers.length - prioritizedCount})</span>
+                      <span className="text-[9px] font-normal text-slate-400">All Master Ledgers</span>
+                    </div>
+                  )}
+
+                  <div
+                    data-index={itemIdx}
+                    onClick={() => selectLedger(l['Ledger Name'])}
+                    onMouseMove={() => {
+                      if (highlightedIndex !== itemIdx) setHighlightedIndex(itemIdx);
+                    }}
+                    onMouseEnter={() => setHighlightedIndex(itemIdx)}
+                    className={`px-3 py-1.5 flex items-center justify-between gap-2 cursor-pointer transition-colors text-xs ${
                       isHighlighted
-                        ? 'bg-indigo-700/90 text-white'
-                        : bal.isDebit
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
-                        : 'bg-rose-50 text-rose-700 border border-rose-200/80'
-                    }`}>
-                      <span className="text-[8.5px] opacity-75 font-sans font-medium">Bal:</span>
-                      {currencySymbol} {bal.amount} {bal.type}
-                    </span>
+                        ? 'bg-indigo-600 text-white'
+                        : isSelected
+                        ? 'bg-indigo-50/90 text-indigo-950 font-bold'
+                        : isPrioritized
+                        ? 'bg-amber-50/35 hover:bg-amber-50/80 text-slate-800'
+                        : 'text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex flex-col min-w-0 flex-1 pr-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span
+                          title={l['Ledger Name']}
+                          className={`font-bold text-[12px] leading-snug break-words ${
+                            isHighlighted ? 'text-white' : 'text-slate-900'
+                          }`}
+                        >
+                          {l['Ledger Name']}
+                        </span>
+                        {isSelected && (
+                          <Check className={`h-3 w-3 shrink-0 ${isHighlighted ? 'text-indigo-200' : 'text-indigo-600'}`} />
+                        )}
+                        {partyDueMap[l['Ledger Name']]?.count > 0 ? (
+                          <span className={`px-1.5 py-0.2 rounded text-[8.5px] font-extrabold flex items-center gap-0.5 shrink-0 shadow-2xs ${
+                            isHighlighted ? 'bg-amber-300 text-slate-950 font-black' : 'bg-amber-500 text-white'
+                          }`}>
+                            <span>🔥 {partyDueMap[l['Ledger Name']].count} Due ({currencySymbol}{partyDueMap[l['Ledger Name']].amount.toLocaleString()})</span>
+                          </span>
+                        ) : isPrioritized && !isHighlighted ? (
+                          <span className="px-1.5 py-0.2 rounded text-[8.5px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300/80 shrink-0">
+                            ⭐ Recommended
+                          </span>
+                        ) : isPrioritized && isHighlighted ? (
+                          <span className="px-1.5 py-0.2 rounded text-[8.5px] font-extrabold bg-amber-400 text-slate-950 shrink-0">
+                            ⭐ Recommended
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[10px]">
+                        <span className={`font-medium ${
+                          isHighlighted ? 'text-indigo-100' : 'text-slate-500'
+                        }`}>
+                          {l.Group}
+                        </span>
+                        {(l['TPN No'] || l['GST No']) && (
+                          <span className={`font-mono text-[9.5px] ${isHighlighted ? 'text-indigo-200' : 'text-slate-400'}`}>
+                            • {l['TPN No'] || l['GST No']}
+                          </span>
+                        )}
+                        {l['Contact No'] && (
+                          <span className={`${isHighlighted ? 'text-indigo-200' : 'text-slate-400'}`}>
+                            • 📞 {l['Contact No']}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0 pl-1 self-center">
+                      <span className={`inline-flex items-center gap-0.5 font-mono text-[10px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
+                        isHighlighted
+                          ? 'bg-indigo-700/90 text-white'
+                          : bal.isDebit
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+                          : 'bg-rose-50 text-rose-700 border border-rose-200/80'
+                      }`}>
+                        <span className="text-[8.5px] opacity-75 font-sans font-medium">Bal:</span>
+                        {currencySymbol} {bal.amount} {bal.type}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                </React.Fragment>
               );
             })
           )}

@@ -43,18 +43,43 @@ export const BillWiseModal: React.FC<BillWiseModalProps> = ({
       const outstanding = getPartyOutstandingBills(partyName, partyType);
       setBills(outstanding);
 
-      // Initialize allocations from props or empty
+      // Initialize allocations from props, or smart auto-allocate FIFO if opening fresh
       const initMap: Record<string, number> = {};
       let advAmt = 0;
       let advRef = '';
-      initialAllocations.forEach(a => {
-        if (outstanding.some(b => b.billNo.toLowerCase() === a.billNo.toLowerCase())) {
-          initMap[a.billNo] = a.amount;
-        } else {
-          advRef = a.billNo;
-          advAmt = a.amount;
+
+      if (initialAllocations && initialAllocations.length > 0) {
+        initialAllocations.forEach(a => {
+          if (outstanding.some(b => b.billNo.toLowerCase() === a.billNo.toLowerCase())) {
+            initMap[a.billNo] = a.amount;
+          } else {
+            advRef = a.billNo;
+            advAmt = a.amount;
+          }
+        });
+      } else if (outstanding.length > 0) {
+        // Smart Auto-allocation when opening:
+        const target = typeof voucherAmount === 'number' && voucherAmount > 0 ? voucherAmount : 0;
+        if (target > 0) {
+          let remaining = target;
+          for (const b of outstanding) {
+            if (remaining <= 0) break;
+            const toAlloc = Math.min(remaining, b.pendingAmount);
+            if (toAlloc > 0) {
+              initMap[b.billNo] = Math.round(toAlloc * 100) / 100;
+              remaining -= toAlloc;
+            }
+          }
+          if (remaining > 0.005) {
+            advRef = 'On Account / Advance';
+            advAmt = Math.round(remaining * 100) / 100;
+          }
+        } else if (outstanding.length === 1) {
+          // If only 1 invoice is pending, automatically select it!
+          initMap[outstanding[0].billNo] = outstanding[0].pendingAmount;
         }
-      });
+      }
+
       setAllocations(initMap);
       setAdvanceRef(advRef);
       setAdvanceAmt(advAmt > 0 ? advAmt : '');
