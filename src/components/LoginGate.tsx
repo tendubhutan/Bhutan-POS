@@ -84,26 +84,39 @@ export const LoginGate: React.FC<LoginGateProps> = ({
     let isMounted = true;
     (async () => {
       try {
+        const promises: Promise<any>[] = [];
         if (isSupabaseConfigured) {
-          const { data: comp } = await supabase.from('companies').select('*').eq('id', dedicatedId).maybeSingle();
-          const { data: creds } = await supabase.from('tenant_settings').select('data').eq('company_id', dedicatedId).eq('record_id', 'admin_credentials').maybeSingle();
-          if (comp && isMounted) {
-            setDedicatedCompany(prev => ({
-              ...(prev || {}),
-              ...comp,
-              admin_username: creds?.data?.admin_username || prev?.admin_username || 'admin',
-              admin_password: creds?.data?.admin_password || prev?.admin_password || 'ClientPass@123',
-              admin_pin: creds?.data?.admin_pin || prev?.admin_pin || '1234',
-              admin_name: creds?.data?.admin_name || prev?.admin_name
-            }));
-            return;
-          }
+          promises.push((async () => {
+            try {
+              const { data: comp } = await supabase.from('companies').select('*').eq('id', dedicatedId).maybeSingle();
+              const { data: creds } = await supabase.from('tenant_settings').select('data').eq('company_id', dedicatedId).eq('record_id', 'admin_credentials').maybeSingle();
+              if (comp && isMounted) {
+                setDedicatedCompany(prev => ({
+                  ...(prev || {}),
+                  ...comp,
+                  admin_username: creds?.data?.admin_username || prev?.admin_username || 'admin',
+                  admin_password: creds?.data?.admin_password || prev?.admin_password || 'ClientPass@123',
+                  admin_pin: creds?.data?.admin_pin || prev?.admin_pin || '1234',
+                  admin_name: creds?.data?.admin_name || prev?.admin_name
+                }));
+              }
+            } catch {}
+          })());
         }
-        // Direct Firestore lookup
-        const snap = await getDoc(doc(db, 'companies', dedicatedId));
-        if (snap.exists() && isMounted) {
-          setDedicatedCompany(snap.data() as SupabaseCompany);
-        }
+
+        promises.push((async () => {
+          try {
+            const snap = await getDoc(doc(db, 'companies', dedicatedId));
+            if (snap.exists() && isMounted) {
+              setDedicatedCompany(snap.data() as SupabaseCompany);
+            }
+          } catch {}
+        })());
+
+        await Promise.race([
+          Promise.allSettled(promises),
+          new Promise(r => setTimeout(r, 1500))
+        ]);
       } catch (e) {
         console.warn('Dedicated company lookup notice in LoginGate:', e);
       }
@@ -208,7 +221,7 @@ export const LoginGate: React.FC<LoginGateProps> = ({
       const appUser = tenantSessionToAppUser(session);
       setTimeout(() => {
         onUnlock(appUser);
-      }, 400);
+      }, 50);
     } catch (err: any) {
       if (isDevPreview && !dedicatedId) {
         handleInstantUnlock('Administrator', cleanEmail ? cleanEmail.split('@')[0] : 'Administrator');
@@ -233,7 +246,7 @@ export const LoginGate: React.FC<LoginGateProps> = ({
         setIsSuccess(true);
         setAuthenticatedRole(session.role);
         const appUser = tenantSessionToAppUser(session);
-        setTimeout(() => onUnlock(appUser), 300);
+        setTimeout(() => onUnlock(appUser), 50);
         return;
       }
     } catch {
@@ -265,7 +278,7 @@ export const LoginGate: React.FC<LoginGateProps> = ({
           
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-950/70 border border-blue-800/60 text-blue-300 text-xs font-semibold tracking-wide shadow-xs mb-2">
             <Sparkles className="h-3.5 w-3.5 text-blue-400" />
-            <span>Ezee ERP</span>
+            <span>{dedicatedId ? displayCompanyName : 'Ezee ERP'}</span>
           </div>
 
           <h1 className="text-2xl sm:text-[26px] font-black text-white tracking-tight">

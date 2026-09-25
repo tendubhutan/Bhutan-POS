@@ -1499,25 +1499,14 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
 
               {/* Dedicated Client Portal Link */}
               {(() => {
-                const isCustomOrCloudflare = typeof window !== 'undefined' && 
-                  !window.location.origin.includes('ais-dev-') && 
-                  !window.location.origin.includes('ais-pre-') && 
-                  !window.location.origin.includes('localhost') && 
-                  !window.location.origin.includes('127.0.0.1');
-
-                const clientDedicatedUrl = isCustomOrCloudflare
-                  ? `${window.location.origin}/?company=${shareCompany.id}`
-                  : `https://bhutan-pos.tendubhutan.workers.dev/?company=${shareCompany.id}`;
-
-                const displayHost = isCustomOrCloudflare
-                  ? window.location.host
-                  : 'bhutan-pos.tendubhutan.workers.dev';
+                const clientDedicatedUrl = getCompanyDedicatedUrl(shareCompany.id, true);
+                const displayHost = (typeof window !== 'undefined' && window.location.host) || 'Client Portal';
 
                 return (
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-xs font-semibold text-slate-300">
-                        Client Production Portal Link
+                        Dedicated Client Portal Link
                       </label>
                       <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono font-semibold">
                         {displayHost}

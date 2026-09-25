@@ -19,6 +19,7 @@ import { BackupManagerView } from './BackupManagerView';
 import { handleMasterCloudSync, MasterSyncResult } from '../services/supabaseSyncService';
 import { isFeatureAllowed } from '../services/tenantFeatureService';
 import { getCurrentTenantSession, isSuperAdmin as checkIsSuperAdmin } from '../services/authTenantContext';
+import { MODULE_LABELS, ALL_MODULE_IDS, getDefaultPermissionsForRole } from '../utils/permissionUtils';
 
 interface SettingsViewProps {
   config: Config;
@@ -26,17 +27,6 @@ interface SettingsViewProps {
   onDataRefresh: () => void;
   isActive?: boolean;
 }
-
-const MODULE_LABELS: Record<ModuleId, string> = {
-  pos: 'POS Billing',
-  purchase: 'Purchase Entry',
-  vouchers: 'Accounting Vouchers',
-  masters: 'Masters Directory',
-  barcode: 'Barcode Printing',
-  payroll: 'Payroll & HR',
-  reports: 'Reports & Intelligence',
-  settings: 'Settings & Security'
-};
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   config,
@@ -168,7 +158,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleSaveActiveTab = () => {
     if (activeTab === 'security') {
-      handleSaveUsers(usersList);
+      proceedSaveUsers(usersList);
     } else if (activeTab === 'pos') {
       handleSavePOSSettings(posSettings);
     } else {
@@ -342,6 +332,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       saveUsers(updatedUsers);
       setUsersList(updatedUsers);
       saveConfig(form);
+      
+      const activeU = getActiveUser();
+      if (activeU) {
+        const matchingCurrent = updatedUsers.find(u => u.id === activeU.id || u.username === activeU.username);
+        if (matchingCurrent) {
+          setActiveUser(matchingCurrent.id);
+          localStorage.setItem('deep_pos_active_user', JSON.stringify(matchingCurrent));
+          setSystemActiveUser(matchingCurrent);
+        }
+      }
+      
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('app:user_permissions_updated', { detail: { users: updatedUsers } }));
+      }
+
       onDataRefresh();
       playSaveSound();
       setSavingSection(null);
@@ -367,7 +372,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (sectionKey === 'pos') {
         handleSavePOSSettings();
       } else if (sectionKey === 'security') {
-        handleSaveUsers(usersList);
+        proceedSaveUsers(usersList);
       } else {
         handleSaveConfig(sectionKey, label);
       }
@@ -490,7 +495,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
       return { ...u, permissions: newPerms };
     });
-    handleSaveUsers(updated);
+    setUsersList(updated);
     if (selectedUser?.id === userId) {
       const u = updated.find(x => x.id === userId);
       if (u) setSelectedUser(u);
@@ -506,17 +511,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       role: 'Cashier',
       pinCode: '0000',
       status: 'Active',
-      permissions: Object.keys(MODULE_LABELS).map(m => ({
-        module: m as ModuleId,
-        display: true,
-        create: true,
-        edit: false,
-        delete: false,
-        print: true
-      }))
+      permissions: getDefaultPermissionsForRole('Cashier')
     };
     const updated = [...usersList, newUser];
-    handleSaveUsers(updated);
+    setUsersList(updated);
     setSelectedUser(newUser);
   };
 
@@ -2385,12 +2383,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={addNewUser}
                   className="px-3.5 py-2 rounded-xl bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
                 >
                   <Plus className="h-4 w-4" />
                   <span>Add User Account</span>
                 </button>
+                {renderSaveButton('security', 'Permissions', false, 'sm')}
               </div>
             </div>
 
@@ -2415,18 +2415,56 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {selectedUser && (
               <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/50 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-200">
+                  <div className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <UserCheck className="h-4 w-4 text-blue-600" />
+                    <span>Configuring User: <strong className="text-slate-900">{selectedUser.fullName || selectedUser.username}</strong></span>
+                  </div>
+                  {usersList.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const remaining = usersList.filter(x => x.id !== selectedUser.id);
+                        setUsersList(remaining);
+                        setSelectedUser(remaining[0]);
+                      }}
+                      className="text-xs text-rose-600 hover:text-rose-700 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Remove User</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div>
                     <label className="block font-bold text-slate-700 mb-1">User Full Name</label>
                     <input
                       type="text"
                       value={selectedUser.fullName || ''}
                       onChange={e => {
-                        const updated = usersList.map(x => x.id === selectedUser.id ? { ...x, fullName: e.target.value } : x);
-                        handleSaveUsers(updated);
-                        setSelectedUser({ ...selectedUser, fullName: e.target.value });
+                        const newName = e.target.value;
+                        const updated = usersList.map(x => x.id === selectedUser.id ? { ...x, fullName: newName } : x);
+                        setUsersList(updated);
+                        setSelectedUser({ ...selectedUser, fullName: newName });
                       }}
                       className="w-full h-9 rounded-xl border border-slate-300 px-3 bg-white outline-none font-semibold focus:border-blue-600"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Login Username</label>
+                    <input
+                      type="text"
+                      value={selectedUser.username || ''}
+                      onChange={e => {
+                        const newUName = e.target.value.trim().toLowerCase();
+                        const updated = usersList.map(x => x.id === selectedUser.id ? { ...x, username: newUName } : x);
+                        setUsersList(updated);
+                        setSelectedUser({ ...selectedUser, username: newUName });
+                      }}
+                      className="w-full h-9 rounded-xl border border-slate-300 px-3 bg-white outline-none font-semibold focus:border-blue-600"
+                      placeholder="e.g. cashier1"
                     />
                   </div>
 
@@ -2437,7 +2475,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       onChange={e => {
                         const r = e.target.value as any;
                         const updated = usersList.map(x => x.id === selectedUser.id ? { ...x, role: r } : x);
-                        handleSaveUsers(updated);
+                        setUsersList(updated);
                         setSelectedUser({ ...selectedUser, role: r });
                       }}
                       className="w-full h-9 rounded-xl border border-slate-300 px-3 bg-white outline-none font-semibold focus:border-blue-600"
@@ -2451,19 +2489,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">Security PIN Code</label>
+                    <label className="block font-bold text-slate-700 mb-1">Security PIN / Password</label>
                     <input
                       type="password"
-                      maxLength={6}
+                      maxLength={12}
                       value={selectedUser.pinCode || '0000'}
                       onChange={e => {
-                        const updated = usersList.map(x => x.id === selectedUser.id ? { ...x, pinCode: e.target.value } : x);
-                        handleSaveUsers(updated);
-                        setSelectedUser({ ...selectedUser, pinCode: e.target.value });
+                        const newPin = e.target.value;
+                        const updated = usersList.map(x => x.id === selectedUser.id ? { ...x, pinCode: newPin } : x);
+                        setUsersList(updated);
+                        setSelectedUser({ ...selectedUser, pinCode: newPin });
                       }}
                       className="w-full h-9 rounded-xl border border-slate-300 px-3 bg-white outline-none font-mono font-bold focus:border-blue-600"
+                      placeholder="PIN code"
                     />
                   </div>
+                </div>
+
+                <div className="bg-blue-50/70 border border-blue-200 rounded-xl px-3.5 py-2 text-[11px] text-blue-900 flex items-center justify-between flex-wrap gap-2">
+                  <span>💡 Tip: Adjust module permissions (Display, Create, Edit, Delete, Print) below. When ready, click <strong>Save User Security Permissions</strong> (or press F2) to apply.</span>
                 </div>
 
                 {/* Granular Permission Ticks Table */}
@@ -2480,7 +2524,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs font-medium">
-                      {(Object.keys(MODULE_LABELS) as ModuleId[]).map(modId => {
+                      {ALL_MODULE_IDS.map(modId => {
                         const perm = selectedUser.permissions?.find(p => p.module === modId) || {
                           module: modId,
                           display: selectedUser.role === 'Administrator',

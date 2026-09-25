@@ -39,29 +39,52 @@ export function generateUUID(): string {
 
 /**
  * Check if the browser URL specifies a dedicated tenant company
- * e.g. https://.../?company=uuid or ?cid=uuid
+ * e.g. https://.../?company=uuid or ?cid=uuid or ?company=panglung
  */
 export function getDedicatedCompanyIdFromUrl(): string | null {
   try {
     if (typeof window === 'undefined' || !window.location) return null;
-    const searchParams = new URLSearchParams(window.location.search);
-    const fromSearch = searchParams.get('company') || 
-                       searchParams.get('company_id') || 
-                       searchParams.get('cid') || 
-                       searchParams.get('tenant') ||
-                       searchParams.get('cId');
-    if (fromSearch && fromSearch.trim()) return fromSearch.trim();
+    const cleanParam = (val: string | null): string | null => {
+      if (!val) return null;
+      const trimmed = val.trim().replace(/\/+$/, '').replace(/^["']|["']$/g, '');
+      return trimmed.length > 0 ? trimmed : null;
+    };
 
-    // Support hash fragment URLs like /#/?company=... or /#/path?company=...
-    if (window.location.hash && window.location.hash.includes('?')) {
-      const hashQuery = window.location.hash.split('?')[1];
-      const hashParams = new URLSearchParams(hashQuery);
-      const fromHash = hashParams.get('company') || 
-                       hashParams.get('company_id') || 
-                       hashParams.get('cid') || 
-                       hashParams.get('tenant') ||
-                       hashParams.get('cId');
-      if (fromHash && fromHash.trim()) return fromHash.trim();
+    const searchParams = new URLSearchParams(window.location.search);
+    const fromSearch = cleanParam(
+      searchParams.get('company') || 
+      searchParams.get('company_id') || 
+      searchParams.get('cid') || 
+      searchParams.get('tenant') ||
+      searchParams.get('cId')
+    );
+    if (fromSearch) return fromSearch;
+
+    // Support hash fragment URLs like /#/?company=... or /#/path?company=... or #company=...
+    if (window.location.hash) {
+      if (window.location.hash.includes('?')) {
+        const hashQuery = window.location.hash.split('?')[1];
+        const hashParams = new URLSearchParams(hashQuery);
+        const fromHash = cleanParam(
+          hashParams.get('company') || 
+          hashParams.get('company_id') || 
+          hashParams.get('cid') || 
+          hashParams.get('tenant') ||
+          hashParams.get('cId')
+        );
+        if (fromHash) return fromHash;
+      } else if (window.location.hash.includes('=')) {
+        const cleanHash = window.location.hash.replace(/^#\/?/, '');
+        const hashParams = new URLSearchParams(cleanHash);
+        const fromHash = cleanParam(
+          hashParams.get('company') || 
+          hashParams.get('company_id') || 
+          hashParams.get('cid') || 
+          hashParams.get('tenant') ||
+          hashParams.get('cId')
+        );
+        if (fromHash) return fromHash;
+      }
     }
     return null;
   } catch {
@@ -73,7 +96,8 @@ export const PRODUCTION_BASE_URL = 'https://bhutan-pos.tendubhutan.workers.dev';
 
 /**
  * Generates the full dedicated client portal URL for a specific company.
- * Automatically uses the active browser origin (e.g. Cloudflare domain) or defaults to production URL.
+ * Automatically uses the active browser origin (e.g. Cloudflare domain or AI Studio preview URL)
+ * or defaults to production URL.
  */
 export function getCompanyDedicatedUrl(companyId: string, forceCurrentOrigin: boolean = false): string {
   if (typeof window !== 'undefined' && window.location.origin) {
@@ -111,7 +135,13 @@ function filterCompaniesForView(list: SupabaseCompany[]): SupabaseCompany[] {
   // This takes absolute precedence because the browser is specifically accessing this client's portal!
   const dedicatedId = getDedicatedCompanyIdFromUrl();
   if (dedicatedId) {
-    const matched = list.filter(c => c.id === dedicatedId);
+    const matched = list.filter(c => 
+      c.id === dedicatedId ||
+      (c.company_name && (
+        c.company_name.toLowerCase() === dedicatedId.toLowerCase() ||
+        c.company_name.toLowerCase().replace(/[^a-z0-9]/g, '') === dedicatedId.toLowerCase().replace(/[^a-z0-9]/g, '')
+      ))
+    );
     if (matched.length > 0) return matched;
     return [{
       id: dedicatedId,
@@ -264,21 +294,40 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
           }
         }
       }
-      // If not yet in mergedMap, try direct Firestore single-doc lookup
+      // If not yet in mergedMap, try direct Firestore single-doc lookup and collection lookup
       if (!mergedMap.has(dedicatedId)) {
         try {
           const { getDoc } = await import('firebase/firestore');
           const snap = await getDoc(doc(db, 'companies', dedicatedId));
           if (snap.exists()) {
             mergedMap.set(dedicatedId, snap.data() as SupabaseCompany);
+          } else {
+            const fsAllSnap = await getDocs(collection(db, 'companies'));
+            fsAllSnap.forEach(d => {
+              const data = d.data() as SupabaseCompany;
+              if (data && (data.id === dedicatedId || (data.company_name && (
+                data.company_name.toLowerCase() === dedicatedId.toLowerCase() ||
+                data.company_name.toLowerCase().replace(/[^a-z0-9]/g, '') === dedicatedId.toLowerCase().replace(/[^a-z0-9]/g, '')
+              )))) {
+                mergedMap.set(data.id, data);
+              }
+            });
           }
         } catch {}
       }
     }
 
     // If dedicated URL is present and not superadmin, strictly return ONLY the dedicated company!
-    if (!includeAll && !isSuperadmin && dedicatedId) {
-      const dedicatedComp = mergedMap.get(dedicatedId);
+    // This applies REGARDLESS of includeAll to prevent cross-client leakage in dedicated links!
+    if (!isSuperadmin && dedicatedId) {
+      let dedicatedComp = mergedMap.get(dedicatedId) || Array.from(mergedMap.values()).find(c => 
+        c.id === dedicatedId || 
+        (c.company_name && (
+          c.company_name.toLowerCase() === dedicatedId.toLowerCase() ||
+          c.company_name.toLowerCase().replace(/[^a-z0-9]/g, '') === dedicatedId.toLowerCase().replace(/[^a-z0-9]/g, '')
+        ))
+      );
+
       if (dedicatedComp) {
         return { companies: [dedicatedComp] };
       }
@@ -286,7 +335,13 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
       if (cached) {
         try {
           const list: SupabaseCompany[] = JSON.parse(cached);
-          const found = list.find(c => c.id === dedicatedId);
+          const found = list.find(c => 
+            c.id === dedicatedId || 
+            (c.company_name && (
+              c.company_name.toLowerCase() === dedicatedId.toLowerCase() ||
+              c.company_name.toLowerCase().replace(/[^a-z0-9]/g, '') === dedicatedId.toLowerCase().replace(/[^a-z0-9]/g, '')
+            ))
+          );
           if (found) return { companies: [found] };
         } catch {}
       }
@@ -857,28 +912,22 @@ export function setActiveCompanyId(id: string): void {
   }
 
   // URL handling:
-  // If the current URL has a dedicated query parameter (e.g., ?company=...), keep it in sync.
-  // If switching back to default company, strip the query parameter so URL becomes clean
-  // CRITICAL: NEVER inject ?company=... onto a clean root URL!
+  // Dedicated client URLs in the browser address bar are immutable tenant identifiers.
+  // We NEVER strip or overwrite ?company=... from a dedicated client portal link.
+  // Only superadmins explicitly switching companies from the superadmin dashboard can update the URL query.
   if (typeof window !== 'undefined' && window.history && window.location) {
     try {
-      const url = new URL(window.location.href);
-      const hasDedicatedParam = url.searchParams.has('company') || url.searchParams.has('cid') || url.searchParams.has('tenant');
+      const role = typeof localStorage !== 'undefined' ? localStorage.getItem('deep_pos_auth_role') : null;
+      const isSuper = role === 'superadmin';
+      const dedicatedFromUrl = getDedicatedCompanyIdFromUrl();
 
-      if (id === DEFAULT_TENANT_COMPANY.id) {
-        if (hasDedicatedParam) {
-          url.searchParams.delete('company');
-          url.searchParams.delete('cid');
-          url.searchParams.delete('tenant');
-          if (url.hash && url.hash.includes('company=')) {
-            const parts = url.hash.split('?');
-            url.hash = parts[0] || '';
-          }
+      // If user opened a dedicated client link (?company=...), never tamper with it
+      if (!dedicatedFromUrl && isSuper) {
+        const url = new URL(window.location.href);
+        if (id && id !== DEFAULT_TENANT_COMPANY.id) {
+          url.searchParams.set('company', id);
           window.history.replaceState({}, '', url.toString());
         }
-      } else if (hasDedicatedParam) {
-        url.searchParams.set('company', id);
-        window.history.replaceState({}, '', url.toString());
       }
     } catch (e) {
       console.warn('Could not update URL parameter on company switch:', e);

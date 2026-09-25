@@ -377,11 +377,14 @@ export const DEFAULT_USERS: AppUser[] = [
     status: 'Active',
     permissions: [
       { module: 'pos', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'normalsale', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'purchase', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'vouchers', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'masters', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'schemes', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'barcode', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'payroll', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'staff', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'reports', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'settings', display: true, create: true, edit: true, delete: true, print: true }
     ]
@@ -395,11 +398,14 @@ export const DEFAULT_USERS: AppUser[] = [
     status: 'Active',
     permissions: [
       { module: 'pos', display: true, create: true, edit: false, delete: false, print: true },
+      { module: 'normalsale', display: false, create: false, edit: false, delete: false, print: false },
       { module: 'purchase', display: false, create: false, edit: false, delete: false, print: false },
       { module: 'vouchers', display: false, create: false, edit: false, delete: false, print: false },
-      { module: 'masters', display: true, create: false, edit: false, delete: false, print: false },
-      { module: 'barcode', display: true, create: false, edit: false, delete: false, print: true },
+      { module: 'masters', display: false, create: false, edit: false, delete: false, print: false },
+      { module: 'schemes', display: false, create: false, edit: false, delete: false, print: false },
+      { module: 'barcode', display: false, create: false, edit: false, delete: false, print: false },
       { module: 'payroll', display: false, create: false, edit: false, delete: false, print: false },
+      { module: 'staff', display: false, create: false, edit: false, delete: false, print: false },
       { module: 'reports', display: false, create: false, edit: false, delete: false, print: false },
       { module: 'settings', display: false, create: false, edit: false, delete: false, print: false }
     ]
@@ -413,13 +419,16 @@ export const DEFAULT_USERS: AppUser[] = [
     status: 'Active',
     permissions: [
       { module: 'pos', display: true, create: true, edit: true, delete: false, print: true },
+      { module: 'normalsale', display: true, create: true, edit: true, delete: false, print: true },
       { module: 'purchase', display: true, create: true, edit: true, delete: false, print: true },
       { module: 'vouchers', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'masters', display: true, create: true, edit: true, delete: false, print: true },
+      { module: 'schemes', display: false, create: false, edit: false, delete: false, print: false },
       { module: 'barcode', display: true, create: true, edit: true, delete: false, print: true },
       { module: 'payroll', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'staff', display: true, create: true, edit: true, delete: false, print: true },
       { module: 'reports', display: true, create: true, edit: true, delete: false, print: true },
-      { module: 'settings', display: true, create: false, edit: false, delete: false, print: false }
+      { module: 'settings', display: false, create: false, edit: false, delete: false, print: false }
     ]
   }
 ];
@@ -9755,11 +9764,14 @@ export function getUsers(targetCompanyId?: string): AppUser[] {
   if (cId !== DEFAULT_TENANT_COMPANY.id) {
     const defaultAdminPerms: UserPermission[] = [
       { module: 'pos', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'normalsale', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'purchase', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'vouchers', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'masters', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'schemes', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'barcode', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'payroll', display: true, create: true, edit: true, delete: true, print: true },
+      { module: 'staff', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'reports', display: true, create: true, edit: true, delete: true, print: true },
       { module: 'settings', display: true, create: true, edit: true, delete: true, print: true }
     ];
@@ -9806,6 +9818,22 @@ export function saveUsers(users: AppUser[], targetCompanyId?: string): void {
   const cId = targetCompanyId || getActiveCompanyId();
   saveJson(STORAGE_KEYS.USERS, users, cId);
 
+  // Cross-PC sync: Save to Firestore tenant_settings
+  if (cId) {
+    try {
+      import('../lib/firebase').then(({ db }) => {
+        if (db) {
+          import('firebase/firestore').then(({ doc, setDoc }) => {
+            setDoc(doc(db, 'tenant_settings', `${cId}_company_staff_users`), {
+              users,
+              updated_at: new Date().toISOString()
+            }, { merge: true }).catch(() => {});
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    } catch {}
+  }
+
   // Cross-PC sync: Save to Supabase tenant_settings so staff accounts appear on all computers
   if (isSupabaseConfigured && cId) {
     Promise.resolve(
@@ -9824,23 +9852,40 @@ export function saveUsers(users: AppUser[], targetCompanyId?: string): void {
 
 export async function syncUsersFromSupabase(targetCompanyId?: string): Promise<AppUser[]> {
   const cId = targetCompanyId || getActiveCompanyId();
-  if (!isSupabaseConfigured || !cId) return getUsers(cId);
+  if (!cId) return getUsers(cId);
 
-  try {
-    const { data, error } = await supabase
-      .from('tenant_settings')
-      .select('data')
-      .eq('company_id', cId)
-      .eq('record_id', 'company_staff_users')
-      .maybeSingle();
+  // Check Supabase
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('tenant_settings')
+        .select('data')
+        .eq('company_id', cId)
+        .eq('record_id', 'company_staff_users')
+        .maybeSingle();
 
-    if (!error && data?.data?.users && Array.isArray(data.data.users) && data.data.users.length > 0) {
-      saveJson(STORAGE_KEYS.USERS, data.data.users, cId);
-      return data.data.users;
+      if (!error && data?.data?.users && Array.isArray(data.data.users) && data.data.users.length > 0) {
+        saveJson(STORAGE_KEYS.USERS, data.data.users, cId);
+        return data.data.users;
+      }
+    } catch (err) {
+      console.warn('[Supabase syncUsersFromSupabase notice]:', err);
     }
-  } catch (err) {
-    console.warn('[Supabase syncUsersFromSupabase notice]:', err);
   }
+
+  // Check Firestore
+  try {
+    const { db } = await import('../lib/firebase');
+    if (db) {
+      const { doc, getDoc } = await import('firebase/firestore');
+      const snap = await getDoc(doc(db, 'tenant_settings', `${cId}_company_staff_users`));
+      if (snap.exists() && snap.data()?.users && Array.isArray(snap.data()?.users) && snap.data().users.length > 0) {
+        saveJson(STORAGE_KEYS.USERS, snap.data().users, cId);
+        return snap.data().users;
+      }
+    }
+  } catch {}
+
   return getUsers(cId);
 }
 

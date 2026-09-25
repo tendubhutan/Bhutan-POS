@@ -236,7 +236,7 @@ export interface BillWiseDetail {
   dueDate?: string;
 }
 
-export type ModuleId = 'pos' | 'purchase' | 'vouchers' | 'masters' | 'barcode' | 'payroll' | 'reports' | 'settings';
+export type ModuleId = 'pos' | 'normalsale' | 'purchase' | 'vouchers' | 'masters' | 'schemes' | 'barcode' | 'payroll' | 'staff' | 'reports' | 'settings';
 
 export interface UserPermission {
   module: ModuleId;

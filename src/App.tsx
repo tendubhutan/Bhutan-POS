@@ -44,7 +44,9 @@ import {
   SupabaseCompany, 
   SupabaseFinancialYear 
 } from './services/supabaseTenantService';
+import { db } from './lib/firebase';
 import { isFeatureAllowed } from './services/tenantFeatureService';
+import { isModulePermitted } from './utils/permissionUtils';
 import { Lock } from 'lucide-react';
 import { 
   isSuperAdmin, 
@@ -88,6 +90,10 @@ export default function App() {
     if (!keepTarget) setVoucherTarget(null);
     if (view === 'trash') {
       setShowTrashModal(true);
+      return;
+    }
+    // Strict permission check for direct navigation
+    if (view !== 'dashboard' && !isModulePermitted(currentUser, view, 'display')) {
       return;
     }
     if (view === 'pos') {
@@ -281,6 +287,9 @@ export default function App() {
         localStorage.removeItem('deep_pos_auth_assigned_company');
         localStorage.removeItem('deep_pos_auth_role');
         localStorage.removeItem('deep_pos_auth_uid');
+        localStorage.removeItem('deep_pos_active_user');
+        localStorage.removeItem('deep_pos_active_user_id');
+        localStorage.setItem('supabase_active_company_id', dedicatedId);
       }
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.removeItem('bhutan_pos_session_unlocked');
@@ -289,6 +298,9 @@ export default function App() {
     }
 
     const base = getActiveUser();
+    if (dedicatedId && !isSuper && base && base.assignedCompanyId && base.assignedCompanyId !== dedicatedId) {
+      return null;
+    }
     if (isSuper) {
       return {
         ...base,
@@ -331,6 +343,11 @@ export default function App() {
         }
         return true;
       }
+      // If no valid session for this dedicatedId:
+      const sessionUnlocked = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('bhutan_pos_session_unlocked') : null;
+      if (sessionUnlocked !== 'true' || sessionCompany !== dedicatedId) {
+        return true;
+      }
     }
 
     // Require explicit authentication by default: lock screen until a valid session is confirmed
@@ -350,9 +367,33 @@ export default function App() {
       const cId = getActiveCompanyId();
       const fyId = getActiveFYId();
       const { companies: comps } = await fetchUserCompanies(Boolean(dedicatedId));
-      const currentC = comps.find(c => c.id === cId) || comps.find(c => c.id === dedicatedId) || comps.find(c => c.id === DEFAULT_TENANT_COMPANY.id) || comps[0];
+      let currentC: SupabaseCompany | undefined;
+      
+      if (dedicatedId) {
+        currentC = comps.find(c => c.id === dedicatedId) || comps[0];
+        if (!currentC || currentC.id !== dedicatedId) {
+          currentC = {
+            id: dedicatedId,
+            company_name: 'Client Workspace',
+            currency_symbol: 'Nu.'
+          };
+        }
+        // Asynchronously enrich company details from Firestore/Supabase if needed
+        if (currentC.company_name === 'Client Workspace') {
+          try {
+            const { getDoc, doc } = await import('firebase/firestore');
+            const snap = await getDoc(doc(db, 'companies', dedicatedId));
+            if (snap.exists()) {
+              currentC = { ...currentC, ...(snap.data() as SupabaseCompany) };
+            }
+          } catch {}
+        }
+      } else {
+        currentC = comps.find(c => c.id === cId) || comps.find(c => c.id === DEFAULT_TENANT_COMPANY.id) || comps[0];
+      }
+
       if (currentC) {
-        if (currentC.id !== cId) {
+        if (currentC.id !== cId && !dedicatedId) {
           setActiveCompanyId(currentC.id);
         }
         setActiveCompany(currentC);
@@ -469,15 +510,31 @@ export default function App() {
     const unsubSession = subscribeTenantSession(session => {
       if (session) {
         const isSuper = session.isSuperadmin || (session.role && session.role.toLowerCase() === 'superadmin');
-        setCurrentUser(prev => ({
-          ...prev,
-          id: session.uid || prev.id,
-          username: isSuper ? 'superadmin' : (session.email?.split('@')[0] || prev.username),
-          fullName: session.fullName || (isSuper ? 'Superadmin' : prev.fullName),
-          role: session.role as any
-        }));
+        const activeU = getActiveUser();
+        setCurrentUser(prev => {
+          if (activeU && (activeU.id === session.uid || activeU.username === session.email?.split('@')[0])) {
+            return activeU;
+          }
+          return {
+            ...prev,
+            ...(activeU || {}),
+            id: session.uid || prev.id,
+            username: isSuper ? 'superadmin' : (session.email?.split('@')[0] || prev.username),
+            fullName: session.fullName || (isSuper ? 'Superadmin' : prev.fullName),
+            role: (activeU?.role || session.role) as any,
+            permissions: activeU?.permissions || prev.permissions
+          };
+        });
       }
     });
+
+    const handlePermissionsUpdated = () => {
+      const activeU = getActiveUser();
+      if (activeU) {
+        setCurrentUser(activeU);
+      }
+    };
+    window.addEventListener('app:user_permissions_updated', handlePermissionsUpdated);
 
     return () => {
       window.removeEventListener('supabase:tenant_changed', handleTenantChange);
@@ -488,6 +545,7 @@ export default function App() {
       window.removeEventListener('app:refresh-data', handleRemoteDataChanged);
       window.removeEventListener('deep_pos_items_updated', handleRemoteDataChanged);
       window.removeEventListener('deep_pos_sales_updated', handleRemoteDataChanged);
+      window.removeEventListener('app:user_permissions_updated', handlePermissionsUpdated);
       unsubSession();
     };
   }, []);
@@ -900,7 +958,7 @@ export default function App() {
             />
           </div>
 
-          {config.EnableNormalSale !== 'false' && (
+          {config.EnableNormalSale !== 'false' && isModulePermitted(currentUser, 'normalsale', 'display') && (
             <div className={currentView === 'normalsale' ? 'flex-1 min-h-0 flex flex-col h-full w-full' : 'hidden'}>
               <SalesInvoiceEntry
                 key={activeCompany?.id || 'default_sales'}
@@ -916,26 +974,28 @@ export default function App() {
               />
             </div>
           )}
-          <div className={currentView === 'purchase' ? 'flex-1 min-h-0 flex flex-col h-full w-full' : 'hidden'}>
-            <PurchaseEntry
-              key={activeCompany?.id || 'default_purchase'}
-              config={config}
-              items={items}
-              ledgers={ledgers}
-              onDataRefresh={refreshData}
-              initialVoucherTarget={voucherTarget}
-              onBack={navigateBack}
-              onOpenNewItemModal={(onSelect, itemToEdit) => setQuickItemModalProps({isOpen: true, itemToEdit, onSelect})}
-              onOpenNewLedgerModal={(group, onSelect) => setQuickLedgerModalProps({isOpen: true, group: group || 'Sundry Creditors', onSelect})}
-              onPrintPurchaseBarcodes={queue => {
-                setBarcodeQueueInitial(queue);
-                navigateTo('barcode');
-              }}
-              isActive={currentView === 'purchase' && !isAnyModalOpen}
-            />
-          </div>
+          {isModulePermitted(currentUser, 'purchase', 'display') && (
+            <div className={currentView === 'purchase' ? 'flex-1 min-h-0 flex flex-col h-full w-full' : 'hidden'}>
+              <PurchaseEntry
+                key={activeCompany?.id || 'default_purchase'}
+                config={config}
+                items={items}
+                ledgers={ledgers}
+                onDataRefresh={refreshData}
+                initialVoucherTarget={voucherTarget}
+                onBack={navigateBack}
+                onOpenNewItemModal={(onSelect, itemToEdit) => setQuickItemModalProps({isOpen: true, itemToEdit, onSelect})}
+                onOpenNewLedgerModal={(group, onSelect) => setQuickLedgerModalProps({isOpen: true, group: group || 'Sundry Creditors', onSelect})}
+                onPrintPurchaseBarcodes={queue => {
+                  setBarcodeQueueInitial(queue);
+                  navigateTo('barcode');
+                }}
+                isActive={currentView === 'purchase' && !isAnyModalOpen}
+              />
+            </div>
+          )}
 
-          {currentView === 'vouchers' && (
+          {currentView === 'vouchers' && isModulePermitted(currentUser, 'vouchers', 'display') && (
             <Vouchers
               key={activeCompany?.id || 'default_vouchers'}
               config={config}
@@ -951,7 +1011,7 @@ export default function App() {
             />
           )}
 
-          {currentView === 'masters' && (
+          {currentView === 'masters' && isModulePermitted(currentUser, 'masters', 'display') && (
             <Masters
               key={activeCompany?.id || 'default_masters'}
               config={config}
@@ -970,7 +1030,7 @@ export default function App() {
             />
           )}
 
-          {currentView === 'schemes' && (
+          {currentView === 'schemes' && isModulePermitted(currentUser, 'schemes', 'display') && (
             <SchemeManagement
               key={activeCompany?.id || 'default_schemes'}
               currency={config.CurrencySymbol || 'Nu.'}
@@ -978,15 +1038,15 @@ export default function App() {
             />
           )}
 
-          {currentView === 'barcode' && (
+          {currentView === 'barcode' && isModulePermitted(currentUser, 'barcode', 'display') && (
             <BarcodePrinting config={config} items={items} initialQueue={barcodeQueueInitial} />
           )}
 
-          {currentView === 'payroll' && isFeatureAllowed(config, 'EnablePayroll') && config.EnablePayroll !== 'false' && (
+          {currentView === 'payroll' && isFeatureAllowed(config, 'EnablePayroll') && config.EnablePayroll !== 'false' && isModulePermitted(currentUser, 'payroll', 'display') && (
             <Payroll key={activeCompany?.id || 'default_payroll'} config={config} ledgers={ledgers} onDataRefresh={refreshData} />
           )}
 
-          {(currentView === 'staff' || currentView === 'attendance') && (
+          {(currentView === 'staff' || currentView === 'attendance') && isModulePermitted(currentUser, 'staff', 'display') && (
             ((isFeatureAllowed(config, 'EnableStaffAttendanceAndLeave') && config.EnableStaffAttendanceAndLeave !== 'false') ||
              (isFeatureAllowed(config, 'EnableStaffAssignments') && config.EnableStaffAssignments !== 'false')) ? (
               <StaffManagementView
@@ -1017,7 +1077,7 @@ export default function App() {
             )
           )}
 
-          {currentView === 'assets' && isFeatureAllowed(config, 'EnableAssetManagement') && config.EnableAssetManagement !== 'false' && (
+          {currentView === 'assets' && isFeatureAllowed(config, 'EnableAssetManagement') && config.EnableAssetManagement !== 'false' && isModulePermitted(currentUser, 'masters', 'display') && (
             <AssetManagementModule 
               key={activeCompany?.id || 'default_assets'}
               config={config} 
@@ -1027,7 +1087,7 @@ export default function App() {
             />
           )}
 
-          {currentView === 'reports' && (
+          {currentView === 'reports' && isModulePermitted(currentUser, 'reports', 'display') && (
             <Reports
               key={activeCompany?.id || 'default_reports'}
               config={config}
@@ -1044,9 +1104,9 @@ export default function App() {
             />
           )}
 
-          {currentView === 'bankrecon' && <BankReconciliation />}
+          {currentView === 'bankrecon' && isModulePermitted(currentUser, 'vouchers', 'display') && <BankReconciliation />}
 
-          {currentView === 'settings' && (
+          {currentView === 'settings' && isModulePermitted(currentUser, 'settings', 'display') && (
             <SettingsView
               config={config}
               ledgers={ledgers}
@@ -1213,6 +1273,13 @@ export default function App() {
         onClose={() => setShowUserAuthModal(false)}
         onUserChanged={(u) => {
           setCurrentUser(u);
+          if (!isModulePermitted(u, currentView, 'display')) {
+            if (isModulePermitted(u, 'pos', 'display')) {
+              setCurrentView('pos');
+            } else if (isModulePermitted(u, 'dashboard', 'display')) {
+              setCurrentView('dashboard');
+            }
+          }
           refreshData();
         }}
       />
@@ -1227,6 +1294,13 @@ export default function App() {
             sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
             setCurrentUser(user);
             setIsTerminalLocked(false);
+            if (!isModulePermitted(user, currentView, 'display')) {
+              if (isModulePermitted(user, 'pos', 'display')) {
+                setCurrentView('pos');
+              } else if (isModulePermitted(user, 'dashboard', 'display')) {
+                setCurrentView('dashboard');
+              }
+            }
             loadTenantDetails();
             refreshData();
           }}

@@ -43,6 +43,7 @@ import {
 import { isSuperAdmin } from '../services/authTenantContext';
 import { promptPwaInstall, isPwaInstalled, subscribePwaState, canInstallPwa } from '../services/pwaService';
 import { getDedicatedEmployeePortalUrl } from '../services/employeeStaffService';
+import { getActiveCompanyId } from '../services/supabaseTenantService';
 import { TerminalConfig, Branch } from '../types';
 
 interface ClientLinkAndPwaModalProps {
@@ -138,9 +139,17 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
     return `${origin}${pathname}`;
   };
 
+  const currentCompanyId = getActiveCompanyId();
+
+  const getCompanyAppUrl = () => {
+    const base = getBaseAppUrl();
+    return currentCompanyId ? `${base}?company=${currentCompanyId}` : base;
+  };
+
   const generateLink = (counter: string, role: string, view: string = 'pos', branchId?: string) => {
     const base = getBaseAppUrl();
     const params = new URLSearchParams();
+    if (currentCompanyId) params.set('company', currentCompanyId);
     if (counter) params.set('counter', counter);
     if (role) params.set('role', role);
     if (view && view !== 'dashboard') params.set('view', view);
@@ -172,7 +181,7 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
         setIsAppInstalled(true);
       }
     } else {
-      handleCopy('appUrl', getBaseAppUrl());
+      handleCopy('appUrl', getCompanyAppUrl());
     }
   };
 

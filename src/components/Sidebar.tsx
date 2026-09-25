@@ -26,6 +26,7 @@ import {
 import { Config, AppUser } from "../types";
 import { isSuperAdmin, getCurrentTenantSession } from '../services/authTenantContext';
 import { isFeatureAllowed } from '../services/tenantFeatureService';
+import { isModulePermitted } from '../utils/permissionUtils';
 import { promptPwaInstall, isPwaInstalled, subscribePwaState, canInstallPwa } from '../services/pwaService';
 import { ClientLinkAndPwaModal } from './ClientLinkAndPwaModal';
 
@@ -98,17 +99,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isStaffAssignmentsAllowed = isFeatureAllowed(config, 'EnableStaffAssignments', isSuperadminUser) && config.EnableStaffAssignments !== 'false';
   const isStaffAllowed = isStaffAttendanceAllowed || isStaffAssignmentsAllowed;
 
+  // Dashboard visibility: Admin, or users who have general managerial/dashboard rights, or any allowed reporting/masters/vouchers
+  const hasOnlyPosAccess = currentUser && !isSuperadminUser && (
+    (isCashier && !currentUser.permissions?.some(p => p.module !== 'pos' && p.display)) ||
+    (currentUser.permissions && currentUser.permissions.length > 0 && 
+     currentUser.permissions.some(p => p.module === 'pos' && p.display) && 
+     !currentUser.permissions.some(p => p.module !== 'pos' && p.display))
+  );
+
+  const isDashboardPermitted = isSuperadminUser || (!hasOnlyPosAccess && (
+    isModulePermitted(currentUser, 'reports', 'display', isSuperadminUser) ||
+    isModulePermitted(currentUser, 'masters', 'display', isSuperadminUser) ||
+    isModulePermitted(currentUser, 'vouchers', 'display', isSuperadminUser) ||
+    !isCashier
+  ));
+
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+H' },
-    ...(isFeatureAllowed(config, 'EnablePOS', isSuperadminUser) && config.EnablePOS !== 'false' ? [{ id: 'pos', label: 'POS Billing', icon: ShoppingCart, shortcut: 'Alt+P' }] : []),
-    ...(isFeatureAllowed(config, 'EnableNormalSale', isSuperadminUser) && config.EnableNormalSale !== 'false' ? [{ id: 'normalsale', label: 'Sales Invoice', icon: ShoppingBag, shortcut: 'Alt+N' }] : []),
-    ...(!isCashier && isFeatureAllowed(config, 'EnablePurchase', isSuperadminUser) && config.EnablePurchase !== 'false' ? [{ id: 'purchase', label: 'Purchase Entry', icon: ShoppingBag, shortcut: 'Alt+U' }] : []),
-    ...(!isCashier && isFeatureAllowed(config, 'EnableVouchers', isSuperadminUser) && config.EnableVouchers !== 'false' ? [{ id: 'vouchers', label: 'Vouchers', icon: BookOpen, shortcut: 'Alt+V' }] : []),
-    { id: 'masters', label: 'Masters', icon: FolderKanban, shortcut: 'Alt+M' },
-    ...(isFeatureAllowed(config, 'EnableSchemes', isSuperadminUser) && config.EnableSchemes !== 'false' ? [{ id: 'schemes', label: 'Schemes & Offers', icon: Tags, shortcut: 'Alt+O' }] : []),
-    ...(isFeatureAllowed(config, 'EnableBarcodePrinting', isSuperadminUser) && config.EnableBarcodePrinting !== 'false' ? [{ id: 'barcode', label: 'Barcode Print', icon: Barcode, shortcut: 'Alt+K' }] : []),
-    ...(!isCashier && isFeatureAllowed(config, 'EnablePayroll', isSuperadminUser) && config.EnablePayroll !== 'false' ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users, shortcut: 'Alt+Y' }] : []),
-    ...(!isCashier && isStaffAllowed ? [{
+    ...(isDashboardPermitted ? [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+H' }] : []),
+    ...(isFeatureAllowed(config, 'EnablePOS', isSuperadminUser) && config.EnablePOS !== 'false' && isModulePermitted(currentUser, 'pos', 'display', isSuperadminUser) ? [{ id: 'pos', label: 'POS Billing', icon: ShoppingCart, shortcut: 'Alt+P' }] : []),
+    ...(isFeatureAllowed(config, 'EnableNormalSale', isSuperadminUser) && config.EnableNormalSale !== 'false' && isModulePermitted(currentUser, 'normalsale', 'display', isSuperadminUser) ? [{ id: 'normalsale', label: 'Sales Invoice', icon: ShoppingBag, shortcut: 'Alt+N' }] : []),
+    ...(isFeatureAllowed(config, 'EnablePurchase', isSuperadminUser) && config.EnablePurchase !== 'false' && isModulePermitted(currentUser, 'purchase', 'display', isSuperadminUser) ? [{ id: 'purchase', label: 'Purchase Entry', icon: ShoppingBag, shortcut: 'Alt+U' }] : []),
+    ...(isFeatureAllowed(config, 'EnableVouchers', isSuperadminUser) && config.EnableVouchers !== 'false' && isModulePermitted(currentUser, 'vouchers', 'display', isSuperadminUser) ? [{ id: 'vouchers', label: 'Vouchers', icon: BookOpen, shortcut: 'Alt+V' }] : []),
+    ...(isModulePermitted(currentUser, 'masters', 'display', isSuperadminUser) ? [{ id: 'masters', label: 'Masters', icon: FolderKanban, shortcut: 'Alt+M' }] : []),
+    ...(isFeatureAllowed(config, 'EnableSchemes', isSuperadminUser) && config.EnableSchemes !== 'false' && isModulePermitted(currentUser, 'schemes', 'display', isSuperadminUser) ? [{ id: 'schemes', label: 'Schemes & Offers', icon: Tags, shortcut: 'Alt+O' }] : []),
+    ...(isFeatureAllowed(config, 'EnableBarcodePrinting', isSuperadminUser) && config.EnableBarcodePrinting !== 'false' && isModulePermitted(currentUser, 'barcode', 'display', isSuperadminUser) ? [{ id: 'barcode', label: 'Barcode Print', icon: Barcode, shortcut: 'Alt+K' }] : []),
+    ...(isFeatureAllowed(config, 'EnablePayroll', isSuperadminUser) && config.EnablePayroll !== 'false' && isModulePermitted(currentUser, 'payroll', 'display', isSuperadminUser) ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users, shortcut: 'Alt+Y' }] : []),
+    ...(isStaffAllowed && isModulePermitted(currentUser, 'staff', 'display', isSuperadminUser) ? [{
       id: 'staff',
       label: isStaffAttendanceAllowed && isStaffAssignmentsAllowed
         ? 'Staff & Tasks'
@@ -118,10 +134,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Smartphone,
       shortcut: 'Alt+A'
     }] : []),
-    ...(!isCashier && isFeatureAllowed(config, 'EnableAssetManagement', isSuperadminUser) && config.EnableAssetManagement !== 'false' ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'Alt+E' }] : []),
-    ...(!isCashier && isFeatureAllowed(config, 'EnableBankReconciliation', isSuperadminUser) && config.EnableBankReconciliation !== 'false' ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
-    ...(!isCashier ? [{ id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R' }] : []),
-    ...(!isCashier ? [{ id: 'settings', label: 'Settings', icon: Settings, shortcut: 'Alt+S' }] : []),
+    ...(isFeatureAllowed(config, 'EnableAssetManagement', isSuperadminUser) && config.EnableAssetManagement !== 'false' && isModulePermitted(currentUser, 'masters', 'display', isSuperadminUser) ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'Alt+E' }] : []),
+    ...(isFeatureAllowed(config, 'EnableBankReconciliation', isSuperadminUser) && config.EnableBankReconciliation !== 'false' && isModulePermitted(currentUser, 'vouchers', 'display', isSuperadminUser) ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
+    ...(isModulePermitted(currentUser, 'reports', 'display', isSuperadminUser) ? [{ id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R' }] : []),
+    ...(isModulePermitted(currentUser, 'settings', 'display', isSuperadminUser) ? [{ id: 'settings', label: 'Settings', icon: Settings, shortcut: 'Alt+S' }] : []),
     ...(isSuperadminUser ? [{ 
       id: 'superadmin', 
       label: '🏢 Superadmin Portal', 
