@@ -151,21 +151,21 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({ className = '' }) => {
   };
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`relative flex items-center justify-center w-full min-w-0 ${className}`}>
       {/* Modern Desktop & Laptop Search Bar Trigger */}
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="hidden md:flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-blue-900/80 hover:bg-blue-900 border border-blue-400/40 hover:border-blue-300 text-blue-100 hover:text-white transition-all shadow-inner cursor-pointer w-48 lg:w-64 xl:w-80 group text-left"
+        className="hidden md:flex items-center justify-between gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-blue-900/80 hover:bg-blue-900 border border-blue-400/40 hover:border-blue-300 text-blue-100 hover:text-white transition-all shadow-inner cursor-pointer w-full max-w-[260px] xl:max-w-[320px] min-w-0 group text-left"
         title="Search items, ledgers, vouchers, reports or ask AI (Ctrl+K)"
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 truncate">
           <Search className="h-3.5 w-3.5 text-blue-300 group-hover:text-amber-300 transition-colors shrink-0" />
           <span className="text-xs text-blue-200 group-hover:text-white truncate">
             Search or ask AI...
           </span>
         </div>
-        <kbd className="hidden lg:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono font-bold text-blue-200 bg-blue-950/60 rounded border border-blue-700/60 shadow-2xs">
+        <kbd className="hidden xl:inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono font-bold text-blue-200 bg-blue-950/60 rounded border border-blue-700/60 shadow-2xs shrink-0">
           <span>Ctrl</span>
           <span>K</span>
         </kbd>
@@ -175,7 +175,7 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({ className = '' }) => {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-900/80 hover:bg-blue-900 border border-blue-400/50 text-blue-100 hover:text-white text-xs font-bold shadow-xs transition cursor-pointer"
+        className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-900/80 hover:bg-blue-900 border border-blue-400/50 text-blue-100 hover:text-white text-xs font-bold shadow-xs transition cursor-pointer shrink-0"
         title="Search & AI Help (Ctrl+K)"
       >
         <Search className="h-3.5 w-3.5 text-amber-300" />
