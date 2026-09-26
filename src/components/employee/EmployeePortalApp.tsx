@@ -1333,12 +1333,12 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
       <div className="relative min-h-screen text-slate-900 flex flex-col justify-between p-4 sm:p-6 font-sans overflow-x-hidden">
         {/* Scenic Bhutan Iconic Landscape Background Wallpaper (Paro Taktsang - Fast 375KB WebP) */}
         <div 
-          className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-700 ease-in-out filter blur-[6px] scale-105"
+          className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-700 ease-in-out"
           style={{
             backgroundImage: `url('/taktshang_bg.webp')`
           }}
         >
-          <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-slate-950/25" />
         </div>
 
         {/* Top Header */}

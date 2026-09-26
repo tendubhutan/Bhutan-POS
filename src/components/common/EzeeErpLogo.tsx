@@ -65,12 +65,16 @@ export const EzeeErpLogo: React.FC<EzeeErpLogoProps> = ({
       {/* Brand Text Block */}
       <div className="flex flex-col leading-none">
         <div className="flex items-baseline font-black tracking-tight">
-          <span className={`${currentSize.text} font-black text-[#001f54] tracking-tight`}>Ezee</span>
-          <span className={`${currentSize.text} font-black text-transparent bg-clip-text bg-gradient-to-r from-[#0066ff] to-[#00a8ff] ml-1.5`}>ERP</span>
+          <span className={`${currentSize.text} font-black ${variant === 'light' ? 'text-white drop-shadow-md' : 'text-[#001f54]'} tracking-tight`}>
+            Ezee
+          </span>
+          <span className={`${currentSize.text} font-black ${variant === 'light' ? 'text-cyan-400 drop-shadow-md' : 'text-transparent bg-clip-text bg-gradient-to-r from-[#0066ff] to-[#00a8ff]'} ml-1.5`}>
+            ERP
+          </span>
         </div>
         
-        {variant === 'full' && (
-          <p className={`${currentSize.sub} font-bold text-slate-700 tracking-tight mt-1`}>
+        {variant !== 'compact' && (
+          <p className={`${currentSize.sub} font-extrabold ${variant === 'light' ? 'text-blue-100 drop-shadow-sm' : 'text-slate-700'} tracking-tight mt-1`}>
             Everything Your Business Needs, in One Place.
           </p>
         )}

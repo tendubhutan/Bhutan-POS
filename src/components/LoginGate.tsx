@@ -321,15 +321,15 @@ export const LoginGate: React.FC<LoginGateProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col justify-between overflow-y-auto overflow-x-hidden selection:bg-blue-600 selection:text-white font-sans">
-      {/* Scenic Blurred Background Wallpaper (Paro Taktsang Tiger's Nest - Fast 375KB WebP) */}
+      {/* Scenic Background Wallpaper (Paro Taktsang Tiger's Nest - Sharp & High Quality 375KB WebP) */}
       <div 
-        className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-700 ease-in-out filter blur-[6px] scale-105"
+        className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-700 ease-in-out"
         style={{
           backgroundImage: `url('/taktshang_bg.webp')`
         }}
       >
-        {/* Soft dark backdrop overlay for crystal clear text readability */}
-        <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm" />
+        {/* Soft subtle vignette overlay to ensure text readability while keeping landscape 100% sharp */}
+        <div className="absolute inset-0 bg-slate-950/25" />
       </div>
 
       {/* Main Content Container */}
@@ -338,83 +338,83 @@ export const LoginGate: React.FC<LoginGateProps> = ({
           
           {/* LEFT PANEL: Ezee ERP Brand Showcase & Feature Badges Grid */}
           <div className="lg:col-span-6 space-y-6 text-left">
-            {/* Top Logo */}
-            <div className="flex items-center justify-between flex-wrap gap-4 pt-2">
-              <EzeeErpLogo size="lg" />
+            {/* Top Logo with Light Variant for High Contrast on Scenic Backdrop */}
+            <div className="flex items-center justify-between flex-wrap gap-4 pt-2 bg-slate-900/60 backdrop-blur-md p-4 rounded-3xl border border-white/20 shadow-xl max-w-lg">
+              <EzeeErpLogo size="lg" variant="light" />
             </div>
 
             {/* Feature Modules Grid (6 Colorful Badges - 2 rows x 3 cols) */}
             <div className="grid grid-cols-3 gap-2.5 sm:gap-3.5 pt-2 max-w-lg">
               {/* Module 1: POS */}
-              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-emerald-200/80 shadow-sm hover:shadow-md transition text-center space-y-1.5 group">
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/95 backdrop-blur-md border border-emerald-300 shadow-md hover:shadow-lg transition text-center space-y-1.5 group">
                 <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 group-hover:scale-105 transition">
                   <ShoppingCart className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm">POS</h3>
-                  <p className="text-[10px] font-semibold text-slate-500 leading-tight">Fast & Easy Billing</p>
+                  <h3 className="font-black text-slate-900 text-xs sm:text-sm">POS</h3>
+                  <p className="text-[10px] font-extrabold text-slate-800 leading-tight">Fast & Easy Billing</p>
                 </div>
               </div>
 
               {/* Module 2: Inventory */}
-              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-purple-200/80 shadow-sm hover:shadow-md transition text-center space-y-1.5 group">
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/95 backdrop-blur-md border border-purple-300 shadow-md hover:shadow-lg transition text-center space-y-1.5 group">
                 <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-purple-500/20 group-hover:scale-105 transition">
                   <Package className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm">Inventory</h3>
-                  <p className="text-[10px] font-semibold text-slate-500 leading-tight">Track Stock</p>
+                  <h3 className="font-black text-slate-900 text-xs sm:text-sm">Inventory</h3>
+                  <p className="text-[10px] font-extrabold text-slate-800 leading-tight">Track Stock</p>
                 </div>
               </div>
 
               {/* Module 3: Accounting */}
-              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-amber-200/80 shadow-sm hover:shadow-md transition text-center space-y-1.5 group">
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/95 backdrop-blur-md border border-amber-300 shadow-md hover:shadow-lg transition text-center space-y-1.5 group">
                 <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-md shadow-amber-500/20 group-hover:scale-105 transition">
                   <BarChart3 className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm">Accounting</h3>
-                  <p className="text-[10px] font-semibold text-slate-500 leading-tight">Stay Compliant</p>
+                  <h3 className="font-black text-slate-900 text-xs sm:text-sm">Accounting</h3>
+                  <p className="text-[10px] font-extrabold text-slate-800 leading-tight">Stay Compliant</p>
                 </div>
               </div>
 
               {/* Module 4: HR & Payroll */}
-              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-teal-200/80 shadow-sm hover:shadow-md transition text-center space-y-1.5 group">
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/95 backdrop-blur-md border border-teal-300 shadow-md hover:shadow-lg transition text-center space-y-1.5 group">
                 <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-teal-500 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-teal-500/20 group-hover:scale-105 transition">
                   <Users className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm">HR & Payroll</h3>
-                  <p className="text-[10px] font-semibold text-slate-500 leading-tight">Manage People</p>
+                  <h3 className="font-black text-slate-900 text-xs sm:text-sm">HR & Payroll</h3>
+                  <p className="text-[10px] font-extrabold text-slate-800 leading-tight">Manage People</p>
                 </div>
               </div>
 
               {/* Module 5: Purchase & Sales */}
-              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-blue-200/80 shadow-sm hover:shadow-md transition text-center space-y-1.5 group">
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/95 backdrop-blur-md border border-blue-300 shadow-md hover:shadow-lg transition text-center space-y-1.5 group">
                 <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20 group-hover:scale-105 transition">
                   <Receipt className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm">Purchase & Sales</h3>
-                  <p className="text-[10px] font-semibold text-slate-500 leading-tight">Grow Business</p>
+                  <h3 className="font-black text-slate-900 text-xs sm:text-sm">Purchase & Sales</h3>
+                  <p className="text-[10px] font-extrabold text-slate-800 leading-tight">Grow Business</p>
                 </div>
               </div>
 
               {/* Module 6: More Modules */}
-              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-indigo-200/80 shadow-sm hover:shadow-md transition text-center space-y-1.5 group">
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/95 backdrop-blur-md border border-indigo-300 shadow-md hover:shadow-lg transition text-center space-y-1.5 group">
                 <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 group-hover:scale-105 transition">
                   <Settings className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm">More Modules</h3>
-                  <p className="text-[10px] font-semibold text-slate-500 leading-tight">All in One ERP</p>
+                  <h3 className="font-black text-slate-900 text-xs sm:text-sm">More Modules</h3>
+                  <p className="text-[10px] font-extrabold text-slate-800 leading-tight">All in One ERP</p>
                 </div>
               </div>
             </div>
 
-            {/* Bottom Cursive Priority Slogan */}
-            <div className="pt-4 hidden lg:block">
-              <span className="text-2xl font-serif italic text-slate-900 font-bold drop-shadow-sm border-b-2 border-amber-500 pb-1">
+            {/* Bottom Cursive Priority Slogan with High Contrast Badge */}
+            <div className="pt-3 hidden lg:block">
+              <span className="inline-flex items-center gap-2 bg-slate-900/80 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-amber-400/60 shadow-xl text-amber-300 font-serif italic text-2xl font-black drop-shadow-md">
                 Your Business Our Priority
               </span>
             </div>
