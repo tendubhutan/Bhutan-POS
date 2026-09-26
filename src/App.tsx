@@ -251,7 +251,7 @@ export default function App() {
   // (State declared above with drillReturnContext)
 
   // Direct Voucher Navigation Target (from drill-down or reports into voucher entry)
-  const [voucherTarget, setVoucherTarget] = useState<{ voucherNo: string; timestamp: number } | null>(null);
+  const [voucherTarget, setVoucherTarget] = useState<{ voucherNo: string; timestamp: number; isDuplicate?: boolean } | null>(null);
 
   // Trash & Bulk Delete Modals
   const [showTrashModal, setShowTrashModal] = useState(false);
@@ -1196,7 +1196,7 @@ export default function App() {
         onDrillVoucher={(refNo, from, to) => setDrillModal({ type: 'voucher', targetId: refNo, fromDate: from || drillModal.fromDate, toDate: to || drillModal.toDate })}
         onDrillLedger={(name, from, to) => setDrillModal({ type: 'ledger', targetId: name, fromDate: from || drillModal.fromDate, toDate: to || drillModal.toDate })}
         onDrillStock={(code, from, to) => setDrillModal({ type: 'stock', targetId: code, fromDate: from || drillModal.fromDate, toDate: to || drillModal.toDate })}
-        onOpenVoucherInEntry={(refNo, vType, currentActive, currentHistory) => {
+        onOpenVoucherInEntry={(refNo, vType, currentActive, currentHistory, isDuplicate) => {
           if (currentActive) {
             setDrillReturnContext({
               activeDrill: currentActive,
@@ -1206,7 +1206,7 @@ export default function App() {
           }
           setDrillModal({ type: null, targetId: null });
           setDrillInitialHistory([]);
-          setVoucherTarget({ voucherNo: refNo, timestamp: Date.now() });
+          setVoucherTarget({ voucherNo: refNo, timestamp: Date.now(), isDuplicate });
           if (vType === 'INV' || vType === 'S') {
             const details = getVoucherDetails(refNo);
             const inv = details?.header as any;

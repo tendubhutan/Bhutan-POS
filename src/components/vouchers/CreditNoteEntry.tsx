@@ -82,13 +82,18 @@ export const CreditNoteEntry: React.FC<CreditNoteEntryProps> = ({
       if (details) {
         const v: any = details.header || details;
         if (v.type === 'CN' || v.voucherNo?.startsWith('CN-')) {
-          setEditingVoucherNo(v.voucherNo);
-          setVoucherNo(v.voucherNo);
-          if (v.date) setDate(new Date(v.date).toISOString().split('T')[0]);
-          if (v.partyLedger || v.partyName) setPartyLedger(v.partyLedger || v.partyName);
-          if (v.salesReturnLedger || v.debitLedger) setSalesReturnLedger(v.salesReturnLedger || v.debitLedger);
-          if (v.originalInvoiceRef) setOriginalInvoiceRef(v.originalInvoiceRef);
-          if (v.narration) setNarration(v.narration);
+          const isDup = Boolean((initialVoucherTarget as any)?.isDuplicate);
+          if (isDup) {
+            setEditingVoucherNo(null);
+            setVoucherNo(peekNextVoucherNo('CN', config));
+            setDate(new Date().toISOString().split('T')[0]);
+            setNarration(v.narration ? `${v.narration} (Copy of ${v.voucherNo})` : `Copy of ${v.voucherNo}`);
+          } else {
+            setEditingVoucherNo(v.voucherNo);
+            setVoucherNo(v.voucherNo);
+            if (v.date) setDate(new Date(v.date).toISOString().split('T')[0]);
+            if (v.narration) setNarration(v.narration);
+          }
           if (Array.isArray(v.items) && v.items.length > 0) {
             setHasStockReturn(true);
             setItemLines(v.items.map((it: any, idx: number) => ({

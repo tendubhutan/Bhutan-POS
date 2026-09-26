@@ -381,9 +381,19 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               }
             }
             
-            setEditingInvoiceNo(inv.invoiceNo || inv.billNo);
-            if (inv.date) {
-              setEditingInvoiceDate(inv.date);
+            const isDup = Boolean((initialVoucherTarget as any)?.isDuplicate);
+            if (isDup) {
+              setEditingInvoiceNo(null);
+              setEditingInvoiceDate(null);
+              setPosBillDate(new Date().toISOString().split('T')[0]);
+              try {
+                setPosBillNo(peekNextInvoiceNumber(true, activeVoucherType?.id));
+              } catch {}
+            } else {
+              setEditingInvoiceNo(inv.invoiceNo || inv.billNo);
+              if (inv.date) {
+                setEditingInvoiceDate(inv.date);
+              }
             }
           }
         });

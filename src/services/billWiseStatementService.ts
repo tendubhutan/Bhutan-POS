@@ -264,25 +264,32 @@ export function getPartyBillWiseStatement(
         status = 'Partially Paid';
       }
 
+      const currentYear = new Date().getFullYear();
+      const fyStartDate = `${currentYear}-01-01`;
+
       rawBills.unshift({
         id: `ob-${partyLedger?.['Ledger Name']}`,
         billNo: `OB-${partyLedger?.['Ledger Name'].replace(/[^A-Za-z0-9]/g, '').slice(0, 10).toUpperCase()}`,
-        billDate: '2024-04-01',
+        billDate: fyStartDate,
         billType: 'Opening Balance',
         originalAmount: round2(opBal),
         paidAmount: paidAmount,
         pendingAmount: pendingAmount,
         status,
         settlements,
-        daysOverdue: calcDaysOverdue('2024-04-01').days,
+        daysOverdue: calcDaysOverdue(fyStartDate).days,
         isOverdue: status !== 'Fully Settled',
         notes: 'Opening balance brought forward'
       });
     }
   }
 
-  // Sort bills chronologically descending (newest first)
-  rawBills.sort((a, b) => new Date(b.billDate).getTime() - new Date(a.billDate).getTime());
+  // Sort bills: Opening Balance ALWAYS at the top (#1), followed by newest bills first
+  rawBills.sort((a, b) => {
+    if (a.billType === 'Opening Balance') return -1;
+    if (b.billType === 'Opening Balance') return 1;
+    return new Date(b.billDate).getTime() - new Date(a.billDate).getTime();
+  });
 
   // Aggregate totals
   const totalBilledAmount = round2(rawBills.reduce((sum, b) => sum + b.originalAmount, 0));

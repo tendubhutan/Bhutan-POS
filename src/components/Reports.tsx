@@ -7,7 +7,7 @@ import {
 import { AssignmentReportView } from './employee/AssignmentReportView';
 import XLSX from 'xlsx-js-style';
 import {
-  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, Warehouse, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History, Plus, Minus
+  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, Warehouse, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History, Plus, Minus, Eye
 } from 'lucide-react';
 import { PrintReportModal } from './PrintReportModal';
 import { generateReportPDF, shareOrDownloadPDF } from '../utils/pdfExport';
@@ -23,7 +23,7 @@ export interface ReportTarget {
   category: 'daily' | 'gst' | 'inv' | 'fin' | 'reg' | 'audit';
   finSubTab?: 'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED';
   invSubTab?: 'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary' | 'godown_summary';
-  regSubTab?: 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes' | 'assignments';
+  regSubTab?: 'daybook' | 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes' | 'assignments';
   voucherTypeFilter?: string;
   voucherStatusFilter?: string;
   ledgerName?: string;
@@ -131,7 +131,7 @@ interface ReportViewState {
   mainCategory: 'daily' | 'gst' | 'gst_summary' | 'gst_input_dom' | 'gst_input_imp' | 'inv' | 'fin' | 'reg' | 'audit';
   finSubTab: 'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED';
   invSubTab: 'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary' | 'godown_summary';
-  regSubTab: 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes' | 'assignments';
+  regSubTab: 'daybook' | 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes' | 'assignments';
   itemWise: boolean;
   selectedLedger: string;
 }
@@ -155,7 +155,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const [invSubTab, setInvSubTab] = useState<'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary' | 'godown_summary'>('summary');
   const [finSubTab, setFinSubTab] = useState<'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED'>('TB');
   const [reportDepth, setReportDepth] = useState<ReportDetailDepth>(config?.ReportDetailDepth || 'detailed');
-  const [regSubTab, setRegSubTab] = useState<'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes' | 'assignments'>('vouchers');
+  const [regSubTab, setRegSubTab] = useState<'daybook' | 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes' | 'assignments'>('daybook');
   const [voucherTypeFilter, setVoucherTypeFilter] = useState('ALL');
   const [voucherStatusFilter, setVoucherStatusFilter] = useState('ALL');
   const [voucherSearchQuery, setVoucherSearchQuery] = useState('');
@@ -567,12 +567,13 @@ export const Reports: React.FC<ReportsProps> = ({
       },
       {
         id: 'voucher_registers',
-        name: '5. Voucher Register',
-        shortName: 'Voucher Register',
+        name: '5. Registers & Day Books',
+        shortName: 'Registers & Day Books',
         badge: 'Registers',
         icon: FileSpreadsheet,
         color: 'purple',
         items: [
+          { id: 'reg-daybook', name: 'Day Book (Daily All-Transaction Journal)', group: 'Registers', desc: 'All daily sales, purchases, vouchers & journal logbook', keywords: ['daybook', 'day book', 'daily', 'journal', 'all transactions'] },
           { id: 'reg-vouchers', name: 'Accounting Voucher Register', group: 'Registers', desc: 'All journal, payment, receipt vouchers', keywords: ['voucher', 'journal', 'payment', 'receipt', 'contra'] },
           { id: 'reg-sales', name: 'Sales Register', group: 'Registers', desc: 'Detailed sales invoice logbook', keywords: ['sales register', 'invoices', 'billed'] },
           { id: 'reg-purchases', name: 'Purchase Register', group: 'Registers', desc: 'Supplier purchase invoice register', keywords: ['purchase register', 'vendor', 'bills'] },
@@ -1762,7 +1763,52 @@ export const Reports: React.FC<ReportsProps> = ({
         ];
       }
     } else if (mainCategory === 'reg') {
-      if (regSubTab === 'vouchers' && Array.isArray(reportData)) {
+      if (regSubTab === 'daybook' && Array.isArray(reportData)) {
+        reportTitle = 'Day Book Register (All Transactions)';
+        headers = ['Date', 'Voucher / Ref No', 'Type', 'Particulars / Account', 'Debit (Nu.)', 'Credit (Nu.)', 'Narration', 'Status'];
+        let totDr = 0;
+        let totCr = 0;
+        const filteredVouchers = reportData.filter((v: any) => {
+          if (voucherTypeFilter !== 'ALL' && v.Type !== voucherTypeFilter) return false;
+          if (voucherStatusFilter !== 'ALL') {
+            const isCanc = (v.Status as string) === 'Cancelled' || v.isCancelled;
+            if (voucherStatusFilter === 'Active' && isCanc) return false;
+            if (voucherStatusFilter === 'Cancelled' && !isCanc) return false;
+          }
+          if (voucherSearchQuery.trim()) {
+            const q = voucherSearchQuery.trim().toLowerCase();
+            const vNo = (v.VoucherNo || v.RefNo || '').toLowerCase();
+            const part = (v.Particulars || v.Party || '').toLowerCase();
+            const narr = (v.Narration || '').toLowerCase();
+            const vType = (v.Type || '').toLowerCase();
+            if (!vNo.includes(q) && !part.includes(q) && !narr.includes(q) && !vType.includes(q)) return false;
+          }
+          return true;
+        });
+        filteredVouchers.forEach((v: any) => {
+          const isCancelled = (v.Status as string) === 'Cancelled' || v.isCancelled;
+          const dr = isCancelled ? 0 : (Number(v.Debit) || 0);
+          const cr = isCancelled ? 0 : (Number(v.Credit) || 0);
+          totDr += dr;
+          totCr += cr;
+          rows.push([
+            formatDateStr(v.DateIso || v.Date),
+            v.VoucherNo || v.RefNo || '-',
+            v.Type || '-',
+            v.Particulars || v.Party || '-',
+            dr > 0 ? fmt(dr) : '-',
+            cr > 0 ? fmt(cr) : '-',
+            v.Narration || '-',
+            isCancelled ? 'Cancelled' : (v.Status || 'Active')
+          ]);
+        });
+        totalsRow = ['TOTAL DAYBOOK MOVEMENT', '', '', '', fmt(totDr), fmt(totCr), '', ''];
+        summaryCards = [
+          { label: 'Total Daybook Transactions', value: filteredVouchers.length },
+          { label: 'Total Inflows / Debits', value: `Nu. ${fmt(totDr)}` },
+          { label: 'Total Outflows / Credits', value: `Nu. ${fmt(totCr)}` }
+        ];
+      } else if (regSubTab === 'vouchers' && Array.isArray(reportData)) {
         reportTitle = 'Accounting Voucher Register';
         headers = ['Date', 'Voucher No', 'Type', 'Particulars / Account', 'Debit (Nu.)', 'Credit (Nu.)', 'Narration', 'Status'];
         let totDr = 0;
@@ -2377,6 +2423,8 @@ export const Reports: React.FC<ReportsProps> = ({
     if (finSubTab === 'LED') currentActiveReportTitle = `Ledger Statement - ${selectedLedger || ''}`;
   }
   if (mainCategory === 'reg') {
+    if (regSubTab === 'daybook') currentActiveReportTitle = 'Day Book Register (All Transactions)';
+    if (regSubTab === 'vouchers') currentActiveReportTitle = 'Accounting Voucher Register';
     if (regSubTab === 'sales') currentActiveReportTitle = 'Sales Register';
     if (regSubTab === 'purchases') currentActiveReportTitle = 'Purchase Register';
   }
@@ -2675,14 +2723,14 @@ export const Reports: React.FC<ReportsProps> = ({
             <span className="hidden sm:inline">All Reports</span>
           </button>
 
-          {/* Accounting Voucher Register contextual search & filters */}
-          {mainCategory === 'reg' && regSubTab === 'vouchers' && (
+          {/* Accounting Voucher & Day Book contextual search & filters */}
+          {mainCategory === 'reg' && (regSubTab === 'daybook' || regSubTab === 'vouchers') && (
             <div className="flex items-center gap-2 flex-wrap">
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search Vouchers / Ledger / Narration..."
+                  placeholder={regSubTab === 'daybook' ? "Search Day Book / Party / Ref / Narration..." : "Search Vouchers / Ledger / Narration..."}
                   value={voucherSearchQuery}
                   onChange={e => setVoucherSearchQuery(e.target.value)}
                   className="h-8 w-52 sm:w-64 rounded-xl border border-slate-300 bg-white pl-8 pr-2 text-xs outline-none focus:border-indigo-600 shadow-2xs"
@@ -2694,16 +2742,17 @@ export const Reports: React.FC<ReportsProps> = ({
                 onChange={e => setVoucherTypeFilter(e.target.value)}
                 className="h-8 rounded-xl border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-700 outline-none cursor-pointer shadow-2xs"
               >
-                <option value="ALL">All Voucher Types</option>
+                <option value="ALL">All Transaction Types</option>
+                <option value="Sales">Sales Invoice</option>
+                <option value="Purchase">Purchase Bill</option>
                 <option value="Payment">Payment</option>
                 <option value="Receipt">Receipt</option>
                 <option value="Contra">Contra</option>
                 <option value="Journal">Journal</option>
-                <option value="Sales">Sales</option>
-                <option value="Purchase">Purchase</option>
                 <option value="Credit Note">Credit Note</option>
                 <option value="Debit Note">Debit Note</option>
-                <option value="Stock Journal">Stock Journal</option>
+                <option value="Quotation">Quotation</option>
+                <option value="Delivery Note">Delivery Note</option>
                 <option value="Physical Stock">Physical Stock</option>
               </select>
 
@@ -3102,6 +3151,7 @@ export const Reports: React.FC<ReportsProps> = ({
               <p className="text-[11px] text-slate-500">Accounting vouchers, sales, purchases, quotations, and delivery note registers.</p>
               <div className="flex flex-col gap-1 pt-1">
                 {[
+                  { id: 'daybook', label: 'Day Book (Daily All-Transaction Journal)' },
                   { id: 'vouchers', label: 'Accounting Voucher Register' },
                   { id: 'sales', label: 'Sales Register' },
                   { id: 'purchases', label: 'Purchase Register' },
@@ -4684,6 +4734,176 @@ export const Reports: React.FC<ReportsProps> = ({
               <div className="p-2 space-y-3">
 
 
+                {/* Day Book Register Table (All Daily Transactions) */}
+                {regSubTab === 'daybook' && Array.isArray(reportData) && (() => {
+                  const filteredVouchers = reportData.filter((v: any) => {
+                    if (voucherTypeFilter !== 'ALL' && v.Type !== voucherTypeFilter) return false;
+                    if (voucherStatusFilter !== 'ALL') {
+                      const isCanc = (v.Status as string) === 'Cancelled' || v.isCancelled;
+                      if (voucherStatusFilter === 'Active' && isCanc) return false;
+                      if (voucherStatusFilter === 'Cancelled' && !isCanc) return false;
+                    }
+                    if (voucherSearchQuery.trim()) {
+                      const q = voucherSearchQuery.trim().toLowerCase();
+                      const vNo = (v.VoucherNo || v.RefNo || '').toLowerCase();
+                      const part = (v.Particulars || v.Party || '').toLowerCase();
+                      const narr = (v.Narration || '').toLowerCase();
+                      const vType = (v.Type || '').toLowerCase();
+                      if (!vNo.includes(q) && !part.includes(q) && !narr.includes(q) && !vType.includes(q)) return false;
+                    }
+                    return true;
+                  });
+
+                  let totDr = 0;
+                  let totCr = 0;
+                  filteredVouchers.forEach((v: any) => {
+                    const isCancelled = (v.Status as string) === 'Cancelled' || v.isCancelled;
+                    if (!isCancelled) {
+                      totDr += Number(v.Debit) || 0;
+                      totCr += Number(v.Credit) || 0;
+                    }
+                  });
+
+                  return (
+                    <div className="space-y-3">
+                      {/* Summary Badges Bar for Day Book */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Entries</span>
+                          <span className="text-lg font-black text-slate-900">{filteredVouchers.length}</span>
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                          <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block">Total Debits (Dr)</span>
+                          <span className="text-lg font-black text-blue-900 font-mono">Nu. {fmt(totDr)}</span>
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                          <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">Total Credits (Cr)</span>
+                          <span className="text-lg font-black text-emerald-900 font-mono">Nu. {fmt(totCr)}</span>
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+                          <span className="text-[11px] font-bold text-purple-600 uppercase tracking-wider block">Net Difference</span>
+                          <span className="text-lg font-black text-purple-900 font-mono">Nu. {fmt(Math.abs(totDr - totCr))}</span>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                        <table className="w-full border-separate border-spacing-0 text-xs">
+                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Date</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Voucher / Ref No</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Type</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Particulars / Party / Account</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right font-bold text-slate-700">Debit (Nu.)</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right font-bold text-slate-700">Credit (Nu.)</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Narration</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center font-bold text-slate-700">Status</th>
+                              <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center font-bold text-slate-700">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredVouchers.map((v: any, i: number) => {
+                              const isCancelled = (v.Status as string) === 'Cancelled' || v.isCancelled;
+                              const dr = Number(v.Debit) || 0;
+                              const cr = Number(v.Credit) || 0;
+                              const typeColor = 
+                                v.Type === 'Sales' ? 'bg-indigo-100 text-indigo-800' :
+                                v.Type === 'Purchase' ? 'bg-teal-100 text-teal-800' :
+                                v.Type === 'Payment' ? 'bg-rose-100 text-rose-800' :
+                                v.Type === 'Receipt' ? 'bg-emerald-100 text-emerald-800' :
+                                v.Type === 'Contra' ? 'bg-sky-100 text-sky-800' :
+                                v.Type === 'Journal' ? 'bg-purple-100 text-purple-800' :
+                                v.Type === 'Credit Note' ? 'bg-amber-100 text-amber-800' :
+                                v.Type === 'Debit Note' ? 'bg-orange-100 text-orange-800' :
+                                v.Type === 'Delivery Note' ? 'bg-blue-100 text-blue-800' :
+                                v.Type === 'Quotation' ? 'bg-violet-100 text-violet-800' :
+                                'bg-slate-100 text-slate-800';
+
+                              return (
+                                <tr
+                                  key={i}
+                                  className={`cursor-pointer transition hover:bg-indigo-50/60 ${isCancelled ? 'opacity-60 bg-red-50/20' : ''}`}
+                                  onClick={() => {
+                                    if (v.VoucherNo || v.RefNo) {
+                                      onDrillVoucher(v.VoucherNo || v.RefNo, fromDate, toDate);
+                                    }
+                                  }}
+                                >
+                                  <td className="py-2.5 px-3 text-slate-700 whitespace-nowrap">{formatDateStr(v.DateIso || v.Date)}</td>
+                                  <td className="py-2.5 px-3 font-mono font-bold text-indigo-700 whitespace-nowrap">
+                                    {v.VoucherNo || v.RefNo || '-'}
+                                  </td>
+                                  <td className="py-2.5 px-3 whitespace-nowrap">
+                                    <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${typeColor}`}>
+                                      {v.Type || 'Voucher'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 font-semibold text-slate-800">
+                                    {v.Particulars || v.Party || '-'}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                                    {isCancelled ? <span className="text-red-500 font-bold">0.00</span> : (dr > 0 ? fmt(dr) : '-')}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                                    {isCancelled ? <span className="text-red-500 font-bold">0.00</span> : (cr > 0 ? fmt(cr) : '-')}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-slate-500 text-xs italic max-w-xs truncate" title={v.Narration}>
+                                    {v.Narration || '-'}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                    {isCancelled ? (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600">CANCELLED</span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">ACTIVE</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (v.VoucherNo || v.RefNo) {
+                                          onDrillVoucher(v.VoucherNo || v.RefNo, fromDate, toDate);
+                                        }
+                                      }}
+                                      className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded transition"
+                                      title="View / Drill into Voucher"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {filteredVouchers.length === 0 && (
+                              <tr>
+                                <td colSpan={9} className="py-10 text-center text-slate-500 italic">
+                                  No transaction records found in the Day Book for selected date range.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                          {filteredVouchers.length > 0 && (
+                            <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                              <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
+                                <td colSpan={4} className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">
+                                  TOTAL DAYBOOK ({filteredVouchers.length} Entries)
+                                </td>
+                                <td className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right font-mono text-sm text-blue-900">
+                                  {fmt(totDr)}
+                                </td>
+                                <td className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right font-mono text-sm text-emerald-900">
+                                  {fmt(totCr)}
+                                </td>
+                                <td colSpan={3} className="bg-slate-100 bg-clip-padding py-2.5 px-3"></td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Voucher Register Table */}
                 {regSubTab === 'vouchers' && Array.isArray(reportData) && (() => {
                   const filteredVouchers = reportData.filter((v: any) => {
@@ -5719,6 +5939,7 @@ export const Reports: React.FC<ReportsProps> = ({
                     ledgerName={selectedLedger}
                     currencySymbol={config.CurrencySymbol || 'Nu.'}
                     onDrillVoucher={onDrillVoucher}
+                    onBackToLedgerView={() => setLedgerViewMode('chronological')}
                     headerHeight={headerHeight}
                   />
                 )}

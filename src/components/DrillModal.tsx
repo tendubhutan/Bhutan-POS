@@ -63,7 +63,7 @@ interface DrillModalProps {
   onDrillVoucher?: (refNo: string, fromDate?: string, toDate?: string) => void;
   onDrillLedger?: (name: string, fromDate?: string, toDate?: string) => void;
   onDrillStock?: (code: string, fromDate?: string, toDate?: string) => void;
-  onOpenVoucherInEntry?: (refNo: string, vType?: string, currentActive?: TargetState, currentHistory?: TargetState[]) => void;
+  onOpenVoucherInEntry?: (refNo: string, vType?: string, currentActive?: TargetState, currentHistory?: TargetState[], isDuplicate?: boolean) => void;
 }
 
 export interface TargetState {
@@ -1480,12 +1480,25 @@ export const DrillModal: React.FC<DrillModalProps> = ({
                       Share
                     </GlowButton>
 
+                    {/* Duplicate / Copy Button */}
+                    {onOpenVoucherInEntry && !isCancelled && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenVoucherInEntry(refNo, voucherData.type, active, history, true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-900 font-extrabold text-xs border border-purple-300 transition active:scale-95 cursor-pointer shadow-2xs"
+                        title="Duplicate / Copy voucher into a new editable entry form"
+                      >
+                        <Copy className="h-3.5 w-3.5 text-purple-700" />
+                        <span>Duplicate / Copy</span>
+                      </button>
+                    )}
+
                     {/* Open in Entry Screen */}
                     {onOpenVoucherInEntry && !isCancelled && (
                       <button
                         type="button"
-                        onClick={() => onOpenVoucherInEntry(refNo, voucherData.type, active, history)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition active:scale-95 cursor-pointer"
+                        onClick={() => onOpenVoucherInEntry(refNo, voucherData.type, active, history, false)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition active:scale-95 cursor-pointer"
                         title="Edit / Open in original entry form"
                       >
                         <ExternalLink className="h-3.5 w-3.5 text-indigo-600" />

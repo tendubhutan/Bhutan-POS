@@ -158,9 +158,18 @@ export const QuotationEntry: React.FC<QuotationEntryProps> = ({
       const all = getQuotations();
       const q = all.find(x => x.quotationNo === initialVoucherTarget.voucherNo);
       if (q) {
-        setEditingQuotationNo(q.quotationNo);
-        setQuotationNo(q.quotationNo);
-        if (q.date) setDate(new Date(q.date).toISOString().split('T')[0]);
+        const isDup = Boolean((initialVoucherTarget as any)?.isDuplicate);
+        if (isDup) {
+          setEditingQuotationNo(null);
+          setQuotationNo(peekNextVoucherNo('QUOTATION', config));
+          setDate(new Date().toISOString().split('T')[0]);
+          setRemarks(q.remarks ? `${q.remarks} (Copy of ${q.quotationNo})` : `Copy of ${q.quotationNo}`);
+        } else {
+          setEditingQuotationNo(q.quotationNo);
+          setQuotationNo(q.quotationNo);
+          if (q.date) setDate(new Date(q.date).toISOString().split('T')[0]);
+          if (q.remarks) setRemarks(q.remarks);
+        }
         if (q.validUntil) setValidUntil(new Date(q.validUntil).toISOString().split('T')[0]);
         if (q.customer) {
           const cName = typeof q.customer === 'object' ? (q.customer.name || q.customer.ledger || '') : q.customer;

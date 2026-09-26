@@ -118,19 +118,34 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
           setBillNo(inv.supplierBillNo || '');
           setReceiptNoteNo(inv.receiptNoteNo || '');
           setPoNo(inv.poNo || '');
-          setNarration(inv.narration || inv.notes || '');
-          if (inv.date) {
-             const d = new Date(inv.date);
-             if (!isNaN(d.getTime())) {
-               const dStr = d.toISOString().split('T')[0];
-               setBillDate(dStr);
-               setSupplierBillDate(dStr);
-             }
+          const isDup = Boolean((initialVoucherTarget as any)?.isDuplicate);
+          if (isDup) {
+            setEditingBillNo(null);
+            setPurchaseVoucherNo(peekNextVoucherNo('PUR', config) || '');
+            setBillNo('');
+            const todayStr = new Date().toISOString().split('T')[0];
+            setBillDate(todayStr);
+            setSupplierBillDate(todayStr);
+            setNarration(inv.narration ? `${inv.narration} (Copy of ${inv.billNo || inv.invoiceNo})` : `Copy of ${inv.billNo || inv.invoiceNo}`);
+            if (Array.isArray(inv.additionalExpenses)) {
+              setAdditionalExpenses(inv.additionalExpenses);
+            }
+            showToast(`Purchase Invoice duplicated from ${inv.billNo || inv.invoiceNo}! Review and press Save.`, 'success');
+          } else {
+            setNarration(inv.narration || inv.notes || '');
+            if (inv.date) {
+               const d = new Date(inv.date);
+               if (!isNaN(d.getTime())) {
+                 const dStr = d.toISOString().split('T')[0];
+                 setBillDate(dStr);
+                 setSupplierBillDate(dStr);
+               }
+            }
+            if (Array.isArray(inv.additionalExpenses)) {
+              setAdditionalExpenses(inv.additionalExpenses);
+            }
+            setEditingBillNo(inv.billNo || inv.invoiceNo);
           }
-          if (Array.isArray(inv.additionalExpenses)) {
-            setAdditionalExpenses(inv.additionalExpenses);
-          }
-          setEditingBillNo(inv.billNo || inv.invoiceNo);
         }
       }
     } else {

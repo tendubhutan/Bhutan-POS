@@ -66,9 +66,18 @@ export const PhysicalStockEntry: React.FC<PhysicalStockEntryProps> = ({
       const all = getPhysicalStockRecords();
       const ps = all.find(x => x.voucherNo === initialVoucherTarget.voucherNo);
       if (ps) {
-        setEditingVoucherNo(ps.voucherNo);
-        setVoucherNo(ps.voucherNo);
-        if (ps.date) setDate(new Date(ps.date).toISOString().split('T')[0]);
+        const isDup = Boolean((initialVoucherTarget as any)?.isDuplicate);
+        if (isDup) {
+          setEditingVoucherNo(null);
+          setVoucherNo(peekNextVoucherNo('PHYSICAL_STOCK', config));
+          setDate(new Date().toISOString().split('T')[0]);
+          setRemarks(ps.remarks ? `${ps.remarks} (Copy of ${ps.voucherNo})` : `Copy of ${ps.voucherNo}`);
+        } else {
+          setEditingVoucherNo(ps.voucherNo);
+          setVoucherNo(ps.voucherNo);
+          if (ps.date) setDate(new Date(ps.date).toISOString().split('T')[0]);
+          if (ps.remarks) setRemarks(ps.remarks);
+        }
         if (ps.verifiedBy) setVerifiedBy(ps.verifiedBy);
         if (ps.remarks) setRemarks(ps.remarks);
         if (Array.isArray(ps.items) && ps.items.length > 0) {

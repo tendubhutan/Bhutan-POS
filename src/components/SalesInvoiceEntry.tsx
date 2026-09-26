@@ -523,13 +523,31 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
             }
           }
 
-          setNarration(inv.narration || inv.notes || '');
-          if (inv.termsAndConditions !== undefined) {
-            setTermsAndConditions(inv.termsAndConditions || "");
+          const isDup = Boolean((initialVoucherTarget as any)?.isDuplicate);
+          if (isDup) {
+            setEditingBillNo(null);
+            setBillDate(new Date().toISOString().split('T')[0]);
+            try {
+              setBillNo(peekNextInvoiceNumber(false));
+            } catch {
+              setBillNo('');
+            }
+            setNarration(inv.narration ? `${inv.narration} (Copy of ${inv.invoiceNo || inv.billNo})` : `Copy of ${inv.invoiceNo || inv.billNo}`);
+            if (inv.termsAndConditions !== undefined) {
+              setTermsAndConditions(inv.termsAndConditions || "");
+            } else {
+              setTermsAndConditions(getDefaultTerms(config));
+            }
+            showToast(`Sales Invoice duplicated from ${inv.invoiceNo || inv.billNo}! Review and press Save.`, 'success');
           } else {
-            setTermsAndConditions(getDefaultTerms(config));
+            setNarration(inv.narration || inv.notes || '');
+            if (inv.termsAndConditions !== undefined) {
+              setTermsAndConditions(inv.termsAndConditions || "");
+            } else {
+              setTermsAndConditions(getDefaultTerms(config));
+            }
+            setEditingBillNo(inv.invoiceNo || inv.billNo);
           }
-          setEditingBillNo(inv.invoiceNo || inv.billNo);
         }
       }
     } else {

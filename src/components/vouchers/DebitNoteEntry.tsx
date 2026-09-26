@@ -82,13 +82,18 @@ export const DebitNoteEntry: React.FC<DebitNoteEntryProps> = ({
       if (details) {
         const v: any = details.header || details;
         if (v.type === 'DN' || v.voucherNo?.startsWith('DN-')) {
-          setEditingVoucherNo(v.voucherNo);
-          setVoucherNo(v.voucherNo);
-          if (v.date) setDate(new Date(v.date).toISOString().split('T')[0]);
-          if (v.supplierLedger || v.partyLedger || v.debitLedger) setSupplierLedger(v.supplierLedger || v.partyLedger || v.debitLedger);
-          if (v.purchaseReturnLedger || v.creditLedger) setPurchaseReturnLedger(v.purchaseReturnLedger || v.creditLedger);
-          if (v.originalInvoiceRef || v.originalBillRef) setOriginalBillRef(v.originalInvoiceRef || v.originalBillRef);
-          if (v.narration) setNarration(v.narration);
+          const isDup = Boolean((initialVoucherTarget as any)?.isDuplicate);
+          if (isDup) {
+            setEditingVoucherNo(null);
+            setVoucherNo(peekNextVoucherNo('DN', config));
+            setDate(new Date().toISOString().split('T')[0]);
+            setNarration(v.narration ? `${v.narration} (Copy of ${v.voucherNo})` : `Copy of ${v.voucherNo}`);
+          } else {
+            setEditingVoucherNo(v.voucherNo);
+            setVoucherNo(v.voucherNo);
+            if (v.date) setDate(new Date(v.date).toISOString().split('T')[0]);
+            if (v.narration) setNarration(v.narration);
+          }
           if (Array.isArray(v.items) && v.items.length > 0) {
             setHasStockReturn(true);
             setItemLines(v.items.map((it: any, idx: number) => ({

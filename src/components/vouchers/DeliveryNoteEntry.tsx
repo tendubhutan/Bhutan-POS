@@ -166,9 +166,18 @@ export const DeliveryNoteEntry: React.FC<DeliveryNoteEntryProps> = ({
       const all = getDeliveryNotes();
       const dn = all.find(x => x.noteNo === initialVoucherTarget.voucherNo);
       if (dn) {
-        setEditingNoteNo(dn.noteNo);
-        setNoteNo(dn.noteNo);
-        if (dn.date) setDate(new Date(dn.date).toISOString().split('T')[0]);
+        const isDup = Boolean((initialVoucherTarget as any)?.isDuplicate);
+        if (isDup) {
+          setEditingNoteNo(null);
+          setNoteNo(peekNextVoucherNo('DEL_NOTE', config));
+          setDate(new Date().toISOString().split('T')[0]);
+          setRemarks(dn.remarks ? `${dn.remarks} (Copy of ${dn.noteNo})` : `Copy of ${dn.noteNo}`);
+        } else {
+          setEditingNoteNo(dn.noteNo);
+          setNoteNo(dn.noteNo);
+          if (dn.date) setDate(new Date(dn.date).toISOString().split('T')[0]);
+          if (dn.remarks) setRemarks(dn.remarks);
+        }
         if ((dn as any).customerName || dn.customer) setCustomerName((dn as any).customerName || dn.customer);
         if (dn.orderRefNo) setOrderRefNo(dn.orderRefNo);
         if (dn.dispatchThrough) setDispatchThrough(dn.dispatchThrough);

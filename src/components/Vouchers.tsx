@@ -46,8 +46,15 @@ import {
   Eye,
   Check,
   Copy,
-  MessageSquare
+  MessageSquare,
+  Repeat,
+  Zap
 } from 'lucide-react';
+import { RecurringVouchersModal } from './vouchers/RecurringVouchersModal';
+import {
+  getPendingDueRecurringVouchers,
+  processDueRecurringVouchers
+} from '../services/recurringVoucherService';
 import XLSX from 'xlsx-js-style';
 import { SearchableLedgerSelect } from './SearchableLedgerSelect';
 import { AcceptModal } from './AcceptModal';
@@ -153,9 +160,10 @@ export const Vouchers: React.FC<VouchersProps> = ({
   const [salesOrderTab, setSalesOrderTab] = useState<'create' | 'register'>('create');
   const [purchaseOrderTab, setPurchaseOrderTab] = useState<'create' | 'register'>('create');
   const [receiptNoteTab, setReceiptNoteTab] = useState<'create' | 'register'>('create');
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
 
-  // Method to load an existing voucher or report record directly into Entry screen
-  const loadVoucherIntoEntry = (v: any) => {
+  // Method to load an existing voucher or report record directly into Entry screen (supports duplication / cloning)
+  const loadVoucherIntoEntry = (v: any, isDuplicate: boolean = false) => {
     if (!v) return;
     const rawType = v.type || (
       v.voucherNo?.startsWith('PV-') ? 'P' :
@@ -185,12 +193,21 @@ export const Vouchers: React.FC<VouchersProps> = ({
       setActiveCategory('financial');
       setActiveVType(vType as any);
       setVoucherTypeHistory([vType as any]);
-      setEditingVoucherNo(v.voucherNo || null);
-      setVoucherNo(v.voucherNo || '');
-      if (v.date) {
-        setDate(new Date(v.date).toISOString().split('T')[0]);
+
+      if (isDuplicate) {
+        setEditingVoucherNo(null);
+        setVoucherNo(isAutoMode ? peekNextVoucherNo(vType as any, config) : '');
+        setDate(new Date().toISOString().split('T')[0]);
+        setNarration(v.narration ? `${v.narration} (Copy of ${v.voucherNo || v.refNo})` : `Copy of ${v.voucherNo || v.refNo}`);
+        setBillAllocations([]);
+      } else {
+        setEditingVoucherNo(v.voucherNo || null);
+        setVoucherNo(v.voucherNo || '');
+        if (v.date) {
+          setDate(new Date(v.date).toISOString().split('T')[0]);
+        }
+        setNarration(v.narration || '');
       }
-      setNarration(v.narration || '');
 
       if (v.lines && Array.isArray(v.lines) && v.lines.length > 0) {
         setEntryMode('multi');
@@ -233,16 +250,20 @@ export const Vouchers: React.FC<VouchersProps> = ({
       setSupplierName(v.supplierName || '');
       setSupplierGstNo(v.supplierGstNo || '');
       setSupplierCountry(v.supplierCountry || '');
-      setInvoiceNo(v.invoiceNo || '');
+      setInvoiceNo(isDuplicate ? '' : (v.invoiceNo || ''));
       setInvoiceDate(v.invoiceDate || '');
-      setReferenceNo(v.referenceNo || '');
-      setDeclarationNo(v.declarationNo || '');
+      setReferenceNo(isDuplicate ? '' : (v.referenceNo || ''));
+      setDeclarationNo(isDuplicate ? '' : (v.declarationNo || ''));
       setDeclarationDate(v.declarationDate || '');
       setTaxableAmount(v.taxableAmount !== undefined ? v.taxableAmount : '');
       setExemptedAmount(v.exemptedAmount !== undefined ? v.exemptedAmount : '');
       setGstAmount(v.gstAmount !== undefined ? v.gstAmount : '');
       setTotalImportAmount(v.totalImportAmount !== undefined ? v.totalImportAmount : '');
       setCustomGstData(v.customGstData || {});
+
+      if (isDuplicate) {
+        showToast(`Voucher duplicated from ${v.voucherNo || v.refNo}! Review and press Save.`, 'success');
+      }
 
     } else if (['CN', 'DN', 'DEL_NOTE', 'PHYSICAL_STOCK', 'QUOTATION', 'SALES_ORDER', 'PURCHASE_ORDER', 'RECEIPT_NOTE'].includes(vType)) {
       setMainTab('entry');
@@ -281,7 +302,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
         loadedTargetKeyRef.current = key;
         const details = getVoucherDetails(initialVoucherTarget.voucherNo);
         if (details) {
-          loadVoucherIntoEntry(details.header || details);
+          loadVoucherIntoEntry(details.header || details, Boolean((initialVoucherTarget as any)?.isDuplicate));
         }
       }
     } else {
@@ -559,6 +580,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
   const [shareModalVoucher, setShareModalVoucher] = useState<VoucherShareData | null>(null);
   const [showShareRegisterModal, setShowShareRegisterModal] = useState(false);
   const [voucherTypeHistory, setVoucherTypeHistory] = useState<VoucherActionType[]>(['P']);
+  const [pendingRecurringCount, setPendingRecurringCount] = useState<number>(0);
 
   const currencySymbol = config?.CurrencySymbol || 'Nu.';
 
@@ -566,10 +588,30 @@ export const Vouchers: React.FC<VouchersProps> = ({
   const loadRecentVouchers = () => {
     const list = getVouchers();
     setRecentVouchers(list);
+    // Refresh pending recurring count
+    const pending = getPendingDueRecurringVouchers();
+    setPendingRecurringCount(pending.length);
   };
 
   useEffect(() => {
     loadRecentVouchers();
+    // Check if any auto-vouchers are due for auto-posting
+    try {
+      const due = getPendingDueRecurringVouchers();
+      if (due.length > 0) {
+        const autoDue = due.filter(d => d.autoPostMode === 'automatic');
+        if (autoDue.length > 0) {
+          const res = processDueRecurringVouchers();
+          if (res.postedCount > 0) {
+            showToast(`⚡ Auto-posted ${res.postedCount} scheduled recurring voucher(s) (Rent, Bills, Salaries)`, 'success');
+            loadRecentVouchers();
+            onDataRefresh();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Auto recurring check error:', e);
+    }
   }, []);
 
   // Sync initial ledgers into fields
@@ -1918,8 +1960,24 @@ export const Vouchers: React.FC<VouchersProps> = ({
             )}
           </div>
 
-          {/* Right Section: Single / Double Mode toggle for financial vouchers */}
+          {/* Right Section: Auto / Recurring button + Single / Double Mode toggle */}
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Auto / Recurring Vouchers Schedule Button */}
+            <button
+              type="button"
+              onClick={() => setShowRecurringModal(true)}
+              className="h-7.5 rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 px-2.5 font-bold text-purple-700 text-xs shadow-2xs flex items-center gap-1.5 cursor-pointer transition active:scale-95"
+              title="Configure and manage automated recurring vouchers (Rent, Salaries, EMIs)"
+            >
+              <Repeat className="h-3.5 w-3.5 text-purple-600" />
+              <span>Auto Vouchers</span>
+              {pendingRecurringCount > 0 && (
+                <span className="px-1.5 py-0.2 bg-amber-500 text-slate-950 text-[10px] font-black rounded-full animate-pulse">
+                  {pendingRecurringCount}
+                </span>
+              )}
+            </button>
+
             {activeVType && ['P', 'R', 'J', 'C'].includes(activeVType) && (
               <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                 <button
@@ -3646,12 +3704,27 @@ export const Vouchers: React.FC<VouchersProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
+                {/* Duplicate / Copy Voucher */}
                 <button
                   type="button"
                   onClick={() => {
                     const targetVoucher = viewVoucher;
                     setViewVoucher(null);
-                    loadVoucherIntoEntry(targetVoucher);
+                    loadVoucherIntoEntry(targetVoucher, true);
+                  }}
+                  className="px-3.5 h-9 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold text-xs flex items-center gap-1.5 border border-purple-200 cursor-pointer shadow-2xs transition active:scale-95"
+                  title="Duplicate / Copy voucher into a new editable entry"
+                >
+                  <Copy className="h-4 w-4 text-purple-600" />
+                  <span>Duplicate / Copy</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetVoucher = viewVoucher;
+                    setViewVoucher(null);
+                    loadVoucherIntoEntry(targetVoucher, false);
                   }}
                   className="px-4 h-9 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
                 >
@@ -3988,6 +4061,28 @@ export const Vouchers: React.FC<VouchersProps> = ({
           }
         }}
         onCancel={() => setShowQuitModal(false)}
+      />
+
+      {/* Auto & Recurring Vouchers Configuration & Execution Modal */}
+      <RecurringVouchersModal
+        isOpen={showRecurringModal}
+        onClose={() => {
+          setShowRecurringModal(false);
+          loadRecentVouchers();
+        }}
+        config={config}
+        ledgers={ledgers}
+        onDataRefresh={() => {
+          onDataRefresh();
+          loadRecentVouchers();
+        }}
+        onOpenVoucherDetail={(vNo) => {
+          setShowRecurringModal(false);
+          const details = getVoucherDetails(vNo);
+          if (details) {
+            setViewVoucher(details.header || details);
+          }
+        }}
       />
     </div>
   );

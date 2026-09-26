@@ -7766,6 +7766,175 @@ export function getAdvancedReports(type: string, from?: string, to?: string) {
     return batchRows;
   }
 
+  if (type === 'daybook') {
+    const fr = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
+    const toDt = to ? new Date(to).setHours(23, 59, 59, 999) : Date.now();
+    const daybookEntries: any[] = [];
+
+    // 1. Financial Vouchers (Payment, Receipt, Journal, Contra, CN, DN)
+    const allV = getVouchers();
+    allV.forEach((v: any) => {
+      const rawDate = v.DateIso || v.date || v.Date;
+      const d = new Date(rawDate).getTime();
+      if (d >= fr && d <= toDt) {
+        const isCancelled = (v.status as string) === 'Cancelled';
+        const drLedger = v.debitLedger || (v.lines && v.lines.find((l: any) => l.type === 'Dr')?.ledger) || '';
+        const crLedger = v.creditLedger || (v.lines && v.lines.find((l: any) => l.type === 'Cr')?.ledger) || '';
+        const particular = drLedger && crLedger ? `${drLedger} / ${crLedger}` : (drLedger || crLedger || v.partyName || '-');
+        const typeName = v.voucherTypeName || (
+          v.type === 'P' ? 'Payment' :
+          v.type === 'R' ? 'Receipt' :
+          v.type === 'C' ? 'Contra' :
+          v.type === 'J' ? 'Journal' :
+          v.type === 'S' ? 'Sales' :
+          v.type === 'PUR' ? 'Purchase' :
+          v.type === 'CN' ? 'Credit Note' :
+          v.type === 'DN' ? 'Debit Note' :
+          v.type === 'DEL_NOTE' ? 'Delivery Note' :
+          v.type === 'PHYSICAL_STOCK' ? 'Physical Stock' :
+          v.type === 'QUOTATION' ? 'Quotation' :
+          v.type
+        );
+        const amt = Number(v.amount || v.totalAmount || v.total) || 0;
+        daybookEntries.push({
+          ...v,
+          id: v.id || v.voucherNo,
+          VoucherNo: v.voucherNo,
+          RefNo: v.voucherNo,
+          Date: v.date,
+          DateIso: v.date,
+          Type: typeName,
+          rawType: v.type,
+          Particulars: particular,
+          Debit: isCancelled ? 0 : amt,
+          Credit: isCancelled ? 0 : amt,
+          TotalAmount: isCancelled ? 0 : amt,
+          Narration: v.narration || '',
+          Status: isCancelled ? 'Cancelled' : (v.status || 'Active'),
+          isCancelled,
+          source: 'voucher'
+        });
+      }
+    });
+
+    // 2. Sales Invoices
+    const sales = getDeduplicatedSales();
+    sales.forEach((s: any) => {
+      const d = new Date(s.date).getTime();
+      if (d >= fr && d <= toDt) {
+        const isCancelled = (s.status as string) === 'Cancelled';
+        const partyName = typeof s.customer === 'object' ? (s.customer?.name || s.customer?.ledger || 'Cash Customer') : (s.customer || 'Cash Customer');
+        const amt = Number(s.totalAmount || s.total) || 0;
+        daybookEntries.push({
+          ...s,
+          id: s.id || s.invoiceNo,
+          VoucherNo: s.invoiceNo,
+          RefNo: s.invoiceNo,
+          Date: s.date,
+          DateIso: s.date,
+          Type: 'Sales',
+          rawType: 'S',
+          Particulars: partyName,
+          Debit: isCancelled ? 0 : amt,
+          Credit: 0,
+          TotalAmount: isCancelled ? 0 : amt,
+          Narration: s.notes || s.narration || `Sales Invoice #${s.invoiceNo}`,
+          Status: isCancelled ? 'Cancelled' : (s.status || 'Active'),
+          isCancelled,
+          source: 'sales'
+        });
+      }
+    });
+
+    // 3. Purchase Invoices
+    const purchases = getDeduplicatedPurchases();
+    purchases.forEach((p: any) => {
+      const d = new Date(p.date).getTime();
+      if (d >= fr && d <= toDt) {
+        const isCancelled = (p.status as string) === 'Cancelled';
+        const partyName = typeof p.supplier === 'object' ? (p.supplier?.name || p.supplier?.ledger || 'Supplier') : (p.supplier || p.supplierName || 'Supplier');
+        const amt = Number(p.totalAmount || p.total) || 0;
+        daybookEntries.push({
+          ...p,
+          id: p.id || p.billNo || p.invoiceNo,
+          VoucherNo: p.billNo || p.invoiceNo,
+          RefNo: p.billNo || p.invoiceNo,
+          Date: p.date,
+          DateIso: p.date,
+          Type: 'Purchase',
+          rawType: 'PUR',
+          Particulars: partyName,
+          Debit: 0,
+          Credit: isCancelled ? 0 : amt,
+          TotalAmount: isCancelled ? 0 : amt,
+          Narration: p.remarks || p.narration || `Purchase Bill #${p.billNo || p.invoiceNo}`,
+          Status: isCancelled ? 'Cancelled' : (p.status || 'Active'),
+          isCancelled,
+          source: 'purchase'
+        });
+      }
+    });
+
+    // 4. Quotations
+    const quotations = getQuotations();
+    quotations.forEach((q: any) => {
+      const d = new Date(q.date).getTime();
+      if (d >= fr && d <= toDt) {
+        const isCancelled = (q.status as string) === 'Cancelled' || q.isCancelled;
+        const amt = Number(q.totalAmount || q.total) || 0;
+        daybookEntries.push({
+          ...q,
+          id: q.id || q.quotationNo,
+          VoucherNo: q.quotationNo,
+          RefNo: q.quotationNo,
+          Date: q.date,
+          DateIso: q.date,
+          Type: 'Quotation',
+          rawType: 'QUOTATION',
+          Particulars: q.customerName || (typeof q.customer === 'object' ? q.customer?.name : q.customer) || 'Customer',
+          Debit: isCancelled ? 0 : amt,
+          Credit: 0,
+          TotalAmount: isCancelled ? 0 : amt,
+          Narration: q.remarks || `Quotation #${q.quotationNo}`,
+          Status: isCancelled ? 'Cancelled' : (q.status || 'Active'),
+          isCancelled,
+          source: 'quotation'
+        });
+      }
+    });
+
+    // 5. Delivery Notes
+    const deliveryNotes = getDeliveryNotes();
+    deliveryNotes.forEach((dn: any) => {
+      const d = new Date(dn.date).getTime();
+      if (d >= fr && d <= toDt) {
+        const isCancelled = (dn.status as string) === 'Cancelled' || dn.isCancelled;
+        const amt = Number(dn.totalAmount || dn.total) || 0;
+        daybookEntries.push({
+          ...dn,
+          id: dn.id || dn.noteNo,
+          VoucherNo: dn.noteNo,
+          RefNo: dn.noteNo,
+          Date: dn.date,
+          DateIso: dn.date,
+          Type: 'Delivery Note',
+          rawType: 'DEL_NOTE',
+          Particulars: dn.customerName || (typeof dn.customer === 'object' ? dn.customer?.name : dn.customer) || 'Consignee',
+          Debit: isCancelled ? 0 : amt,
+          Credit: 0,
+          TotalAmount: isCancelled ? 0 : amt,
+          Narration: dn.remarks || `Delivery Note #${dn.noteNo}`,
+          Status: isCancelled ? 'Cancelled' : (dn.status || 'Active'),
+          isCancelled,
+          source: 'delivery_note'
+        });
+      }
+    });
+
+    // Sort chronologically descending
+    return daybookEntries.sort((a, b) => new Date(b.DateIso || b.Date).getTime() - new Date(a.DateIso || a.Date).getTime());
+  }
+
   if (type === 'vouchers') {
     const allV = getVouchers();
     const fr = from ? new Date(from).setHours(0, 0, 0, 0) : 0;
