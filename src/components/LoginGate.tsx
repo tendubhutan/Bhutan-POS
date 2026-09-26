@@ -12,7 +12,16 @@ import {
   Terminal,
   Database,
   Sparkles,
-  LogIn
+  LogIn,
+  ShoppingCart,
+  Package,
+  BarChart3,
+  Users,
+  Receipt,
+  Settings,
+  Zap,
+  User,
+  Calendar
 } from 'lucide-react';
 import { AppUser, UserPermission } from '../types';
 import { 
@@ -263,270 +272,432 @@ export const LoginGate: React.FC<LoginGateProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col justify-center items-center p-4 selection:bg-blue-600 selection:text-white">
-      {/* Ambient background lighting and subtle gradients */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[600px] sm:w-[750px] h-[380px] bg-gradient-to-b from-blue-600/15 via-indigo-600/10 to-transparent rounded-full blur-3xl" />
-        <div className="absolute -bottom-32 -right-20 w-[450px] h-[350px] bg-blue-500/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-32 -left-20 w-[450px] h-[350px] bg-teal-500/10 rounded-full blur-3xl" />
-        {/* Subtle decorative grid background */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b08_1px,transparent_1px),linear-gradient(to_bottom,#1e293b08_1px,transparent_1px)] bg-[size:24px_24px] opacity-40" />
+    <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col justify-between overflow-y-auto overflow-x-hidden selection:bg-blue-600 selection:text-white font-sans">
+      {/* Scenic Background Wallpaper (Himalayan Bhutan Landscape) */}
+      <div 
+        className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none"
+        style={{
+          backgroundImage: `url('https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=1920&auto=format&fit=crop')`
+        }}
+      >
+        {/* Soft bright gradient overlay matching Image 2 */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-sky-200/80 via-sky-100/65 to-blue-900/50 backdrop-blur-[1px]" />
       </div>
 
-      <div className="relative w-full max-w-md bg-slate-900/90 border border-slate-800/90 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.6)] p-6 sm:p-8 backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-200">
-        {/* Brand Header */}
-        <div className="flex flex-col items-center text-center mb-6">
-          <div className="relative mb-3.5">
-            <div className="h-16 w-16 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 flex items-center justify-center text-white shadow-xl shadow-blue-500/25 ring-4 ring-blue-500/15">
-              <ShieldCheck className="h-8 w-8 text-white drop-shadow" />
-            </div>
-          </div>
+      {/* Main Content Container */}
+      <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 flex-1 flex items-center justify-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center w-full my-auto">
           
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-950/70 border border-blue-800/60 text-blue-300 text-xs font-semibold tracking-wide shadow-xs mb-2">
-            <Sparkles className="h-3.5 w-3.5 text-blue-400" />
-            <span>{dedicatedId ? displayCompanyName : 'Ezee ERP'}</span>
-          </div>
-
-          <h1 className="text-2xl sm:text-[26px] font-black text-white tracking-tight">
-            Terminal Access
-          </h1>
-        </div>
-
-        {/* 1-Click Instant Enter: ONLY displayed in development / preview environments */}
-        {isDevPreview && (
-          <div className="mb-5 p-3 rounded-2xl bg-gradient-to-r from-emerald-950/40 to-teal-950/40 border border-emerald-500/30">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles className="h-3 w-3" />
-                <span>Preview Mode Only</span>
-              </span>
-              <span className="text-[9px] font-mono text-emerald-300/70 bg-emerald-900/40 px-1.5 py-0.5 rounded">
-                Hidden in Live Prod
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleInstantUnlock('Administrator', `${displayCompanyName} Administrator`)}
-              className="w-full py-2.5 px-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition cursor-pointer active:scale-[0.98]"
-            >
-              <span>1-Click Enter as {displayCompanyName} Admin (Preview Bypass)</span>
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* Active Workspace Notification */}
-        <div className="mb-5 p-3 rounded-2xl bg-slate-800/50 border border-slate-700/60 flex items-center justify-between text-xs backdrop-blur-xs">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-blue-600/15 border border-blue-500/25 flex items-center justify-center shrink-0 text-blue-400">
-              <Building2 className="h-4 w-4" />
-            </div>
-            <div className="text-left min-w-0">
-              <span className="text-slate-400 block text-[9px] font-mono uppercase tracking-wider font-semibold">Active Workspace</span>
-              <span className="text-white font-bold truncate block text-xs">
-                {displayCompanyName}
-              </span>
-            </div>
-          </div>
-          <div className="shrink-0 text-right font-mono text-[10px] text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-800/60 px-2.5 py-1 rounded-lg shadow-2xs">
-            {activeFY?.fy_name || 'FY 2026'}
-          </div>
-        </div>
-
-        {/* Alerts */}
-        {errorMsg && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2.5 animate-in fade-in duration-150">
-            <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-400" />
-            <div className="leading-snug">{errorMsg}</div>
-          </div>
-        )}
-
-        {isSuccess && (
-          <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2 animate-in fade-in duration-150">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
-            <span>Entering {authenticatedRole ? `${authenticatedRole} workspace...` : 'workspace...'}</span>
-          </div>
-        )}
-
-        {/* Authentication Form */}
-        <form onSubmit={handleLoginSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5 text-left">
-              Email, Username, or Store Name
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                <Mail className="h-4 w-4" />
+          {/* LEFT PANEL: Ezee ERP Brand Showcase & Feature Badges Grid */}
+          <div className="lg:col-span-6 space-y-6 text-left">
+            {/* Top Logo & Handwritten Slogan */}
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-12 sm:h-14 w-12 sm:w-14 rounded-2xl bg-gradient-to-tr from-blue-600 via-blue-500 to-cyan-400 flex items-center justify-center text-white shadow-lg shadow-blue-500/30 ring-4 ring-white/60">
+                  <span className="font-black text-2xl tracking-tighter">E</span>
+                </div>
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-none">
+                    Ezee <span className="text-blue-600">ERP</span>
+                  </h1>
+                  <p className="text-[11px] sm:text-xs font-semibold text-slate-600 mt-1">
+                    Everything Your Business Needs, in One Place.
+                  </p>
+                </div>
               </div>
-              <input
-                type="text"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder={dedicatedId ? `e.g. admin or ${(displayCompany?.email || 'admin')}` : "e.g. panglungenterprise@gmail.com, admin, or store name"}
-                autoComplete="username"
-                disabled={isLoading || isSuccess}
-                className="w-full pl-10 pr-3.5 py-2.5 bg-slate-800/70 border border-slate-700/80 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition shadow-inner"
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-semibold text-slate-300 text-left">
-                Password or PIN
-              </label>
-            </div>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                <Lock className="h-4 w-4" />
-              </div>
-              <input
-                type={showPassword ? 'text' : 'password'}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password or 4-digit PIN"
-                autoComplete="current-password"
-                disabled={isLoading || isSuccess}
-                className="w-full pl-10 pr-10 py-2.5 bg-slate-800/70 border border-slate-700/80 rounded-xl text-white text-xs placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition shadow-inner"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 transition cursor-pointer"
-                title={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading || isSuccess}
-            className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-600 hover:from-blue-500 hover:via-indigo-500 hover:to-blue-500 active:scale-[0.99] text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/30 transition duration-150 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-          >
-            {isLoading ? (
-              <>
-                <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Verifying Credentials...</span>
-              </>
-            ) : isSuccess ? (
-              <>
-                <CheckCircle2 className="h-3.5 w-3.5 text-white" />
-                <span>Access Granted</span>
-              </>
-            ) : (
-              <>
-                <LogIn className="h-3.5 w-3.5" />
-                <span>Sign In to ERP</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </>
-            )}
-          </button>
-        </form>
-
-        {/* Test Accounts 1-Click Launchers: ONLY shown in Development / Preview Mode */}
-        {isDevPreview && (
-          <div className="mt-5 pt-4 border-t border-slate-800/80 text-left">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold text-slate-400 tracking-wide uppercase flex items-center gap-1">
-                <span>Demo Test Accounts</span>
-                <span className="text-[9px] text-amber-400 font-mono font-normal">(Dev Preview)</span>
+              
+              <span className="font-serif italic text-blue-700 text-sm sm:text-base font-bold tracking-wide drop-shadow-xs bg-white/40 backdrop-blur-xs px-3 py-1 rounded-full border border-blue-200/60">
+                Simplify • Automate • Grow
               </span>
-              <span className="text-[10px] text-emerald-400 font-medium">Quick Fill</span>
             </div>
 
-            {dedicatedId ? (
-              /* When visiting a dedicated client link, strictly show this client's credentials and system admin */
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleOneClickAccount(
-                    displayCompany?.admin_username || displayCompany?.email || 'admin',
-                    displayCompany?.admin_password || displayCompany?.admin_pin || 'ClientPass@123',
-                    'Administrator',
-                    `${displayCompanyName} Admin`
-                  )}
-                  className="p-2 rounded-xl bg-slate-800/60 hover:bg-emerald-950/40 border border-slate-700/60 hover:border-emerald-500/50 text-left transition cursor-pointer group"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-white group-hover:text-emerald-300 truncate">{displayCompanyName}</span>
-                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-emerald-900/60 text-emerald-300 shrink-0 ml-1">client admin</span>
-                  </div>
-                  <span className="text-[9px] text-slate-400 block truncate mt-0.5">
-                    {displayCompany?.admin_username || displayCompany?.email || 'admin'}
+            {/* Welcome Headline */}
+            <div className="space-y-1 pt-2">
+              <p className="text-slate-600 font-extrabold text-xs sm:text-sm uppercase tracking-wider">
+                Welcome to
+              </p>
+              <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-slate-900 tracking-tight">
+                Ezee <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500">ERP</span>
+              </h2>
+              <p className="text-slate-700 font-bold text-sm sm:text-base max-w-md">
+                Everything Your Business Needs, in One Place.
+              </p>
+            </div>
+
+            {/* Feature Modules Grid (6 Colorful Badges - 2 rows x 3 cols) */}
+            <div className="grid grid-cols-3 gap-2.5 sm:gap-3.5 pt-2 max-w-lg">
+              {/* Module 1: POS */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-emerald-200/80 shadow-sm hover:shadow-md transition text-center space-y-1.5 group">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 group-hover:scale-105 transition">
+                  <ShoppingCart className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm">POS</h3>
+                  <p className="text-[10px] font-semibold text-slate-500 leading-tight">Fast & Easy Billing</p>
+                </div>
+              </div>
+
+              {/* Module 2: Inventory */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-purple-200/80 shadow-sm hover:shadow-md transition text-center space-y-1.5 group">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-purple-500/20 group-hover:scale-105 transition">
+                  <Package className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm">Inventory</h3>
+                  <p className="text-[10px] font-semibold text-slate-500 leading-tight">Track Stock</p>
+                </div>
+              </div>
+
+              {/* Module 3: Accounting */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-amber-200/80 shadow-sm hover:shadow-md transition text-center space-y-1.5 group">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-md shadow-amber-500/20 group-hover:scale-105 transition">
+                  <BarChart3 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm">Accounting</h3>
+                  <p className="text-[10px] font-semibold text-slate-500 leading-tight">Stay Compliant</p>
+                </div>
+              </div>
+
+              {/* Module 4: HR & Payroll */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-teal-200/80 shadow-sm hover:shadow-md transition text-center space-y-1.5 group">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-teal-500 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-teal-500/20 group-hover:scale-105 transition">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm">HR & Payroll</h3>
+                  <p className="text-[10px] font-semibold text-slate-500 leading-tight">Manage People</p>
+                </div>
+              </div>
+
+              {/* Module 5: Purchase & Sales */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-blue-200/80 shadow-sm hover:shadow-md transition text-center space-y-1.5 group">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20 group-hover:scale-105 transition">
+                  <Receipt className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm">Purchase & Sales</h3>
+                  <p className="text-[10px] font-semibold text-slate-500 leading-tight">Grow Business</p>
+                </div>
+              </div>
+
+              {/* Module 6: More Modules */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white/90 backdrop-blur-md border border-indigo-200/80 shadow-sm hover:shadow-md transition text-center space-y-1.5 group">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 group-hover:scale-105 transition">
+                  <Settings className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-xs sm:text-sm">More Modules</h3>
+                  <p className="text-[10px] font-semibold text-slate-500 leading-tight">All in One ERP</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Cursive Priority Slogan */}
+            <div className="pt-4 hidden lg:block">
+              <span className="text-2xl font-serif italic text-slate-900 font-bold drop-shadow-sm border-b-2 border-amber-500 pb-1">
+                Your Business Our Priority
+              </span>
+            </div>
+          </div>
+
+          {/* RIGHT PANEL: Light Glassmorphic Terminal Access Login Card */}
+          <div className="lg:col-span-6 w-full max-w-md lg:max-w-md ml-auto">
+            <div className="bg-white/95 backdrop-blur-2xl border border-slate-200/90 rounded-[28px] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.25)] p-6 sm:p-8 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+              
+              {/* Top Security Pill Badge */}
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200/90 text-blue-700 text-xs font-bold shadow-2xs">
+                <ShieldCheck className="h-4 w-4 text-blue-600" />
+                <span>Secure & Reliable ERP</span>
+              </div>
+
+              {/* Header Title with Avatar Circle */}
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 ring-4 ring-blue-100 shrink-0">
+                  <Lock className="h-6 w-6 text-white" />
+                </div>
+                <div className="text-left">
+                  <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-none">
+                    Terminal Access
+                  </h1>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mt-1">
+                    SECURE LOGIN PORTAL
                   </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleOneClickAccount('admin@bhutanerp.bt', 'SuperAdminPass2026!', 'Administrator', 'System Admin')}
-                  className="p-2 rounded-xl bg-slate-800/60 hover:bg-purple-950/40 border border-slate-700/60 hover:border-purple-500/50 text-left transition cursor-pointer group"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-white group-hover:text-purple-300">System Admin</span>
-                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-purple-900/60 text-purple-300">superadmin</span>
-                  </div>
-                  <span className="text-[9px] text-slate-400 block truncate mt-0.5">admin@bhutanerp.bt</span>
-                </button>
+                </div>
               </div>
-            ) : (
-              /* When visiting generic root URL, show standard demo accounts */
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleOneClickAccount('admin@bhutanerp.bt', 'SuperAdminPass2026!', 'Administrator', 'System Admin')}
-                  className="p-2 rounded-xl bg-slate-800/60 hover:bg-purple-950/40 border border-slate-700/60 hover:border-purple-500/50 text-left transition cursor-pointer group"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-white group-hover:text-purple-300">System Admin</span>
-                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-purple-900/60 text-purple-300">superadmin</span>
-                  </div>
-                  <span className="text-[9px] text-slate-400 block truncate mt-0.5">admin@bhutanerp.bt</span>
-                </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleOneClickAccount('admin@ezeeshop.bt', 'EzeeAdminPass2026!', 'Administrator', 'Ezee Shop Admin')}
-                  className="p-2 rounded-xl bg-slate-800/60 hover:bg-emerald-950/40 border border-slate-700/60 hover:border-emerald-500/50 text-left transition cursor-pointer group"
-                >
+              {/* 1-Click Instant Enter: ONLY displayed in development / preview environments */}
+              {isDevPreview && (
+                <div className="p-3.5 rounded-2xl bg-sky-50/90 border border-sky-200/80 space-y-2 text-left shadow-2xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-white group-hover:text-emerald-300">Store Admin</span>
-                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-emerald-900/60 text-emerald-300">client admin</span>
+                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 text-blue-600" />
+                      <span>PREVIEW MODE ONLY</span>
+                    </span>
+                    <span className="text-[9px] font-mono text-blue-700 bg-blue-100/90 px-2 py-0.5 rounded-md font-extrabold">
+                      Hidden in Live Prod
+                    </span>
                   </div>
-                  <span className="text-[9px] text-slate-400 block truncate mt-0.5">admin@ezeeshop.bt</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInstantUnlock('Administrator', `${displayCompanyName} Administrator`)}
+                    className="w-full py-2.5 px-3.5 bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-extrabold text-xs rounded-xl shadow-md shadow-blue-600/25 flex items-center justify-between gap-2 transition cursor-pointer active:scale-[0.98]"
+                  >
+                    <span className="flex items-center gap-1.5 truncate">
+                      <Zap className="h-4 w-4 fill-amber-300 text-amber-300 shrink-0" />
+                      <span className="truncate">1-Click Enter as {displayCompanyName} Admin (Preview Bypass)</span>
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0" />
+                  </button>
+                </div>
+              )}
 
-                <button
-                  type="button"
-                  onClick={() => handleOneClickAccount('cashier@ezeeshop.bt', 'EzeeCashierPass2026!', 'Cashier', 'Ezee Cashier')}
-                  className="p-2 rounded-xl bg-slate-800/60 hover:bg-blue-950/40 border border-slate-700/60 hover:border-blue-500/50 text-left transition cursor-pointer group"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-white group-hover:text-blue-300">POS Cashier</span>
-                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-blue-900/60 text-blue-300">staff</span>
+              {/* Active Workspace Notification Box */}
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs text-left">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center shrink-0 text-blue-600">
+                    <Building2 className="h-4 w-4" />
                   </div>
-                  <span className="text-[9px] text-slate-400 block truncate mt-0.5">cashier@ezeeshop.bt</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleOneClickAccount('demo.admin@bhutanretail.bt', 'DemoAdminPass2026!', 'Administrator', 'Demo Retail Admin')}
-                  className="p-2 rounded-xl bg-slate-800/60 hover:bg-amber-950/40 border border-slate-700/60 hover:border-amber-500/50 text-left transition cursor-pointer group"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-white group-hover:text-amber-300">Demo Store</span>
-                    <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-amber-900/60 text-amber-300">demo</span>
+                  <div className="min-w-0">
+                    <span className="text-slate-400 block text-[9px] font-mono uppercase tracking-wider font-extrabold">ACTIVE WORKSPACE</span>
+                    <span className="text-slate-900 font-black truncate block text-xs">
+                      {displayCompanyName}
+                    </span>
                   </div>
-                  <span className="text-[9px] text-slate-400 block truncate mt-0.5">demo.admin@bhutanretail.bt</span>
-                </button>
+                </div>
+                <div className="shrink-0 font-mono text-[10px] text-emerald-800 font-black bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>{activeFY?.fy_name || 'FY 2026'}</span>
+                </div>
               </div>
-            )}
+
+              {/* Alerts */}
+              {errorMsg && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5 animate-in fade-in duration-150 text-left font-semibold">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
+                  <div className="leading-snug">{errorMsg}</div>
+                </div>
+              )}
+
+              {isSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 animate-in fade-in duration-150 font-bold text-left">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <span>Entering {authenticatedRole ? `${authenticatedRole} workspace...` : 'workspace...'}</span>
+                </div>
+              )}
+
+              {/* Login Form */}
+              <form onSubmit={handleLoginSubmit} className="space-y-4 text-left">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Email, Username, or Store Name
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <User className="h-4 w-4 text-slate-400" />
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder={dedicatedId ? `e.g. admin or ${(displayCompany?.email || 'admin')}` : "tendubhutan@gmail.com, admin, or store name"}
+                      autoComplete="username"
+                      disabled={isLoading || isSuccess}
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200/90 rounded-xl text-slate-900 font-semibold text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Password or PIN
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                      <Lock className="h-4 w-4 text-slate-400" />
+                    </div>
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Password or 4-digit PIN"
+                      autoComplete="current-password"
+                      disabled={isLoading || isSuccess}
+                      className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200/90 rounded-xl text-slate-900 font-semibold text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition shadow-2xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading || isSuccess}
+                  className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-lg shadow-indigo-500/25 transition duration-150 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isLoading ? (
+                    <>
+                      <div className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Verifying Credentials...</span>
+                    </>
+                  ) : isSuccess ? (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                      <span>Access Granted</span>
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="h-4 w-4" />
+                      <span>Sign In to ERP</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              {/* Demo Test Accounts 1-Click Launchers: ONLY shown in Development / Preview Mode */}
+              {isDevPreview && (
+                <div className="pt-3 border-t border-slate-200/80 text-left">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                      <span>Demo Test Accounts</span>
+                    </span>
+                    <span className="text-[10px] text-blue-600 font-bold flex items-center gap-0.5">
+                      <Zap className="h-3 w-3 text-amber-500 fill-amber-500" /> Quick Fill
+                    </span>
+                  </div>
+
+                  {dedicatedId ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOneClickAccount(
+                          displayCompany?.admin_username || displayCompany?.email || 'admin',
+                          displayCompany?.admin_password || displayCompany?.admin_pin || 'ClientPass@123',
+                          'Administrator',
+                          `${displayCompanyName} Admin`
+                        )}
+                        className="p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50/80 border border-slate-200/80 hover:border-blue-300 text-left transition cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-900 group-hover:text-blue-700 truncate">{displayCompanyName}</span>
+                          <ArrowRight className="h-3 w-3 text-slate-400 group-hover:text-blue-600 shrink-0 ml-1" />
+                        </div>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[8px] font-mono font-extrabold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800">client admin</span>
+                        </div>
+                        <span className="text-[9px] font-mono text-slate-500 block truncate mt-1">
+                          {displayCompany?.admin_username || displayCompany?.email || 'admin'}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOneClickAccount('admin@bhutanerp.bt', 'SuperAdminPass2026!', 'Administrator', 'System Admin')}
+                        className="p-2.5 rounded-xl bg-slate-50 hover:bg-purple-50/80 border border-slate-200/80 hover:border-purple-300 text-left transition cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-900 group-hover:text-purple-700">System Admin</span>
+                          <ArrowRight className="h-3 w-3 text-slate-400 group-hover:text-purple-600 shrink-0 ml-1" />
+                        </div>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[8px] font-mono font-extrabold px-1.5 py-0.2 rounded bg-purple-100 text-purple-800">superadmin</span>
+                        </div>
+                        <span className="text-[9px] font-mono text-slate-500 block truncate mt-1">admin@bhutanerp.bt</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOneClickAccount('admin@bhutanerp.bt', 'SuperAdminPass2026!', 'Administrator', 'System Admin')}
+                        className="p-2.5 rounded-xl bg-slate-50 hover:bg-purple-50/80 border border-slate-200/80 hover:border-purple-300 text-left transition cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-900 group-hover:text-purple-700">System Admin</span>
+                          <ArrowRight className="h-3 w-3 text-slate-400 group-hover:text-purple-600 shrink-0 ml-1" />
+                        </div>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[8px] font-mono font-extrabold px-1.5 py-0.2 rounded bg-purple-100 text-purple-800">superadmin</span>
+                        </div>
+                        <span className="text-[9px] font-mono text-slate-500 block truncate mt-1">admin@bhutanerp.bt</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOneClickAccount('admin@ezeeshop.bt', 'EzeeAdminPass2026!', 'Administrator', 'Ezee Shop Admin')}
+                        className="p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50/80 border border-slate-200/80 hover:border-emerald-300 text-left transition cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-900 group-hover:text-emerald-700">Store Admin</span>
+                          <ArrowRight className="h-3 w-3 text-slate-400 group-hover:text-emerald-600 shrink-0 ml-1" />
+                        </div>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[8px] font-mono font-extrabold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800">client admin</span>
+                        </div>
+                        <span className="text-[9px] font-mono text-slate-500 block truncate mt-1">admin@ezeeshop.bt</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOneClickAccount('cashier@ezeeshop.bt', 'EzeeCashierPass2026!', 'Cashier', 'Ezee Cashier')}
+                        className="p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50/80 border border-slate-200/80 hover:border-blue-300 text-left transition cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-900 group-hover:text-blue-700">POS Cashier</span>
+                          <ArrowRight className="h-3 w-3 text-slate-400 group-hover:text-blue-600 shrink-0 ml-1" />
+                        </div>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[8px] font-mono font-extrabold px-1.5 py-0.2 rounded bg-blue-100 text-blue-800">staff</span>
+                        </div>
+                        <span className="text-[9px] font-mono text-slate-500 block truncate mt-1">cashier@ezeeshop.bt</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOneClickAccount('demo.admin@bhutanretail.bt', 'DemoAdminPass2026!', 'Administrator', 'Demo Retail Admin')}
+                        className="p-2.5 rounded-xl bg-slate-50 hover:bg-amber-50/80 border border-slate-200/80 hover:border-amber-300 text-left transition cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-900 group-hover:text-amber-700">Demo Store</span>
+                          <ArrowRight className="h-3 w-3 text-slate-400 group-hover:text-amber-600 shrink-0 ml-1" />
+                        </div>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[8px] font-mono font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">demo</span>
+                        </div>
+                        <span className="text-[9px] font-mono text-slate-500 block truncate mt-1">demo.admin@bhutanretail.bt</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Card Footer */}
+              <div className="pt-3 border-t border-slate-100 text-center text-[11px] font-bold text-slate-500 flex items-center justify-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-blue-600" />
+                <span>Secure • Reliable • Made for Bhutan</span>
+              </div>
+            </div>
           </div>
-        )}
+
+        </div>
       </div>
+
+      {/* Bottom Wave Footer Accent Bar */}
+      <footer className="relative z-10 w-full bg-gradient-to-r from-blue-900 via-indigo-900 to-blue-800 text-white py-3 px-4 text-center border-t border-blue-500/30 shadow-lg">
+        <div className="max-w-7xl mx-auto flex items-center justify-center gap-2 text-xs font-semibold text-blue-100">
+          <ShieldCheck className="h-4 w-4 text-cyan-400 shrink-0" />
+          <span><strong>Ezee ERP</strong> &nbsp;|&nbsp; Everything Your Business Needs, in One Place.</span>
+        </div>
+      </footer>
     </div>
   );
 };
