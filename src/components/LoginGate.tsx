@@ -278,11 +278,11 @@ export const LoginGate: React.FC<LoginGateProps> = ({
       <div 
         className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-300"
         style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1920&auto=format&fit=crop')`
+          backgroundImage: `url('https://images.unsplash.com/photo-1542332213-9b5a5a3fad35?q=80&w=1920&auto=format&fit=crop')`
         }}
       >
-        {/* Soft bright gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-sky-200/80 via-sky-100/60 to-blue-900/40 backdrop-blur-[1px]" />
+        {/* Soft subtle gradient overlay to keep text readable while letting vibrant green rice fields shine */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-slate-900/40 via-emerald-950/10 to-sky-900/20 backdrop-blur-[0.5px]" />
       </div>
 
       {/* Main Content Container */}
@@ -291,13 +291,9 @@ export const LoginGate: React.FC<LoginGateProps> = ({
           
           {/* LEFT PANEL: Ezee ERP Brand Showcase & Feature Badges Grid */}
           <div className="lg:col-span-6 space-y-6 text-left">
-            {/* Top Logo & Handwritten Slogan */}
+            {/* Top Logo */}
             <div className="flex items-center justify-between flex-wrap gap-4 pt-2">
               <EzeeErpLogo size="lg" />
-              
-              <span className="font-serif italic text-blue-800 text-sm sm:text-base font-bold tracking-wide drop-shadow-xs bg-white/60 backdrop-blur-xs px-3.5 py-1.5 rounded-full border border-blue-200/80 shadow-2xs">
-                Simplify • Automate • Grow
-              </span>
             </div>
 
             {/* Feature Modules Grid (6 Colorful Badges - 2 rows x 3 cols) */}
@@ -381,12 +377,6 @@ export const LoginGate: React.FC<LoginGateProps> = ({
           <div className="lg:col-span-6 w-full max-w-md lg:max-w-md ml-auto">
             <div className="bg-white/95 backdrop-blur-2xl border border-slate-200/90 rounded-[28px] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.25)] p-6 sm:p-8 space-y-5 animate-in fade-in zoom-in-95 duration-200">
               
-              {/* Top Security Pill Badge */}
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200/90 text-blue-700 text-xs font-bold shadow-2xs">
-                <ShieldCheck className="h-4 w-4 text-blue-600" />
-                <span>Secure & Reliable ERP</span>
-              </div>
-
               {/* Header Title with Avatar Circle */}
               <div className="flex items-center gap-3">
                 <div className="h-12 w-12 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 ring-4 ring-blue-100 shrink-0">

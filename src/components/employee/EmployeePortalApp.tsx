@@ -1326,10 +1326,10 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
         <div 
           className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none"
           style={{
-            backgroundImage: `url('https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1920&auto=format&fit=crop')`
+            backgroundImage: `url('https://images.unsplash.com/photo-1542332213-9b5a5a3fad35?q=80&w=1920&auto=format&fit=crop')`
           }}
         >
-          <div className="absolute inset-0 bg-gradient-to-tr from-sky-200/85 via-sky-100/70 to-blue-900/40 backdrop-blur-[1px]" />
+          <div className="absolute inset-0 bg-gradient-to-tr from-slate-900/40 via-emerald-950/10 to-sky-900/20 backdrop-blur-[0.5px]" />
         </div>
 
         {/* Top Header */}
