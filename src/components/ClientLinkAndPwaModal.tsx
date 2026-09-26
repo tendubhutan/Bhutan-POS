@@ -50,6 +50,7 @@ import {
   saveOfficeNetworkConfig 
 } from '../services/employeeStaffService';
 import { getActiveCompanyId } from '../services/supabaseTenantService';
+import { EzeeErpLogo } from './common/EzeeErpLogo';
 import { TerminalConfig, Branch } from '../types';
 import { OfficeNetworkSecurityConfig } from '../types/staffPortal';
 
@@ -969,13 +970,16 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
                 <div className="p-5 bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 text-white rounded-3xl shadow-md space-y-3.5">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="p-3 bg-white/10 rounded-2xl border border-white/20">
-                        <Smartphone className="h-7 w-7 text-blue-300" />
+                      <div className="p-2.5 bg-white rounded-2xl border border-white/30 shadow-md">
+                        <EzeeErpLogo size="sm" variant="compact" />
                       </div>
                       <div>
-                        <h3 className="font-black text-base text-white">Dedicated Staff Mobile Portal (PWA)</h3>
+                        <h3 className="font-black text-base text-white flex items-center gap-2">
+                          <span>Dedicated Staff Mobile Portal</span>
+                          <span className="text-[10px] bg-blue-500/30 text-blue-200 border border-blue-400/30 px-2 py-0.5 rounded-full uppercase font-mono font-bold">PWA</span>
+                        </h3>
                         <p className="text-xs text-blue-200">
-                          100% Mobile Phone Friendly • Self-service check-in/out, leave applications & task assignments.
+                          Powered by Ezee ERP • Self-service attendance clock-in/out, leave applications & task assignments.
                         </p>
                       </div>
                     </div>

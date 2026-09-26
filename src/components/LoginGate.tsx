@@ -58,6 +58,37 @@ interface LoginGateProps {
   onUnlock: (user: AppUser) => void;
 }
 
+export const BHUTAN_LANDSCAPE_WALLPAPERS = [
+  {
+    id: 'taktshang',
+    name: "Taktshang Monastery (Tiger's Nest)",
+    location: "Paro Valley, Bhutan",
+    url: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=2000&auto=format&fit=crop',
+    icon: '🌄'
+  },
+  {
+    id: 'punakha_dzong',
+    name: "Punakha Dzong Fortress",
+    location: "Punakha Valley, Bhutan",
+    url: 'https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?q=80&w=2000&auto=format&fit=crop',
+    icon: '🏰'
+  },
+  {
+    id: 'rice_fields',
+    name: "Golden Rice Terraces",
+    location: "Paro & Punakha, Bhutan",
+    url: 'https://images.unsplash.com/photo-1542332213-9b5a5a3fad35?q=80&w=2000&auto=format&fit=crop',
+    icon: '🌾'
+  },
+  {
+    id: 'dochula_pass',
+    name: "Dochula Pass Himalayas",
+    location: "Thimphu-Punakha, Bhutan",
+    url: 'https://images.unsplash.com/photo-1548013146-72479768bada?q=80&w=2000&auto=format&fit=crop',
+    icon: '🏔️'
+  }
+];
+
 export const LoginGate: React.FC<LoginGateProps> = ({
   activeCompany,
   activeFY,
@@ -70,6 +101,22 @@ export const LoginGate: React.FC<LoginGateProps> = ({
   const [isSuccess, setIsSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [authenticatedRole, setAuthenticatedRole] = useState<string | null>(null);
+
+  // Bhutan Scenic Background Wallpaper State
+  const [selectedWallpaperUrl, setSelectedWallpaperUrl] = useState<string>(() => {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('bhutan_login_bg');
+      if (saved) return saved;
+    }
+    return BHUTAN_LANDSCAPE_WALLPAPERS[0].url; // Default: Taktshang Monastery (Tiger's Nest)
+  });
+
+  const handleSelectWallpaper = (url: string) => {
+    setSelectedWallpaperUrl(url);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('bhutan_login_bg', url);
+    }
+  };
 
   // Dedicated Client URL parameter detection (?company=...)
   const dedicatedId = getDedicatedCompanyIdFromUrl();
@@ -274,15 +321,15 @@ export const LoginGate: React.FC<LoginGateProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col justify-between overflow-y-auto overflow-x-hidden selection:bg-blue-600 selection:text-white font-sans">
-      {/* Scenic Background Wallpaper (Bhutan Terraced Rice Fields Landscape) */}
+      {/* Scenic Background Wallpaper (Bhutan Iconic Landscapes - Paro Taktsang Tiger's Nest, Punakha Dzong, Rice Terraces, Himalayas) */}
       <div 
-        className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-300"
+        className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-700 ease-in-out"
         style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1542332213-9b5a5a3fad35?q=80&w=1920&auto=format&fit=crop')`
+          backgroundImage: `url('${selectedWallpaperUrl}')`
         }}
       >
-        {/* Soft subtle gradient overlay to keep text readable while letting vibrant green rice fields shine */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-slate-900/40 via-emerald-950/10 to-sky-900/20 backdrop-blur-[0.5px]" />
+        {/* Soft subtle gradient overlay to keep text readable while preserving vivid landscape details */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/60 via-slate-900/20 to-sky-900/30 backdrop-blur-[0.5px]" />
       </div>
 
       {/* Main Content Container */}
@@ -657,11 +704,36 @@ export const LoginGate: React.FC<LoginGateProps> = ({
         </div>
       </div>
 
-      {/* Bottom Wave Footer Accent Bar */}
-      <footer className="relative z-10 w-full bg-gradient-to-r from-blue-900 via-indigo-900 to-blue-800 text-white py-3 px-4 text-center border-t border-blue-500/30 shadow-lg">
-        <div className="max-w-7xl mx-auto flex items-center justify-center gap-2 text-xs font-semibold text-blue-100">
-          <ShieldCheck className="h-4 w-4 text-cyan-400 shrink-0" />
-          <span><strong>Ezee ERP</strong> &nbsp;|&nbsp; Everything Your Business Needs, in One Place.</span>
+      {/* Bottom Wave Footer Accent Bar & Bhutan Wallpaper Switcher */}
+      <footer className="relative z-10 w-full bg-slate-900/90 backdrop-blur-md text-white py-3 px-4 border-t border-slate-800 shadow-lg">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
+          
+          <div className="flex items-center gap-2 font-semibold text-blue-100">
+            <ShieldCheck className="h-4 w-4 text-cyan-400 shrink-0" />
+            <span><strong>Ezee ERP</strong> &nbsp;|&nbsp; Everything Your Business Needs, in One Place.</span>
+          </div>
+
+          {/* Bhutan Landscape Wallpaper Switcher Pills */}
+          <div className="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-2xl border border-slate-800/90 text-xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 hidden lg:inline">Bhutan View:</span>
+            {BHUTAN_LANDSCAPE_WALLPAPERS.map(wp => (
+              <button
+                key={wp.id}
+                type="button"
+                onClick={() => handleSelectWallpaper(wp.url)}
+                className={`px-2.5 py-1 rounded-xl font-bold text-[11px] transition flex items-center gap-1 cursor-pointer ${
+                  selectedWallpaperUrl === wp.url
+                    ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                }`}
+                title={`${wp.name} - ${wp.location}`}
+              >
+                <span>{wp.icon}</span>
+                <span className="hidden sm:inline">{wp.name}</span>
+              </button>
+            ))}
+          </div>
+
         </div>
       </footer>
     </div>

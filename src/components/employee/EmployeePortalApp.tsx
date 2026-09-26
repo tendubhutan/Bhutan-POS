@@ -81,6 +81,15 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
     }
   }, [isAttendanceAllowed, isAssignmentsAllowed, activeTab]);
   
+  // Bhutan Background Wallpaper State
+  const [bgWallpaperUrl, setBgWallpaperUrl] = useState<string>(() => {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('bhutan_login_bg');
+      if (saved) return saved;
+    }
+    return 'https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=2000&auto=format&fit=crop'; // Default: Taktshang Monastery (Tiger's Nest)
+  });
+
   // Login form state
   const [loginMobile, setLoginMobile] = useState('');
   const [loginPin, setLoginPin] = useState('');
@@ -1322,26 +1331,26 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
   if (!currentEmployee) {
     return (
       <div className="relative min-h-screen text-slate-900 flex flex-col justify-between p-4 sm:p-6 font-sans overflow-x-hidden">
-        {/* Scenic Bhutan Terraced Rice Fields Background Wallpaper */}
+        {/* Scenic Bhutan Iconic Landscape Background Wallpaper */}
         <div 
-          className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none"
+          className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-700 ease-in-out"
           style={{
-            backgroundImage: `url('https://images.unsplash.com/photo-1542332213-9b5a5a3fad35?q=80&w=1920&auto=format&fit=crop')`
+            backgroundImage: `url('${bgWallpaperUrl}')`
           }}
         >
-          <div className="absolute inset-0 bg-gradient-to-tr from-slate-900/40 via-emerald-950/10 to-sky-900/20 backdrop-blur-[0.5px]" />
+          <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/60 via-slate-900/20 to-sky-900/30 backdrop-blur-[0.5px]" />
         </div>
 
         {/* Top Header */}
         <div className="relative z-10 flex items-center justify-between pt-2 max-w-md w-full mx-auto">
-          <div className="flex items-center gap-2 bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-blue-200/80 shadow-2xs">
-            <EzeeErpLogo size="sm" variant="compact" />
+          <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-2xl border border-blue-200/90 shadow-md">
+            <EzeeErpLogo size="sm" />
           </div>
 
           {onExitPortal && (
             <button
               onClick={onExitPortal}
-              className="text-xs text-slate-700 font-extrabold hover:text-slate-900 px-3 py-1.5 rounded-xl bg-white/80 hover:bg-white border border-slate-200 shadow-2xs cursor-pointer transition"
+              className="text-xs text-slate-700 font-extrabold hover:text-slate-900 px-3 py-1.5 rounded-xl bg-white/90 hover:bg-white border border-slate-200 shadow-sm cursor-pointer transition"
             >
               Exit
             </button>
@@ -1350,19 +1359,26 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
 
         {/* Center Card */}
         <div className="relative z-10 max-w-sm w-full mx-auto my-auto py-6">
-          <div className="bg-white/95 border border-slate-200/90 rounded-3xl p-6 shadow-[0_20px_50px_rgba(0,0,0,0.2)] backdrop-blur-2xl space-y-5">
-            <div className="text-center space-y-1">
-              <div className="h-14 w-14 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 text-white mx-auto flex items-center justify-center mb-3 shadow-lg shadow-blue-500/25">
-                <Smartphone className="h-7 w-7 text-white" />
+          <div className="bg-white/95 border border-slate-200/90 rounded-3xl p-6 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)] backdrop-blur-2xl space-y-5">
+            <div className="text-center space-y-2">
+              
+              {/* Ezee ERP Logo Banner inside Login Card */}
+              <div className="flex justify-center pb-1">
+                <div className="p-2.5 rounded-2xl bg-slate-50 border border-blue-100 shadow-2xs inline-block">
+                  <EzeeErpLogo size="md" />
+                </div>
               </div>
-              <h2 className="text-xl font-black text-slate-900">
-                {isAttendanceAllowed && isAssignmentsAllowed
-                  ? 'Staff Portal & Tasks'
-                  : isAttendanceAllowed
-                  ? 'Staff Check-In & Leaves'
-                  : 'Staff Tasks & Assignments'}
-              </h2>
-              <p className="text-xs font-semibold text-slate-500">Sign in with your Mobile Number and 4-digit PIN.</p>
+
+              <div>
+                <h2 className="text-xl font-black text-slate-900">
+                  {isAttendanceAllowed && isAssignmentsAllowed
+                    ? 'Staff Mobile Portal'
+                    : isAttendanceAllowed
+                    ? 'Staff Check-In & Leaves'
+                    : 'Staff Tasks & Assignments'}
+                </h2>
+                <p className="text-xs font-semibold text-slate-500 mt-0.5">Sign in with your Mobile Number and 4-digit PIN.</p>
+              </div>
             </div>
 
             {loginError && (
@@ -1565,9 +1581,13 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="text-center text-[10px] text-slate-400 pb-2">
-          Protected & Encrypted • {activeCompany?.company_name || 'ERP System'}
+        {/* Footer with Ezee ERP Logo & Branding */}
+        <div className="relative z-10 text-center text-[11px] font-semibold text-slate-300 pb-2 space-y-1">
+          <div className="flex items-center justify-center gap-2 bg-slate-900/80 backdrop-blur-md py-1.5 px-3 rounded-full border border-slate-700/80 max-w-fit mx-auto shadow-sm">
+            <EzeeErpLogo size="sm" variant="compact" />
+            <span className="text-slate-400">•</span>
+            <span className="text-slate-200">Encrypted Mobile Portal</span>
+          </div>
         </div>
 
         {/* Staff PWA Install Modal */}
@@ -1591,13 +1611,18 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col font-sans pb-20 select-none">
       {/* Mobile Top Header */}
-      <header className="sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex items-center justify-between shadow-sm">
+      <header className="sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-2.5 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black flex items-center justify-center text-sm shadow-md">
+          <div className="hidden xs:block bg-white/10 p-1.5 rounded-xl border border-white/10 shrink-0">
+            <EzeeErpLogo size="sm" variant="compact" />
+          </div>
+          <div className="h-9 w-9 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black flex items-center justify-center text-sm shadow-md shrink-0">
             {currentEmployee.fullName.charAt(0)}
           </div>
           <div>
-            <div className="font-black text-sm text-white leading-tight">{currentEmployee.fullName}</div>
+            <div className="font-black text-sm text-white leading-tight flex items-center gap-1.5">
+              <span>{currentEmployee.fullName}</span>
+            </div>
             <div className="text-[11px] text-blue-400 font-semibold flex items-center gap-1.5">
               <span>{currentEmployee.designation}</span>
               <span className="text-slate-600">•</span>
