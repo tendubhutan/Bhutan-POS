@@ -321,15 +321,15 @@ export const LoginGate: React.FC<LoginGateProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col justify-between overflow-y-auto overflow-x-hidden selection:bg-blue-600 selection:text-white font-sans">
-      {/* Scenic Background Wallpaper (Bhutan Iconic Landscapes - Paro Taktsang Tiger's Nest, Punakha Dzong, Rice Terraces, Himalayas) */}
+      {/* Scenic Blurred Background Wallpaper (Paro Taktsang Tiger's Nest - Fast 375KB WebP) */}
       <div 
-        className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-700 ease-in-out"
+        className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-700 ease-in-out filter blur-[6px] scale-105"
         style={{
-          backgroundImage: `url('${selectedWallpaperUrl}')`
+          backgroundImage: `url('/taktshang_bg.webp')`
         }}
       >
-        {/* Soft subtle gradient overlay to keep text readable while preserving vivid landscape details */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/60 via-slate-900/20 to-sky-900/30 backdrop-blur-[0.5px]" />
+        {/* Soft dark backdrop overlay for crystal clear text readability */}
+        <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm" />
       </div>
 
       {/* Main Content Container */}
@@ -713,25 +713,10 @@ export const LoginGate: React.FC<LoginGateProps> = ({
             <span><strong>Ezee ERP</strong> &nbsp;|&nbsp; Everything Your Business Needs, in One Place.</span>
           </div>
 
-          {/* Bhutan Landscape Wallpaper Switcher Pills */}
-          <div className="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-2xl border border-slate-800/90 text-xs">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 hidden lg:inline">Bhutan View:</span>
-            {BHUTAN_LANDSCAPE_WALLPAPERS.map(wp => (
-              <button
-                key={wp.id}
-                type="button"
-                onClick={() => handleSelectWallpaper(wp.url)}
-                className={`px-2.5 py-1 rounded-xl font-bold text-[11px] transition flex items-center gap-1 cursor-pointer ${
-                  selectedWallpaperUrl === wp.url
-                    ? 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-400'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
-                }`}
-                title={`${wp.name} - ${wp.location}`}
-              >
-                <span>{wp.icon}</span>
-                <span className="hidden sm:inline">{wp.name}</span>
-              </button>
-            ))}
+          {/* Single Taktshang Monastery Badge (Marked in Blue) */}
+          <div className="flex items-center gap-2 bg-blue-600/90 text-white px-3 py-1.5 rounded-xl font-bold text-xs border border-blue-400/50 shadow-sm">
+            <span>🏔️</span>
+            <span>Taktshang Monastery</span>
           </div>
 
         </div>

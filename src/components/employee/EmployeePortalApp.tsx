@@ -1331,14 +1331,14 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
   if (!currentEmployee) {
     return (
       <div className="relative min-h-screen text-slate-900 flex flex-col justify-between p-4 sm:p-6 font-sans overflow-x-hidden">
-        {/* Scenic Bhutan Iconic Landscape Background Wallpaper */}
+        {/* Scenic Bhutan Iconic Landscape Background Wallpaper (Paro Taktsang - Fast 375KB WebP) */}
         <div 
-          className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-700 ease-in-out"
+          className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-700 ease-in-out filter blur-[6px] scale-105"
           style={{
-            backgroundImage: `url('${bgWallpaperUrl}')`
+            backgroundImage: `url('/taktshang_bg.webp')`
           }}
         >
-          <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/60 via-slate-900/20 to-sky-900/30 backdrop-blur-[0.5px]" />
+          <div className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm" />
         </div>
 
         {/* Top Header */}
