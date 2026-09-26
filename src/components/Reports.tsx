@@ -3286,8 +3286,8 @@ export const Reports: React.FC<ReportsProps> = ({
         }
 
         return (
-          <div className="bg-white border-y border-slate-200 shadow-xs -mx-3 sm:-mx-6 mb-[-1.5rem] lg:mb-[-2rem]">
-            <div className="p-0">
+          <div className="bg-white border-y border-slate-200 shadow-xs -mx-3 sm:-mx-6 mb-[-1.5rem] lg:mb-[-2rem] overflow-x-auto w-full max-w-full">
+            <div className="p-0 min-w-0 w-full">
             {loading ? (
           <div className="py-12 text-center text-slate-400">Loading report data...</div>
         ) : !reportData ? (
