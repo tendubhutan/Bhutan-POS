@@ -60,32 +60,18 @@ interface LoginGateProps {
 
 export const BHUTAN_LANDSCAPE_WALLPAPERS = [
   {
-    id: 'taktshang',
-    name: "Taktshang Monastery (Tiger's Nest)",
-    location: "Paro Valley, Bhutan",
-    url: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=2000&auto=format&fit=crop',
-    icon: '🌄'
-  },
-  {
-    id: 'punakha_dzong',
-    name: "Punakha Dzong Fortress",
-    location: "Punakha Valley, Bhutan",
-    url: 'https://images.unsplash.com/photo-1584551246679-0daf3d275d0f?q=80&w=2000&auto=format&fit=crop',
-    icon: '🏰'
-  },
-  {
     id: 'rice_fields',
-    name: "Golden Rice Terraces",
-    location: "Paro & Punakha, Bhutan",
+    name: "Bhutan Rice Fields Valley",
+    location: "Terraced Rice Fields, Bhutan",
     url: 'https://images.unsplash.com/photo-1542332213-9b5a5a3fad35?q=80&w=2000&auto=format&fit=crop',
     icon: '🌾'
   },
   {
-    id: 'dochula_pass',
-    name: "Dochula Pass Himalayas",
-    location: "Thimphu-Punakha, Bhutan",
-    url: 'https://images.unsplash.com/photo-1548013146-72479768bada?q=80&w=2000&auto=format&fit=crop',
-    icon: '🏔️'
+    id: 'tashichho_dzong',
+    name: "Tashichho Dzong Fortress",
+    location: "Thimphu Valley, Bhutan",
+    url: 'https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?q=80&w=2000&auto=format&fit=crop',
+    icon: '🏰'
   }
 ];
 
