@@ -87,7 +87,7 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
       const saved = localStorage.getItem('bhutan_login_bg');
       if (saved) return saved;
     }
-    return 'https://images.unsplash.com/photo-1542332213-9b5a5a3fad35?q=80&w=2000&auto=format&fit=crop'; // Default: Bhutan Rice Fields Valley
+    return '/tashichho_dzong.jpg'; // Default: Authentic Tashichho Dzong, Thimphu
   });
 
   // Login form state

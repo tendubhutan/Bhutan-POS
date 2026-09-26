@@ -60,18 +60,32 @@ interface LoginGateProps {
 
 export const BHUTAN_LANDSCAPE_WALLPAPERS = [
   {
+    id: 'tashichho_dzong',
+    name: "Tashichho Dzong",
+    location: "Thimphu Valley, Bhutan",
+    url: '/tashichho_dzong.jpg',
+    icon: '🏰'
+  },
+  {
     id: 'rice_fields',
-    name: "Bhutan Rice Fields Valley",
+    name: "Bhutan Rice Fields",
     location: "Terraced Rice Fields, Bhutan",
-    url: 'https://images.unsplash.com/photo-1542332213-9b5a5a3fad35?q=80&w=2000&auto=format&fit=crop',
+    url: '/bhutan_rice_fields.jpg',
     icon: '🌾'
   },
   {
-    id: 'tashichho_dzong',
-    name: "Tashichho Dzong Fortress",
-    location: "Thimphu Valley, Bhutan",
-    url: 'https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?q=80&w=2000&auto=format&fit=crop',
-    icon: '🏰'
+    id: 'taktshang',
+    name: "Taktshang Monastery",
+    location: "Paro Valley, Bhutan",
+    url: '/taktshang.jpg',
+    icon: '🏔️'
+  },
+  {
+    id: 'punakha_dzong',
+    name: "Punakha Dzong",
+    location: "Punakha Valley, Bhutan",
+    url: '/punakha_dzong.jpg',
+    icon: '🏛️'
   }
 ];
 
