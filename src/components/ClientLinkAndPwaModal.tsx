@@ -133,6 +133,17 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
     };
   }, [selectedPreset]);
 
+  const currentCompanyId = getActiveCompanyId();
+  const [staffNetworkConfig, setStaffNetworkConfig] = useState<OfficeNetworkSecurityConfig>(() => getOfficeNetworkConfig(currentCompanyId));
+
+  useEffect(() => {
+    const handleNetUpdate = (e: any) => {
+      setStaffNetworkConfig(e.detail?.config || getOfficeNetworkConfig(currentCompanyId));
+    };
+    window.addEventListener('deep_pos_network_security_updated', handleNetUpdate);
+    return () => window.removeEventListener('deep_pos_network_security_updated', handleNetUpdate);
+  }, [currentCompanyId]);
+
   if (!isOpen) return null;
 
   // Active terminals count vs limit
@@ -146,17 +157,6 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
     const pathname = window.location.pathname;
     return `${origin}${pathname}`;
   };
-
-  const currentCompanyId = getActiveCompanyId();
-  const [staffNetworkConfig, setStaffNetworkConfig] = useState<OfficeNetworkSecurityConfig>(() => getOfficeNetworkConfig(currentCompanyId));
-
-  useEffect(() => {
-    const handleNetUpdate = (e: any) => {
-      setStaffNetworkConfig(e.detail?.config || getOfficeNetworkConfig(currentCompanyId));
-    };
-    window.addEventListener('deep_pos_network_security_updated', handleNetUpdate);
-    return () => window.removeEventListener('deep_pos_network_security_updated', handleNetUpdate);
-  }, [currentCompanyId]);
 
   const getCompanyAppUrl = () => {
     const base = getBaseAppUrl();
@@ -886,30 +886,27 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
                     </div>
                   </div>
 
-                  {hasPrompt ? (
+                  <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                     <button
                       type="button"
                       onClick={handleInstallPwa}
-                      className="px-5 py-2.5 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs rounded-xl shadow-md transition active:scale-95 cursor-pointer flex items-center gap-2 shrink-0"
+                      className="px-5 py-2.5 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg transition active:scale-95 cursor-pointer flex items-center gap-2"
+                      title="Trigger browser PWA desktop application installer"
                     >
                       <Download className="h-4 w-4 stroke-[3]" />
-                      <span>Install App Now</span>
+                      <span>Install Desktop App Now</span>
                     </button>
-                  ) : isAppInstalled ? (
-                    <div className="px-4 py-2 bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 shrink-0">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                      <span>App Is Installed</span>
-                    </div>
-                  ) : (
+
                     <button
                       type="button"
                       onClick={() => handleCopy('appUrl', getBaseAppUrl())}
-                      className="px-4 py-2 bg-white/15 hover:bg-white/25 border border-white/30 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer"
+                      className="px-3.5 py-2.5 bg-white/15 hover:bg-white/25 border border-white/30 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                      title="Copy application direct web URL"
                     >
                       <Copy className="h-3.5 w-3.5" />
-                      <span>Copy App URL</span>
+                      <span>{copiedKey === 'appUrl' ? 'Copied URL!' : 'Copy Link'}</span>
                     </button>
-                  )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 text-xs">

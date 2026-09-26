@@ -337,6 +337,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <ClientLinkAndPwaModal
         isOpen={showPwaModal}
         onClose={() => setShowPwaModal(false)}
+        initialTab="pwa"
       />
     </>
   );
