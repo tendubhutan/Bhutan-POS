@@ -83,3 +83,11 @@ export function exportInvoiceToExcel(invoice: SalesInvoice, config: Config) {
   
   XLSX.writeFile(wb, `Invoice_${invoice.invoiceNo}.xlsx`);
 }
+
+export function exportToExcel(data: Record<string, any>[], filename: string, sheetTitle: string = 'Sheet1') {
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, sheetTitle.slice(0, 31));
+  const fullFilename = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
+  XLSX.writeFile(wb, fullFilename);
+}

@@ -19,7 +19,9 @@ import {
   Building,
   HelpCircle,
   FolderCheck,
-  FileText
+  FileText,
+  Cpu,
+  ArrowDownToLine
 } from 'lucide-react';
 import {
   AutoBackupConfig,
@@ -37,16 +39,27 @@ import {
 } from '../services/backupService';
 import { Config, Ledger, Item, Voucher, SalesInvoice } from '../types';
 import { getLedgers, getVouchers, loadJson, STORAGE_KEYS } from '../services/storageService';
+import { TallyBusyMigrationView } from './TallyBusyMigrationView';
 
 interface BackupManagerViewProps {
   config: Config;
   onDataRefresh?: () => void;
+  defaultTab?: 'backup_restore' | 'migration';
 }
 
 export const BackupManagerView: React.FC<BackupManagerViewProps> = ({
   config,
-  onDataRefresh
+  onDataRefresh,
+  defaultTab
 }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'backup_restore' | 'migration'>(defaultTab || 'backup_restore');
+
+  useEffect(() => {
+    if (defaultTab) {
+      setActiveSubTab(defaultTab);
+    }
+  }, [defaultTab]);
+
   const [autoConfig, setAutoConfig] = useState<AutoBackupConfig>(getAutoBackupConfig());
   const [isBackingUp, setIsBackingUp] = useState<boolean>(false);
   const [backupSuccessMsg, setBackupSuccessMsg] = useState<string | null>(null);
@@ -208,7 +221,40 @@ export const BackupManagerView: React.FC<BackupManagerViewProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Top Notification Alerts */}
+      {/* Top Sub-Tab Switcher */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100 border border-slate-200/80 max-w-fit shadow-xs">
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('backup_restore')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            activeSubTab === 'backup_restore'
+              ? 'bg-white text-slate-900 shadow-xs border border-slate-200/60'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <HardDrive className="h-4 w-4 text-blue-600" />
+          <span>Local & Cloud Backups</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('migration')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
+            activeSubTab === 'migration'
+              ? 'bg-white text-indigo-950 shadow-xs border border-slate-200/60'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Cpu className="h-4 w-4 text-indigo-600" />
+          <span>Tally & Busy 1-Click Migration</span>
+          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-full border border-indigo-200">New</span>
+        </button>
+      </div>
+
+      {activeSubTab === 'migration' ? (
+        <TallyBusyMigrationView onSuccess={onDataRefresh} />
+      ) : (
+        <>
+          {/* Top Notification Alerts */}
       {backupSuccessMsg && (
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 flex items-start gap-3 shadow-xs">
           <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
@@ -707,6 +753,8 @@ export const BackupManagerView: React.FC<BackupManagerViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

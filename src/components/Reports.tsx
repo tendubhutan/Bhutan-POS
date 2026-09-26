@@ -14,6 +14,8 @@ import { generateReportPDF, shareOrDownloadPDF } from '../utils/pdfExport';
 import { formatDateDMY } from '../utils/dateUtils';
 import { TallyPrimeView, ReportDetailDepth } from './TallyPrimeView';
 import { BillWiseModal } from './BillWiseModal';
+import { BillWiseLedgerStatementView } from './BillWiseLedgerStatementView';
+import { isPartyLedger } from '../services/billWiseStatementService';
 import { AuditLogView } from './AuditLogView';
 import { getGstFieldLabel, getGstFieldsForType } from '../utils/gstConfigUtils';
 
@@ -168,6 +170,8 @@ export const Reports: React.FC<ReportsProps> = ({
   const [gstOnly, setGstOnly] = useState(false);
   const [includeSalesReturn, setIncludeSalesReturn] = useState(true);
   const [selectedLedger, setSelectedLedger] = useState('');
+  const [ledgerViewMode, setLedgerViewMode] = useState<'chronological' | 'billwise'>('chronological');
+  const isSelectedLedgerParty = useMemo(() => isPartyLedger(selectedLedger), [selectedLedger]);
   const [selectedBranchId, setSelectedBranchId] = useState<string>('ALL');
   const availableBranches = useMemo(() => getBranches(), [config]);
 
@@ -879,6 +883,14 @@ export const Reports: React.FC<ReportsProps> = ({
         e.preventDefault();
         e.stopPropagation();
         openLedgerSearch();
+        return;
+      }
+
+      // F5 toggle for Bill-Wise Detail View in Ledger Statement (Tally Style)
+      if (e.key === 'F5' && mainCategory === 'fin' && finSubTab === 'LED') {
+        e.preventDefault();
+        e.stopPropagation();
+        setLedgerViewMode(prev => (prev === 'chronological' ? 'billwise' : 'chronological'));
         return;
       }
 
@@ -2735,6 +2747,38 @@ export const Reports: React.FC<ReportsProps> = ({
                   className="w-full h-8 rounded-xl border border-slate-300 bg-white pl-7 pr-2 text-xs focus:border-indigo-500 focus:outline-hidden"
                 />
               </div>
+
+              {isSelectedLedgerParty && (
+                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setLedgerViewMode('chronological')}
+                    className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer ${
+                      ledgerViewMode === 'chronological'
+                        ? 'bg-white text-slate-900 shadow-2xs border border-slate-200/70'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                    title="Chronological Dr/Cr Ledger Statement"
+                  >
+                    Dr/Cr View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLedgerViewMode('billwise')}
+                    className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition cursor-pointer flex items-center gap-1 ${
+                      ledgerViewMode === 'billwise'
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-indigo-600'
+                    }`}
+                    title="Bill-Wise Detail Statement (F5)"
+                  >
+                    <span>Bill-Wise</span>
+                    <span className={`px-1 py-0.2 rounded text-[9px] font-black ${
+                      ledgerViewMode === 'billwise' ? 'bg-indigo-700 text-indigo-100' : 'bg-indigo-100 text-indigo-800'
+                    }`}>F5</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -5670,7 +5714,16 @@ export const Reports: React.FC<ReportsProps> = ({
                   </div>
                 )}
 
-                {finSubTab === 'LED' && reportData?.rows && (() => {
+                {finSubTab === 'LED' && isSelectedLedgerParty && ledgerViewMode === 'billwise' && selectedLedger && (
+                  <BillWiseLedgerStatementView
+                    ledgerName={selectedLedger}
+                    currencySymbol={config.CurrencySymbol || 'Nu.'}
+                    onDrillVoucher={onDrillVoucher}
+                    headerHeight={headerHeight}
+                  />
+                )}
+
+                {finSubTab === 'LED' && (!isSelectedLedgerParty || ledgerViewMode === 'chronological') && reportData?.rows && (() => {
                   const opBal = Number(reportData.openingBalance) || 0;
                   let runningBal = opBal;
                   let totalDr = 0;
@@ -5711,6 +5764,24 @@ export const Reports: React.FC<ReportsProps> = ({
 
                   return (
                     <div className="space-y-2.5">
+                      {/* Statement Format Toggle Banner for Sundry Debtors & Creditors */}
+                      {isSelectedLedgerParty && (
+                        <div className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-indigo-200/80 shadow-2xs">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-700">Party Statement Format:</span>
+                            <span className="text-[11px] text-slate-500">View bill-by-bill pending vs settled breakdown for this party</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setLedgerViewMode('billwise')}
+                            className="px-3 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5 text-indigo-600" />
+                            <span>Switch to Bill-Wise Details (F5)</span>
+                          </button>
+                        </div>
+                      )}
+
                       {/* Ledger Table */}
                       <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">

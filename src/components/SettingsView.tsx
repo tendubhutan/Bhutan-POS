@@ -13,7 +13,7 @@ import {
   Save, CheckCircle2, Shield, FileText, Image as ImageIcon, PenTool, Plus, Lock, UserCheck, RefreshCw, 
   ShoppingCart, Zap, SlidersHorizontal, AlertTriangle, Keyboard, Percent, CreditCard, RotateCcw,
   Building2, Hash, Layers, Store, Check, Sparkles, Sliders, ShieldCheck, Trash2, History, Eye, Settings as SettingsIcon,
-  Cloud, CloudUpload, Database, Wrench, Shirt, HardDrive
+  Cloud, CloudUpload, Database, Wrench, Shirt, HardDrive, ArrowDownToLine
 } from 'lucide-react';
 import { BackupManagerView } from './BackupManagerView';
 import { handleMasterCloudSync, MasterSyncResult } from '../services/supabaseSyncService';
@@ -68,7 +68,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [justSavedSection, setJustSavedSection] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'company' | 'features' | 'vouchers' | 'pos' | 'inventory' | 'invoice' | 'security' | 'backup'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'features' | 'vouchers' | 'pos' | 'inventory' | 'invoice' | 'security' | 'backup' | 'migration'>('company');
   const [terminalBranchId, setLocalTerminalBranchId] = useState<string>(() => getTerminalBranchId(config));
   const [deviceCounterId, setLocalDeviceCounterId] = useState<string>(() => getDeviceCounterId());
   const [designatedOfflineCounter, setLocalDesignatedOfflineCounter] = useState<string>(() => getDesignatedOfflineCounter());
@@ -151,7 +151,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     { id: 'inventory', label: 'Inventory Rules', icon: Layers, desc: 'Units, Serials & Stock' },
     { id: 'invoice', label: 'Invoice & Print', icon: PenTool, desc: 'Logo, Signature & Terms' },
     { id: 'security', label: 'User Roles', icon: ShieldCheck, desc: 'Permissions & Security' },
-    { id: 'backup', label: 'Backup & Restore', icon: HardDrive, desc: 'Auto & Manual Backups' }
+    { id: 'backup', label: 'Backup & Restore', icon: HardDrive, desc: 'Auto & Manual Backups' },
+    { id: 'migration', label: 'Tally / Busy Import', icon: ArrowDownToLine, desc: '1-Click ERP Migration' }
   ] as const;
 
   const tabButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -3043,6 +3044,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <BackupManagerView
             config={form}
             onDataRefresh={onDataRefresh}
+            defaultTab="backup_restore"
+          />
+        )}
+
+        {/* Tally / Busy Migration Tab */}
+        {activeTab === 'migration' && (
+          <BackupManagerView
+            config={form}
+            onDataRefresh={onDataRefresh}
+            defaultTab="migration"
           />
         )}
       </div>
