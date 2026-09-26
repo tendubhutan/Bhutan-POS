@@ -912,7 +912,7 @@ export default function App() {
           }}
         />
 
-        <main className={`flex-1 ${currentView === 'reports' ? 'overflow-y-auto' : isHighDensityView ? 'p-1.5 sm:p-2 pb-1.5 overflow-hidden flex flex-col min-h-0' : 'p-3 sm:p-6 pb-6 lg:pb-8 overflow-y-auto'} relative`}>
+        <main className={`flex-1 min-w-0 max-w-full ${currentView === 'reports' ? 'overflow-y-auto' : isHighDensityView ? 'p-1.5 sm:p-2 pb-1.5 overflow-hidden flex flex-col min-h-0' : 'p-3 sm:p-6 pb-6 lg:pb-8 overflow-y-auto overflow-x-hidden'} relative`}>
           {currentView === 'dashboard' && (
             <Dashboard
               key={activeCompany?.id || 'default_dash'}

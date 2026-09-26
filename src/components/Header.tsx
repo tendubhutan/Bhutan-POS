@@ -113,11 +113,11 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   return (
-    <header className={`bg-gradient-to-r from-blue-700 via-blue-700 to-indigo-800 text-white border-b border-blue-800/80 px-2.5 sm:px-4 ${isPosMode ? 'py-1.5' : 'py-2'} flex items-center justify-between gap-2 shadow-md relative z-40 select-none`}>
+    <header className={`bg-gradient-to-r from-blue-700 via-blue-700 to-indigo-800 text-white border-b border-blue-800/80 px-2 sm:px-3.5 ${isPosMode ? 'py-1.5' : 'py-2'} flex items-center justify-between gap-1.5 sm:gap-2 shadow-md relative z-40 select-none w-full max-w-full overflow-x-hidden`}>
       {/* ========================================================= */}
       {/* ZONE 1: WORKSPACE & COMPANY IDENTITY                      */}
       {/* ========================================================= */}
-      <div className="flex items-center gap-1.5 sm:gap-2 shrink min-w-0 max-w-[40%] xl:max-w-[44%]">
+      <div className="flex items-center gap-1 sm:gap-2 shrink min-w-0 max-w-[38%] lg:max-w-[42%]">
         {/* Three-line menu button: always visible in POS full-screen mode, or on mobile */}
         <button
           onClick={onToggleMobileMenu}
@@ -131,7 +131,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onNavigateBack}
-            className="flex items-center gap-1 bg-amber-400 hover:bg-amber-300 text-slate-950 px-2 sm:px-2.5 py-1 rounded-xl text-xs font-black shadow-xs transition active:scale-95 border border-amber-500 cursor-pointer shrink-0"
+            className="flex items-center gap-1 bg-amber-400 hover:bg-amber-300 text-slate-950 px-2 py-1 rounded-xl text-xs font-black shadow-xs transition active:scale-95 border border-amber-500 cursor-pointer shrink-0"
             title="Go Back to Previous Screen (Esc)"
           >
             <ArrowLeft className="h-3.5 w-3.5 stroke-[3]" />
@@ -144,15 +144,15 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={onOpenCompanyManager}
-            className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1 bg-blue-800/80 hover:bg-blue-900 border border-blue-500/50 hover:border-purple-400/60 rounded-xl transition text-left cursor-pointer group shadow-xs shrink min-w-0"
+            className="flex items-center gap-1.5 px-2 py-1 bg-blue-800/80 hover:bg-blue-900 border border-blue-500/50 hover:border-purple-400/60 rounded-xl transition text-left cursor-pointer group shadow-xs shrink min-w-0"
             title="System Administrator: Manage & Switch Companies (Alt+C)"
           >
-            <div className="h-7 w-7 rounded-lg bg-purple-600/40 border border-purple-400/40 flex items-center justify-center text-purple-200 group-hover:text-white transition shrink-0">
-              <Building2 className="h-4 w-4" />
+            <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-lg bg-purple-600/40 border border-purple-400/40 flex items-center justify-center text-purple-200 group-hover:text-white transition shrink-0">
+              <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </div>
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-1">
-                <span className="font-extrabold text-xs sm:text-sm text-white tracking-wide leading-tight truncate max-w-[100px] sm:max-w-[130px] xl:max-w-[190px]">
+                <span className="font-extrabold text-xs text-white tracking-wide leading-tight truncate max-w-[80px] sm:max-w-[110px] lg:max-w-[150px] xl:max-w-[190px]">
                   {activeCompanyName || config.CompanyName || 'Ezee ERP'}
                 </span>
                 <ChevronDown className="h-3 w-3 text-purple-300 group-hover:text-white transition shrink-0" />
@@ -164,14 +164,14 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         ) : (
           <div 
-            className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1 bg-blue-800/60 border border-blue-500/40 rounded-xl shadow-xs shrink min-w-0"
+            className="flex items-center gap-1.5 px-2 py-1 bg-blue-800/60 border border-blue-500/40 rounded-xl shadow-xs shrink min-w-0"
             title={`Assigned Tenant Workspace: ${activeCompanyName || config.CompanyName}`}
           >
-            <div className="h-7 w-7 rounded-lg bg-blue-900/60 border border-blue-400/40 flex items-center justify-center text-emerald-300 shrink-0">
-              <Building2 className="h-4 w-4" />
+            <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-lg bg-blue-900/60 border border-blue-400/40 flex items-center justify-center text-emerald-300 shrink-0">
+              <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="font-extrabold text-xs sm:text-sm text-white tracking-wide block leading-tight truncate max-w-[100px] sm:max-w-[130px] xl:max-w-[190px]">
+              <span className="font-extrabold text-xs text-white tracking-wide block leading-tight truncate max-w-[80px] sm:max-w-[110px] lg:max-w-[150px] xl:max-w-[190px]">
                 {activeCompanyName || config.CompanyName || 'Ezee ERP'}
               </span>
               <span className="text-[10px] text-emerald-300 font-medium font-mono leading-tight flex items-center gap-1 truncate">
@@ -196,7 +196,7 @@ export const Header: React.FC<HeaderProps> = ({
                 setLocalTerminalBranchId(newId);
                 setTerminalBranchId(newId);
               }}
-              className="bg-transparent text-white font-extrabold text-xs outline-none cursor-pointer pr-1 max-w-[85px] md:max-w-[110px] xl:max-w-[150px] truncate"
+              className="bg-transparent text-white font-extrabold text-xs outline-none cursor-pointer pr-1 max-w-[70px] md:max-w-[100px] xl:max-w-[140px] truncate"
             >
               {branches.map(b => (
                 <option key={b.id} value={b.id} className="text-slate-900 bg-white font-bold">
@@ -211,7 +211,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* ========================================================= */}
       {/* ZONE 2: PROMINENT CENTER SEARCH & AI ASSISTANT            */}
       {/* ========================================================= */}
-      <div className="flex-1 flex justify-center items-center px-1 sm:px-2 min-w-0 max-w-[300px] xl:max-w-[340px] mx-auto">
+      <div className="flex-1 flex justify-center items-center px-1 min-w-0 max-w-[180px] sm:max-w-[220px] md:max-w-[280px] xl:max-w-[340px] mx-auto">
         <AIAssistant />
       </div>
 

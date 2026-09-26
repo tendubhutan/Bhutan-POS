@@ -124,16 +124,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const bankLedger = ledgers.find(l => l.Group === 'Bank Accounts')?.['Ledger Name'] || 'Bank';
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="w-full max-w-full overflow-x-hidden space-y-5 sm:space-y-6 animate-in fade-in duration-300">
       {/* Top Banner & Filters */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-slate-200 w-full max-w-full">
         <div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Dashboard Overview</h1>
-          <p className="text-sm text-slate-500 font-medium mt-1">
-            Real-time financial & inventory snapshot <span className="text-indigo-600 font-bold text-xs bg-indigo-50 px-2 py-0.5 rounded-full ml-1">Click any card to drill down</span>
+          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+            Real-time financial & inventory snapshot <span className="text-indigo-600 font-bold text-xs bg-indigo-50 px-2 py-0.5 rounded-full ml-1 inline-block">Click any card to drill down</span>
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
           {/* Quick Period Pill Button */}
           <button
             type="button"
@@ -163,7 +163,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* Main KPI Grid with Deep-down links */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-3.5 sm:gap-4 lg:gap-5 w-full max-w-full min-w-0">
         
         {/* Sales Card -> Deep down to Daily Sales Register */}
         <div 
@@ -294,8 +294,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* Quick Direct Drilldown Shortcuts Bar */}
-      <div className="bg-slate-100/80 border border-slate-200/80 rounded-2xl p-2.5 flex flex-wrap items-center gap-2 justify-between shadow-xs">
-        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider px-2 flex items-center gap-1.5">
+      <div className="bg-slate-100/90 border border-slate-200/90 rounded-2xl p-2.5 sm:p-3 flex flex-col md:flex-row md:items-center justify-between gap-2.5 shadow-xs w-full max-w-full min-w-0">
+        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1 flex items-center gap-1.5 shrink-0">
           <BarChart3 className="h-3.5 w-3.5 text-indigo-600" />
           Quick Reports Drilldown:
         </span>
@@ -332,7 +332,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* Secondary KPI Row with Direct Statement & Ledger Drilldown */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-3.5 sm:gap-4 w-full max-w-full min-w-0">
         
         {/* Cash Balance */}
         <div 
