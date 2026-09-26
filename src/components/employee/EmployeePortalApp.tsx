@@ -11,6 +11,7 @@ import {
   getEmployees, saveEmployees, syncEmployeesFromSupabase 
 } from '../../services/storageService';
 import { getActiveCompanyId } from '../../services/supabaseTenantService';
+import { EzeeErpLogo } from '../common/EzeeErpLogo';
 import { getCompanyConfig, isFeatureAllowed } from '../../services/tenantFeatureService';
 import { 
   getLeaveTypes, getLeaveApplications, applyForLeave, 
@@ -1320,23 +1321,27 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
   // =========================================================================
   if (!currentEmployee) {
     return (
-      <div className="min-h-screen bg-slate-900 text-white flex flex-col justify-between p-4 sm:p-6 font-sans">
+      <div className="relative min-h-screen text-slate-900 flex flex-col justify-between p-4 sm:p-6 font-sans overflow-x-hidden">
+        {/* Scenic Bhutan Terraced Rice Fields Background Wallpaper */}
+        <div 
+          className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none"
+          style={{
+            backgroundImage: `url('https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1920&auto=format&fit=crop')`
+          }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-tr from-sky-200/85 via-sky-100/70 to-blue-900/40 backdrop-blur-[1px]" />
+        </div>
+
         {/* Top Header */}
-        <div className="flex items-center justify-between pt-2">
-          <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-black text-white shadow-md">
-              EP
-            </div>
-            <div>
-              <h1 className="font-black text-sm tracking-tight">{activeCompany?.company_name || 'Staff Portal'}</h1>
-              <span className="text-[10px] text-blue-400 font-semibold uppercase tracking-wider">Employee Mobile Gateway</span>
-            </div>
+        <div className="relative z-10 flex items-center justify-between pt-2 max-w-md w-full mx-auto">
+          <div className="flex items-center gap-2 bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-blue-200/80 shadow-2xs">
+            <EzeeErpLogo size="sm" variant="compact" />
           </div>
 
           {onExitPortal && (
             <button
               onClick={onExitPortal}
-              className="text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800/80 cursor-pointer"
+              className="text-xs text-slate-700 font-extrabold hover:text-slate-900 px-3 py-1.5 rounded-xl bg-white/80 hover:bg-white border border-slate-200 shadow-2xs cursor-pointer transition"
             >
               Exit
             </button>
@@ -1344,20 +1349,20 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
         </div>
 
         {/* Center Card */}
-        <div className="max-w-sm w-full mx-auto my-auto py-8">
-          <div className="bg-slate-800/90 border border-slate-700/80 rounded-3xl p-6 shadow-2xl backdrop-blur-md space-y-5">
+        <div className="relative z-10 max-w-sm w-full mx-auto my-auto py-6">
+          <div className="bg-white/95 border border-slate-200/90 rounded-3xl p-6 shadow-[0_20px_50px_rgba(0,0,0,0.2)] backdrop-blur-2xl space-y-5">
             <div className="text-center space-y-1">
-              <div className="h-14 w-14 rounded-2xl bg-blue-500/15 border border-blue-400/20 text-blue-400 mx-auto flex items-center justify-center mb-3">
-                <Smartphone className="h-7 w-7" />
+              <div className="h-14 w-14 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 text-white mx-auto flex items-center justify-center mb-3 shadow-lg shadow-blue-500/25">
+                <Smartphone className="h-7 w-7 text-white" />
               </div>
-              <h2 className="text-xl font-black text-white">
+              <h2 className="text-xl font-black text-slate-900">
                 {isAttendanceAllowed && isAssignmentsAllowed
                   ? 'Staff Portal & Tasks'
                   : isAttendanceAllowed
                   ? 'Staff Check-In & Leaves'
                   : 'Staff Tasks & Assignments'}
               </h2>
-              <p className="text-xs text-slate-400">Sign in with your Mobile Number and 4-digit PIN.</p>
+              <p className="text-xs font-semibold text-slate-500">Sign in with your Mobile Number and 4-digit PIN.</p>
             </div>
 
             {loginError && (

@@ -36,6 +36,7 @@ import {
   isDevOrPreviewEnvironment
 } from '../services/authTenantContext';
 import { getActiveUser } from '../services/storageService';
+import { EzeeErpLogo } from './common/EzeeErpLogo';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -273,15 +274,15 @@ export const LoginGate: React.FC<LoginGateProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col justify-between overflow-y-auto overflow-x-hidden selection:bg-blue-600 selection:text-white font-sans">
-      {/* Scenic Background Wallpaper (Himalayan Bhutan Landscape) */}
+      {/* Scenic Background Wallpaper (Bhutan Terraced Rice Fields Landscape) */}
       <div 
-        className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none"
+        className="fixed inset-0 bg-cover bg-center bg-no-repeat z-0 pointer-events-none transition-all duration-300"
         style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1544735716-392fe2489ffa?q=80&w=1920&auto=format&fit=crop')`
+          backgroundImage: `url('https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1920&auto=format&fit=crop')`
         }}
       >
-        {/* Soft bright gradient overlay matching Image 2 */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-sky-200/80 via-sky-100/65 to-blue-900/50 backdrop-blur-[1px]" />
+        {/* Soft bright gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-sky-200/80 via-sky-100/60 to-blue-900/40 backdrop-blur-[1px]" />
       </div>
 
       {/* Main Content Container */}
@@ -291,37 +292,12 @@ export const LoginGate: React.FC<LoginGateProps> = ({
           {/* LEFT PANEL: Ezee ERP Brand Showcase & Feature Badges Grid */}
           <div className="lg:col-span-6 space-y-6 text-left">
             {/* Top Logo & Handwritten Slogan */}
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-3">
-                <div className="h-12 sm:h-14 w-12 sm:w-14 rounded-2xl bg-gradient-to-tr from-blue-600 via-blue-500 to-cyan-400 flex items-center justify-center text-white shadow-lg shadow-blue-500/30 ring-4 ring-white/60">
-                  <span className="font-black text-2xl tracking-tighter">E</span>
-                </div>
-                <div>
-                  <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-none">
-                    Ezee <span className="text-blue-600">ERP</span>
-                  </h1>
-                  <p className="text-[11px] sm:text-xs font-semibold text-slate-600 mt-1">
-                    Everything Your Business Needs, in One Place.
-                  </p>
-                </div>
-              </div>
+            <div className="flex items-center justify-between flex-wrap gap-4 pt-2">
+              <EzeeErpLogo size="lg" />
               
-              <span className="font-serif italic text-blue-700 text-sm sm:text-base font-bold tracking-wide drop-shadow-xs bg-white/40 backdrop-blur-xs px-3 py-1 rounded-full border border-blue-200/60">
+              <span className="font-serif italic text-blue-800 text-sm sm:text-base font-bold tracking-wide drop-shadow-xs bg-white/60 backdrop-blur-xs px-3.5 py-1.5 rounded-full border border-blue-200/80 shadow-2xs">
                 Simplify • Automate • Grow
               </span>
-            </div>
-
-            {/* Welcome Headline */}
-            <div className="space-y-1 pt-2">
-              <p className="text-slate-600 font-extrabold text-xs sm:text-sm uppercase tracking-wider">
-                Welcome to
-              </p>
-              <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black text-slate-900 tracking-tight">
-                Ezee <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500">ERP</span>
-              </h2>
-              <p className="text-slate-700 font-bold text-sm sm:text-base max-w-md">
-                Everything Your Business Needs, in One Place.
-              </p>
             </div>
 
             {/* Feature Modules Grid (6 Colorful Badges - 2 rows x 3 cols) */}
