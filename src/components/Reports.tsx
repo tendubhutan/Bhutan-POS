@@ -2462,8 +2462,8 @@ export const Reports: React.FC<ReportsProps> = ({
         />
       )}
 
-      {/* Unified Sticky Header Area (Filter Toolbar + Compact Black Banner) */}
-      <div ref={headerRef} className="sticky top-0 z-40 bg-slate-100/95 backdrop-blur-md pt-2 sm:pt-3 pb-2 -mx-3 sm:-mx-6 px-3 sm:px-6 shadow-xs border-b border-slate-200/80 space-y-2">
+      {/* Unified Header Area (Filter Toolbar + Compact Banner) */}
+      <div ref={headerRef} className="bg-slate-100/95 backdrop-blur-md pt-2 sm:pt-3 pb-2 -mx-3 sm:-mx-6 px-3 sm:px-6 shadow-xs border-b border-slate-200/80 space-y-2">
         {/* Universal Compact Report Navigation & Filter Bar */}
         <div className={`transition-all duration-300 ${isControlsCollapsed ? 'hidden' : 'block'}`}>
           <div className="rounded-xl border border-slate-200 bg-white p-2 sm:p-2.5 shadow-xs flex flex-wrap items-center justify-between gap-2 text-xs">

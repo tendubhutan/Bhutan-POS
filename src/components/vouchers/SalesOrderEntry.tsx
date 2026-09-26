@@ -345,6 +345,29 @@ export const SalesOrderEntry: React.FC<SalesOrderEntryProps> = ({
     setActiveTab('create');
   };
 
+  useEffect(() => {
+    if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
+      const soList = getSalesOrders();
+      const matched = soList.find(x => x.orderNo === initialVoucherTarget.voucherNo);
+      if (matched) {
+        const isDup = Boolean((initialVoucherTarget as any)?.isDuplicate);
+        if (isDup) {
+          setEditingOrderNo(null);
+          setOrderNo(peekNextVoucherNo('SALES_ORDER', config));
+          setDate(new Date().toISOString().split('T')[0]);
+          setCustomer(matched.customer || { ledger: '', name: '', phone: '', address: '', gstNo: '', tpnNo: '' });
+          setOrderItems(matched.items || []);
+          setRemarks(matched.remarks ? `${matched.remarks} (Copy of ${matched.orderNo})` : `Copy of ${matched.orderNo}`);
+          if (matched.termsAndConditions) setTermsAndConditions(matched.termsAndConditions);
+          setActiveTab('create');
+          showToast(`Sales Order duplicated from ${matched.orderNo}! Review and press Save.`, 'success');
+        } else {
+          handleEditOrder(matched);
+        }
+      }
+    }
+  }, [initialVoucherTarget]);
+
   const handleDeleteOrder = (soNo: string) => {
     if (confirm(`Are you sure you want to delete Sales Order ${soNo}?`)) {
       deleteSalesOrder(soNo);

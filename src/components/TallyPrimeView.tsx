@@ -56,6 +56,18 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
   const [isFixedAssetsExpanded, setIsFixedAssetsExpanded] = useState<boolean>(true);
   const [expandedCategoryIds, setExpandedCategoryIds] = useState<Record<string, boolean>>({});
 
+  // Collapsible section states for Balance Sheet & P&L
+  const [isCapExpanded, setIsCapExpanded] = useState<boolean>(true);
+  const [isLoansExpanded, setIsLoansExpanded] = useState<boolean>(true);
+  const [isClExpanded, setIsClExpanded] = useState<boolean>(true);
+  const [isCaExpanded, setIsCaExpanded] = useState<boolean>(true);
+
+  const [isPurExpanded, setIsPurExpanded] = useState<boolean>(true);
+  const [isDeExpanded, setIsDeExpanded] = useState<boolean>(true);
+  const [isSalesExpanded, setIsSalesExpanded] = useState<boolean>(true);
+  const [isIeExpanded, setIsIeExpanded] = useState<boolean>(true);
+  const [isIiExpanded, setIsIiExpanded] = useState<boolean>(true);
+
   useEffect(() => {
     setDepth(initialDepth);
   }, [initialDepth]);
@@ -402,72 +414,74 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
       {/* 1. TRIAL BALANCE VIEW */}
       {reportType === 'TB' && (
         <div className="w-full space-y-0">
-          {/* Stunning Header & Controls Strip */}
-          <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-4 sm:px-6 py-2.5 border-b border-indigo-500/30 rounded-t-xl shadow-lg relative overflow-hidden">
-            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
-            
-            <div className="flex items-center gap-3 flex-wrap relative z-10">
-              <div className="p-2 rounded-xl bg-white/10 border border-white/20 backdrop-blur-md shadow-sm">
-                <Scale className="h-5 w-5 text-indigo-300" />
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="font-black text-base sm:text-lg text-white tracking-wider uppercase drop-shadow-sm leading-none">Trial Balance</h2>
-                <div className="flex items-center gap-1.5 ml-1">
-                  <span className="text-[9px] font-bold text-indigo-200 bg-black/20 px-2 py-0.5 rounded border border-white/10 uppercase tracking-widest">
-                    Period
-                  </span>
-                  <span className="text-[10px] text-slate-300 font-mono tracking-wide">{fromDate} <span className="text-indigo-400">to</span> {toDate}</span>
+          {/* Sticky Header Summary Strip */}
+          <div className="sticky top-0 z-30 shadow-md bg-white rounded-t-xl">
+            <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-4 sm:px-6 py-2.5 border-b border-indigo-500/30 rounded-t-xl shadow-lg relative overflow-hidden">
+              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
+              
+              <div className="flex items-center gap-3 flex-wrap relative z-10">
+                <div className="p-2 rounded-xl bg-white/10 border border-white/20 backdrop-blur-md shadow-sm">
+                  <Scale className="h-5 w-5 text-indigo-300" />
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="font-black text-base sm:text-lg text-white tracking-wider uppercase drop-shadow-sm leading-none">Trial Balance</h2>
+                  <div className="flex items-center gap-1.5 ml-1">
+                    <span className="text-[9px] font-bold text-indigo-200 bg-black/20 px-2 py-0.5 rounded border border-white/10 uppercase tracking-widest">
+                      Period
+                    </span>
+                    <span className="text-[10px] text-slate-300 font-mono tracking-wide">{fromDate} <span className="text-indigo-400">to</span> {toDate}</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-3 flex-wrap relative z-10 ml-auto md:ml-0">
-              {/* Search Box */}
-              <div className="relative min-w-[180px] sm:min-w-[220px]">
-                <Search className="absolute left-3 top-2 h-4 w-4 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search ledger..."
-                  className="w-full rounded-xl border border-white/20 bg-black/20 pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-400 focus:border-indigo-400 focus:bg-black/40 focus:outline-hidden backdrop-blur-sm shadow-inner transition-colors"
-                />
+              <div className="flex items-center gap-3 flex-wrap relative z-10 ml-auto md:ml-0">
+                {/* Search Box */}
+                <div className="relative min-w-[180px] sm:min-w-[220px]">
+                  <Search className="absolute left-3 top-2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search ledger..."
+                    className="w-full rounded-xl border border-white/20 bg-black/20 pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-400 focus:border-indigo-400 focus:bg-black/40 focus:outline-hidden backdrop-blur-sm shadow-inner transition-colors"
+                  />
+                </div>
+
+                {/* Total Badge */}
+                <div className="hidden lg:flex items-center gap-2 bg-black/20 px-4 py-1.5 rounded-xl border border-white/10 shadow-inner backdrop-blur-sm">
+                  <span className="text-[10px] text-indigo-300 uppercase font-bold tracking-widest">Total:</span>
+                  <span className="text-sm font-bold font-mono text-white">{curSymbol} {fmt(tbTotals.closingDr)}</span>
+                </div>
+
+                {onToggleControls && (
+                  !isControlsCollapsed ? (
+                    <button
+                      type="button"
+                      onClick={onToggleControls}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm"
+                      title="Collapse Filters & Expand Table"
+                    >
+                      Collapse <ChevronUp className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={onToggleControls}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-indigo-500 text-white hover:bg-indigo-400 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm"
+                      title="Expand Filters"
+                    >
+                      Expand <ChevronDown className="h-4 w-4" />
+                    </button>
+                  )
+                )}
               </div>
-
-              {/* Total Badge */}
-              <div className="hidden lg:flex items-center gap-2 bg-black/20 px-4 py-1.5 rounded-xl border border-white/10 shadow-inner backdrop-blur-sm">
-                <span className="text-[10px] text-indigo-300 uppercase font-bold tracking-widest">Total:</span>
-                <span className="text-sm font-bold font-mono text-white">{curSymbol} {fmt(tbTotals.closingDr)}</span>
-              </div>
-
-              {onToggleControls && (
-                !isControlsCollapsed ? (
-                  <button
-                    type="button"
-                    onClick={onToggleControls}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm"
-                    title="Collapse Filters & Expand Table"
-                  >
-                    Collapse <ChevronUp className="h-4 w-4" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={onToggleControls}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-indigo-500 text-white hover:bg-indigo-400 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm"
-                    title="Expand Filters"
-                  >
-                    Expand <ChevronDown className="h-4 w-4" />
-                  </button>
-                )
-              )}
             </div>
           </div>
 
           {/* Full Screen Table */}
           <div className="w-full bg-white">
             <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-              <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: headerHeight ? `${headerHeight}px` : 0 }}>
+              <thead className="sticky top-[52px] z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
                 <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                   <th className="bg-slate-100 bg-clip-padding py-3 px-4 sm:px-6 text-left">Particulars / Account Head</th>
                   <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left w-56 hidden md:table-cell">Account Group</th>
@@ -636,95 +650,96 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
       {/* 2. PROFIT & LOSS ACCOUNT VIEW */}
       {reportType === 'PNL' && pnlData && (
         <div className="w-full space-y-0">
-          {/* Stunning Header Summary Strip */}
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 px-4 sm:px-6 py-2.5 border-b border-emerald-500/30 rounded-t-xl shadow-lg relative overflow-hidden">
-            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
+          {/* Sticky Header Summary Strip + Column Headers */}
+          <div className="sticky top-0 z-30 shadow-md bg-white rounded-t-xl">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 px-4 sm:px-6 py-2.5 border-b border-emerald-500/30 rounded-t-xl shadow-lg relative overflow-hidden">
+              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
 
-            <div className="flex items-center gap-3 flex-wrap relative z-10">
-              <div className="p-2 rounded-xl bg-white/10 border border-white/20 backdrop-blur-md shadow-sm">
-                <TrendingUp className="h-5 w-5 text-emerald-300" />
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="font-black text-base sm:text-lg text-white tracking-wider uppercase drop-shadow-sm leading-none">Profit & Loss Account</h2>
-                <div className="flex items-center gap-1.5 ml-1">
-                  <span className="text-[9px] font-bold text-emerald-200 bg-black/20 px-2 py-0.5 rounded border border-white/10 uppercase tracking-widest">
-                    Period
-                  </span>
-                  <span className="text-[10px] text-slate-300 font-mono tracking-wide">{fromDate} <span className="text-emerald-400">to</span> {toDate}</span>
+              <div className="flex items-center gap-3 flex-wrap relative z-10">
+                <div className="p-2 rounded-xl bg-white/10 border border-white/20 backdrop-blur-md shadow-sm">
+                  <TrendingUp className="h-5 w-5 text-emerald-300" />
                 </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="font-black text-base sm:text-lg text-white tracking-wider uppercase drop-shadow-sm leading-none">Profit & Loss Account</h2>
+                  <div className="flex items-center gap-1.5 ml-1">
+                    <span className="text-[9px] font-bold text-emerald-200 bg-black/20 px-2 py-0.5 rounded border border-white/10 uppercase tracking-widest">
+                      Period
+                    </span>
+                    <span className="text-[10px] text-slate-300 font-mono tracking-wide">{fromDate} <span className="text-emerald-400">to</span> {toDate}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Live KPI Metric Pills */}
+              <div className="flex items-center gap-3 flex-wrap relative z-10 ml-auto lg:ml-0 mt-2 lg:mt-0">
+                <div className="bg-black/20 px-3 py-1 rounded-xl border border-white/10 shadow-inner backdrop-blur-sm">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold tracking-widest block">Turnover (Sales)</span>
+                  <span className="font-bold font-mono text-white text-xs sm:text-sm">{curSymbol} {fmt(pnlData.turnover)}</span>
+                </div>
+
+                <div className="bg-black/20 px-3 py-1 rounded-xl border border-white/10 shadow-inner backdrop-blur-sm">
+                  <span className="text-[9px] text-slate-400 uppercase font-bold tracking-widest block">Gross Profit</span>
+                  <span className={`font-bold font-mono text-xs sm:text-sm ${pnlData.grossProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {curSymbol} {fmt(pnlData.grossProfit)} <span className="text-[9px] font-sans text-slate-500">({pnlData.grossMarginPct}%)</span>
+                  </span>
+                </div>
+
+                <div className={`px-3 py-1 rounded-xl border font-bold backdrop-blur-sm shadow-inner ${
+                  pnlData.netProfit >= 0 
+                    ? 'bg-emerald-900/40 text-emerald-300 border-emerald-500/30' 
+                    : 'bg-rose-900/40 text-rose-300 border-rose-500/30'
+                }`}>
+                  <span className="text-[9px] uppercase block font-bold tracking-widest text-inherit opacity-80">Nett {pnlData.netProfit >= 0 ? 'Profit' : 'Loss'}</span>
+                  <span className="font-mono text-xs sm:text-sm">
+                    {curSymbol} {fmt(pnlData.netProfit)} <span className="text-[9px] font-sans opacity-70">({pnlData.netMarginPct}%)</span>
+                  </span>
+                </div>
+
+                {onToggleControls && (
+                  !isControlsCollapsed ? (
+                    <button
+                      type="button"
+                      onClick={onToggleControls}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm ml-2"
+                      title="Collapse Filters & Expand Table"
+                    >
+                      Collapse <ChevronUp className="h-4 w-4" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={onToggleControls}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-emerald-600 text-white hover:bg-emerald-500 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm ml-2"
+                      title="Expand Filters"
+                    >
+                      Expand <ChevronDown className="h-4 w-4" />
+                    </button>
+                  )
+                )}
               </div>
             </div>
 
-            {/* Live KPI Metric Pills */}
-            <div className="flex items-center gap-3 flex-wrap relative z-10 ml-auto lg:ml-0 mt-2 lg:mt-0">
-              <div className="bg-black/20 px-3 py-1 rounded-xl border border-white/10 shadow-inner backdrop-blur-sm">
-                <span className="text-[9px] text-slate-400 uppercase font-bold tracking-widest block">Turnover (Sales)</span>
-                <span className="font-bold font-mono text-white text-xs sm:text-sm">{curSymbol} {fmt(pnlData.turnover)}</span>
+            {/* PNL Column Titles */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-200 bg-slate-100 border-b-2 border-slate-300 font-extrabold uppercase text-[11px] tracking-wider text-slate-800 px-4 sm:px-6 py-2.5">
+              <div className="flex justify-between items-center pr-0 lg:pr-4">
+                <span>Particulars (Debit / Expenses)</span>
+                <span>Amount ({curSymbol})</span>
               </div>
-
-              <div className="bg-black/20 px-3 py-1 rounded-xl border border-white/10 shadow-inner backdrop-blur-sm">
-                <span className="text-[9px] text-slate-400 uppercase font-bold tracking-widest block">Gross Profit</span>
-                <span className={`font-bold font-mono text-xs sm:text-sm ${pnlData.grossProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {curSymbol} {fmt(pnlData.grossProfit)} <span className="text-[9px] font-sans text-slate-500">({pnlData.grossMarginPct}%)</span>
-                </span>
+              <div className="flex justify-between items-center pl-0 lg:pl-4 pt-2 lg:pt-0">
+                <span>Particulars (Credit / Incomes)</span>
+                <span>Amount ({curSymbol})</span>
               </div>
-
-              <div className={`px-3 py-1 rounded-xl border font-bold backdrop-blur-sm shadow-inner ${
-                pnlData.netProfit >= 0 
-                  ? 'bg-emerald-900/40 text-emerald-300 border-emerald-500/30' 
-                  : 'bg-rose-900/40 text-rose-300 border-rose-500/30'
-              }`}>
-                <span className="text-[9px] uppercase block font-bold tracking-widest text-inherit opacity-80">Nett {pnlData.netProfit >= 0 ? 'Profit' : 'Loss'}</span>
-                <span className="font-mono text-xs sm:text-sm">
-                  {curSymbol} {fmt(pnlData.netProfit)} <span className="text-[9px] font-sans opacity-70">({pnlData.netMarginPct}%)</span>
-                </span>
-              </div>
-
-              {onToggleControls && (
-                !isControlsCollapsed ? (
-                  <button
-                    type="button"
-                    onClick={onToggleControls}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm ml-2"
-                    title="Collapse Filters & Expand Table"
-                  >
-                    Collapse <ChevronUp className="h-4 w-4" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={onToggleControls}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-emerald-600 text-white hover:bg-emerald-500 transition-colors shadow-sm text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm ml-2"
-                    title="Expand Filters"
-                  >
-                    Expand <ChevronDown className="h-4 w-4" />
-                  </button>
-                )
-              )}
             </div>
           </div>
 
           {/* Full-Screen Dual Column Statement */}
           <div className="w-full bg-white">
-            {/* 2.1 TRADING ACCOUNT SECTION */}
+            {/* TRADING ACCOUNT SECTION */}
             <div className="border-b-2 border-slate-300">
-              <div className="sticky z-30 bg-slate-100 px-4 sm:px-6 py-2 text-slate-800 font-extrabold text-xs uppercase tracking-wider border-b border-slate-200 flex items-center justify-between shadow-sm" style={{ top: headerHeight ? `${headerHeight}px` : 0 }}>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
-                  1. Trading Account (Gross Margin)
-                </span>
-                <span className="text-[11px] text-slate-500 font-normal">Opening Stock + Purchases + Direct Expenses vs Sales + Closing Stock</span>
-              </div>
-              
               <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-200">
                 {/* Left Side: Debits / Cost of Goods Sold */}
                 <div className="flex flex-col justify-between p-4 sm:p-6 space-y-4">
                   <div>
-                    <div className="flex justify-between items-center pb-2.5 mb-3 border-b-2 border-slate-200 text-slate-700 font-bold uppercase text-[11px] tracking-wider">
-                      <span>Particulars (Debit / Expenses)</span>
-                      <span>Amount ({curSymbol})</span>
-                    </div>
-
                     <div className="space-y-3.5">
                       {/* Opening Stock */}
                       <div
@@ -748,15 +763,21 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
 
                       {/* Purchase Accounts */}
                       <div className="space-y-1">
-                        <div className="flex justify-between items-center font-bold text-slate-900">
-                          <span>Purchase Accounts</span>
+                        <div
+                          onClick={() => setIsPurExpanded(prev => !prev)}
+                          className="flex justify-between items-center font-bold text-slate-900 cursor-pointer p-1 -mx-1 rounded-lg hover:bg-slate-100 transition"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {isPurExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                            <span>Purchase Accounts</span>
+                          </div>
                           <span className="font-mono text-slate-900">{fmt(pnlData.pur)}</span>
                         </div>
-                        {depth !== 'summary' && pnlData.purchLedgers.map((l: any, i: number) => (
+                        {isPurExpanded && depth !== 'summary' && pnlData.purchLedgers.map((l: any, i: number) => (
                           <div
                             key={`pnl-pur-${l.name || i}-${i}`}
                             onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
-                            className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
+                            className="pl-6 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                           >
                             <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
                             <span className="font-mono">{fmt(l.amount !== undefined ? l.amount : (l.dr || l.cr))}</span>
@@ -766,15 +787,21 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
 
                       {/* Direct Expenses */}
                       <div className="space-y-1">
-                        <div className="flex justify-between items-center font-bold text-slate-900">
-                          <span>Direct Expenses</span>
+                        <div
+                          onClick={() => setIsDeExpanded(prev => !prev)}
+                          className="flex justify-between items-center font-bold text-slate-900 cursor-pointer p-1 -mx-1 rounded-lg hover:bg-slate-100 transition"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {isDeExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                            <span>Direct Expenses</span>
+                          </div>
                           <span className="font-mono text-slate-900">{fmt(pnlData.de)}</span>
                         </div>
-                        {depth !== 'summary' && pnlData.directExpLedgers.map((l: any, i: number) => (
+                        {isDeExpanded && depth !== 'summary' && pnlData.directExpLedgers.map((l: any, i: number) => (
                           <div
                             key={`pnl-de-${l.name || i}-${i}`}
                             onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
-                            className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
+                            className="pl-6 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                           >
                             <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
                             <span className="font-mono">{fmt(l.amount !== undefined ? l.amount : (l.dr || l.cr))}</span>
@@ -806,23 +833,24 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                 {/* Right Side: Credits / Incomes & Closing Stock */}
                 <div className="flex flex-col justify-between p-4 sm:p-6 space-y-4">
                   <div>
-                    <div className="flex justify-between items-center pb-2.5 mb-3 border-b-2 border-slate-200 text-slate-700 font-bold uppercase text-[11px] tracking-wider">
-                      <span>Particulars (Credit / Incomes)</span>
-                      <span>Amount ({curSymbol})</span>
-                    </div>
-
                     <div className="space-y-3.5">
                       {/* Sales Accounts */}
                       <div className="space-y-1">
-                        <div className="flex justify-between items-center font-bold text-slate-900">
-                          <span>Sales Accounts</span>
+                        <div
+                          onClick={() => setIsSalesExpanded(prev => !prev)}
+                          className="flex justify-between items-center font-bold text-slate-900 cursor-pointer p-1 -mx-1 rounded-lg hover:bg-slate-100 transition"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {isSalesExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                            <span>Sales Accounts</span>
+                          </div>
                           <span className="font-mono text-slate-900">{fmt(pnlData.s)}</span>
                         </div>
-                        {depth !== 'summary' && pnlData.salesLedgers.map((l: any, i: number) => (
+                        {isSalesExpanded && depth !== 'summary' && pnlData.salesLedgers.map((l: any, i: number) => (
                           <div
                             key={`pnl-sales-${l.name || i}-${i}`}
                             onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
-                            className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
+                            className="pl-6 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                           >
                             <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
                             <span className="font-mono">{fmt(l.amount !== undefined ? l.amount : (l.cr || l.dr))}</span>
@@ -907,15 +935,21 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
 
                     {/* Indirect Expenses */}
                     <div className="space-y-1">
-                      <div className="flex justify-between items-center font-bold text-slate-900">
-                        <span>Indirect Expenses</span>
+                      <div
+                        onClick={() => setIsIeExpanded(prev => !prev)}
+                        className="flex justify-between items-center font-bold text-slate-900 cursor-pointer p-1 -mx-1 rounded-lg hover:bg-slate-100 transition"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {isIeExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                          <span>Indirect Expenses</span>
+                        </div>
                         <span className="font-mono text-slate-900">{fmt(pnlData.ie)}</span>
                       </div>
-                      {depth !== 'summary' && pnlData.indirectExpLedgers.map((l: any, i: number) => (
+                      {isIeExpanded && depth !== 'summary' && pnlData.indirectExpLedgers.map((l: any, i: number) => (
                         <div
                           key={`pnl-ie-${l.name || i}-${i}`}
                           onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
-                          className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
+                          className="pl-6 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                         >
                           <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
                           <span className="font-mono">{fmt(l.amount !== undefined ? l.amount : (l.dr || l.cr))}</span>
@@ -957,15 +991,21 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                     {/* Indirect Incomes */}
                     {pnlData.ii > 0 && (
                       <div className="space-y-1">
-                        <div className="flex justify-between items-center font-bold text-slate-900">
-                          <span>Indirect Incomes</span>
+                        <div
+                          onClick={() => setIsIiExpanded(prev => !prev)}
+                          className="flex justify-between items-center font-bold text-slate-900 cursor-pointer p-1 -mx-1 rounded-lg hover:bg-slate-100 transition"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {isIiExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                            <span>Indirect Incomes</span>
+                          </div>
                           <span className="font-mono text-slate-900">{fmt(pnlData.ii)}</span>
                         </div>
-                        {depth !== 'summary' && pnlData.indirectIncLedgers.map((l: any, i: number) => (
+                        {isIiExpanded && depth !== 'summary' && pnlData.indirectIncLedgers.map((l: any, i: number) => (
                           <div
                             key={`pnl-ii-${l.name || i}-${i}`}
                             onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
-                            className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
+                            className="pl-6 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                           >
                             <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
                             <span className="font-mono">{fmt(l.amount !== undefined ? l.amount : (l.cr || l.dr))}</span>
@@ -1091,12 +1131,18 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                   <div className="space-y-4">
                     {/* Capital Account */}
                     <div className="space-y-1.5">
-                      <div className="flex justify-between items-center font-bold text-slate-900">
-                        <span className="text-sm font-extrabold">Capital Account</span>
+                      <div
+                        onClick={() => setIsCapExpanded(prev => !prev)}
+                        className="flex justify-between items-center font-bold text-slate-900 cursor-pointer p-1 -mx-1 rounded-lg hover:bg-slate-100 transition"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {isCapExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                          <span className="text-sm font-extrabold">Capital Account</span>
+                        </div>
                         <span className="font-mono text-slate-900 font-bold">{fmt(bsData.cap + bsData.netProfit)}</span>
                       </div>
-                      {depth !== 'summary' && (
-                        <div className="pl-4 space-y-1 text-xs text-slate-600">
+                      {isCapExpanded && depth !== 'summary' && (
+                        <div className="pl-6 space-y-1 text-xs text-slate-600">
                           <div className="flex justify-between items-center">
                             <span>Capital Base</span>
                             <span className="font-mono">{fmt(bsData.cap)}</span>
@@ -1123,15 +1169,21 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
 
                     {/* Loans (Liability) */}
                     <div className="space-y-1.5">
-                      <div className="flex justify-between items-center font-bold text-slate-900">
-                        <span className="text-sm font-extrabold">Loans (Liability)</span>
+                      <div
+                        onClick={() => setIsLoansExpanded(prev => !prev)}
+                        className="flex justify-between items-center font-bold text-slate-900 cursor-pointer p-1 -mx-1 rounded-lg hover:bg-slate-100 transition"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {isLoansExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                          <span className="text-sm font-extrabold">Loans (Liability)</span>
+                        </div>
                         <span className="font-mono text-slate-900 font-bold">{fmt(bsData.loans)}</span>
                       </div>
-                      {depth !== 'summary' && bsData.loanLedgers.map((l: any, i: number) => (
+                      {isLoansExpanded && depth !== 'summary' && bsData.loanLedgers.map((l: any, i: number) => (
                         <div
                           key={`bs-loan-${l.name || i}-${i}`}
                           onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
-                          className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
+                          className="pl-6 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                         >
                           <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
                           <span className="font-mono">{fmt(l.cr || l.dr)}</span>
@@ -1141,15 +1193,21 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
 
                     {/* Current Liabilities */}
                     <div className="space-y-1.5">
-                      <div className="flex justify-between items-center font-bold text-slate-900">
-                        <span className="text-sm font-extrabold">Current Liabilities</span>
+                      <div
+                        onClick={() => setIsClExpanded(prev => !prev)}
+                        className="flex justify-between items-center font-bold text-slate-900 cursor-pointer p-1 -mx-1 rounded-lg hover:bg-slate-100 transition"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {isClExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                          <span className="text-sm font-extrabold">Current Liabilities</span>
+                        </div>
                         <span className="font-mono text-slate-900 font-bold">{fmt(bsData.cl)}</span>
                       </div>
-                      {depth !== 'summary' && bsData.currentLiabLedgers.map((l: any, i: number) => (
+                      {isClExpanded && depth !== 'summary' && bsData.currentLiabLedgers.map((l: any, i: number) => (
                         <div
                           key={`bs-cl-${l.name || i}-${i}`}
                           onClick={() => onDrillLedger && onDrillLedger(l.name, fromDate, toDate)}
-                          className="pl-4 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
+                          className="pl-6 flex justify-between items-center text-xs text-slate-600 hover:text-indigo-600 cursor-pointer transition"
                         >
                           <span className="underline decoration-dotted decoration-slate-300 underline-offset-2">{l.name}</span>
                           <span className="font-mono">{fmt(l.cr || l.dr)}</span>
@@ -1293,12 +1351,18 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
 
                     {/* Current Assets */}
                     <div className="space-y-1.5">
-                      <div className="flex justify-between items-center font-bold text-slate-900">
-                        <span className="text-sm font-extrabold">Current Assets</span>
+                      <div
+                        onClick={() => setIsCaExpanded(prev => !prev)}
+                        className="flex justify-between items-center font-bold text-slate-900 cursor-pointer p-1 -mx-1 rounded-lg hover:bg-slate-100 transition"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {isCaExpanded ? <ChevronDown className="h-4 w-4 text-slate-500" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                          <span className="text-sm font-extrabold">Current Assets</span>
+                        </div>
                         <span className="font-mono text-slate-900 font-bold">{fmt(bsData.ca + bsData.stockVal)}</span>
                       </div>
-                      {depth !== 'summary' && (
-                        <div className="pl-4 space-y-1 text-xs text-slate-600">
+                      {isCaExpanded && depth !== 'summary' && (
+                        <div className="pl-6 space-y-1 text-xs text-slate-600">
                           <div
                             onClick={() => onDrillGroup && onDrillGroup('Closing Stock', fromDate, toDate)}
                             className="flex justify-between items-center font-semibold text-slate-800 hover:text-indigo-600 cursor-pointer transition p-1.5 -mx-1.5 rounded-lg hover:bg-indigo-50/70 border border-transparent hover:border-indigo-100 group/bs"

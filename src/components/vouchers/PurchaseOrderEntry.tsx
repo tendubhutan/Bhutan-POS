@@ -345,6 +345,30 @@ export const PurchaseOrderEntry: React.FC<PurchaseOrderEntryProps> = ({
     setActiveTab('create');
   };
 
+  useEffect(() => {
+    if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
+      const allOrders = getPurchaseOrders();
+      const po = allOrders.find(x => x.poNo === initialVoucherTarget.voucherNo);
+      if (po) {
+        const isDup = Boolean((initialVoucherTarget as any)?.isDuplicate);
+        if (isDup) {
+          setEditingPoNo(null);
+          setPoNo(peekNextVoucherNo('PURCHASE_ORDER', config));
+          setDate(new Date().toISOString().split('T')[0]);
+          setExpectedDate(po.expectedDate ? po.expectedDate.split('T')[0] : '');
+          setSupplier(po.supplier || { name: '', phone: '', address: '', gstNo: '', tpnNo: '' });
+          setPoItems(po.items || []);
+          setRemarks(po.remarks ? `${po.remarks} (Copy of ${po.poNo})` : `Copy of ${po.poNo}`);
+          if (po.termsAndConditions) setTermsAndConditions(po.termsAndConditions);
+          setActiveTab('create');
+          showToast(`Purchase Order duplicated from ${po.poNo}! Review and press Save.`, 'success');
+        } else {
+          handleEditPO(po);
+        }
+      }
+    }
+  }, [initialVoucherTarget]);
+
   const handleDeletePO = (pNo: string) => {
     if (confirm(`Are you sure you want to delete Purchase Order ${pNo}?`)) {
       deletePurchaseOrder(pNo);

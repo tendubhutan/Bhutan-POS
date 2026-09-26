@@ -385,6 +385,30 @@ export const ReceiptNoteEntry: React.FC<ReceiptNoteEntryProps> = ({
     setActiveTab('create');
   };
 
+  useEffect(() => {
+    if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
+      const allNotes = getReceiptNotes();
+      const rn = allNotes.find(x => x.noteNo === initialVoucherTarget.voucherNo);
+      if (rn) {
+        const isDup = Boolean((initialVoucherTarget as any)?.isDuplicate);
+        if (isDup) {
+          setEditingNoteNo(null);
+          setNoteNo(peekNextVoucherNo('RECEIPT_NOTE', config));
+          setDate(new Date().toISOString().split('T')[0]);
+          setSupplierChallanNo(rn.supplierChallanNo || '');
+          setPoNo(rn.poNo || '');
+          setSupplier(rn.supplier || { name: '', phone: '', address: '', gstNo: '', tpnNo: '' });
+          setNoteItems(rn.items || []);
+          setRemarks(rn.remarks ? `${rn.remarks} (Copy of ${rn.noteNo})` : `Copy of ${rn.noteNo}`);
+          setActiveTab('create');
+          showToast(`Receipt Note duplicated from ${rn.noteNo}! Review and press Save.`, 'success');
+        } else {
+          handleEditNote(rn);
+        }
+      }
+    }
+  }, [initialVoucherTarget]);
+
   const handleDeleteNote = (nNo: string) => {
     if (confirm(`Are you sure you want to delete Receipt Note ${nNo}? This will reverse the stock inward.`)) {
       deleteReceiptNote(nNo);
