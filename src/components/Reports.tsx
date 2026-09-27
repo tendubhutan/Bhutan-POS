@@ -2559,36 +2559,36 @@ export const Reports: React.FC<ReportsProps> = ({
             <span>Back</span>
           </button>
 
-          {/* Modern Searchable Multi-Column Report Switcher anchored to left */}
+          {/* Compact Searchable Report Switcher Dropdown (Matching Voucher Switcher Style) */}
           <div ref={reportMenuRef} className="relative">
             <button
               type="button"
               onClick={() => setIsReportMenuOpen(!isReportMenuOpen)}
               className={`h-8 inline-flex items-center gap-2 rounded-xl border px-3 py-1 font-extrabold text-xs shadow-2xs transition-all cursor-pointer select-none ${
                 isReportMenuOpen
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-md ring-2 ring-indigo-200'
-                  : 'border-indigo-200 bg-indigo-50/80 text-indigo-950 hover:bg-indigo-100 hover:border-indigo-300'
+                  ? 'bg-indigo-700 text-white border-indigo-700 shadow-md ring-2 ring-indigo-200'
+                  : 'border-indigo-300/80 bg-blue-100/90 text-indigo-950 hover:bg-blue-200/90 hover:border-indigo-400'
               }`}
               title="Click to switch report or search (Esc to close)"
             >
-              <currentReportDisplay.Icon className={`h-3.5 w-3.5 ${isReportMenuOpen ? 'text-white' : 'text-indigo-600'}`} />
-              <span className="font-bold truncate max-w-[150px] sm:max-w-[220px]">
+              <currentReportDisplay.Icon className={`h-3.5 w-3.5 ${isReportMenuOpen ? 'text-white' : 'text-indigo-700'}`} />
+              <span className="font-extrabold truncate max-w-[160px] sm:max-w-[240px]">
                 {currentReportDisplay.name}
               </span>
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${isReportMenuOpen ? 'rotate-180 text-white' : 'text-indigo-600'}`} />
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${isReportMenuOpen ? 'rotate-180 text-white' : 'text-indigo-700'}`} />
             </button>
 
-            {/* Vertical Collapsible (+) Popover Card */}
+            {/* Compact Light-Blue Dropdown Popover Card */}
             {isReportMenuOpen && (
-              <div className="absolute left-0 top-full mt-2 z-50 w-[94vw] sm:w-[440px] md:w-[460px] max-w-[480px] rounded-2xl border border-slate-200/90 bg-white shadow-2xl p-3 sm:p-4 text-slate-800 animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col max-h-[82vh]">
+              <div className="absolute left-0 top-full mt-2 z-50 w-[94vw] sm:w-[380px] md:w-[400px] max-w-[440px] rounded-2xl border border-indigo-200/90 bg-indigo-50/95 backdrop-blur-md shadow-2xl p-3 text-slate-800 animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col max-h-[82vh]">
                 {/* Search Header */}
-                <div className="flex items-center gap-2 pb-2.5 mb-2.5 border-b border-slate-100">
+                <div className="flex items-center gap-2 pb-2 mb-2 border-b border-indigo-200/60">
                   <div className="relative flex-1">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-indigo-400" />
                     <input
                       ref={reportSearchInputRef}
                       type="text"
-                      placeholder="🔍 Search report (e.g. batch, profit, gst, ledger, pnl)..."
+                      placeholder="Select Report Form / Search..."
                       value={reportMenuSearch}
                       onChange={e => setReportMenuSearch(e.target.value)}
                       onKeyDown={e => {
@@ -2601,13 +2601,13 @@ export const Reports: React.FC<ReportsProps> = ({
                           }
                         }
                       }}
-                      className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition"
+                      className="w-full h-8 pl-8 pr-8 rounded-xl border border-indigo-200/80 bg-white/90 text-xs font-semibold text-indigo-950 placeholder-indigo-400/80 outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition"
                     />
                     {reportMenuSearch && (
                       <button
                         type="button"
                         onClick={() => setReportMenuSearch('')}
-                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        className="absolute right-2.5 top-2 text-indigo-400 hover:text-indigo-600 cursor-pointer"
                         title="Clear search"
                       >
                         <X className="w-4 h-4" />
@@ -2618,167 +2618,64 @@ export const Reports: React.FC<ReportsProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsReportMenuOpen(false)}
-                    className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                    className="p-1.5 rounded-xl text-indigo-400 hover:text-indigo-700 hover:bg-indigo-100/80 transition cursor-pointer"
                     title="Close menu (Esc)"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
 
-                {/* Quick actions row */}
-                <div className="flex items-center justify-between px-1 pb-2 text-[11px] text-slate-500 font-medium">
-                  {reportMenuSearch ? (
-                    <span className="font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-lg">
-                      {filteredReportCategories.reduce((acc, c) => acc + c.items.length, 0)} results found
-                    </span>
-                  ) : (
-                    <span className="text-slate-400">Select category below to expand:</span>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={expandAllCategories}
-                      className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold text-[10px] cursor-pointer"
-                    >
-                      Expand All
-                    </button>
-                    <span className="text-slate-300">•</span>
-                    <button
-                      type="button"
-                      onClick={collapseAllCategories}
-                      className="text-slate-500 hover:text-slate-700 hover:underline font-bold text-[10px] cursor-pointer"
-                    >
-                      Collapse All
-                    </button>
-                  </div>
+                {/* Subtitle */}
+                <div className="px-1 pb-1.5 text-[11px] font-extrabold text-indigo-900/70 uppercase tracking-wider">
+                  Select Report Form...
                 </div>
 
-                {/* Vertical Collapsible Accordion List: Sequence 1 to 5 */}
+                {/* Categorized Reports List */}
                 {filteredReportCategories.length === 0 ? (
-                  <div className="py-8 text-center text-slate-400 space-y-1">
+                  <div className="py-8 text-center text-indigo-400 space-y-1">
                     <p className="text-xs font-semibold">No reports matching "{reportMenuSearch}"</p>
-                    <p className="text-[11px] text-slate-400">Try searching for "batch", "profit", "gst", "stock", or "pnl"</p>
                   </div>
                 ) : (
-                  <div ref={accordionScrollRef} className="overflow-y-auto pr-1 space-y-2 flex-1 max-h-[58vh] scroll-smooth">
+                  <div ref={accordionScrollRef} className="overflow-y-auto pr-1 space-y-3 flex-1 max-h-[60vh] scroll-smooth">
                     {filteredReportCategories.map(cat => {
-                      const CatIcon = cat.icon;
-                      const isSearching = reportMenuSearch.trim().length > 0;
-                      const isExpanded = isSearching || !!expandedReportCategories[cat.id];
-                      const isCurrentCat = cat.id === activeCategoryId;
-
                       return (
-                        <div
-                          key={cat.id}
-                          ref={el => { categoryRefs.current[cat.id] = el; }}
-                          className={`rounded-xl border transition-all overflow-hidden ${
-                            isCurrentCat
-                              ? 'border-indigo-200 bg-indigo-50/20 shadow-2xs'
-                              : 'border-slate-200 bg-white hover:border-slate-300'
-                          }`}
-                        >
-                          {/* Accordion Category Header */}
-                          <button
-                            type="button"
-                            onClick={() => toggleCategory(cat.id)}
-                            className={`w-full flex items-center justify-between p-2.5 text-left transition-colors cursor-pointer select-none ${
-                              isExpanded
-                                ? 'bg-slate-100/80 text-slate-900 border-b border-slate-200/70'
-                                : 'bg-white hover:bg-slate-50 text-slate-800'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
-                              <div className={`p-1.5 rounded-lg shrink-0 ${
-                                cat.color === 'indigo' ? 'bg-indigo-100 text-indigo-700' :
-                                cat.color === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
-                                cat.color === 'amber' ? 'bg-amber-100 text-amber-700' :
-                                cat.color === 'blue' ? 'bg-blue-100 text-blue-700' :
-                                'bg-purple-100 text-purple-700'
-                              }`}>
-                                <CatIcon className="h-4 w-4" />
-                              </div>
+                        <div key={cat.id} className="space-y-0.5">
+                          {/* Categorized Group Heading in Bold Purple/Indigo Text */}
+                          <div className="font-black text-[12px] text-indigo-900 px-1.5 py-0.5 tracking-wide flex items-center justify-between border-b border-indigo-200/40">
+                            <span>{cat.name}</span>
+                            <span className="text-[10px] text-indigo-500 font-mono font-normal">({cat.items.length})</span>
+                          </div>
 
-                              <div className="flex items-center gap-1.5 truncate">
-                                <span className="font-bold text-xs sm:text-sm text-slate-900 truncate">
-                                  {cat.name}
-                                </span>
-                                {isCurrentCat && (
-                                  <span className="text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-md shrink-0">
-                                    Current
+                          {/* List of Report Items */}
+                          <div className="space-y-0.5 pt-0.5">
+                            {cat.items.map(item => {
+                              const isActive = item.id === currentActiveReportKey;
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => handleSelectReport(item.id)}
+                                  className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-all flex items-center justify-between gap-2 cursor-pointer font-semibold ${
+                                    isActive
+                                      ? 'bg-slate-700 text-white font-bold shadow-xs'
+                                      : 'text-indigo-800 hover:text-indigo-950 hover:bg-indigo-100/80'
+                                  }`}
+                                >
+                                  <span className="truncate min-w-0 flex-1">
+                                    {item.name}
                                   </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="text-[10px] font-bold text-slate-500 bg-slate-200/80 px-2 py-0.5 rounded-full">
-                                {cat.items.length} {cat.items.length === 1 ? 'report' : 'reports'}
-                              </span>
-                              <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
-                                isExpanded
-                                  ? 'bg-indigo-600 text-white font-bold shadow-2xs'
-                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                              }`}>
-                                {isExpanded ? (
-                                  <Minus className="h-3.5 w-3.5 stroke-[2.5]" />
-                                ) : (
-                                  <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
-                                )}
-                              </div>
-                            </div>
-                          </button>
-
-                          {/* Collapsible List of Reports */}
-                          {isExpanded && (
-                            <div className="p-1.5 sm:p-2 bg-slate-50/70 space-y-1 animate-in fade-in slide-in-from-top-1 duration-150">
-                              {cat.items.map(item => {
-                                const isActive = item.id === currentActiveReportKey;
-                                return (
-                                  <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => handleSelectReport(item.id)}
-                                    className={`group w-full text-left px-3 py-2 rounded-lg text-xs transition-all flex items-center justify-between gap-2 cursor-pointer ${
-                                      isActive
-                                        ? 'bg-indigo-600 text-white font-bold shadow-xs'
-                                        : 'bg-white hover:bg-indigo-50/90 text-slate-700 hover:text-indigo-900 border border-slate-200/70 shadow-2xs hover:border-indigo-200'
-                                    }`}
-                                  >
-                                    <div className="truncate min-w-0 flex-1">
-                                      <div className="flex items-center gap-1.5">
-                                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? 'bg-white' : 'bg-slate-300 group-hover:bg-indigo-500'}`} />
-                                        <span className={`truncate font-semibold text-xs ${isActive ? 'text-white' : 'text-slate-800'}`}>
-                                          {item.name}
-                                        </span>
-                                      </div>
-                                      {item.desc && (
-                                        <div className={`text-[10px] pl-3 truncate ${isActive ? 'text-indigo-100' : 'text-slate-400 group-hover:text-slate-500'}`}>
-                                          {item.desc}
-                                        </div>
-                                      )}
-                                    </div>
-                                    {isActive && (
-                                      <div className="shrink-0 flex items-center gap-1 text-[9px] font-black uppercase tracking-wider bg-white/20 text-white px-1.5 py-0.5 rounded">
-                                        <span>Active</span>
-                                        <Check className="h-3.5 w-3.5 stroke-[3]" />
-                                      </div>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
+                                  {isActive && (
+                                    <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0 stroke-[3]" />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                 )}
-
-                {/* Footer helper */}
-                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 px-1">
-                  <span>💡 Click [+] to expand category • Click report to open</span>
-                  <span className="font-mono text-[10px]">Esc to close</span>
-                </div>
               </div>
             )}
           </div>
