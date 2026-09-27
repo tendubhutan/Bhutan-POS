@@ -3329,8 +3329,8 @@ export const Reports: React.FC<ReportsProps> = ({
             </div>
             
             <div className="relative z-10 flex items-center gap-2 shrink-0">
-              {/* Zoom & Fit to Screen Controller for Mobile & Desktop */}
-              <div className="flex items-center gap-0.5 sm:gap-1 bg-white/10 border border-white/20 rounded-lg p-0.5 px-1 backdrop-blur-xs">
+              {/* Zoom & Fit to Screen Controller - Mobile & Tablet Only (Hidden on PC/Desktop) */}
+              <div className="flex lg:hidden items-center gap-0.5 sm:gap-1 bg-white/10 border border-white/20 rounded-lg p-0.5 px-1 backdrop-blur-xs">
                 <button
                   type="button"
                   onClick={() => setReportScale(prev => Math.max(0.35, Number((prev - 0.1).toFixed(2))))}
