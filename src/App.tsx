@@ -880,7 +880,7 @@ export default function App() {
       {/* Sidebar Navigation */}
       <Sidebar
         currentView={currentView}
-        onNavigate={view => navigateTo(view)}
+        onNavigate={(view, target) => navigateTo(view, target)}
         isOpenMobile={isMobileOpen}
         onCloseMobile={() => setIsMobileOpen(false)}
         hideDesktop={true}

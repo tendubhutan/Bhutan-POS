@@ -8,7 +8,7 @@ import {
 import { Config, AppUser } from '../types';
 import { AIAssistant } from './AIAssistant';
 import { getCurrentTenantSession, isSuperAdmin as checkIsSuperAdmin } from '../services/authTenantContext';
-import { getBranches, getTerminalBranchId, setTerminalBranchId } from '../services/storageService';
+import { getBranches, getTerminalBranchId, setTerminalBranchId, getDeviceCounterId, setDeviceCounterId, getTerminalsConfig } from '../services/storageService';
 import { LocalLanHubModal } from './LocalLanHubModal';
 import { ClientLinkAndPwaModal } from './ClientLinkAndPwaModal';
 
@@ -72,12 +72,14 @@ export const Header: React.FC<HeaderProps> = ({
     : (currentUser?.role === 'Administrator' ? 'ADMIN' : (currentUser?.role?.toUpperCase() || 'STAFF'));
 
   const [terminalBranchId, setLocalTerminalBranchId] = useState<string>(() => getTerminalBranchId(config));
+  const [deviceCounterId, setLocalDeviceCounterId] = useState<string>(() => getDeviceCounterId());
   const [isLanHubModalOpen, setIsLanHubModalOpen] = useState<boolean>(false);
   const [isClientLinkModalOpen, setIsClientLinkModalOpen] = useState<boolean>(false);
   const [clientLinkModalTab, setClientLinkModalTab] = useState<'links' | 'manage' | 'pwa'>('links');
   const [isConnectivityOpen, setIsConnectivityOpen] = useState<boolean>(false);
   const connectivityMenuRef = useRef<HTMLDivElement>(null);
   const branches = getBranches();
+  const terminals = getTerminalsConfig();
 
   // Close connectivity dropdown on outside click
   useEffect(() => {
@@ -98,6 +100,11 @@ export const Header: React.FC<HeaderProps> = ({
         setLocalTerminalBranchId(e.detail.branchId);
       }
     };
+    const handleCounterChanged = (e: any) => {
+      if (e.detail?.counterId) {
+        setLocalDeviceCounterId(e.detail.counterId);
+      }
+    };
     const handleOpenClientLink = (e: any) => {
       const tab = e.detail?.tab || 'links';
       setClientLinkModalTab(tab);
@@ -105,9 +112,11 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     window.addEventListener('terminal:branch_changed', handleBranchChanged);
+    window.addEventListener('device_counter_id_changed', handleCounterChanged);
     window.addEventListener('open_client_link_modal', handleOpenClientLink);
     return () => {
       window.removeEventListener('terminal:branch_changed', handleBranchChanged);
+      window.removeEventListener('device_counter_id_changed', handleCounterChanged);
       window.removeEventListener('open_client_link_modal', handleOpenClientLink);
     };
   }, []);
@@ -244,6 +253,68 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <RefreshCw className="h-3.5 w-3.5 text-blue-200" />
           </button>
+        </div>
+      </div>
+
+      {/* Mobile-Only Branch & Counter Switcher Bar (Hidden on sm / tablet / PC / desktop) */}
+      <div className="flex sm:hidden items-center gap-1.5 w-full text-xs">
+        {/* Mobile Branch Selector */}
+        <div 
+          className="flex items-center gap-1 bg-blue-900/80 border border-blue-400/40 px-2 py-1 rounded-xl text-xs font-bold text-white shadow-xs shrink min-w-0 flex-1"
+          title="Select Active Branch for Mobile"
+        >
+          <Building2 className="h-3.5 w-3.5 text-amber-300 shrink-0" />
+          <select
+            value={terminalBranchId || config.ActiveBranchId || ''}
+            onChange={(e) => {
+              const newId = e.target.value;
+              setLocalTerminalBranchId(newId);
+              setTerminalBranchId(newId);
+            }}
+            className="bg-transparent text-white font-extrabold text-[11px] outline-none cursor-pointer w-full truncate"
+          >
+            {branches && branches.length > 0 ? (
+              branches.map(b => (
+                <option key={b.id} value={b.id} className="text-slate-900 bg-white font-bold">
+                  {b.name} {b.isHeadOffice ? '(HQ)' : ''}
+                </option>
+              ))
+            ) : (
+              <option value="main" className="text-slate-900 bg-white font-bold">Main Branch (HQ)</option>
+            )}
+          </select>
+        </div>
+
+        {/* Mobile Counter Selector */}
+        <div 
+          className="flex items-center gap-1 bg-blue-900/80 border border-blue-400/40 px-2 py-1 rounded-xl text-xs font-bold text-white shadow-xs shrink min-w-0 flex-1"
+          title="Select Counter / Terminal"
+        >
+          <Terminal className="h-3.5 w-3.5 text-cyan-300 shrink-0" />
+          <select
+            value={deviceCounterId}
+            onChange={(e) => {
+              const newCounter = e.target.value;
+              setLocalDeviceCounterId(newCounter);
+              setDeviceCounterId(newCounter);
+            }}
+            className="bg-transparent text-white font-extrabold text-[11px] outline-none cursor-pointer w-full truncate font-mono"
+          >
+            {terminals && terminals.length > 0 ? (
+              terminals.map(t => (
+                <option key={t.id || t.code} value={t.code || t.id} className="text-slate-900 bg-white font-bold font-sans">
+                  {t.code || t.id} - {t.name}
+                </option>
+              ))
+            ) : (
+              <>
+                <option value="C1" className="text-slate-900 bg-white font-bold">C1 - Counter 1</option>
+                <option value="C2" className="text-slate-900 bg-white font-bold">C2 - Counter 2</option>
+                <option value="C3" className="text-slate-900 bg-white font-bold">C3 - Counter 3</option>
+                <option value="MOB" className="text-slate-900 bg-white font-bold">MOB - Mobile</option>
+              </>
+            )}
+          </select>
         </div>
       </div>
 
