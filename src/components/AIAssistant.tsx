@@ -170,15 +170,14 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({ className = '' }) => {
         </span>
       </button>
 
-      {/* Compact Mobile / Tablet Search Button */}
+      {/* Compact Mobile / Tablet Search Icon Button */}
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-900/80 hover:bg-blue-900 border border-blue-400/50 text-blue-100 hover:text-white text-xs font-bold shadow-xs transition cursor-pointer shrink-0"
+        className="md:hidden flex items-center justify-center p-1.5 rounded-xl bg-blue-800/80 hover:bg-blue-900 border border-blue-500/40 hover:border-blue-400 text-blue-100 hover:text-white transition shadow-xs cursor-pointer shrink-0"
         title="Search & AI Help (Ctrl+K)"
       >
-        <Search className="h-3.5 w-3.5 text-amber-300" />
-        <span className="text-[11px]">Search</span>
+        <Search className="h-4 w-4 text-amber-300" />
       </button>
 
       {/* Modern Centered Command Palette / Search Modal */}

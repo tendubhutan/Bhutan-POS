@@ -113,112 +113,151 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   return (
-    <header className={`bg-gradient-to-r from-blue-700 via-blue-700 to-indigo-800 text-white border-b border-blue-800/80 px-2 sm:px-3.5 ${isPosMode ? 'py-1.5' : 'py-2'} flex items-center justify-between gap-1.5 sm:gap-2 shadow-md relative z-40 select-none w-full max-w-full overflow-x-hidden`}>
+    <header className={`bg-gradient-to-r from-blue-700 via-blue-700 to-indigo-800 text-white border-b border-blue-800/80 px-2.5 sm:px-4 ${isPosMode ? 'py-1.5' : 'py-2'} flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-md relative z-40 select-none w-full max-w-full overflow-x-hidden`}>
       {/* ========================================================= */}
-      {/* ZONE 1: WORKSPACE & COMPANY IDENTITY                      */}
+      {/* ZONE 1: WORKSPACE & COMPANY IDENTITY (Desktop Left)       */}
       {/* ========================================================= */}
-      <div className="flex items-center gap-1 sm:gap-2 shrink min-w-0 max-w-[38%] lg:max-w-[42%]">
-        {/* Three-line menu button: always visible in POS full-screen mode, or on mobile */}
-        <button
-          onClick={onToggleMobileMenu}
-          className={`${isPosMode ? 'flex' : 'lg:hidden flex'} p-1.5 rounded-xl text-blue-100 hover:bg-blue-800/80 hover:text-white transition cursor-pointer shrink-0`}
-          title="Toggle Navigation Menu (Alt+M)"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
-
-        {onNavigateBack && canNavigateBack && (
+      <div className="flex items-center justify-between sm:justify-start gap-1.5 sm:gap-2 shrink min-w-0 w-full sm:w-auto max-w-full sm:max-w-[40%] xl:max-w-[44%]">
+        <div className="flex items-center gap-1 sm:gap-2 shrink min-w-0">
+          {/* Three-line menu button */}
           <button
-            type="button"
-            onClick={onNavigateBack}
-            className="flex items-center gap-1 bg-amber-400 hover:bg-amber-300 text-slate-950 px-2 py-1 rounded-xl text-xs font-black shadow-xs transition active:scale-95 border border-amber-500 cursor-pointer shrink-0"
-            title="Go Back to Previous Screen (Esc)"
+            onClick={onToggleMobileMenu}
+            className={`${isPosMode ? 'flex' : 'lg:hidden flex'} p-1.5 rounded-xl text-blue-100 hover:bg-blue-800/80 hover:text-white transition cursor-pointer shrink-0`}
+            title="Toggle Navigation Menu (Alt+M)"
           >
-            <ArrowLeft className="h-3.5 w-3.5 stroke-[3]" />
-            <span className="hidden sm:inline">Back</span>
+            <Menu className="h-5 w-5" />
           </button>
-        )}
 
-        {/* Company & Financial Year Selector Pill */}
-        {isSuperAdmin && onOpenCompanyManager ? (
-          <button
-            type="button"
-            onClick={onOpenCompanyManager}
-            className="flex items-center gap-1.5 px-2 py-1 bg-blue-800/80 hover:bg-blue-900 border border-blue-500/50 hover:border-purple-400/60 rounded-xl transition text-left cursor-pointer group shadow-xs shrink min-w-0"
-            title="System Administrator: Manage & Switch Companies (Alt+C)"
-          >
-            <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-lg bg-purple-600/40 border border-purple-400/40 flex items-center justify-center text-purple-200 group-hover:text-white transition shrink-0">
-              <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-1">
-                <span className="font-extrabold text-xs text-white tracking-wide leading-tight truncate max-w-[80px] sm:max-w-[110px] lg:max-w-[150px] xl:max-w-[190px]">
+          {onNavigateBack && canNavigateBack && (
+            <button
+              type="button"
+              onClick={onNavigateBack}
+              className="flex items-center gap-1 bg-amber-400 hover:bg-amber-300 text-slate-950 px-2 py-1 rounded-xl text-xs font-black shadow-xs transition active:scale-95 border border-amber-500 cursor-pointer shrink-0"
+              title="Go Back to Previous Screen (Esc)"
+            >
+              <ArrowLeft className="h-3.5 w-3.5 stroke-[3]" />
+              <span className="hidden sm:inline">Back</span>
+            </button>
+          )}
+
+          {/* Company & Financial Year Selector Pill */}
+          {isSuperAdmin && onOpenCompanyManager ? (
+            <button
+              type="button"
+              onClick={onOpenCompanyManager}
+              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 bg-blue-800/80 hover:bg-blue-900 border border-blue-500/50 hover:border-purple-400/60 rounded-xl transition text-left cursor-pointer group shadow-xs shrink min-w-0"
+              title="System Administrator: Manage & Switch Companies (Alt+C)"
+            >
+              <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-lg bg-purple-600/40 border border-purple-400/40 flex items-center justify-center text-purple-200 group-hover:text-white transition shrink-0">
+                <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-1">
+                  <span className="font-extrabold text-xs text-white tracking-wide leading-tight truncate max-w-[100px] sm:max-w-[130px] lg:max-w-[160px] xl:max-w-[200px]">
+                    {activeCompanyName || config.CompanyName || 'Ezee ERP'}
+                  </span>
+                  <ChevronDown className="h-3 w-3 text-purple-300 group-hover:text-white transition shrink-0" />
+                </div>
+                <span className="text-[10px] text-emerald-300 font-medium font-mono leading-tight truncate">
+                  {activeFYName || 'FY 2026'} • <span className="text-purple-300 font-bold">SUPERADMIN</span>
+                </span>
+              </div>
+            </button>
+          ) : (
+            <div 
+              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 bg-blue-800/60 border border-blue-500/40 rounded-xl shadow-xs shrink min-w-0"
+              title={`Assigned Tenant Workspace: ${activeCompanyName || config.CompanyName}`}
+            >
+              <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-lg bg-blue-900/60 border border-blue-400/40 flex items-center justify-center text-emerald-300 shrink-0">
+                <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="font-extrabold text-xs text-white tracking-wide block leading-tight truncate max-w-[100px] sm:max-w-[130px] lg:max-w-[160px] xl:max-w-[200px]">
                   {activeCompanyName || config.CompanyName || 'Ezee ERP'}
                 </span>
-                <ChevronDown className="h-3 w-3 text-purple-300 group-hover:text-white transition shrink-0" />
+                <span className="text-[10px] text-emerald-300 font-medium font-mono leading-tight flex items-center gap-1 truncate">
+                  <span>{activeFYName || 'FY 2026'}</span>
+                  <span className="text-blue-300 hidden sm:inline">• Tenant Isolated</span>
+                </span>
               </div>
-              <span className="text-[10px] text-emerald-300 font-medium font-mono leading-tight truncate">
-                {activeFYName || 'FY 2026'} • <span className="text-purple-300 font-bold">SUPERADMIN</span>
-              </span>
             </div>
-          </button>
-        ) : (
-          <div 
-            className="flex items-center gap-1.5 px-2 py-1 bg-blue-800/60 border border-blue-500/40 rounded-xl shadow-xs shrink min-w-0"
-            title={`Assigned Tenant Workspace: ${activeCompanyName || config.CompanyName}`}
-          >
-            <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-lg bg-blue-900/60 border border-blue-400/40 flex items-center justify-center text-emerald-300 shrink-0">
-              <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <span className="font-extrabold text-xs text-white tracking-wide block leading-tight truncate max-w-[80px] sm:max-w-[110px] lg:max-w-[150px] xl:max-w-[190px]">
-                {activeCompanyName || config.CompanyName || 'Ezee ERP'}
-              </span>
-              <span className="text-[10px] text-emerald-300 font-medium font-mono leading-tight flex items-center gap-1 truncate">
-                <span>{activeFYName || 'FY 2026'}</span>
-                <span className="text-blue-300 hidden sm:inline">• Tenant Isolated</span>
-              </span>
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* Terminal Branch Selector Dropdown (when Multi-Branch is enabled) */}
-        {config?.EnableMultiBranch === 'true' && (
-          <div 
-            className="hidden sm:flex items-center gap-1 bg-blue-900/80 border border-blue-400/40 hover:border-blue-300 px-2 py-1 rounded-xl text-xs font-bold text-white shadow-xs transition shrink min-w-0"
-            title="Active Branch for this Terminal/Computer (click to switch branch)"
-          >
-            <Building2 className="h-3.5 w-3.5 text-amber-300 shrink-0" />
-            <select
-              value={terminalBranchId || config.ActiveBranchId || ''}
-              onChange={(e) => {
-                const newId = e.target.value;
-                setLocalTerminalBranchId(newId);
-                setTerminalBranchId(newId);
-              }}
-              className="bg-transparent text-white font-extrabold text-xs outline-none cursor-pointer pr-1 max-w-[70px] md:max-w-[100px] xl:max-w-[140px] truncate"
+          {/* Terminal Branch Selector Dropdown (Desktop) */}
+          {config?.EnableMultiBranch === 'true' && (
+            <div 
+              className="hidden sm:flex items-center gap-1 bg-blue-900/80 border border-blue-400/40 hover:border-blue-300 px-2 py-1 rounded-xl text-xs font-bold text-white shadow-xs transition shrink min-w-0"
+              title="Active Branch for this Terminal/Computer (click to switch branch)"
             >
-              {branches.map(b => (
-                <option key={b.id} value={b.id} className="text-slate-900 bg-white font-bold">
-                  {b.name} {b.isHeadOffice ? '(HQ)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+              <Building2 className="h-3.5 w-3.5 text-amber-300 shrink-0" />
+              <select
+                value={terminalBranchId || config.ActiveBranchId || ''}
+                onChange={(e) => {
+                  const newId = e.target.value;
+                  setLocalTerminalBranchId(newId);
+                  setTerminalBranchId(newId);
+                }}
+                className="bg-transparent text-white font-extrabold text-xs outline-none cursor-pointer pr-1 max-w-[70px] md:max-w-[100px] xl:max-w-[140px] truncate"
+              >
+                {branches.map(b => (
+                  <option key={b.id} value={b.id} className="text-slate-900 bg-white font-bold">
+                    {b.name} {b.isHeadOffice ? '(HQ)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Quick Utility Icons Group for Mobile Top Bar (<640px) */}
+        <div className="flex sm:hidden items-center gap-1 shrink-0">
+          {/* Lock Terminal */}
+          {onLockTerminal && (
+            <button
+              type="button"
+              onClick={onLockTerminal}
+              className="p-1.5 rounded-xl bg-blue-800/80 hover:bg-rose-700/80 border border-blue-500/40 text-xs font-bold text-white shadow-xs cursor-pointer"
+              title="Lock Terminal Screen (Alt+L)"
+            >
+              <Lock className="h-3.5 w-3.5 text-amber-300" />
+            </button>
+          )}
+
+          {/* User Auth Profile */}
+          {onOpenUserAuthModal && (
+            <button
+              type="button"
+              onClick={onOpenUserAuthModal}
+              className="p-1.5 rounded-xl bg-blue-800/80 hover:bg-blue-900 border border-blue-500/40 text-xs font-bold text-white shadow-xs cursor-pointer"
+              title="User Profile"
+            >
+              <UserCircle className={`h-4 w-4 ${isSuperAdmin ? 'text-purple-300' : 'text-emerald-300'}`} />
+            </button>
+          )}
+
+          {/* Refresh Button */}
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="p-1.5 rounded-xl bg-blue-800/80 hover:bg-blue-900 border border-blue-500/40 text-xs font-bold text-white shadow-xs cursor-pointer"
+            title="Refresh Application Data"
+          >
+            <RefreshCw className="h-3.5 w-3.5 text-blue-200" />
+          </button>
+        </div>
       </div>
 
       {/* ========================================================= */}
       {/* ZONE 2: PROMINENT CENTER SEARCH & AI ASSISTANT            */}
       {/* ========================================================= */}
-      <div className="flex-1 flex justify-center items-center px-1 min-w-0 max-w-[180px] sm:max-w-[220px] md:max-w-[280px] xl:max-w-[340px] mx-auto">
+      <div className="flex-1 flex justify-center items-center px-1 sm:px-2 min-w-0 w-full sm:w-auto sm:max-w-[280px] xl:max-w-[340px] mx-auto">
         <AIAssistant />
       </div>
 
       {/* ========================================================= */}
-      {/* ZONE 3: STATUS & ACTION UTILITIES                         */}
+      {/* ZONE 3: STATUS & ACTION UTILITIES (Desktop Right)         */}
       {/* ========================================================= */}
-      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+      <div className="hidden sm:flex items-center gap-1.5 sm:gap-2 shrink-0">
         {/* Full Terminal & Cloud Status Pill on large screens */}
         <div 
           className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 bg-blue-900/70 border border-blue-400/30 rounded-xl text-xs font-mono shadow-2xs cursor-default"

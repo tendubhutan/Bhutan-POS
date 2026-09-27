@@ -334,10 +334,17 @@ export const LoginGate: React.FC<LoginGateProps> = ({
 
       {/* Main Content Container */}
       <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 flex-1 flex items-center justify-center">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center w-full my-auto">
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 lg:gap-12 items-center w-full my-auto">
           
-          {/* LEFT PANEL: Ezee ERP Brand Showcase & Feature Badges Grid */}
-          <div className="lg:col-span-6 space-y-6 text-left">
+          {/* MOBILE ONLY: Top Logo (sits above login card on mobile screens) */}
+          <div className="lg:hidden w-full max-w-md mx-auto text-left">
+            <div className="bg-slate-900/60 backdrop-blur-md p-4 rounded-3xl border border-white/20 shadow-xl">
+              <EzeeErpLogo size="lg" variant="light" />
+            </div>
+          </div>
+
+          {/* DESKTOP ONLY LEFT PANEL: Ezee ERP Brand Showcase & Feature Badges Grid */}
+          <div className="hidden lg:flex lg:col-span-6 flex-col space-y-6 text-left">
             {/* Top Logo with Light Variant for High Contrast on Scenic Backdrop */}
             <div className="flex items-center justify-between flex-wrap gap-4 pt-2 bg-slate-900/60 backdrop-blur-md p-4 rounded-3xl border border-white/20 shadow-xl max-w-lg">
               <EzeeErpLogo size="lg" variant="light" />
@@ -413,15 +420,15 @@ export const LoginGate: React.FC<LoginGateProps> = ({
             </div>
 
             {/* Bottom Cursive Priority Slogan with High Contrast Badge */}
-            <div className="pt-3 hidden lg:block">
+            <div className="pt-3">
               <span className="inline-flex items-center gap-2 bg-slate-900/80 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-amber-400/60 shadow-xl text-amber-300 font-serif italic text-2xl font-black drop-shadow-md">
                 Your Business Our Priority
               </span>
             </div>
           </div>
 
-          {/* RIGHT PANEL: Light Glassmorphic Terminal Access Login Card */}
-          <div className="lg:col-span-6 w-full max-w-md lg:max-w-md ml-auto">
+          {/* RIGHT PANEL (Desktop) / CENTER (Mobile): Light Glassmorphic Terminal Access Login Card */}
+          <div className="lg:col-span-6 w-full max-w-md lg:max-w-md mx-auto lg:ml-auto">
             <div className="bg-white/95 backdrop-blur-2xl border border-slate-200/90 rounded-[28px] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.25)] p-6 sm:p-8 space-y-5 animate-in fade-in zoom-in-95 duration-200">
               
               {/* Header Title with Avatar Circle */}
@@ -698,6 +705,84 @@ export const LoginGate: React.FC<LoginGateProps> = ({
                 <ShieldCheck className="h-4 w-4 text-blue-600" />
                 <span>Secure • Reliable • Made for Bhutan</span>
               </div>
+            </div>
+          </div>
+
+          {/* MOBILE ONLY: Feature Modules Grid & Priority Slogan (Rendered below Login Card on mobile) */}
+          <div className="lg:hidden w-full max-w-md mx-auto space-y-4 text-left">
+            <div className="grid grid-cols-3 gap-2.5 pt-1">
+              {/* Module 1: POS */}
+              <div className="p-3 rounded-2xl bg-white/95 backdrop-blur-md border border-emerald-300 shadow-md text-center space-y-1.5">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-white shadow-md shadow-emerald-500/20">
+                  <ShoppingCart className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-xs">POS</h3>
+                  <p className="text-[10px] font-extrabold text-slate-800 leading-tight">Fast & Easy</p>
+                </div>
+              </div>
+
+              {/* Module 2: Inventory */}
+              <div className="p-3 rounded-2xl bg-white/95 backdrop-blur-md border border-purple-300 shadow-md text-center space-y-1.5">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-purple-500/20">
+                  <Package className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-xs">Inventory</h3>
+                  <p className="text-[10px] font-extrabold text-slate-800 leading-tight">Track Stock</p>
+                </div>
+              </div>
+
+              {/* Module 3: Accounting */}
+              <div className="p-3 rounded-2xl bg-white/95 backdrop-blur-md border border-amber-300 shadow-md text-center space-y-1.5">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center text-white shadow-md shadow-amber-500/20">
+                  <BarChart3 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-xs">Accounting</h3>
+                  <p className="text-[10px] font-extrabold text-slate-800 leading-tight">Compliant</p>
+                </div>
+              </div>
+
+              {/* Module 4: HR & Payroll */}
+              <div className="p-3 rounded-2xl bg-white/95 backdrop-blur-md border border-teal-300 shadow-md text-center space-y-1.5">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-teal-500 to-cyan-500 flex items-center justify-center text-white shadow-md shadow-teal-500/20">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-xs">HR & Payroll</h3>
+                  <p className="text-[10px] font-extrabold text-slate-800 leading-tight">Manage Staff</p>
+                </div>
+              </div>
+
+              {/* Module 5: Purchase & Sales */}
+              <div className="p-3 rounded-2xl bg-white/95 backdrop-blur-md border border-blue-300 shadow-md text-center space-y-1.5">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+                  <Receipt className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-xs">Sales & Pur</h3>
+                  <p className="text-[10px] font-extrabold text-slate-800 leading-tight">Grow Business</p>
+                </div>
+              </div>
+
+              {/* Module 6: More Modules */}
+              <div className="p-3 rounded-2xl bg-white/95 backdrop-blur-md border border-indigo-300 shadow-md text-center space-y-1.5">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+                  <Settings className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-xs">More Modules</h3>
+                  <p className="text-[10px] font-extrabold text-slate-800 leading-tight">All in One</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Slogan Badge */}
+            <div className="text-center pt-1 pb-4">
+              <span className="inline-flex items-center justify-center gap-2 bg-slate-900/80 backdrop-blur-md px-4 py-2 rounded-2xl border border-amber-400/60 shadow-xl text-amber-300 font-serif italic text-lg font-black drop-shadow-md">
+                Your Business Our Priority
+              </span>
             </div>
           </div>
 

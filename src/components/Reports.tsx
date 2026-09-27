@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import { Config, Item, Ledger } from '../types';
 import {
   getDailyColumnarReport, getGSTReport, getGSTInputDomReport, getGSTInputImpReport, getGSTSummaryReport, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig,
@@ -7,7 +7,7 @@ import {
 import { AssignmentReportView } from './employee/AssignmentReportView';
 import XLSX from 'xlsx-js-style';
 import {
-  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, Warehouse, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History, Plus, Minus, Eye
+  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, Warehouse, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History, Plus, Minus, Eye, ZoomIn, ZoomOut
 } from 'lucide-react';
 import { PrintReportModal } from './PrintReportModal';
 import { generateReportPDF, shareOrDownloadPDF } from '../utils/pdfExport';
@@ -175,22 +175,97 @@ export const Reports: React.FC<ReportsProps> = ({
   const [selectedBranchId, setSelectedBranchId] = useState<string>('ALL');
   const availableBranches = useMemo(() => getBranches(), [config]);
 
-  // Measured Sticky Header Height for dynamic sub-header & table header docking
+  // Measured Sticky Header Banner Height for dynamic sub-header & table header docking
   const headerRef = useRef<HTMLDivElement>(null);
-  const [headerHeight, setHeaderHeight] = useState<number>(92);
+  const [headerHeight, setHeaderHeight] = useState<number>(44);
 
-  useEffect(() => {
-    if (!headerRef.current) return;
-    const updateHeight = () => {
-      if (headerRef.current) {
-        setHeaderHeight(headerRef.current.offsetHeight);
+  // Mobile pinch-to-zoom & scale state
+  const reportContainerRef = useRef<HTMLDivElement>(null);
+  const [reportScale, setReportScale] = useState<number>(1);
+  const touchStartDistRef = useRef<number | null>(null);
+  const initialScaleRef = useRef<number>(1);
+
+  // Dynamic sticky top taking reportScale (CSS zoom) into account so headers dock flush at any zoom level
+  const stickyTopPx = reportScale === 1 ? headerHeight : Math.round(headerHeight / reportScale);
+
+  const fitToWidth = useCallback(() => {
+    if (reportContainerRef.current) {
+      const table = reportContainerRef.current.querySelector('table');
+      const tableWidth = table ? table.scrollWidth : reportContainerRef.current.scrollWidth;
+      const screenWidth = window.innerWidth;
+      if (tableWidth > 0 && screenWidth > 0) {
+        const availableWidth = Math.max(screenWidth - 24, 280);
+        if (tableWidth > availableWidth) {
+          const calculatedScale = Math.min(1, Math.max(0.35, Number((availableWidth / tableWidth).toFixed(2))));
+          setReportScale(calculatedScale);
+        } else {
+          setReportScale(1);
+        }
       }
+    }
+  }, []);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      touchStartDistRef.current = dist;
+      initialScaleRef.current = reportScale;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && touchStartDistRef.current !== null) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const factor = dist / touchStartDistRef.current;
+      const targetScale = Math.min(1.5, Math.max(0.35, Number((initialScaleRef.current * factor).toFixed(2))));
+      setReportScale(targetScale);
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length < 2) {
+      touchStartDistRef.current = null;
+    }
+  };
+
+  const updateHeaderHeight = useCallback(() => {
+    if (headerRef.current) {
+      const h = Math.round(headerRef.current.getBoundingClientRect().height);
+      if (h > 0) {
+        setHeaderHeight(h);
+      }
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    updateHeaderHeight();
+    const timer1 = setTimeout(updateHeaderHeight, 50);
+    const timer2 = setTimeout(updateHeaderHeight, 150);
+
+    if (!headerRef.current) return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
     };
-    updateHeight();
-    const ro = new ResizeObserver(updateHeight);
+
+    const ro = new ResizeObserver(() => {
+      updateHeaderHeight();
+    });
     ro.observe(headerRef.current);
-    return () => ro.disconnect();
-  }, [isControlsCollapsed, mainCategory, finSubTab, invSubTab, regSubTab]);
+    window.addEventListener('resize', updateHeaderHeight);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      ro.disconnect();
+      window.removeEventListener('resize', updateHeaderHeight);
+    };
+  }, [updateHeaderHeight, isControlsCollapsed, mainCategory, finSubTab, invSubTab, regSubTab]);
 
   // Report View Navigation History (for strict sequential Escape key back navigation)
   const [reportHistory, setReportHistory] = useState<ReportViewState[]>([]);
@@ -2462,11 +2537,9 @@ export const Reports: React.FC<ReportsProps> = ({
         />
       )}
 
-      {/* Unified Header Area (Filter Toolbar + Compact Banner) */}
-      <div ref={headerRef} className="bg-slate-100/95 backdrop-blur-md pt-2 sm:pt-3 pb-2 -mx-3 sm:-mx-6 px-3 sm:px-6 shadow-xs border-b border-slate-200/80 space-y-2">
-        {/* Universal Compact Report Navigation & Filter Bar */}
-        <div className={`transition-all duration-300 ${isControlsCollapsed ? 'hidden' : 'block'}`}>
-          <div className="rounded-xl border border-slate-200 bg-white p-2 sm:p-2.5 shadow-xs flex flex-wrap items-center justify-between gap-2 text-xs">
+      {/* Universal Report Navigation & Filter Bar */}
+      <div className={`transition-all duration-300 ${isControlsCollapsed ? 'hidden' : 'block'} -mx-3 sm:-mx-6 px-3 sm:px-6 pt-2 relative z-40`}>
+        <div className="rounded-xl border border-slate-200 bg-white p-2 sm:p-2.5 shadow-xs flex flex-wrap items-center justify-between gap-2 text-xs">
         {/* Left Section: Back Button, Report Switcher & Direct Dropdown */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
@@ -3232,9 +3305,12 @@ export const Reports: React.FC<ReportsProps> = ({
 
         </div>
 
-        {/* Compact Black Box Header Banner (Reduced Height) */}
+        {/* Compact Black Box Header Banner (Sticky top-0) */}
         {!isTallyPrime && mainCategory !== 'audit' && (
-          <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-3 sm:px-4 py-1.5 sm:py-2 border border-indigo-500/30 rounded-xl shadow-md relative overflow-hidden">
+          <div 
+            ref={headerRef}
+            className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 px-3 sm:px-4 py-2 border-b border-indigo-500/30 rounded-xl shadow-md relative overflow-hidden -mx-3 sm:-mx-6 mb-2"
+          >
             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 mix-blend-overlay pointer-events-none"></div>
             
             <div className="flex items-center gap-2.5 flex-wrap relative z-10 min-w-0">
@@ -3252,7 +3328,54 @@ export const Reports: React.FC<ReportsProps> = ({
               </div>
             </div>
             
-            <div className="relative z-10 flex items-center shrink-0">
+            <div className="relative z-10 flex items-center gap-2 shrink-0">
+              {/* Zoom & Fit to Screen Controller for Mobile & Desktop */}
+              <div className="flex items-center gap-0.5 sm:gap-1 bg-white/10 border border-white/20 rounded-lg p-0.5 px-1 backdrop-blur-xs">
+                <button
+                  type="button"
+                  onClick={() => setReportScale(prev => Math.max(0.35, Number((prev - 0.1).toFixed(2))))}
+                  className="p-1 rounded hover:bg-white/20 text-slate-300 hover:text-white transition active:scale-90"
+                  title="Zoom Out / Pinch In"
+                >
+                  <ZoomOut className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (reportScale !== 1) {
+                      setReportScale(1);
+                    } else {
+                      fitToWidth();
+                    }
+                  }}
+                  className="px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-mono font-bold rounded hover:bg-white/20 text-indigo-200 transition select-none"
+                  title="Click to toggle Fit Screen or 100%"
+                >
+                  {reportScale === 1 ? '100%' : `${Math.round(reportScale * 100)}%`}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setReportScale(prev => Math.min(1.5, Number((prev + 0.1).toFixed(2))))}
+                  className="p-1 rounded hover:bg-white/20 text-slate-300 hover:text-white transition active:scale-90"
+                  title="Zoom In / Pinch Out"
+                >
+                  <ZoomIn className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                </button>
+
+                {reportScale !== 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setReportScale(1)}
+                    className="text-[8px] sm:text-[9px] px-1 py-0.5 text-amber-300 hover:text-amber-200 bg-amber-500/20 rounded font-semibold transition"
+                    title="Reset to 100%"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+
               {!isControlsCollapsed ? (
                 <button 
                     onClick={() => setIsControlsCollapsed(true)}
@@ -3273,7 +3396,6 @@ export const Reports: React.FC<ReportsProps> = ({
             </div>
           </div>
         )}
-      </div>
       
       {/* Report Container */}
       {(() => {
@@ -3286,7 +3408,14 @@ export const Reports: React.FC<ReportsProps> = ({
         }
 
         return (
-          <div className="bg-white border-y border-slate-200 shadow-xs -mx-3 sm:-mx-6 mb-[-1.5rem] lg:mb-[-2rem] overflow-x-auto w-full max-w-full">
+          <div 
+            ref={reportContainerRef}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            style={{ zoom: reportScale !== 1 ? reportScale : undefined }}
+            className="bg-white border-y border-slate-200 shadow-xs -mx-3 sm:-mx-6 mb-[-1.5rem] lg:mb-[-2rem] w-full max-w-full origin-top-left"
+          >
             <div className="p-0 min-w-0 w-full">
             {loading ? (
           <div className="py-12 text-center text-slate-400">Loading report data...</div>
@@ -3298,7 +3427,7 @@ export const Reports: React.FC<ReportsProps> = ({
             {mainCategory === 'daily' && (
               <div>
                 <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                  <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                  <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                     <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                       {reportData.mode === 'itemwise' ? (
                         <>
@@ -3375,7 +3504,7 @@ export const Reports: React.FC<ReportsProps> = ({
                           );
                         })}
                   </tbody>
-                  <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                  <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                     <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900 text-xs">
                       {reportData.mode === 'itemwise' ? (
                         <>
@@ -3404,7 +3533,7 @@ export const Reports: React.FC<ReportsProps> = ({
             {/* GST Report */}
             {mainCategory === 'gst' && (
               <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                   <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                     <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Date</th>
                     <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Customer</th>
@@ -3442,7 +3571,7 @@ export const Reports: React.FC<ReportsProps> = ({
                     );
                   })}
                 </tbody>
-                <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                   <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
                     <td colSpan={4} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left">TOTAL</td>
                     <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.taxable)}</td>
@@ -3457,7 +3586,7 @@ export const Reports: React.FC<ReportsProps> = ({
             {/* Net GST Summary Report */}
             {mainCategory === 'gst_summary' && reportData.totals && (
               <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                   <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                     <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Description</th>
                     <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Taxable Amount (Nu.)</th>
@@ -3490,7 +3619,7 @@ export const Reports: React.FC<ReportsProps> = ({
                     <td className="py-3 px-3 text-right font-mono text-indigo-700">{fmt(reportData.totals.inputImpGST)}</td>
                   </tr>
                 </tbody>
-                <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                   <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
                     <td className="bg-slate-100 bg-clip-padding py-4 px-3 text-left">NET GST PAYABLE / (REFUNDABLE)</td>
                     <td className="bg-slate-100 bg-clip-padding py-4 px-3 text-right font-mono"></td>
@@ -3515,7 +3644,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
               return (
                 <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                  <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                  <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                     <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                       <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{supplierLabel}</th>
                       <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{supplierGstLabel}</th>
@@ -3563,7 +3692,7 @@ export const Reports: React.FC<ReportsProps> = ({
                     )}
                   </tbody>
                   {reportData.rows && reportData.rows.length > 0 && (
-                    <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                    <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                       <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
                         <td colSpan={5} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left">TOTAL SUMMARY</td>
                         <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.taxable)}</td>
@@ -3593,7 +3722,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
               return (
                 <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                  <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                  <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                     <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                       <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">{supplierLabelImp}</th>
                       <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">{invDateLabelImp}</th>
@@ -3639,7 +3768,7 @@ export const Reports: React.FC<ReportsProps> = ({
                   )}
                 </tbody>
                 {reportData.rows && reportData.rows.length > 0 && (
-                  <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                  <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                     <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
                       <td colSpan={5} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left">TOTAL SUMMARY</td>
                       <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.taxableAmount)}</td>
@@ -3720,9 +3849,9 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                          <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Group</th>
@@ -3759,7 +3888,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             ))}
                           </tbody>
                           {filteredItems.length > 0 && (
-                            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                            <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                               <tr>
                                 <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={3}>
                                   Total ({filteredItems.length} Items)
@@ -3853,9 +3982,9 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                          <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Color</th>
@@ -3898,7 +4027,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             ))}
                           </tbody>
                           {filteredVariants.length > 0 && (
-                            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                            <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                               <tr>
                                 <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={9}>
                                   Total ({filteredVariants.length} Variants)
@@ -3970,9 +4099,9 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                          <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Part No. / OEM No.</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Alias / HSN</th>
@@ -4009,7 +4138,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             ))}
                           </tbody>
                           {filteredParts.length > 0 && (
-                            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                            <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                               <tr>
                                 <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={5}>
                                   Total ({filteredParts.length} Parts)
@@ -4090,9 +4219,9 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                          <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Code</th>
@@ -4132,7 +4261,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             )}
                           </tbody>
                           {filteredMovement.length > 0 && (
-                            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                            <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                               <tr>
                                 <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={3}>Total ({filteredMovement.length} Items)</td>
                                 <td className="py-2.5 px-3 text-right font-mono text-slate-900">{totOp}</td>
@@ -4226,9 +4355,9 @@ export const Reports: React.FC<ReportsProps> = ({
                       </div>
 
                       {/* Table */}
-                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                          <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Godown / Store</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Branch</th>
@@ -4290,7 +4419,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             )}
                           </tbody>
                           {filteredGodownRows.length > 0 && (
-                            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                            <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                               <tr>
                                 <td className="py-2.5 px-3 uppercase text-xs text-slate-800" colSpan={5}>
                                   Total ({filteredGodownRows.length} Allocations)
@@ -4361,9 +4490,9 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-xs">
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                          <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Qty Sold</th>
@@ -4394,7 +4523,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             )})}
                           </tbody>
                           {filteredProfit.length > 0 && (
-                            <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
+                            <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                               <tr>
                                 <td className="py-2.5 px-3 uppercase text-xs text-slate-800">Total ({filteredProfit.length} Items)</td>
                                 <td className="py-2.5 px-3 text-center font-mono">-</td>
@@ -4414,14 +4543,14 @@ export const Reports: React.FC<ReportsProps> = ({
                 {invSubTab === 'top' && reportData?.topQty && (
                   <div className="space-y-3">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="border border-slate-200 rounded-xl bg-white shadow-xs overflow-hidden">
+                      <div className="border border-slate-200 rounded-xl bg-white shadow-xs">
                         <div className="p-3 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 text-xs flex items-center justify-between">
                           <span>🏆 Top 15 Sellers by Quantity</span>
                           <span className="text-[11px] text-slate-500 font-normal">{reportData.topQty.length} items</span>
                         </div>
-                        <div className="overflow-x-auto">
+                        <div className="w-full">
                           <table className="w-full text-xs border-separate border-spacing-0">
-                            <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                            <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                               <tr className="border-b border-slate-200 font-bold text-slate-700 uppercase text-[11px]">
                                 <th className="bg-slate-100 bg-clip-padding py-2 px-3 text-left">Item</th>
                                 <th className="bg-slate-100 bg-clip-padding py-2 px-3 text-right">Qty Sold</th>
@@ -4439,14 +4568,14 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
                       </div>
 
-                      <div className="border border-slate-200 rounded-xl bg-white shadow-xs overflow-hidden">
+                      <div className="border border-slate-200 rounded-xl bg-white shadow-xs">
                         <div className="p-3 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 text-xs flex items-center justify-between">
                           <span>💰 Top 15 Sellers by Revenue</span>
                           <span className="text-[11px] text-slate-500 font-normal">{reportData.topAmt.length} items</span>
                         </div>
-                        <div className="overflow-x-auto">
+                        <div className="w-full">
                           <table className="w-full text-xs border-separate border-spacing-0">
-                            <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                            <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                               <tr className="border-b border-slate-200 font-bold text-slate-700 uppercase text-[11px]">
                                 <th className="bg-slate-100 bg-clip-padding py-2 px-3 text-left">Item</th>
                                 <th className="bg-slate-100 bg-clip-padding py-2 px-3 text-right">Revenue (Nu.)</th>
@@ -4521,9 +4650,9 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-x-auto">
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                          <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Serial Number</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Code</th>
@@ -4663,9 +4792,9 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-x-auto">
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                          <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Code</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Item Name</th>
@@ -4713,7 +4842,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               ))
                             )}
                           </tbody>
-                          <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300 text-xs">
+                          <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300 text-xs">
                             <tr>
                               <td colSpan={6} className="py-2.5 px-3 text-right text-slate-700 uppercase">Total ({filteredBatches.length} Batches):</td>
                               <td className="py-2.5 px-3 text-right text-emerald-800 font-mono">{totalQty}</td>
@@ -4786,9 +4915,9 @@ export const Reports: React.FC<ReportsProps> = ({
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                      <div className="border border-slate-200 rounded-xl bg-white shadow-2xs">
                         <table className="w-full border-separate border-spacing-0 text-xs">
-                          <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                          <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                             <tr className="bg-slate-50 border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Date</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Voucher / Ref No</th>
@@ -4883,7 +5012,7 @@ export const Reports: React.FC<ReportsProps> = ({
                             )}
                           </tbody>
                           {filteredVouchers.length > 0 && (
-                            <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                            <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                               <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
                                 <td colSpan={4} className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">
                                   TOTAL DAYBOOK ({filteredVouchers.length} Entries)
@@ -4935,9 +5064,9 @@ export const Reports: React.FC<ReportsProps> = ({
                   });
 
                   return (
-                    <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                    <div className="border border-slate-200 rounded-xl bg-white shadow-2xs">
                       <table className="w-full border-separate border-spacing-0 text-xs">
-                        <thead className="sticky z-30 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                        <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                           <tr className="bg-slate-50 border-b border-slate-200">
                             <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Date</th>
                             <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left font-bold text-slate-700">Voucher No</th>
@@ -5013,7 +5142,7 @@ export const Reports: React.FC<ReportsProps> = ({
                           )}
                         </tbody>
                         {filteredVouchers.length > 0 && (
-                          <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                          <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                             <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
                               <td colSpan={4} className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">
                                 TOTAL ({filteredVouchers.length} Vouchers)
@@ -5048,11 +5177,11 @@ export const Reports: React.FC<ReportsProps> = ({
                     return (
                       <div className="space-y-4">
                         {/* Table View: Item-wise vs Bill-wise */}
-                        <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                        <div className="border border-slate-200 rounded-xl bg-white shadow-2xs">
                           {itemWise ? (
                             /* ITEM-WISE SALES TABLE */
                             <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                              <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                              <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                                 <tr className="bg-slate-50 border-b border-slate-200">
                                   <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Date</th>
                                   <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Ref No</th>
@@ -5130,7 +5259,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                   return itemRows;
                                 })()}
                               </tbody>
-                              <tfoot className="bg-slate-900 text-white font-bold text-xs sm:text-sm">
+                              <tfoot className="sticky bottom-0 z-20 bg-slate-900 text-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.2)] font-bold text-xs sm:text-sm">
                                 <tr>
                                   <td colSpan={4} className="py-3 px-4 text-left uppercase tracking-wider text-slate-300">NET SALES TOTAL</td>
                                   <td className="py-3 px-3 text-center font-mono text-amber-300">{sales.reduce((sum: number, s: any) => sum + (s.items || []).reduce((iq: number, it: any) => iq + (Number(it.qty || it.Qty) || 0), 0), 0) - returns.reduce((sum: number, r: any) => sum + (r.items || []).reduce((iq: number, it: any) => iq + (Number(it.qty || it.Qty) || 0), 0), 0)}</td>
@@ -5142,7 +5271,7 @@ export const Reports: React.FC<ReportsProps> = ({
                           ) : (
                             /* BILL-WISE SALES TABLE */
                             <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                              <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                              <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                                 <tr className="bg-slate-50 border-b border-slate-200">
                                   <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Date</th>
                                   <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Type / Ref No</th>
@@ -5204,7 +5333,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                   <tr><td colSpan={7} className="py-8 text-center text-slate-500 italic">No sales or returns found in this period.</td></tr>
                                 )}
                               </tbody>
-                              <tfoot className="bg-slate-900 text-white font-bold text-xs sm:text-sm">
+                              <tfoot className="sticky bottom-0 z-20 bg-slate-900 text-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.2)] font-bold text-xs sm:text-sm">
                                 <tr>
                                   <td colSpan={4} className="py-3.5 px-4 text-left uppercase tracking-wider text-slate-300">NET SALES SUMMARY</td>
                                   <td className="py-3.5 px-4 text-right font-mono text-slate-300">Nu. {fmt(grossSales)}</td>
@@ -5235,11 +5364,11 @@ export const Reports: React.FC<ReportsProps> = ({
                     return (
                       <div className="space-y-4">
                         {/* Table View: Item-wise vs Bill-wise */}
-                        <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                        <div className="border border-slate-200 rounded-xl bg-white shadow-2xs">
                           {itemWise ? (
                             /* ITEM-WISE PURCHASE TABLE */
                             <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                              <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                              <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                                 <tr className="bg-slate-50 border-b border-slate-200">
                                   <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Date</th>
                                   <th className="bg-slate-100 py-3 px-3 text-left font-bold text-slate-700">Bill No</th>
@@ -5317,7 +5446,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                   return itemRows;
                                 })()}
                               </tbody>
-                              <tfoot className="bg-slate-900 text-white font-bold text-xs sm:text-sm">
+                              <tfoot className="sticky bottom-0 z-20 bg-slate-900 text-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.2)] font-bold text-xs sm:text-sm">
                                 <tr>
                                   <td colSpan={4} className="py-3 px-4 text-left uppercase tracking-wider text-slate-300">NET PURCHASE TOTAL</td>
                                   <td className="py-3 px-3 text-center font-mono text-amber-300">{purchases.reduce((sum: number, p: any) => sum + (p.items || []).reduce((iq: number, it: any) => iq + (Number(it.qty || it.Qty) || 0), 0), 0) - returns.reduce((sum: number, r: any) => sum + (r.items || []).reduce((iq: number, it: any) => iq + (Number(it.qty || it.Qty) || 0), 0), 0)}</td>
@@ -5329,7 +5458,7 @@ export const Reports: React.FC<ReportsProps> = ({
                           ) : (
                             /* BILL-WISE PURCHASE TABLE */
                             <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                              <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                              <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                                 <tr className="bg-slate-50 border-b border-slate-200">
                                   <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Date</th>
                                   <th className="bg-slate-100 py-3 px-4 text-left font-bold text-slate-700">Type / Bill No</th>
@@ -5391,7 +5520,7 @@ export const Reports: React.FC<ReportsProps> = ({
                                   <tr><td colSpan={7} className="py-8 text-center text-slate-500 italic">No purchases or returns found in this period.</td></tr>
                                 )}
                               </tbody>
-                              <tfoot className="bg-slate-900 text-white font-bold text-xs sm:text-sm">
+                              <tfoot className="sticky bottom-0 z-20 bg-slate-900 text-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.2)] font-bold text-xs sm:text-sm">
                                 <tr>
                                   <td colSpan={4} className="py-3.5 px-4 text-left uppercase tracking-wider text-slate-300">NET PURCHASE SUMMARY</td>
                                   <td className="py-3.5 px-4 text-right font-mono text-slate-300">Nu. {fmt(grossPurchases)}</td>
@@ -5409,9 +5538,9 @@ export const Reports: React.FC<ReportsProps> = ({
 
                 {/* Quotation Register Table */}
                 {regSubTab === 'quotations' && Array.isArray(reportData) && (
-                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                  <div className="border border-slate-200 rounded-xl bg-white shadow-2xs">
                     <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                      <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                      <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                         <tr className="bg-slate-50 border-b border-slate-200">
                           <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Date</th>
                           <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Quotation No</th>
@@ -5468,9 +5597,9 @@ export const Reports: React.FC<ReportsProps> = ({
 
                 {/* Delivery Note Register Table */}
                 {regSubTab === 'delivery_notes' && Array.isArray(reportData) && (
-                  <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-2xs">
+                  <div className="border border-slate-200 rounded-xl bg-white shadow-2xs">
                     <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                      <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                      <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                         <tr className="bg-slate-50 border-b border-slate-200">
                           <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Date</th>
                           <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left font-bold text-slate-700">Note No</th>
@@ -5636,7 +5765,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       {/* Receivables Table */}
                       <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                          <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Debtor / Customer Name</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Unpaid Invoices</th>
@@ -5736,7 +5865,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               );
                             })}
                           </tbody>
-                          <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                          <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                             <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
                               <td colSpan={2} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left font-bold uppercase tracking-wider text-xs">TOTAL RECEIVABLES</td>
                               <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-emerald-800 text-base font-extrabold">
@@ -5803,7 +5932,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       {/* Payables Table */}
                       <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                          <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Creditor / Supplier Name</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Unpaid Bills</th>
@@ -5902,7 +6031,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               );
                             })}
                           </tbody>
-                          <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                          <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                             <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
                               <td colSpan={3} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left font-bold uppercase tracking-wider text-xs">TOTAL PAYABLES</td>
                               <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-rose-800 text-base font-extrabold">
@@ -6006,7 +6135,7 @@ export const Reports: React.FC<ReportsProps> = ({
                       {/* Ledger Table */}
                       <div className="rounded-xl border border-slate-200 bg-white shadow-xs">
                         <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-                          <thead className="sticky z-30 bg-slate-100 shadow-md ring-1 ring-slate-200" style={{ top: `${headerHeight}px` }}>
+                          <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
                             <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center w-24">Date</th>
                               <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left w-24">Type</th>
@@ -6067,7 +6196,7 @@ export const Reports: React.FC<ReportsProps> = ({
                               </tr>
                             ))}
                           </tbody>
-                          <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+                          <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
                             <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900">
                               <td colSpan={4} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left font-bold uppercase tracking-wider text-xs">
                                 TOTAL MOVEMENT & CLOSING BALANCE

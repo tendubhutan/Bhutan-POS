@@ -481,7 +481,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
           {/* Full Screen Table */}
           <div className="w-full bg-white">
             <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
-              <thead className="sticky top-[52px] z-30 bg-slate-100 shadow-md ring-1 ring-slate-200">
+              <thead className="sticky top-[52px] z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200">
                 <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                   <th className="bg-slate-100 bg-clip-padding py-3 px-4 sm:px-6 text-left">Particulars / Account Head</th>
                   <th className="bg-slate-100 bg-clip-padding py-3 px-4 text-left w-56 hidden md:table-cell">Account Group</th>
@@ -618,7 +618,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
                   })
                 )}
               </tbody>
-              <tfoot className="sticky bottom-0 z-30 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200">
+              <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 border-t-2 border-slate-900 font-extrabold text-slate-900 text-xs sm:text-sm">
                 <tr className="bg-slate-100 border-t-2 border-slate-900 font-extrabold text-slate-900 text-xs sm:text-sm">
                   <td className="bg-slate-100 bg-clip-padding py-3.5 px-4 sm:px-6 uppercase tracking-wider font-extrabold">
                     GRAND TOTAL
@@ -913,7 +913,7 @@ export const FinancialStatementView: React.FC<FinancialStatementViewProps> = ({
 
             {/* 2.2 PROFIT & LOSS SECTION */}
             <div>
-              <div className="sticky z-30 bg-slate-100 px-4 sm:px-6 py-2 text-slate-800 font-extrabold text-xs uppercase tracking-wider border-b border-slate-200 flex items-center justify-between shadow-sm" style={{ top: headerHeight ? `${headerHeight}px` : 0 }}>
+              <div className="bg-slate-100 px-4 sm:px-6 py-2 text-slate-800 font-extrabold text-xs uppercase tracking-wider border-b border-slate-200 flex items-center justify-between shadow-xs">
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
                   2. Operating & Net Profit / Loss Statement
