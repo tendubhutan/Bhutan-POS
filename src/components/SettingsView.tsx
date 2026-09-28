@@ -9,6 +9,7 @@ import { AuditLogView } from './AuditLogView';
 import { GstConfigModal } from './GstConfigModal';
 import { SparePartsConfigModal } from './SparePartsConfigModal';
 import { GarmentsConfigModal } from './GarmentsConfigModal';
+import { RestaurantConfigModal } from './restaurant/RestaurantConfigModal';
 import { 
   Save, CheckCircle2, Shield, FileText, Image as ImageIcon, PenTool, Plus, Lock, UserCheck, RefreshCw, 
   ShoppingCart, Zap, SlidersHorizontal, AlertTriangle, Keyboard, Percent, CreditCard, RotateCcw,
@@ -39,6 +40,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [showGstConfigModal, setShowGstConfigModal] = useState(false);
   const [showSparePartsModal, setShowSparePartsModal] = useState(false);
   const [showGarmentsModal, setShowGarmentsModal] = useState(false);
+  const [showRestaurantModal, setShowRestaurantModal] = useState(false);
 
   useEffect(() => {
     setForm({ ...config });
@@ -971,6 +973,56 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               )}
 
+              {/* Restaurant & Dining Suite Settings */}
+              {isFeatureAllowed(form, 'EnableRestaurantMode', isSuperadminUser) && (
+                <div className="p-4 bg-amber-50/70 border border-amber-300 rounded-2xl flex items-start justify-between gap-3 hover:bg-amber-100/50 transition sm:col-span-2">
+                  <label className="flex items-start gap-3.5 cursor-pointer flex-1">
+                    <div className="pt-0.5">
+                      <input
+                        id="cfg-enable-restaurant-mode"
+                        type="checkbox"
+                        className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
+                        checked={form.EnableRestaurantMode === 'true'}
+                        onChange={e => {
+                          const isChecked = e.target.checked;
+                          setForm(prev => ({ ...prev, EnableRestaurantMode: isChecked ? 'true' : 'false' }));
+                          if (isChecked) {
+                            setShowRestaurantModal(true);
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-slate-900 text-xs">Enable Restaurant POS &amp; Dining Features</span>
+                        {form.EnableRestaurantMode === 'true' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-600 mt-0.5 leading-snug">
+                        Enables table floor layout, KDS kitchen orders, QR digital menus, waiter mobile pad, 5% restaurant GST, and service charges.
+                      </p>
+                    </div>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowRestaurantModal(true);
+                    }}
+                    title="Configure Restaurant Sub-Features, Tables, and Waiter Staff"
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer"
+                  >
+                    <SettingsIcon className="w-3.5 h-3.5 text-slate-950" />
+                    <span>Configure / Options</span>
+                  </button>
+                </div>
+              )}
+
               {/* Item Categories */}
               {isFeatureAllowed(form, 'EnableCategory', isSuperadminUser) && (
                 <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
@@ -1359,6 +1411,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <span>Config</span>
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* TDS 2% (Liability) Contract Tracking */}
+              {isFeatureAllowed(form, 'EnableTDS2Tracking', isSuperadminUser) && (
+                <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl flex items-center justify-between gap-3 hover:bg-amber-100/70 transition">
+                  <label className="flex items-start gap-3.5 cursor-pointer flex-1">
+                    <div className="pt-0.5">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 text-amber-600 rounded border-amber-300 focus:ring-amber-500 cursor-pointer"
+                        checked={form.EnableTDS2Tracking !== 'false'}
+                        onChange={e => setForm({ ...form, EnableTDS2Tracking: e.target.checked ? 'true' : 'false' })}
+                      />
+                    </div>
+                    <div>
+                      <span className="font-extrabold text-amber-950 text-xs">Enable TDS 2% (Liability) Tracking</span>
+                      <p className="text-[10px] text-amber-800 mt-0.5 leading-snug">Auto-capture Form IT-7(B) Bhutanese Contract details when debiting/crediting TDS 2% (Liability).</p>
+                    </div>
+                  </label>
                 </div>
               )}
 
@@ -3110,6 +3182,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           const updatedForm = { ...form, ...updated };
           setForm(updatedForm);
           saveConfig(updatedForm);
+          onDataRefresh();
+        }}
+      />
+
+      {/* Restaurant Configuration Floating Window */}
+      <RestaurantConfigModal
+        isOpen={showRestaurantModal}
+        onClose={() => setShowRestaurantModal(false)}
+        config={form}
+        onSaveConfig={(updated) => {
+          const updatedForm = { ...form, ...updated };
+          setForm(updatedForm);
+          saveConfig(updatedForm);
+          playSaveSound();
           onDataRefresh();
         }}
       />

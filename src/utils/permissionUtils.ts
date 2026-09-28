@@ -34,11 +34,36 @@ export function getDefaultPermissionsForRole(role: string): UserPermission[] {
   const isAdmin = r === 'administrator' || r === 'admin' || r === 'superadmin';
   const isManager = r === 'manager';
   const isAccountant = r === 'accountant';
-  const isCashier = r === 'cashier';
+  const isCashier = r === 'cashier' || r === 'billingcounter' || r === 'billing';
+  const isWaiter = r === 'waiter' || r === 'captain';
+  const isKitchen = r === 'kitchen' || r === 'chef' || r === 'cook';
+  const isStore = r === 'store' || r === 'inventory' || r === 'storekeeper';
 
   return ALL_MODULE_IDS.map(modId => {
     if (isAdmin) {
       return { module: modId, display: true, create: true, edit: true, delete: true, print: true };
+    }
+    if (isWaiter) {
+      // Waiter only needs access to Restaurant Floor Plan & Taking / Adding orders
+      const isPos = modId === 'pos';
+      return { module: modId, display: isPos, create: isPos, edit: isPos, delete: false, print: isPos };
+    }
+    if (isKitchen) {
+      // Kitchen only needs access to Kitchen Display Screen (KDS)
+      const isPos = modId === 'pos';
+      return { module: modId, display: isPos, create: false, edit: isPos, delete: false, print: isPos };
+    }
+    if (isStore) {
+      // Storekeeper accesses purchase entry, item masters, stock reports, barcode print
+      const allowed = ['purchase', 'masters', 'barcode', 'reports'].includes(modId);
+      return {
+        module: modId,
+        display: allowed,
+        create: allowed && modId !== 'reports',
+        edit: allowed && modId !== 'reports',
+        delete: false,
+        print: allowed
+      };
     }
     if (isCashier) {
       if (modId === 'pos') {
@@ -129,8 +154,11 @@ export function isModulePermitted(
 
   // Fallback based on user role when permissions array is not set
   if (isAdministrator) return true;
-  if (roleLower === 'cashier') {
+  if (roleLower === 'waiter' || roleLower === 'kitchen' || roleLower === 'cashier' || roleLower === 'billingcounter') {
     return normMod === 'pos';
+  }
+  if (roleLower === 'store' || roleLower === 'storekeeper') {
+    return ['purchase', 'masters', 'barcode', 'reports'].includes(normMod);
   }
   if (roleLower === 'manager') {
     return normMod !== 'settings';

@@ -17,6 +17,7 @@ import { BarcodePrinting } from './components/BarcodePrinting';
 import { Payroll } from './components/Payroll';
 import { StaffManagementView } from './components/employee/StaffManagementView';
 import { EmployeePortalApp } from './components/employee/EmployeePortalApp';
+import { PublicQRMenu } from './components/restaurant/PublicQRMenu';
 import { AssetManagementModule } from './components/assetManagement/AssetManagementModule';
 import { Reports, ReportTarget } from './components/Reports';
 import { SettingsView } from './components/SettingsView';
@@ -429,6 +430,14 @@ export default function App() {
     if (typeof window !== 'undefined') {
       const p = new URLSearchParams(window.location.search);
       return p.get('portal') === 'employee' || p.get('portal') === 'staff' || p.get('mode') === 'staff' || p.get('mode') === 'employee';
+    }
+    return false;
+  });
+
+  const [isPublicQRMenuMode, setIsPublicQRMenuMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      return p.get('portal') === 'menu' || p.get('mode') === 'qr' || Boolean(p.get('table')) || Boolean(p.get('qr'));
     }
     return false;
   });
@@ -868,6 +877,25 @@ export default function App() {
             const url = new URL(window.location.href);
             url.searchParams.delete('portal');
             url.searchParams.delete('mode');
+            window.history.replaceState({}, '', url.toString());
+          }
+        }}
+      />
+    );
+  }
+
+  if (isPublicQRMenuMode) {
+    return (
+      <PublicQRMenu
+        config={config}
+        items={items}
+        onClose={() => {
+          setIsPublicQRMenuMode(false);
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('portal');
+            url.searchParams.delete('table');
+            url.searchParams.delete('qr');
             window.history.replaceState({}, '', url.toString());
           }
         }}

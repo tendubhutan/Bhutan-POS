@@ -30,6 +30,8 @@ import {
   saveLedgerGroup,
   deleteLedgerGroup,
   saveItemCategory,
+  updateItemCategory,
+  deleteItemCategory,
   getItemCategories,
   getRacks,
   saveRack,
@@ -193,6 +195,7 @@ export const Masters: React.FC<MastersProps> = ({
 
   const [showQuickCategoryModal, setShowQuickCategoryModal] = useState(false);
   const [quickCategoryName, setQuickCategoryName] = useState('');
+  const [editingCategoryOldName, setEditingCategoryOldName] = useState<string | null>(null);
 
   const [showQuickLedgerGroupModal, setShowQuickLedgerGroupModal] = useState(false);
   const [quickLedgerGroupName, setQuickLedgerGroupName] = useState('');
@@ -788,9 +791,14 @@ export const Masters: React.FC<MastersProps> = ({
       alert('Category Name is required.');
       return;
     }
-    const res = saveItemCategory(cName);
+    let res;
+    if (editingCategoryOldName) {
+      res = updateItemCategory(editingCategoryOldName, cName);
+    } else {
+      res = saveItemCategory(cName);
+    }
     if (!res.ok) {
-      alert(res.error || 'Failed to create category.');
+      alert(res.error || 'Failed to save category.');
       return;
     }
     playSaveSound();
@@ -799,10 +807,28 @@ export const Masters: React.FC<MastersProps> = ({
     onDataRefresh();
     setItemSearchForm(prev => ({ ...prev, Category: cName }));
     setQuickCategoryName('');
+    setEditingCategoryOldName(null);
     setTimeout(() => {
       setJustSavedQuickCategory(false);
       setShowQuickCategoryModal(false);
     }, 700);
+  };
+
+  const handleDeleteCategory = (catName: string) => {
+    if (confirm(`Are you sure you want to delete category "${catName}"?`)) {
+      const res = deleteItemCategory(catName);
+      if (res.ok) {
+        setCategoryList(res.categories);
+        onDataRefresh();
+        if (itemForm.Category === catName) {
+          setItemSearchForm(prev => ({ ...prev, Category: '' }));
+        }
+        if (editingCategoryOldName === catName) {
+          setEditingCategoryOldName(null);
+          setQuickCategoryName('');
+        }
+      }
+    }
   };
 
   const handleSaveQuickLedgerGroup = () => {
@@ -2855,65 +2881,143 @@ export const Masters: React.FC<MastersProps> = ({
         </div>
       )}
 
-      {/* Quick Add Category Sub-Modal */}
+      {/* Quick Add / Manage Category Sub-Modal */}
       {showQuickCategoryModal && (
         <div 
           ref={quickCategoryModalRef}
-          onKeyDown={(e) => handleFormKeyDown(e, quickCategoryModalRef.current, handleSaveQuickCategory, () => setShowQuickCategoryModal(false))}
+          onKeyDown={(e) => handleFormKeyDown(e, quickCategoryModalRef.current, handleSaveQuickCategory, () => {
+            setShowQuickCategoryModal(false);
+            setEditingCategoryOldName(null);
+            setQuickCategoryName('');
+          })}
           className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4"
         >
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 space-y-4">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100 shrink-0">
               <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Tag className="w-4 h-4 text-orange-600" />
-                Quick Create Category
+                {editingCategoryOldName ? 'Edit Item Category' : 'Manage & Create Categories'}
               </h4>
-              <button onClick={() => setShowQuickCategoryModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button
+                onClick={() => {
+                  setShowQuickCategoryModal(false);
+                  setEditingCategoryOldName(null);
+                  setQuickCategoryName('');
+                }}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="space-y-3 text-xs">
+
+            <div className="space-y-3 text-xs shrink-0">
               <div>
-                <label className="block font-semibold text-slate-600 mb-1">Category Name *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Footwear, Beverages, Electrical"
-                  value={quickCategoryName}
-                  onChange={e => setQuickCategoryName(e.target.value)}
-                  autoFocus
-                  className="w-full h-9 rounded-xl border border-slate-300 px-3 font-semibold outline-none focus:border-orange-500"
-                />
+                <label className="block font-semibold text-slate-600 mb-1">
+                  {editingCategoryOldName ? `Rename Category "${editingCategoryOldName}" *` : 'New Category Name *'}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. Footwear, Beverages, Electrical"
+                    value={quickCategoryName}
+                    onChange={e => setQuickCategoryName(e.target.value)}
+                    autoFocus
+                    className="flex-1 h-9 rounded-xl border border-slate-300 px-3 font-semibold outline-none focus:border-orange-500"
+                  />
+                  {editingCategoryOldName && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCategoryOldName(null);
+                        setQuickCategoryName('');
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-100 transition cursor-pointer"
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={justSavedQuickCategory}
+                    onClick={handleSaveQuickCategory}
+                    className={`px-4 py-1.5 text-xs font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                      justSavedQuickCategory
+                        ? 'bg-emerald-600 shadow-sm ring-2 ring-emerald-300'
+                        : 'bg-orange-600 hover:bg-orange-700 active:bg-orange-800'
+                    }`}
+                  >
+                    {justSavedQuickCategory ? (
+                      <>
+                        <Check className="h-3.5 w-3.5 stroke-[3]" />
+                        <span>Saved!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-3.5 w-3.5 text-orange-100" />
+                        <span>{editingCategoryOldName ? 'Update' : 'Save'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="flex gap-2 justify-end pt-2 border-t border-slate-100">
+
+            {/* Existing Categories List with Edit & Delete */}
+            <div className="flex-1 overflow-y-auto pt-2 border-t border-slate-100 space-y-1.5">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                Existing Categories ({categoryList.length})
+              </span>
+              {categoryList.length === 0 ? (
+                <p className="text-xs text-slate-400 italic py-2 text-center">No categories created yet.</p>
+              ) : (
+                <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                  {categoryList.map(cat => (
+                    <div
+                      key={cat}
+                      className="flex items-center justify-between p-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 transition"
+                    >
+                      <span className="font-semibold text-slate-800 text-xs flex items-center gap-1.5">
+                        <Tag className="w-3 h-3 text-slate-400" />
+                        {cat}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingCategoryOldName(cat);
+                            setQuickCategoryName(cat);
+                          }}
+                          className="p-1 rounded-lg text-slate-500 hover:text-orange-600 hover:bg-orange-50 transition cursor-pointer"
+                          title="Edit / Rename Category"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCategory(cat)}
+                          className="p-1 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                          title="Delete Category"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100 shrink-0">
               <button
                 type="button"
-                onClick={() => setShowQuickCategoryModal(false)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-50 transition cursor-pointer"
+                onClick={() => {
+                  setShowQuickCategoryModal(false);
+                  setEditingCategoryOldName(null);
+                  setQuickCategoryName('');
+                }}
+                className="px-4 py-1.5 text-xs font-semibold text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-100 transition cursor-pointer"
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={justSavedQuickCategory}
-                onClick={handleSaveQuickCategory}
-                className={`px-4 py-1.5 text-xs font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
-                  justSavedQuickCategory
-                    ? 'bg-emerald-600 shadow-sm ring-2 ring-emerald-300'
-                    : 'bg-orange-600 hover:bg-orange-700 active:bg-orange-800'
-                }`}
-              >
-                {justSavedQuickCategory ? (
-                  <>
-                    <Check className="h-3.5 w-3.5 stroke-[3]" />
-                    <span>Saved Successfully!</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-3.5 w-3.5 text-orange-100" />
-                    <span>Create Category</span>
-                  </>
-                )}
+                Done / Close
               </button>
             </div>
           </div>

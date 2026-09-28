@@ -23,6 +23,19 @@ import {
 } from '../types/posSettings';
 import { BankTransactionIdModal } from './BankTransactionIdModal';
 import { AcceptModal } from './AcceptModal';
+import { TableLayoutView } from './restaurant/TableLayoutView';
+import { KitchenDisplaySystem } from './restaurant/KitchenDisplaySystem';
+import { WaiterMobilePad } from './restaurant/WaiterMobilePad';
+import { DigitalMenuQRModal } from './restaurant/DigitalMenuQRModal';
+import { 
+  clearTableOrder, 
+  sendTableOrderToKitchen,
+  cancelRestaurantOrderItem,
+  replaceRestaurantOrderItem,
+  cancelEntireTableOrder,
+  getRestaurantOrders,
+  getTables
+} from '../services/restaurantService';
 import {
   holdBill,
   resumeBill,
@@ -88,7 +101,9 @@ import {
   Share2,
   FileText,
   Calendar,
-  Info
+  Info,
+  RefreshCw,
+  Ban
 } from 'lucide-react';
 import { SerialModal } from './SerialModal';
 import { ThermalReceiptModal } from './ThermalReceiptModal';
@@ -208,6 +223,14 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   const [batchSelectModalIdx, setBatchSelectModalIdx] = useState<number | null>(null);
 
   const [deviceCounterId, setLocalDeviceCounterId] = useState<string>(() => getDeviceCounterId());
+
+  // Restaurant State Modals
+  const [showRestaurantFloorPlan, setShowRestaurantFloorPlan] = useState<boolean>(false);
+  const [showKDSModal, setShowKDSModal] = useState<boolean>(false);
+  const [showWaiterPadModal, setShowWaiterPadModal] = useState<boolean>(false);
+  const [showQRModal, setShowQRModal] = useState<boolean>(false);
+  const [activeTableId, setActiveTableId] = useState<string | null>(null);
+  const [activeTableName, setActiveTableName] = useState<string | null>(null);
 
   // Allowed terminals strictly filtered based on company configuration / terminal limit
   const allowedTerminals = useMemo(() => {
@@ -537,6 +560,22 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   const showItemDiscount = posSettings.enableItemDiscount !== false;
   const showBillDiscount = posSettings.enableBillDiscount !== false;
 
+  // Restaurant Order Modifications (Cancel Item, Replace Item, Extra Orders, Cancel Entire Table)
+  const [showCancelItemModal, setShowCancelItemModal] = useState(false);
+  const [cancellingItemIdx, setCancellingItemIdx] = useState<number | null>(null);
+  const [cancelItemReason, setCancelItemReason] = useState('Customer changed mind');
+  const [restockItemOption, setRestockItemOption] = useState(true);
+
+  const [showReplaceItemModal, setShowReplaceItemModal] = useState(false);
+  const [replacingItemIdx, setReplacingItemIdx] = useState<number | null>(null);
+  const [replacementItemCode, setReplacementItemCode] = useState('');
+  const [replaceReason, setReplaceReason] = useState('Customer requested replacement');
+
+  const [showCancelTableOrderModal, setShowCancelTableOrderModal] = useState(false);
+  const [cancelTableReason, setCancelTableReason] = useState('Customer left / Order cancelled');
+  const [restockTableOption, setRestockTableOption] = useState(true);
+  const [kotSentSuccess, setKotSentSuccess] = useState<string | null>(null);
+
   // Check if selected customer/ledger is GST exempted
   const selectedLedger = ledgers.find(l => l['Ledger Name'] === customerName);
   const isCustomerGstExempted = Boolean(
@@ -626,6 +665,157 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     setBankTxnNo('');
     setBank2TxnNo('');
     setEntrySearch('');
+  };
+
+  // --- Restaurant Specific Actions ---
+  const handleSendExtraKOTToKitchen = () => {
+    if (!activeTableId) {
+      alert('No table selected. Please choose a table first.');
+      return;
+    }
+    if (cart.length === 0) {
+      alert('Cart is empty. Please add extra dishes or items first.');
+      return;
+    }
+    const user = getActiveUser();
+    const waiterName = user?.fullName || user?.username || 'Billing Counter';
+    const orderItems = cart.map(c => ({
+      itemCode: c.itemCode,
+      itemName: c.itemName,
+      qty: c.qty,
+      rate: c.rate,
+      unit: c.unit || 'Pcs',
+      notes: c.description || undefined
+    }));
+
+    try {
+      const result = sendTableOrderToKitchen(activeTableId, orderItems, waiterName, 2, undefined, false);
+      if (result && result.kot) {
+        setKotSentSuccess(result.kot.id || 'KOT Generated');
+        if (posSettings.enableSoundFeedback) playSuccessChime();
+        setTimeout(() => setKotSentSuccess(null), 3500);
+        onDataRefresh();
+      } else {
+        alert('Failed to send extra KOT to kitchen');
+      }
+    } catch (e: any) {
+      alert(e?.message || 'Failed to send extra KOT to kitchen');
+    }
+  };
+
+  const handleCancelItemClick = (idx: number) => {
+    setCancellingItemIdx(idx);
+    setCancelItemReason('Customer changed mind');
+    setRestockItemOption(true);
+    setShowCancelItemModal(true);
+  };
+
+  const handleCancelItemConfirm = () => {
+    if (cancellingItemIdx === null || !cart[cancellingItemIdx]) return;
+    const targetLine = cart[cancellingItemIdx];
+    const user = getActiveUser();
+    const userName = user?.fullName || user?.username || 'Billing Counter';
+
+    if (activeTableId) {
+      const res = cancelRestaurantOrderItem(
+        activeTableId,
+        targetLine.itemCode,
+        cancelItemReason,
+        restockItemOption,
+        userName
+      );
+      if (!res.success) {
+        alert(res.message || 'Failed to cancel item');
+        return;
+      }
+    }
+
+    // Remove from active cart
+    const updated = cart.filter((_, i) => i !== cancellingItemIdx);
+    setCart(updated);
+    setShowCancelItemModal(false);
+    setCancellingItemIdx(null);
+    if (posSettings.enableSoundFeedback) playWarningTone();
+    onDataRefresh();
+  };
+
+  const handleReplaceItemClick = (idx: number) => {
+    setReplacingItemIdx(idx);
+    setReplacementItemCode('');
+    setReplaceReason('Customer requested menu replacement');
+    setShowReplaceItemModal(true);
+  };
+
+  const handleReplaceItemConfirm = () => {
+    if (replacingItemIdx === null || !cart[replacingItemIdx] || !replacementItemCode) {
+      alert('Please select a replacement item.');
+      return;
+    }
+    const oldLine = cart[replacingItemIdx];
+    const newMaster = items.find(i => i['Item Code'] === replacementItemCode);
+    if (!newMaster) {
+      alert('Selected replacement item not found.');
+      return;
+    }
+    const user = getActiveUser();
+    const userName = user?.fullName || user?.username || 'Billing Counter';
+
+    const newItemObj = {
+      itemCode: newMaster['Item Code'],
+      itemName: newMaster['Item Name'],
+      qty: oldLine.qty,
+      rate: Number(newMaster['Sale Rate']) || 0,
+      unit: newMaster.Unit || 'Pcs'
+    };
+
+    if (activeTableId) {
+      const res = replaceRestaurantOrderItem(
+        activeTableId,
+        oldLine.itemCode,
+        newItemObj,
+        replaceReason,
+        userName
+      );
+      if (!res.success) {
+        alert(res.message || 'Failed to replace item');
+        return;
+      }
+    }
+
+    const updatedCart = [...cart];
+    updatedCart[replacingItemIdx] = {
+      ...oldLine,
+      itemCode: newItemObj.itemCode,
+      itemName: newItemObj.itemName,
+      rate: newItemObj.rate,
+      unit: newItemObj.unit,
+      purchaseRate: Number(newMaster['Purchase Rate']) || 0
+    };
+
+    setCart(updatedCart);
+    setShowReplaceItemModal(false);
+    setReplacingItemIdx(null);
+    if (posSettings.enableSoundFeedback) playSuccessChime();
+    onDataRefresh();
+  };
+
+  const handleCancelTableOrderConfirm = () => {
+    if (!activeTableId) return;
+    const user = getActiveUser();
+    const userName = user?.fullName || user?.username || 'Billing Counter';
+
+    const res = cancelEntireTableOrder(activeTableId, cancelTableReason, restockTableOption, userName);
+    if (!res.success) {
+      alert(res.message || 'Failed to cancel table order');
+      return;
+    }
+
+    resetPosForm();
+    setActiveTableId(null);
+    setActiveTableName(null);
+    setShowCancelTableOrderModal(false);
+    if (posSettings.enableSoundFeedback) playWarningTone();
+    onDataRefresh();
   };
 
   const handlePosBack = (): boolean => {
@@ -867,7 +1057,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   // Calculations with Lumpsum / Bill Discount support & GST Exemption
   const calculateTotals = () => {
-    let taxable = 0, zeroRated = 0, gstAmt = 0, rawTotal = 0, itemDiscountTotal = 0;
+    let taxable = 0, zeroRated = 0, itemGstAmt = 0, itemDiscountTotal = 0;
     cart.forEach(l => {
       let lineDisc = 0;
       if (showItemDiscount || l.appliedSchemeName || Number(l.discount) > 0) {
@@ -880,11 +1070,12 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       const isZero = isCustomerGstExempted || String(l.zeroRated).toUpperCase() === 'Y';
       const lineGst = isZero ? 0 : round2(gross * (Number(l.gstPct) || 0) / 100);
       if (isZero) zeroRated += gross; else taxable += gross;
-      gstAmt += lineGst;
-      rawTotal += (gross + lineGst);
+      itemGstAmt += lineGst;
     });
 
-    const subtotal = round2(rawTotal);
+    const isRestaurant = config.EnableRestaurantMode === 'true';
+    const subtotal = round2(taxable + zeroRated);
+
     let discountAmt = 0;
     if (showBillDiscount && billDiscount !== '' && Number(billDiscount) > 0) {
       if (billDiscountType === 'percent') {
@@ -906,16 +1097,46 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     }
 
     const effectiveBillDiscount = Math.min(subtotal, Math.max(0, Math.max(discountAmt, billSchemeDiscount)));
-    const total = Math.max(0, round2(subtotal - effectiveBillDiscount));
+    const discountedFoodBase = Math.max(0, subtotal - effectiveBillDiscount);
+
+    let serviceChargeAmt = 0;
+    if (isRestaurant && config.EnableRestaurantServiceCharge !== 'false') {
+      const pct = Number(config.RestaurantServiceChargePct || '10') || 0;
+      serviceChargeAmt = round2((discountedFoodBase * pct) / 100);
+    }
+
+    const totalWithServiceCharge = round2(discountedFoodBase + serviceChargeAmt);
+    const serviceChargePct = Number(config.RestaurantServiceChargePct || '10') || 0;
+
+    // In Restaurant POS: Taxable Sale is the Bill Amount (Amount including Service Charge minus zero-rated items)
+    // and GST is calculated on that Taxable Amount
+    const restaurantTaxable = Math.max(0, round2(totalWithServiceCharge - zeroRated));
+    let finalGstAmt = itemGstAmt;
+    if (isRestaurant) {
+      if (config.EnableGST === 'false' || isCustomerGstExempted) {
+        finalGstAmt = 0;
+      } else {
+        const gstRate = 5; // Standard 5% Restaurant GST
+        finalGstAmt = round2((restaurantTaxable * gstRate) / 100);
+      }
+    }
+
+    const total = isRestaurant
+      ? Math.max(0, round2(totalWithServiceCharge + finalGstAmt))
+      : Math.max(0, round2(subtotal - effectiveBillDiscount + itemGstAmt));
 
     return {
       subtotal,
       discount: effectiveBillDiscount,
       appliedBillSchemeName,
       discountValue: (showBillDiscount && billDiscount !== '') ? Number(billDiscount) : (appliedBillSchemeName ? billSchemeDiscount : 0),
-      taxable: round2(taxable),
+      taxable: isRestaurant ? round2(restaurantTaxable) : round2(taxable),
       zeroRated: round2(zeroRated),
-      gstAmt: round2(gstAmt),
+      billTotal: round2(discountedFoodBase),
+      serviceChargeAmt: round2(serviceChargeAmt),
+      serviceChargePct,
+      totalWithServiceCharge,
+      gstAmt: round2(finalGstAmt),
       itemDiscountTotal: round2(itemDiscountTotal),
       total
     };
@@ -1943,6 +2164,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     }
 
     setIsSubmitting(true);
+    const isRestaurant = config.EnableRestaurantMode === 'true';
     const result = saveSalesInvoice({
       cart,
       payment: payData,
@@ -1955,8 +2177,15 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       originalInvoiceNo: editingInvoiceNo || undefined,
       date: editingInvoiceDate || (posBillDate ? new Date(posBillDate + 'T12:00:00').toISOString() : undefined),
       isEdit: Boolean(editingInvoiceNo),
-      isPOS: true
-    });
+      isPOS: true,
+      isRestaurantOrder: isRestaurant,
+      tableId: activeTableId || undefined,
+      tableName: activeTableName || undefined,
+      billTotal: isRestaurant ? totals.billTotal : undefined,
+      serviceChargeAmt: isRestaurant ? totals.serviceChargeAmt : undefined,
+      serviceChargePct: isRestaurant ? totals.serviceChargePct : undefined,
+      totalWithServiceCharge: isRestaurant ? totals.totalWithServiceCharge : undefined
+    } as any);
 
     setIsSubmitting(false);
 
@@ -1986,14 +2215,26 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       // Handle Direct Actions (WhatsApp, Email, Save Only, Print)
       const showGst = String(config.EnableGST) !== 'false';
       const currency = config.CurrencySymbol || 'Nu.';
+      const isRestaurant = config.EnableRestaurantMode === 'true' || Boolean(savedInv.isRestaurantOrder) || Number(savedInv.serviceChargeAmt || 0) > 0;
+      const rawSubtotal = Number(savedInv.subtotal !== undefined ? savedInv.subtotal : ((Number(savedInv.billTotal || savedInv.total) || 0) + Number(savedInv.discount || 0)));
+      const rDiscount = Number(savedInv.discount || 0);
+      const rFoodSubtotalNet = Math.max(0, rawSubtotal - rDiscount);
+      const rServiceChargePct = Number(savedInv.serviceChargePct !== undefined ? savedInv.serviceChargePct : (Number(config.RestaurantServiceChargePct || '10') || 10));
+      const rServiceChargeAmt = Number(savedInv.serviceChargeAmt !== undefined ? savedInv.serviceChargeAmt : ((config.EnableRestaurantServiceCharge !== 'false' && isRestaurant) ? ((rFoodSubtotalNet * rServiceChargePct) / 100) : 0));
+      const rBillAmount = Number(savedInv.totalWithServiceCharge !== undefined ? savedInv.totalWithServiceCharge : (rFoodSubtotalNet + rServiceChargeAmt));
+      const rExemptedSale = Number(savedInv.zeroRated || 0);
+      const rTaxableSale = Math.max(0, rBillAmount - rExemptedSale);
+      const rGstAmt = Number(savedInv.gstAmt !== undefined ? savedInv.gstAmt : (rTaxableSale * (Number(config.RestaurantGstRate || '5') / 100)));
+      const rTotalInvoiceAmt = Number(savedInv.total || (rBillAmount + rGstAmt));
 
       if (actionType === 'whatsapp') {
         const lines = [
           `🧾 *TAX INVOICE: ${savedInv.invoiceNo}*`,
-          `🏪 *${config.CompanyName || 'Retail Store'}*`,
+          `🏪 *${config.CompanyName || (isRestaurant ? 'Restaurant & Dining' : 'Retail Store')}*`,
           config.Address ? `📍 ${config.Address}` : '',
           showGst && config.CompanyGSTNo ? `🏛 GSTIN: ${config.CompanyGSTNo}` : '',
           `📅 Date: ${new Date(savedInv.date).toLocaleString()}`,
+          savedInv.tableName ? `🍽️ Table: ${savedInv.tableName}` : '',
           `👤 Customer: ${savedInv.customer?.name || 'Walk-in Cash Customer'}`,
           savedInv.customer?.phone ? `📞 Phone: ${savedInv.customer.phone}` : '',
           '--------------------------------',
@@ -2008,17 +2249,28 @@ export const POSBilling: React.FC<POSBillingProps> = ({
             return `• *${item['Item Name']}* (${item.Qty} ${item.Unit || 'Pcs'} @ ${currency} ${Number(item.Rate).toFixed(2)}) | Sale Amt: ${currency} ${saleAmt}${gstInfo} | Total: ${currency} ${Number(item['Line Total']).toFixed(2)}`;
           }),
           '--------------------------------',
-          showGst ? `Taxable Sale: ${currency} ${savedInv.taxable.toFixed(2)}` : '',
-          showGst ? `Exempted Sale: ${currency} ${savedInv.zeroRated.toFixed(2)}` : '',
-          showGst ? `GST Amount: ${currency} ${savedInv.gstAmt.toFixed(2)}` : '',
-          (savedInv.discount && savedInv.discount > 0) ? `Subtotal: ${currency} ${(savedInv.subtotal || (savedInv.total + savedInv.discount)).toFixed(2)}` : '',
-          (savedInv.discount && savedInv.discount > 0) ? `Bill Discount: -${currency} ${savedInv.discount.toFixed(2)}` : '',
-          `*GRAND TOTAL: ${currency} ${savedInv.total.toFixed(2)}*`,
+          ...(isRestaurant ? [
+            `Subtotal: ${currency} ${rawSubtotal.toFixed(2)}`,
+            (rDiscount > 0) ? `Less: Discount: -${currency} ${rDiscount.toFixed(2)}` : '',
+            rServiceChargeAmt > 0 ? `Add: Service Charge (${rServiceChargePct}%): +${currency} ${rServiceChargeAmt.toFixed(2)}` : '',
+            `Bill Amount: ${currency} ${rBillAmount.toFixed(2)}`,
+            showGst ? `Taxable Sale: ${currency} ${rTaxableSale.toFixed(2)}` : '',
+            showGst ? `Exempted Sale: ${currency} ${rExemptedSale.toFixed(2)}` : '',
+            (showGst && rGstAmt > 0) ? `GST Amount (5%): +${currency} ${rGstAmt.toFixed(2)}` : '',
+            `*TOTAL INVOICE AMOUNT: ${currency} ${rTotalInvoiceAmt.toFixed(2)}*`
+          ] : [
+            showGst ? `Taxable Sale: ${currency} ${savedInv.taxable.toFixed(2)}` : '',
+            showGst ? `Exempted Sale: ${currency} ${savedInv.zeroRated.toFixed(2)}` : '',
+            showGst ? `GST Amount: ${currency} ${savedInv.gstAmt.toFixed(2)}` : '',
+            (savedInv.discount && savedInv.discount > 0) ? `Subtotal: ${currency} ${(savedInv.subtotal || (savedInv.total + savedInv.discount)).toFixed(2)}` : '',
+            (savedInv.discount && savedInv.discount > 0) ? `Bill Discount: -${currency} ${savedInv.discount.toFixed(2)}` : '',
+            `*GRAND TOTAL: ${currency} ${savedInv.total.toFixed(2)}*`
+          ]),
           '--------------------------------',
           `Paid: Cash ${currency} ${savedInv.cash.toFixed(2)} | Bank ${currency} ${(savedInv.bank1 + savedInv.bank2).toFixed(2)}${savedInv.bankTxnNo ? ` (Txn Ref: ${savedInv.bankTxnNo})` : ''}`,
           savedInv.credit > 0 ? `⚠️ *Credit Balance Due: ${currency} ${savedInv.credit.toFixed(2)}*` : '✅ *Status: Fully Paid*',
           config.CompanyBankDetails ? `\n*Bank Details:*\n${config.CompanyBankDetails}` : '',
-          `\nThank you for shopping with ${config.CompanyName || 'us'}! Visit Again.`
+          `\nThank you for choosing ${config.CompanyName || (isRestaurant ? 'us' : 'our store')}! Visit Again.`
         ].filter(Boolean);
 
         const message = encodeURIComponent(lines.join('\n'));
@@ -2032,10 +2284,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       } else if (actionType === 'email') {
         const lines = [
           `TAX INVOICE: ${savedInv.invoiceNo}`,
-          `${config.CompanyName || 'Retail Store'}`,
+          `${config.CompanyName || (isRestaurant ? 'Restaurant & Dining' : 'Retail Store')}`,
           config.Address ? `Address: ${config.Address}` : '',
           showGst && config.CompanyGSTNo ? `GSTIN: ${config.CompanyGSTNo}` : '',
           `Date: ${new Date(savedInv.date).toLocaleString()}`,
+          savedInv.tableName ? `Table: ${savedInv.tableName}` : '',
           `Customer: ${savedInv.customer?.name || 'Walk-in Cash Customer'}`,
           '--------------------------------',
           'ITEMS:',
@@ -2049,16 +2302,27 @@ export const POSBilling: React.FC<POSBillingProps> = ({
             return `• ${item['Item Name']} (${item.Qty} ${item.Unit || 'Pcs'} @ ${currency} ${Number(item.Rate).toFixed(2)}) | Sale Amt: ${currency} ${saleAmt}${gstInfo} | Total: ${currency} ${Number(item['Line Total']).toFixed(2)}`;
           }),
           '--------------------------------',
-          showGst ? `Taxable Sale: ${currency} ${savedInv.taxable.toFixed(2)}` : '',
-          showGst ? `Exempted Sale: ${currency} ${savedInv.zeroRated.toFixed(2)}` : '',
-          showGst ? `GST Amount: ${currency} ${savedInv.gstAmt.toFixed(2)}` : '',
-          (savedInv.discount && savedInv.discount > 0) ? `Subtotal: ${currency} ${(savedInv.subtotal || (savedInv.total + savedInv.discount)).toFixed(2)}` : '',
-          (savedInv.discount && savedInv.discount > 0) ? `Bill Discount: -${currency} ${savedInv.discount.toFixed(2)}` : '',
-          `GRAND TOTAL: ${currency} ${savedInv.total.toFixed(2)}`,
+          ...(isRestaurant ? [
+            `Subtotal: ${currency} ${rawSubtotal.toFixed(2)}`,
+            (rDiscount > 0) ? `Less: Discount: -${currency} ${rDiscount.toFixed(2)}` : '',
+            rServiceChargeAmt > 0 ? `Add: Service Charge (${rServiceChargePct}%): +${currency} ${rServiceChargeAmt.toFixed(2)}` : '',
+            `Bill Amount: ${currency} ${rBillAmount.toFixed(2)}`,
+            showGst ? `Taxable Sale: ${currency} ${rTaxableSale.toFixed(2)}` : '',
+            showGst ? `Exempted Sale: ${currency} ${rExemptedSale.toFixed(2)}` : '',
+            (showGst && rGstAmt > 0) ? `GST Amount (5%): +${currency} ${rGstAmt.toFixed(2)}` : '',
+            `TOTAL INVOICE AMOUNT: ${currency} ${rTotalInvoiceAmt.toFixed(2)}`
+          ] : [
+            showGst ? `Taxable Sale: ${currency} ${savedInv.taxable.toFixed(2)}` : '',
+            showGst ? `Exempted Sale: ${currency} ${savedInv.zeroRated.toFixed(2)}` : '',
+            showGst ? `GST Amount: ${currency} ${savedInv.gstAmt.toFixed(2)}` : '',
+            (savedInv.discount && savedInv.discount > 0) ? `Subtotal: ${currency} ${(savedInv.subtotal || (savedInv.total + savedInv.discount)).toFixed(2)}` : '',
+            (savedInv.discount && savedInv.discount > 0) ? `Bill Discount: -${currency} ${savedInv.discount.toFixed(2)}` : '',
+            `GRAND TOTAL: ${currency} ${savedInv.total.toFixed(2)}`
+          ]),
           '--------------------------------',
           `Paid: Cash ${currency} ${savedInv.cash.toFixed(2)} | Bank ${currency} ${(savedInv.bank1 + savedInv.bank2).toFixed(2)}${savedInv.bankTxnNo ? ` (Txn Ref: ${savedInv.bankTxnNo})` : ''}`,
           savedInv.credit > 0 ? `Credit Balance Due: ${currency} ${savedInv.credit.toFixed(2)}` : 'Status: Fully Paid',
-          `\nThank you for choosing ${config.CompanyName || 'us'}!`
+          `\nThank you for choosing ${config.CompanyName || (isRestaurant ? 'us' : 'our store')}!`
         ].filter(Boolean);
 
         const email = savedInv.customer?.email || '';
@@ -2143,10 +2407,17 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm sm:text-base font-extrabold text-slate-900 leading-tight">POS Billing / Sale</h1>
+              <h1 className="text-sm sm:text-base font-extrabold text-slate-900 leading-tight">
+                {config.EnableRestaurantMode === 'true' ? 'Restaurant POS Billing' : 'POS Billing / Sale'}
+              </h1>
               <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded text-[10px] font-bold">
                 {activeVoucherType?.name || 'Sale'}
               </span>
+              {activeTableName && (
+                <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full text-[11px] font-black animate-pulse">
+                  🍽️ {activeTableName}
+                </span>
+              )}
               {pricingMode === 'wholesale' && (
                 <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded text-[10px] font-extrabold animate-pulse">
                   Wholesale Mode
@@ -2154,10 +2425,53 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               )}
             </div>
             <p className="text-[11px] text-slate-500 font-medium">
-              Quick Retail Entry (Press <kbd className="bg-slate-100 border border-slate-300 rounded px-1 py-0.2 text-[10px] font-mono font-bold">F2</kbd> to Save)
+              Quick Entry (Press <kbd className="bg-slate-100 border border-slate-300 rounded px-1 py-0.2 text-[10px] font-mono font-bold">F2</kbd> to Save)
             </p>
           </div>
         </div>
+
+        {/* Restaurant Suite Quick Action Buttons */}
+        {config.EnableRestaurantMode === 'true' && (
+          <div className="flex items-center gap-1.5 flex-wrap my-1 sm:my-0">
+            <button
+              type="button"
+              onClick={() => setShowRestaurantFloorPlan(true)}
+              className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <span>🍽️ Table Floor Plan</span>
+            </button>
+
+            {config.EnableKDSAndKitchenIssue !== 'false' && (
+              <button
+                type="button"
+                onClick={() => setShowKDSModal(true)}
+                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <span>👨‍🍳 Kitchen (KDS)</span>
+              </button>
+            )}
+
+            {config.EnableWaiterMobilePad !== 'false' && (
+              <button
+                type="button"
+                onClick={() => setShowWaiterPadModal(true)}
+                className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <span>📱 Waiter Pad</span>
+              </button>
+            )}
+
+            {config.EnableDigitalMenuQR !== 'false' && (
+              <button
+                type="button"
+                onClick={() => setShowQRModal(true)}
+                className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <span>🖨️ Table QRs</span>
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {/* Bill No & Date Indicator */}
@@ -2616,6 +2930,68 @@ export const POSBilling: React.FC<POSBillingProps> = ({
             </div>
           )}
 
+          {/* Active Restaurant Table Control Banner */}
+          {config.EnableRestaurantMode === 'true' && activeTableId && (
+            <div className="shrink-0 rounded-2xl border-2 border-amber-300 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 p-2.5 sm:p-3 shadow-xs flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <div className="h-9 w-9 rounded-xl bg-amber-500 text-slate-950 font-black flex items-center justify-center shadow-xs text-base">
+                  🍽️
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-black text-slate-900">{activeTableName || 'Table ' + activeTableId}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-200 text-amber-900 border border-amber-300">
+                      Active Table
+                    </span>
+                    {kotSentSuccess && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white animate-bounce">
+                        ✓ {kotSentSuccess} Sent to Kitchen!
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 font-medium">
+                    Order active. You can add extra items (KOT), replace dishes, or cancel items/table.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleSendExtraKOTToKitchen}
+                  disabled={cart.length === 0}
+                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  title="Send new or extra items to Kitchen KDS (Extra KOT)"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>+ Send Extra KOT</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCancelTableOrderModal(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold text-xs shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                  title="Customer cancelled order / Left table"
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                  <span>Cancel Order</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTableId(null);
+                    setActiveTableName(null);
+                  }}
+                  className="p-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-500 border border-slate-300 shadow-2xs transition cursor-pointer"
+                  title="Deselect table (switch to walk-in cart)"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 2. POPULATED ITEM LIST (BELOW SELECTION) */}
           <div className="flex-1 min-h-0 rounded-2xl border border-slate-200 bg-white shadow-xs flex flex-col overflow-hidden">
             <div className="flex-1 min-h-0 overflow-y-auto">
@@ -2915,16 +3291,38 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                             {lineTotal.toFixed(2)}
                           </td>
 
-                          {/* Delete */}
+                          {/* Actions: Delete / Cancel / Replace */}
                           <td className="py-0.5 px-1 align-middle text-center">
-                            <button
-                              type="button"
-                              onClick={() => removeCartLine(idx)}
-                              title="Delete Item (Del)"
-                              className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              {config.EnableRestaurantMode === 'true' && activeTableId && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReplaceItemClick(idx)}
+                                    title="Replace / Substitute Item"
+                                    className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-100 rounded transition cursor-pointer"
+                                  >
+                                    <RefreshCw className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCancelItemClick(idx)}
+                                    title="Cancel Item (Kitchen Alert & Restock)"
+                                    className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-100 rounded transition cursor-pointer"
+                                  >
+                                    <Ban className="h-3 w-3" />
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeCartLine(idx)}
+                                title="Delete Item (Del)"
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -3177,67 +3575,149 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           </div>
 
           {/* Line-by-Line Breakdown Table: Perfectly Aligned, No Truncation */}
-          <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between text-slate-300">
-              <span className="font-medium text-slate-400">Taxable Sale</span>
-              <span className="font-mono font-bold text-slate-100 text-sm">
-                <span className="text-[11px] text-slate-500 font-normal mr-1">{config.CurrencySymbol || 'Nu.'}</span>
-                {totals.taxable.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            </div>
+          {config.EnableRestaurantMode === 'true' ? (
+            <div className="space-y-1.5 text-xs">
+              {/* 1. Bill Total (Food / Items Subtotal after discount) */}
+              {totals.discount > 0 ? (
+                <>
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="font-medium">Food Subtotal</span>
+                    <span className="font-mono font-medium text-slate-300">
+                      <span className="text-[11px] text-slate-500 mr-1">{config.CurrencySymbol || 'Nu.'}</span>
+                      {totals.subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-rose-400 font-bold">
+                    <span className="flex items-center gap-1">
+                      <span>{totals.appliedBillSchemeName ? `Offer: ${totals.appliedBillSchemeName}` : 'Less: Discount'}</span>
+                      {billDiscountType === 'percent' && !totals.appliedBillSchemeName && (
+                        <span className="text-[10px] bg-rose-950/80 text-rose-300 px-1 rounded border border-rose-800 font-mono">
+                          {totals.discountValue}%
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-mono text-rose-300">
+                      -<span className="text-[11px] mr-0.5">{config.CurrencySymbol || 'Nu.'}</span>
+                      {totals.discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-200 font-bold pt-1 border-t border-slate-800/80">
+                    <span className="text-slate-300 font-bold">Bill Total</span>
+                    <span className="font-mono font-bold text-slate-100 text-sm">
+                      <span className="text-[11px] text-slate-500 font-normal mr-1">{config.CurrencySymbol || 'Nu.'}</span>
+                      {totals.billTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-between text-slate-200 font-bold">
+                  <span className="text-slate-300 font-bold">Bill Total</span>
+                  <span className="font-mono font-bold text-slate-100 text-sm">
+                    <span className="text-[11px] text-slate-500 font-normal mr-1">{config.CurrencySymbol || 'Nu.'}</span>
+                    {totals.billTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
 
-            <div className="flex items-center justify-between text-slate-300">
-              <span className="font-medium text-slate-400">Exempted Sale</span>
-              <span className="font-mono font-bold text-slate-100 text-sm">
-                <span className="text-[11px] text-slate-500 font-normal mr-1">{config.CurrencySymbol || 'Nu.'}</span>
-                {totals.zeroRated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            </div>
+              {/* 2. Add: Service Charge */}
+              {totals.serviceChargeAmt > 0 && (
+                <div className="flex items-center justify-between text-amber-300 font-bold">
+                  <span>Add: Service Charge ({totals.serviceChargePct}%)</span>
+                  <span className="font-mono font-bold text-amber-200 text-sm">
+                    +<span className="text-[11px] text-amber-400 font-normal mr-0.5">{config.CurrencySymbol || 'Nu.'}</span>
+                    {totals.serviceChargeAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
 
-            <div className="flex items-center justify-between text-slate-300">
-              <span className="font-medium text-indigo-300">GST (Tax)</span>
-              <span className="font-mono font-bold text-indigo-200 text-sm">
-                <span className="text-[11px] text-indigo-400 font-normal mr-1">{config.CurrencySymbol || 'Nu.'}</span>
-                {totals.gstAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            </div>
+              {/* 3. Total with Service Charge */}
+              {totals.serviceChargeAmt > 0 && (
+                <div className="flex items-center justify-between text-indigo-200 font-bold px-2 py-1 bg-indigo-950/70 border border-indigo-800/80 rounded-lg">
+                  <span className="text-indigo-300 font-bold text-[11px]">Total with Service Charge</span>
+                  <span className="font-mono font-extrabold text-indigo-100 text-sm">
+                    <span className="text-[10px] text-indigo-400 font-normal mr-1">{config.CurrencySymbol || 'Nu.'}</span>
+                    {totals.totalWithServiceCharge.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
 
-            {totals.itemDiscountTotal > 0 && (
-              <div className="flex items-center justify-between text-emerald-400 font-bold">
-                <span>Itemwise Discount</span>
-                <span className="font-mono font-bold text-emerald-300 text-sm">
-                  -<span className="text-[11px] font-normal mr-0.5">{config.CurrencySymbol || 'Nu.'}</span>
-                  {totals.itemDiscountTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {/* 4. Add: 5% GST */}
+              {totals.gstAmt > 0 && (
+                <div className="flex items-center justify-between text-emerald-300 font-bold">
+                  <span className="flex items-center gap-1">
+                    <span>Add: GST (5%)</span>
+                    <span className="text-[10px] text-slate-400 font-normal">(on Total + SC)</span>
+                  </span>
+                  <span className="font-mono font-bold text-emerald-200 text-sm">
+                    +<span className="text-[11px] text-emerald-400 font-normal mr-0.5">{config.CurrencySymbol || 'Nu.'}</span>
+                    {totals.gstAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-1.5 text-xs">
+              <div className="flex items-center justify-between text-slate-300">
+                <span className="font-medium text-slate-400">Taxable Sale</span>
+                <span className="font-mono font-bold text-slate-100 text-sm">
+                  <span className="text-[11px] text-slate-500 font-normal mr-1">{config.CurrencySymbol || 'Nu.'}</span>
+                  {totals.taxable.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
-            )}
 
-            {totals.discount > 0 && (
-              <>
-                <div className="flex items-center justify-between text-slate-400 pt-1.5 border-t border-slate-800/80">
-                  <span className="font-medium">Gross Subtotal</span>
-                  <span className="font-mono font-semibold text-slate-300">
-                    <span className="text-[10px] text-slate-500 font-normal mr-1">{config.CurrencySymbol || 'Nu.'}</span>
-                    {totals.subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-rose-400 font-bold">
-                  <span className="flex items-center gap-1">
-                    <span>{totals.appliedBillSchemeName ? `Offer: ${totals.appliedBillSchemeName}` : 'Lumpsum Discount'}</span>
-                    {billDiscountType === 'percent' && !totals.appliedBillSchemeName && (
-                      <span className="text-[10px] bg-rose-950/80 text-rose-300 px-1 rounded border border-rose-800 font-mono">
-                        {totals.discountValue}%
-                      </span>
-                    )}
-                  </span>
-                  <span className="font-mono font-bold text-rose-300 text-sm">
+              <div className="flex items-center justify-between text-slate-300">
+                <span className="font-medium text-slate-400">Exempted Sale</span>
+                <span className="font-mono font-bold text-slate-100 text-sm">
+                  <span className="text-[11px] text-slate-500 font-normal mr-1">{config.CurrencySymbol || 'Nu.'}</span>
+                  {totals.zeroRated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-slate-300">
+                <span className="font-medium text-indigo-300">GST (Tax)</span>
+                <span className="font-mono font-bold text-indigo-200 text-sm">
+                  <span className="text-[11px] text-indigo-400 font-normal mr-1">{config.CurrencySymbol || 'Nu.'}</span>
+                  {totals.gstAmt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {totals.itemDiscountTotal > 0 && (
+                <div className="flex items-center justify-between text-emerald-400 font-bold">
+                  <span>Itemwise Discount</span>
+                  <span className="font-mono font-bold text-emerald-300 text-sm">
                     -<span className="text-[11px] font-normal mr-0.5">{config.CurrencySymbol || 'Nu.'}</span>
-                    {totals.discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {totals.itemDiscountTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
-              </>
-            )}
-          </div>
+              )}
+
+              {totals.discount > 0 && (
+                <>
+                  <div className="flex items-center justify-between text-slate-400 pt-1.5 border-t border-slate-800/80">
+                    <span className="font-medium">Gross Subtotal</span>
+                    <span className="font-mono font-semibold text-slate-300">
+                      <span className="text-[10px] text-slate-500 font-normal mr-1">{config.CurrencySymbol || 'Nu.'}</span>
+                      {totals.subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-rose-400 font-bold">
+                    <span className="flex items-center gap-1">
+                      <span>{totals.appliedBillSchemeName ? `Offer: ${totals.appliedBillSchemeName}` : 'Lumpsum Discount'}</span>
+                      {billDiscountType === 'percent' && !totals.appliedBillSchemeName && (
+                        <span className="text-[10px] bg-rose-950/80 text-rose-300 px-1 rounded border border-rose-800 font-mono">
+                          {totals.discountValue}%
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-mono font-bold text-rose-300 text-sm">
+                      -<span className="text-[11px] font-normal mr-0.5">{config.CurrencySymbol || 'Nu.'}</span>
+                      {totals.discount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Grand Total Invoice Amount: Clean, Unbroken Single Line */}
           <div className="bg-indigo-900/60 border border-indigo-700/60 rounded-xl px-3 py-2.5 flex items-center justify-between gap-2">
@@ -4105,6 +4585,377 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 className="px-4 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RESTAURANT FLOOR PLAN MODAL */}
+      {showRestaurantFloorPlan && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+          <div className="bg-slate-100 rounded-3xl max-w-5xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+              <h2 className="font-black text-slate-900 text-base flex items-center gap-2">
+                <span>🍽️ Select Dining Table to Load Bill</span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowRestaurantFloorPlan(false)}
+                className="p-1.5 rounded-xl bg-white text-slate-500 hover:text-slate-800 shadow-2xs cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <TableLayoutView
+              currencySymbol={config.CurrencySymbol || 'Nu.'}
+              onSelectTableForOrder={(table, existingOrder) => {
+                setActiveTableId(table.id);
+                setActiveTableName(table.name);
+
+                if (existingOrder && existingOrder.items.length > 0) {
+                  const newCart: CartLine[] = existingOrder.items.map(it => {
+                    const matchedItem = items.find(i => i['Item Code'] === it.itemCode);
+                    return {
+                      itemCode: it.itemCode,
+                      itemName: it.itemName,
+                      unit: it.unit || matchedItem?.Unit || 'Pcs',
+                      qty: it.qty,
+                      rate: it.rate,
+                      discount: 0,
+                      gstPct: 5,
+                      zeroRated: 'N',
+                      purchaseRate: matchedItem?.['Purchase Rate'] || 0,
+                      isSerialized: 'N',
+                      serials: []
+                    };
+                  });
+                  setCart(newCart);
+                }
+                setShowRestaurantFloorPlan(false);
+              }}
+              onOpenKDS={() => {
+                setShowRestaurantFloorPlan(false);
+                setShowKDSModal(true);
+              }}
+              onOpenWaiterPad={() => {
+                setShowRestaurantFloorPlan(false);
+                setShowWaiterPadModal(true);
+              }}
+              onOpenQRGenerator={() => {
+                setShowRestaurantFloorPlan(false);
+                setShowQRModal(true);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* KITCHEN DISPLAY SYSTEM MODAL */}
+      {showKDSModal && (
+        <KitchenDisplaySystem onClose={() => setShowKDSModal(false)} />
+      )}
+
+      {/* WAITER MOBILE PAD MODAL */}
+      {showWaiterPadModal && (
+        <WaiterMobilePad
+          items={items}
+          config={config}
+          initialTableId={activeTableId || undefined}
+          onClose={() => setShowWaiterPadModal(false)}
+        />
+      )}
+
+      {/* DIGITAL MENU QR MODAL */}
+      <DigitalMenuQRModal
+        isOpen={showQRModal}
+        onClose={() => setShowQRModal(false)}
+      />
+
+      {/* RESTAURANT CANCEL ITEM MODAL */}
+      {showCancelItemModal && cancellingItemIdx !== null && cart[cancellingItemIdx] && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-rose-100 text-rose-700 rounded-xl">
+                  <Ban className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base">Cancel Dish / Item</h3>
+                  <p className="text-[11px] text-slate-500">{activeTableName || 'Table'} • KOT & Kitchen notification</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCancelItemModal(false);
+                  setCancellingItemIdx(null);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-rose-50 rounded-2xl border border-rose-200">
+              <div className="text-xs font-bold text-rose-900">Item to Cancel:</div>
+              <div className="text-sm font-black text-rose-950 mt-0.5">
+                {cart[cancellingItemIdx].itemName} ({cart[cancellingItemIdx].qty} {cart[cancellingItemIdx].unit})
+              </div>
+              <div className="text-xs text-rose-700 font-mono mt-1">
+                Value: {config.CurrencySymbol || 'Nu.'} {((cart[cancellingItemIdx].qty * cart[cancellingItemIdx].rate) || 0).toFixed(2)}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Cancellation Reason</label>
+              <select
+                value={cancelItemReason}
+                onChange={e => setCancelItemReason(e.target.value)}
+                className="w-full h-9 rounded-xl border border-slate-300 px-3 text-xs font-semibold focus:border-rose-500 focus:ring-1 focus:ring-rose-200 outline-none"
+              >
+                <option value="Customer changed mind">Customer changed mind</option>
+                <option value="Wrong item ordered by waiter">Wrong item ordered by waiter</option>
+                <option value="Food preparation delayed / Customer left">Food preparation delayed / Customer left</option>
+                <option value="Item out of stock / Kitchen unavailable">Item out of stock / Kitchen unavailable</option>
+                <option value="Quality / Taste dissatisfaction">Quality / Taste dissatisfaction</option>
+                <option value="Customer replaced with other dish">Customer replaced with other dish</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <input
+                type="checkbox"
+                id="pos-restock-item"
+                checked={restockItemOption}
+                onChange={e => setRestockItemOption(e.target.checked)}
+                className="h-4 w-4 rounded text-rose-600 focus:ring-rose-500"
+              />
+              <label htmlFor="pos-restock-item" className="text-xs font-semibold text-slate-700 cursor-pointer">
+                Return ingredients / item back to store stock (Restock)
+              </label>
+            </div>
+
+            <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-900 font-medium">
+              🔔 <strong>Kitchen KDS Alert:</strong> An urgent cancellation banner will flash immediately on the Chef KDS display so preparation is stopped.
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCancelItemModal(false);
+                  setCancellingItemIdx(null);
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Keep Item
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelItemConfirm}
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md transition cursor-pointer"
+              >
+                Confirm Cancellation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RESTAURANT REPLACE ITEM MODAL */}
+      {showReplaceItemModal && replacingItemIdx !== null && cart[replacingItemIdx] && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-100 text-amber-800 rounded-xl">
+                  <RefreshCw className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base">Replace / Substitute Menu Item</h3>
+                  <p className="text-[11px] text-slate-500">{activeTableName || 'Table'} • Instant price adjustment & KOT alert</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReplaceItemModal(false);
+                  setReplacingItemIdx(null);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Current Dish:</div>
+                <div className="text-sm font-black text-amber-950 mt-0.5">{cart[replacingItemIdx].itemName}</div>
+                <div className="text-xs text-amber-700 font-mono">
+                  Qty: {cart[replacingItemIdx].qty} • Rate: {config.CurrencySymbol || 'Nu.'} {Number(cart[replacingItemIdx].rate).toFixed(2)}
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-2 py-0.5 rounded-full">
+                  Replacing
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Select New Replacement Dish / Item</label>
+              <select
+                value={replacementItemCode}
+                onChange={e => setReplacementItemCode(e.target.value)}
+                className="w-full h-10 rounded-xl border border-slate-300 px-3 text-xs font-bold text-slate-900 focus:border-amber-500 focus:ring-1 focus:ring-amber-200 outline-none bg-slate-50/50"
+              >
+                <option value="">-- Choose Replacement Menu Item --</option>
+                {items
+                  .filter(i => i['Item Code'] !== cart[replacingItemIdx]?.itemCode)
+                  .map(it => (
+                    <option key={it['Item Code']} value={it['Item Code']}>
+                      {it['Item Name']} — {config.CurrencySymbol || 'Nu.'} {Number(it['Sale Rate'] || 0).toFixed(2)} ({it.Unit || 'Pcs'})
+                    </option>
+                  ))}
+              </select>
+            </div>
+
+            {replacementItemCode && (() => {
+              const selectedReplacement = items.find(i => i['Item Code'] === replacementItemCode);
+              const oldRate = Number(cart[replacingItemIdx].rate) || 0;
+              const newRate = Number(selectedReplacement?.['Sale Rate']) || 0;
+              const diff = newRate - oldRate;
+              return (
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-1">
+                  <div className="flex justify-between font-semibold text-slate-600">
+                    <span>New Dish Rate:</span>
+                    <span className="font-mono font-bold text-slate-900">{config.CurrencySymbol || 'Nu.'} {newRate.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold">
+                    <span>Price Difference per unit:</span>
+                    <span className={`font-mono ${diff > 0 ? 'text-emerald-600' : diff < 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+                      {diff > 0 ? `+${config.CurrencySymbol || 'Nu.'} ${diff.toFixed(2)} (Extra)` : diff < 0 ? `-${config.CurrencySymbol || 'Nu.'} ${Math.abs(diff).toFixed(2)} (Refund)` : 'Same Price'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Reason for Replacement</label>
+              <input
+                type="text"
+                value={replaceReason}
+                onChange={e => setReplaceReason(e.target.value)}
+                placeholder="e.g. Customer wanted spicy curry instead of soup"
+                className="w-full h-9 rounded-xl border border-slate-300 px-3 text-xs font-medium focus:border-amber-500 focus:ring-1 focus:ring-amber-200 outline-none"
+              />
+            </div>
+
+            <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-[11px] text-blue-900 font-medium">
+              👨‍🍳 <strong>Kitchen Display:</strong> The chef's KDS screen will automatically replace the ticket item and highlight the replacement with an amber badge.
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReplaceItemModal(false);
+                  setReplacingItemIdx(null);
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleReplaceItemConfirm}
+                disabled={!replacementItemCode}
+                className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-slate-950 font-black text-xs shadow-md transition disabled:opacity-50 cursor-pointer"
+              >
+                Confirm Replacement
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RESTAURANT CANCEL ENTIRE TABLE ORDER MODAL */}
+      {showCancelTableOrderModal && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-rose-100 text-rose-700 rounded-xl">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base">Cancel Entire Table Order</h3>
+                  <p className="text-[11px] text-slate-500">{activeTableName || 'Table'} • Reset status & clear tickets</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCancelTableOrderModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-950 space-y-1.5">
+              <div className="font-bold">Are you sure you want to cancel the entire order for {activeTableName}?</div>
+              <div className="text-[11px] text-rose-800">
+                This will cancel all {cart.length} active order items, notify the kitchen KDS, and free up the table for new diners.
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Reason for Order Cancellation</label>
+              <select
+                value={cancelTableReason}
+                onChange={e => setCancelTableReason(e.target.value)}
+                className="w-full h-9 rounded-xl border border-slate-300 px-3 text-xs font-semibold focus:border-rose-500 focus:ring-1 focus:ring-rose-200 outline-none"
+              >
+                <option value="Customer left without dining">Customer left without dining</option>
+                <option value="Severe delay in food prep">Severe delay in food prep</option>
+                <option value="Order booked on wrong table">Order booked on wrong table</option>
+                <option value="Customer emergency">Customer emergency</option>
+                <option value="Test / accidental order">Test / accidental order</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <input
+                type="checkbox"
+                id="pos-restock-all"
+                checked={restockTableOption}
+                onChange={e => setRestockTableOption(e.target.checked)}
+                className="h-4 w-4 rounded text-rose-600 focus:ring-rose-500"
+              />
+              <label htmlFor="pos-restock-all" className="text-xs font-semibold text-slate-700 cursor-pointer">
+                Restock raw materials and items back to inventory
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowCancelTableOrderModal(false)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Keep Order Active
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelTableOrderConfirm}
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-md transition cursor-pointer"
+              >
+                Cancel Entire Order
               </button>
             </div>
           </div>

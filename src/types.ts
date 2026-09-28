@@ -31,6 +31,7 @@ export interface Config {
   CompanyBankDetails: string;
   EnableGST: string; // "true" | "false"
   EnableGSTInputTax?: string; // "true" | "false"
+  EnableTDS2Tracking?: string; // "true" | "false"
   gstInputConfigs?: string; // JSON encoded GstInputTypeConfig[]
   EnableSerials: string; // "true" | "false"
   EnablePharmacyBatch?: string; // "true" | "false"
@@ -106,6 +107,18 @@ export interface Config {
   EnableBarcodePrinting?: string; // "true" | "false"
   EnableMultiBranch?: string; // "true" | "false"
   EnableMultiGodown?: string; // "true" | "false"
+  EnableQuotations?: string; // "true" | "false"
+  EnableDeliveryNotes?: string; // "true" | "false"
+  EnableRestaurantMode?: string; // "true" | "false"
+  EnableTableBilling?: string; // "true" | "false"
+  EnableDigitalMenuQR?: string; // "true" | "false"
+  EnableQRDirectOrdering?: string; // "true" | "false"
+  EnableWaiterMobilePad?: string; // "true" | "false"
+  EnableKDSAndKitchenIssue?: string; // "true" | "false"
+  EnableRestaurantServiceCharge?: string; // "true" | "false"
+  RestaurantServiceChargePct?: string; // e.g. "10"
+  RestaurantGstRate?: string; // e.g. "5"
+  RestaurantNoStockTracking?: string; // "true" | "false"
   BranchTransferMode?: 'flexible' | 'direct' | 'challan';
   StockTransferPrefix?: string;
   TransferChallanPrefix?: string;
@@ -251,7 +264,7 @@ export interface AppUser {
   id: string;
   username: string;
   fullName: string;
-  role: 'superadmin' | 'Administrator' | 'admin' | 'Manager' | 'Cashier' | 'Accountant' | 'Custom';
+  role: 'superadmin' | 'Administrator' | 'admin' | 'Manager' | 'Cashier' | 'Accountant' | 'Waiter' | 'Kitchen' | 'Store' | 'BillingCounter' | 'Custom';
   pinCode?: string;
   status: 'Active' | 'Inactive';
   permissions: UserPermission[];
@@ -490,6 +503,15 @@ export interface SalesInvoice {
   companyId?: string;
   company_id?: string;
   isPOS?: boolean;
+  isRestaurantOrder?: boolean;
+  tableId?: string;
+  tableName?: string;
+  waiterName?: string;
+  guestCount?: number;
+  billTotal?: number;
+  serviceChargeAmt?: number;
+  serviceChargePct?: number;
+  totalWithServiceCharge?: number;
   invoiceNo: string;
   orderNo?: string;
   orderDate?: string;
@@ -756,6 +778,16 @@ export interface Voucher {
   gstAmount?: number;
   totalImportAmount?: number;
   customGstData?: Record<string, any>;
+  // TDS 2% Form IT-7(B) Contract Tracking Fields
+  isTdsApplicable?: boolean;
+  tdsTpn?: string;
+  tdsContractorNameAndAddress?: string;
+  tdsWorkDescription?: string;
+  tdsInvoiceNo?: string;
+  tdsInvoiceDate?: string;
+  tdsBillAmount?: number;
+  tdsRate?: number;
+  tdsAmount?: number;
   billAllocations?: BillAllocation[];
   items?: Array<{
     itemCode: string;

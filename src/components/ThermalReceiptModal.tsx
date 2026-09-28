@@ -145,6 +145,18 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
   const netAmountPaid = Number(invoice.total || 0);
   const totalSavingsIncGst = Math.max(0, Math.round((undiscountedBillIncGst - netAmountPaid) * 100) / 100);
 
+  const isRestaurant = config.EnableRestaurantMode === 'true' || Boolean(invoice.isRestaurantOrder) || Number(invoice.serviceChargeAmt || 0) > 0;
+  const rawSubtotal = Number(invoice.subtotal !== undefined ? invoice.subtotal : (Number(invoice.billTotal !== undefined ? invoice.billTotal : invoice.total || 0) + Number(invoice.discount || 0)));
+  const rDiscount = Number(invoice.discount || 0);
+  const rFoodSubtotalNet = Math.max(0, rawSubtotal - rDiscount);
+  const serviceChargePct = Number(invoice.serviceChargePct !== undefined ? invoice.serviceChargePct : (Number(config.RestaurantServiceChargePct || '10') || 10));
+  const serviceChargeAmt = Number(invoice.serviceChargeAmt !== undefined ? invoice.serviceChargeAmt : ((config.EnableRestaurantServiceCharge !== 'false' && isRestaurant) ? ((rFoodSubtotalNet * serviceChargePct) / 100) : 0));
+  const rBillAmount = Number(invoice.totalWithServiceCharge !== undefined ? invoice.totalWithServiceCharge : (rFoodSubtotalNet + serviceChargeAmt));
+  const rExemptedSale = Number(invoice.zeroRated || 0);
+  const rTaxableSale = Math.max(0, rBillAmount - rExemptedSale);
+  const rGstAmt = Number(invoice.gstAmt !== undefined && invoice.gstAmt > 0 ? invoice.gstAmt : (rTaxableSale * (Number(config.RestaurantGstRate || '5') / 100)));
+  const rTotalInvoiceAmt = Number(invoice.total || (rBillAmount + rGstAmt));
+
   const generateInvoiceText = () => {
     if (!invoice) return '';
     const safeItems = Array.isArray(invoice.items) ? invoice.items : [];
@@ -155,10 +167,11 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
 
     const lines = [
       `🧾 *TAX INVOICE: ${invoice.invoiceNo || 'INV'}*`,
-      `🏪 *${config.CompanyName || 'Retail Store'}*`,
+      `🏪 *${config.CompanyName || (isRestaurant ? 'Restaurant & Dining' : 'Retail Store')}*`,
       config.Address ? `📍 ${config.Address}` : '',
       showGst && config.CompanyGSTNo ? `🏛 GSTIN: ${config.CompanyGSTNo}` : '',
       `📅 Date: ${invoice.date ? new Date(invoice.date).toLocaleString() : new Date().toLocaleString()}`,
+      invoice.tableName ? `🍽️ Table: ${invoice.tableName}` : '',
       `👤 Customer: ${partyName}`,
       partyPhone ? `📞 Phone: ${partyPhone}` : '',
       '--------------------------------',
@@ -184,20 +197,31 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
         return `• *${returnPrefix}${itemName}* (${itemQty} ${itemUnit} @ ${currency} ${itemRate.toFixed(2)}${discText}) | Sale Amt: ${currency} ${saleAmt}${gstInfo} | Total: ${currency} ${itemLineTotal.toFixed(2)}`;
       }),
       '--------------------------------',
-      hasGstOnBill ? `Taxable Sale: ${currency} ${Number(invoice.taxable || 0).toFixed(2)}` : '',
-      (hasGstOnBill && Number(invoice.zeroRated || 0) > 0) ? `Exempted Sale: ${currency} ${Number(invoice.zeroRated || 0).toFixed(2)}` : '',
-      hasGstOnBill ? `GST Amount: ${currency} ${Number(invoice.gstAmt || 0).toFixed(2)}` : '',
-      ...(Array.isArray(invoice.additionalExpenses) && invoice.additionalExpenses.length > 0 ? invoice.additionalExpenses.map((exp: any) => `Addl Charge (${exp.ledger || 'Exp'}): ${currency} ${Number(exp.amount || 0).toFixed(2)}`) : []),
-      (Number(invoice.discount || 0) > 0) ? `Subtotal: ${currency} ${Number(invoice.subtotal || (Number(invoice.total || 0) + Number(invoice.discount || 0))).toFixed(2)}` : '',
-      (invoiceSavings.itemDiscountsTotal > 0) ? `Item Discounts: -${currency} ${invoiceSavings.itemDiscountsTotal.toFixed(2)}` : '',
-      (Number(invoice.discount || 0) > 0) ? `Bill Discount: -${currency} ${Number(invoice.discount || 0).toFixed(2)}` : '',
-      `*GRAND TOTAL: ${currency} ${Number(invoice.total || 0).toFixed(2)}*`,
-      (invoiceSavings.totalSavings > 0) ? `*TOTAL SAVINGS: ${currency} ${invoiceSavings.totalSavings.toFixed(2)}*` : '',
+      ...(isRestaurant ? [
+        `Subtotal: ${currency} ${rawSubtotal.toFixed(2)}`,
+        (rDiscount > 0) ? `Less: Discount: -${currency} ${rDiscount.toFixed(2)}` : '',
+        serviceChargeAmt > 0 ? `Add: Service Charge (${serviceChargePct}%): +${currency} ${serviceChargeAmt.toFixed(2)}` : '',
+        `Bill Amount: ${currency} ${rBillAmount.toFixed(2)}`,
+        showGst ? `Taxable Sale: ${currency} ${rTaxableSale.toFixed(2)}` : '',
+        showGst ? `Exempted Sale: ${currency} ${rExemptedSale.toFixed(2)}` : '',
+        (showGst && rGstAmt > 0) ? `GST Amount (5%): +${currency} ${rGstAmt.toFixed(2)}` : '',
+        `*TOTAL INVOICE AMOUNT: ${currency} ${rTotalInvoiceAmt.toFixed(2)}*`
+      ] : [
+        hasGstOnBill ? `Taxable Sale: ${currency} ${Number(invoice.taxable || 0).toFixed(2)}` : '',
+        (hasGstOnBill && Number(invoice.zeroRated || 0) > 0) ? `Exempted Sale: ${currency} ${Number(invoice.zeroRated || 0).toFixed(2)}` : '',
+        hasGstOnBill ? `GST Amount: ${currency} ${Number(invoice.gstAmt || 0).toFixed(2)}` : '',
+        ...(Array.isArray(invoice.additionalExpenses) && invoice.additionalExpenses.length > 0 ? invoice.additionalExpenses.map((exp: any) => `Addl Charge (${exp.ledger || 'Exp'}): ${currency} ${Number(exp.amount || 0).toFixed(2)}`) : []),
+        (Number(invoice.discount || 0) > 0) ? `Subtotal: ${currency} ${Number(invoice.subtotal || (Number(invoice.total || 0) + Number(invoice.discount || 0))).toFixed(2)}` : '',
+        (invoiceSavings.itemDiscountsTotal > 0) ? `Item Discounts: -${currency} ${invoiceSavings.itemDiscountsTotal.toFixed(2)}` : '',
+        (Number(invoice.discount || 0) > 0) ? `Bill Discount: -${currency} ${Number(invoice.discount || 0).toFixed(2)}` : '',
+        `*GRAND TOTAL: ${currency} ${Number(invoice.total || 0).toFixed(2)}*`,
+        (invoiceSavings.totalSavings > 0) ? `*TOTAL SAVINGS: ${currency} ${invoiceSavings.totalSavings.toFixed(2)}*` : ''
+      ]),
       '--------------------------------',
       `Paid: Cash ${currency} ${Number(invoice.cash || 0).toFixed(2)} | Bank ${currency} ${(Number(invoice.bank1 || 0) + Number(invoice.bank2 || 0)).toFixed(2)}`,
       Number(invoice.credit || 0) > 0 ? `⚠️ *Credit Balance Due: ${currency} ${Number(invoice.credit || 0).toFixed(2)}*` : '✅ *Status: Fully Paid*',
       config.CompanyBankDetails ? `\n*Bank Details:*\n${config.CompanyBankDetails}` : '',
-      `\nThank you for choosing ${config.CompanyName || 'us'}! Visit Again.`
+      `\nThank you for choosing ${config.CompanyName || (isRestaurant ? 'us' : 'our store')}! Visit Again.`
     ].filter(Boolean);
 
     return lines.join('\n');
@@ -421,43 +445,84 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
 
           <div class="dashed-line"></div>
 
-          ${hasGstOnBill ? `
+          ${isRestaurant ? `
             <div class="summary-row">
-              <span>Taxable Sale:</span>
-              <span>${invoice.taxable.toFixed(2)}</span>
-            </div>
-            <div class="summary-row">
-              <span>Exempted Sale:</span>
-              <span>${invoice.zeroRated.toFixed(2)}</span>
-            </div>
-            <div class="summary-row">
-              <span>GST Amount:</span>
-              <span>${invoice.gstAmt.toFixed(2)}</span>
-            </div>
-          ` : ''}
-
-          ${(invoice.additionalExpenses && invoice.additionalExpenses.length > 0) ? invoice.additionalExpenses.map(exp => `
-            <div class="summary-row">
-              <span>Addl (${exp.ledger}):</span>
-              <span>${Number(exp.amount).toFixed(2)}</span>
-            </div>
-          `).join('') : ''}
-
-          ${(invoice.discount && invoice.discount > 0) ? `
-            <div class="summary-row" style="color: #475569;">
               <span>Subtotal:</span>
-              <span>${(invoice.subtotal || (invoice.total + invoice.discount)).toFixed(2)}</span>
+              <span>${currency} ${rawSubtotal.toFixed(2)}</span>
             </div>
-            <div class="summary-row" style="font-weight: bold; color: #166534;">
-              <span>Bill Discount:</span>
-              <span>-${invoice.discount.toFixed(2)}</span>
+            ${rDiscount > 0 ? `
+              <div class="summary-row" style="color: #dc2626; font-weight: bold;">
+                <span>Less: Discount:</span>
+                <span>-${currency} ${rDiscount.toFixed(2)}</span>
+              </div>
+            ` : ''}
+            ${serviceChargeAmt > 0 ? `
+              <div class="summary-row">
+                <span>Add: Service Charge (${serviceChargePct}%):</span>
+                <span>+${currency} ${serviceChargeAmt.toFixed(2)}</span>
+              </div>
+            ` : ''}
+            <div class="summary-row" style="font-weight: bold; border-top: 1px dashed #000; padding-top: 2px;">
+              <span>Bill Amount:</span>
+              <span>${currency} ${rBillAmount.toFixed(2)}</span>
             </div>
-          ` : ''}
+            ${showGst ? `
+              <div class="summary-row">
+                <span>Taxable Sale:</span>
+                <span>${currency} ${rTaxableSale.toFixed(2)}</span>
+              </div>
+              <div class="summary-row">
+                <span>Exempted Sale:</span>
+                <span>${currency} ${rExemptedSale.toFixed(2)}</span>
+              </div>
+              <div class="summary-row">
+                <span>GST Amount (5%):</span>
+                <span>+${currency} ${rGstAmt.toFixed(2)}</span>
+              </div>
+            ` : ''}
+            <div class="total-row">
+              <span>Total Invoice Amount:</span>
+              <span>${currency} ${rTotalInvoiceAmt.toFixed(2)}</span>
+            </div>
+          ` : `
+            ${hasGstOnBill ? `
+              <div class="summary-row">
+                <span>Taxable Sale:</span>
+                <span>${invoice.taxable.toFixed(2)}</span>
+              </div>
+              <div class="summary-row">
+                <span>Exempted Sale:</span>
+                <span>${invoice.zeroRated.toFixed(2)}</span>
+              </div>
+              <div class="summary-row">
+                <span>GST Amount:</span>
+                <span>${invoice.gstAmt.toFixed(2)}</span>
+              </div>
+            ` : ''}
 
-          <div class="total-row">
-            <span>Total Invoice Amount:</span>
-            <span>${currency} ${invoice.total.toFixed(2)}</span>
-          </div>
+            ${(invoice.additionalExpenses && invoice.additionalExpenses.length > 0) ? invoice.additionalExpenses.map(exp => `
+              <div class="summary-row">
+                <span>Addl (${exp.ledger}):</span>
+                <span>${Number(exp.amount).toFixed(2)}</span>
+              </div>
+            `).join('') : ''}
+
+            ${(invoice.discount && invoice.discount > 0) ? `
+              <div class="summary-row" style="color: #475569;">
+                <span>Subtotal:</span>
+                <span>${(invoice.subtotal || (invoice.total + invoice.discount)).toFixed(2)}</span>
+              </div>
+              <div class="summary-row" style="font-weight: bold; color: #166534;">
+                <span>Bill Discount:</span>
+                <span>-${invoice.discount.toFixed(2)}</span>
+              </div>
+            ` : ''}
+
+            <div class="total-row">
+              <span>Total Invoice Amount:</span>
+              <span>${currency} ${invoice.total.toFixed(2)}</span>
+            </div>
+          `}
 
           ${(totalSavingsIncGst > 0.005 || invoiceSavings.totalSavings > 0) ? `
             <div style="margin: 6px 0 4px 0; padding: 5px 4px; border: 1px dashed #000; font-size: 10px; line-height: 1.45;">
@@ -774,28 +839,69 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
             </div>
 
             <div class="calc-box">
-              ${hasGstOnBill ? `
-                <div class="calc-row"><span>Taxable Amount:</span><span>${currency} ${invoice.taxable.toFixed(2)}</span></div>
-                <div class="calc-row"><span>Zero-Rated / Exempt:</span><span>${currency} ${invoice.zeroRated.toFixed(2)}</span></div>
-                <div class="calc-row"><span>Total GST:</span><span>${currency} ${invoice.gstAmt.toFixed(2)}</span></div>
-              ` : ''}
-              ${(invoice.additionalExpenses && invoice.additionalExpenses.length > 0) ? invoice.additionalExpenses.map(exp => `
-                <div class="calc-row"><span>Addl Charge (${exp.ledger}):</span><span>${currency} ${Number(exp.amount).toFixed(2)}</span></div>
-              `).join('') : ''}
-              ${(invoice.discount && invoice.discount > 0) ? `
+              ${isRestaurant ? `
                 <div class="calc-row">
-                  <span>Gross Subtotal:</span>
-                  <span>${currency} ${(invoice.subtotal || (invoice.total + invoice.discount)).toFixed(2)}</span>
+                  <span>Subtotal:</span>
+                  <span>${currency} ${rawSubtotal.toFixed(2)}</span>
                 </div>
-                <div class="calc-row" style="color: #dc2626; font-weight: bold;">
-                  <span>Bill / Lumpsum Discount:</span>
-                  <span>-${currency} ${invoice.discount.toFixed(2)}</span>
+                ${rDiscount > 0 ? `
+                  <div class="calc-row" style="color: #dc2626; font-weight: bold;">
+                    <span>Less: Discount:</span>
+                    <span>-${currency} ${rDiscount.toFixed(2)}</span>
+                  </div>
+                ` : ''}
+                ${serviceChargeAmt > 0 ? `
+                  <div class="calc-row">
+                    <span>Add: Service Charge (${serviceChargePct}%):</span>
+                    <span>+${currency} ${serviceChargeAmt.toFixed(2)}</span>
+                  </div>
+                ` : ''}
+                <div class="calc-row" style="font-weight: bold; background-color: #f1f5f9; padding: 3px 6px; border-radius: 4px; border: 1px solid #cbd5e1;">
+                  <span style="color: #1e293b;">Bill Amount:</span>
+                  <span style="color: #0f172a; font-size: 11px;">${currency} ${rBillAmount.toFixed(2)}</span>
                 </div>
-              ` : ''}
-              <div class="grand-total-row">
-                <span>Total Invoice Amount:</span>
-                <span>${currency} ${invoice.total.toFixed(2)}</span>
-              </div>
+                ${showGst ? `
+                  <div class="calc-row">
+                    <span>Taxable Sale:</span>
+                    <span>${currency} ${rTaxableSale.toFixed(2)}</span>
+                  </div>
+                  <div class="calc-row">
+                    <span>Exempted Sale:</span>
+                    <span>${currency} ${rExemptedSale.toFixed(2)}</span>
+                  </div>
+                  <div class="calc-row">
+                    <span>GST Amount (5%):</span>
+                    <span>+${currency} ${rGstAmt.toFixed(2)}</span>
+                  </div>
+                ` : ''}
+                <div class="grand-total-row">
+                  <span>Total Invoice Amount:</span>
+                  <span>${currency} ${rTotalInvoiceAmt.toFixed(2)}</span>
+                </div>
+              ` : `
+                ${hasGstOnBill ? `
+                  <div class="calc-row"><span>Taxable Amount:</span><span>${currency} ${invoice.taxable.toFixed(2)}</span></div>
+                  <div class="calc-row"><span>Zero-Rated / Exempt:</span><span>${currency} ${invoice.zeroRated.toFixed(2)}</span></div>
+                  <div class="calc-row"><span>Total GST:</span><span>${currency} ${invoice.gstAmt.toFixed(2)}</span></div>
+                ` : ''}
+                ${(invoice.additionalExpenses && invoice.additionalExpenses.length > 0) ? invoice.additionalExpenses.map(exp => `
+                  <div class="calc-row"><span>Addl Charge (${exp.ledger}):</span><span>${currency} ${Number(exp.amount).toFixed(2)}</span></div>
+                `).join('') : ''}
+                ${(invoice.discount && invoice.discount > 0) ? `
+                  <div class="calc-row">
+                    <span>Gross Subtotal:</span>
+                    <span>${currency} ${(invoice.subtotal || (invoice.total + invoice.discount)).toFixed(2)}</span>
+                  </div>
+                  <div class="calc-row" style="color: #dc2626; font-weight: bold;">
+                    <span>Bill / Lumpsum Discount:</span>
+                    <span>-${currency} ${invoice.discount.toFixed(2)}</span>
+                  </div>
+                ` : ''}
+                <div class="grand-total-row">
+                  <span>Total Invoice Amount:</span>
+                  <span>${currency} ${invoice.total.toFixed(2)}</span>
+                </div>
+              `}
               ${(totalSavingsIncGst > 0.005 || invoiceSavings.totalSavings > 0) ? `
                 <div style="margin-top: 6px; padding: 6px 8px; border: 1.5px dashed #16a34a; background-color: #f0fdf4; border-radius: 6px; font-size: 10px; line-height: 1.5;">
                   <div style="background-color: #15803d; color: #ffffff; font-weight: bold; font-size: 10px; padding: 3px 6px; border-radius: 4px; text-align: left; margin-bottom: 4px; letter-spacing: 0.2px;">
@@ -1052,51 +1158,98 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
 
               <div className="my-2 border-b border-dashed border-slate-800" />
 
-              {hasGstOnBill && (
-                <div className="space-y-0.5">
+              {isRestaurant ? (
+                <div className="space-y-0.5 text-slate-800">
                   <div className="flex justify-between">
-                    <span>Taxable Sale:</span>
-                    <span>{invoice.taxable.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Exempted Sale:</span>
-                    <span>{invoice.zeroRated.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>GST Amount:</span>
-                    <span>{invoice.gstAmt.toFixed(2)}</span>
-                  </div>
-                </div>
-              )}
-
-              {invoice.additionalExpenses && invoice.additionalExpenses.length > 0 && (
-                <div className="space-y-0.5 pt-1 mt-1 border-t border-dashed border-slate-300">
-                  {invoice.additionalExpenses.map((exp, idx) => (
-                    <div key={idx} className="flex justify-between">
-                      <span>Addl ({exp.ledger}):</span>
-                      <span>{Number(exp.amount).toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {invoice.discount && invoice.discount > 0 ? (
-                <div className="space-y-0.5 pt-1 mt-1 border-t border-dashed border-slate-300">
-                  <div className="flex justify-between text-slate-500">
                     <span>Subtotal:</span>
-                    <span>{(invoice.subtotal || (invoice.total + invoice.discount)).toFixed(2)}</span>
+                    <span>{currency} {rawSubtotal.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between font-bold text-red-600">
-                    <span>Bill Discount:</span>
-                    <span>-{invoice.discount.toFixed(2)}</span>
+                  {rDiscount > 0 && (
+                    <div className="flex justify-between font-bold text-red-600">
+                      <span>Less: Discount:</span>
+                      <span>-{currency} {rDiscount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {serviceChargeAmt > 0 && (
+                    <div className="flex justify-between">
+                      <span>Add: Service Charge ({serviceChargePct}%):</span>
+                      <span>+{currency} {serviceChargeAmt.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold border-t border-dashed border-slate-300 pt-0.5">
+                    <span>Bill Amount:</span>
+                    <span>{currency} {rBillAmount.toFixed(2)}</span>
+                  </div>
+                  {showGst && (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Taxable Sale:</span>
+                        <span>{currency} {rTaxableSale.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Exempted Sale:</span>
+                        <span>{currency} {rExemptedSale.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>GST Amount (5%):</span>
+                        <span>+{currency} {rGstAmt.toFixed(2)}</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="mt-2 pt-1 border-t border-slate-900 flex justify-between font-bold text-xs">
+                    <span>Total Invoice Amount:</span>
+                    <span>{currency} {rTotalInvoiceAmt.toFixed(2)}</span>
                   </div>
                 </div>
-              ) : null}
+              ) : (
+                <>
+                  {hasGstOnBill && (
+                    <div className="space-y-0.5">
+                      <div className="flex justify-between">
+                        <span>Taxable Sale:</span>
+                        <span>{invoice.taxable.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Exempted Sale:</span>
+                        <span>{invoice.zeroRated.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>GST Amount:</span>
+                        <span>{invoice.gstAmt.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
 
-              <div className="mt-2 pt-1 border-t border-slate-900 flex justify-between font-bold text-xs">
-                <span>Total Invoice Amount:</span>
-                <span>{currency} {invoice.total.toFixed(2)}</span>
-              </div>
+                  {invoice.additionalExpenses && invoice.additionalExpenses.length > 0 && (
+                    <div className="space-y-0.5 pt-1 mt-1 border-t border-dashed border-slate-300">
+                      {invoice.additionalExpenses.map((exp, idx) => (
+                        <div key={idx} className="flex justify-between">
+                          <span>Addl ({exp.ledger}):</span>
+                          <span>{Number(exp.amount).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {invoice.discount && invoice.discount > 0 ? (
+                    <div className="space-y-0.5 pt-1 mt-1 border-t border-dashed border-slate-300">
+                      <div className="flex justify-between text-slate-500">
+                        <span>Subtotal:</span>
+                        <span>{(invoice.subtotal || (invoice.total + invoice.discount)).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-red-600">
+                        <span>Bill Discount:</span>
+                        <span>-{invoice.discount.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-2 pt-1 border-t border-slate-900 flex justify-between font-bold text-xs">
+                    <span>Total Invoice Amount:</span>
+                    <span>{currency} {invoice.total.toFixed(2)}</span>
+                  </div>
+                </>
+              )}
 
               {(totalSavingsIncGst > 0.005 || invoiceSavings.totalSavings > 0) && (
                 <div className="my-2 py-1.5 px-2 border border-dashed border-slate-800 rounded text-[10px] space-y-0.5">
@@ -1203,51 +1356,98 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                 </table>
               </div>
 
-              {hasGstOnBill && (
-                <div className="space-y-1 text-slate-600 text-[11px] pt-1">
-                  <div className="flex justify-between">
-                    <span>Taxable Amount:</span>
-                    <span className="font-semibold text-slate-800">{currency} {invoice.taxable.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Exempted / Zero-Rated:</span>
-                    <span className="font-semibold text-slate-800">{currency} {invoice.zeroRated.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>GST Amount:</span>
-                    <span className="font-semibold text-slate-800">{currency} {invoice.gstAmt.toFixed(2)}</span>
-                  </div>
-                </div>
-              )}
-
-              {invoice.additionalExpenses && invoice.additionalExpenses.length > 0 && (
+              {isRestaurant ? (
                 <div className="space-y-1 text-slate-700 text-[11px] pt-1 border-t border-slate-100">
-                  {invoice.additionalExpenses.map((exp, idx) => (
-                    <div key={idx} className="flex justify-between">
-                      <span>Addl Charge ({exp.ledger}):</span>
-                      <span className="font-semibold text-slate-800">{currency} {Number(exp.amount).toFixed(2)}</span>
+                  <div className="flex justify-between">
+                    <span>Subtotal:</span>
+                    <span className="font-semibold text-slate-800">{currency} {rawSubtotal.toFixed(2)}</span>
+                  </div>
+                  {rDiscount > 0 && (
+                    <div className="flex justify-between font-bold text-red-600">
+                      <span>Less: Discount:</span>
+                      <span>-{currency} {rDiscount.toFixed(2)}</span>
                     </div>
-                  ))}
+                  )}
+                  {serviceChargeAmt > 0 && (
+                    <div className="flex justify-between">
+                      <span>Add: Service Charge ({serviceChargePct}%):</span>
+                      <span className="font-semibold text-slate-800">+{currency} {serviceChargeAmt.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold bg-slate-100 p-1 rounded">
+                    <span>Bill Amount:</span>
+                    <span className="text-slate-900">{currency} {rBillAmount.toFixed(2)}</span>
+                  </div>
+                  {showGst && (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Taxable Sale:</span>
+                        <span className="font-semibold text-slate-800">{currency} {rTaxableSale.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Exempted Sale:</span>
+                        <span className="font-semibold text-slate-800">{currency} {rExemptedSale.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>GST Amount (5%):</span>
+                        <span className="font-semibold text-slate-800">+{currency} {rGstAmt.toFixed(2)}</span>
+                      </div>
+                    </>
+                  )}
+                  <div className="flex justify-between items-center pt-2 border-t border-slate-200 font-bold">
+                    <span className="text-slate-700">Total Invoice Amount:</span>
+                    <span className="text-sm text-indigo-700 font-extrabold">{currency} {rTotalInvoiceAmt.toFixed(2)}</span>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  {hasGstOnBill && (
+                    <div className="space-y-1 text-slate-600 text-[11px] pt-1">
+                      <div className="flex justify-between">
+                        <span>Taxable Amount:</span>
+                        <span className="font-semibold text-slate-800">{currency} {invoice.taxable.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Exempted / Zero-Rated:</span>
+                        <span className="font-semibold text-slate-800">{currency} {invoice.zeroRated.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>GST Amount:</span>
+                        <span className="font-semibold text-slate-800">{currency} {invoice.gstAmt.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {invoice.additionalExpenses && invoice.additionalExpenses.length > 0 && (
+                    <div className="space-y-1 text-slate-700 text-[11px] pt-1 border-t border-slate-100">
+                      {invoice.additionalExpenses.map((exp, idx) => (
+                        <div key={idx} className="flex justify-between">
+                          <span>Addl Charge ({exp.ledger}):</span>
+                          <span className="font-semibold text-slate-800">{currency} {Number(exp.amount).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {invoice.discount && invoice.discount > 0 ? (
+                    <div className="space-y-1 text-[11px] pt-1 border-t border-slate-100">
+                      <div className="flex justify-between text-slate-500">
+                        <span>Gross Subtotal:</span>
+                        <span className="font-semibold">{currency} {(invoice.subtotal || (invoice.total + invoice.discount)).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-red-600">
+                        <span>Bill / Lumpsum Discount:</span>
+                        <span>-{currency} {invoice.discount.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="flex justify-between items-center pt-2 border-t border-slate-200 font-bold">
+                    <span className="text-slate-700">Total Invoice Amount:</span>
+                    <span className="text-sm text-indigo-700 font-extrabold">{currency} {invoice.total.toFixed(2)}</span>
+                  </div>
+                </>
               )}
-
-              {invoice.discount && invoice.discount > 0 ? (
-                <div className="space-y-1 text-[11px] pt-1 border-t border-slate-100">
-                  <div className="flex justify-between text-slate-500">
-                    <span>Gross Subtotal:</span>
-                    <span className="font-semibold">{currency} {(invoice.subtotal || (invoice.total + invoice.discount)).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-red-600">
-                    <span>Bill / Lumpsum Discount:</span>
-                    <span>-{currency} {invoice.discount.toFixed(2)}</span>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="flex justify-between items-center pt-2 border-t border-slate-200 font-bold">
-                <span className="text-slate-700">Total Invoice Amount:</span>
-                <span className="text-sm text-indigo-700 font-extrabold">{currency} {invoice.total.toFixed(2)}</span>
-              </div>
 
               {(totalSavingsIncGst > 0.005 || invoiceSavings.totalSavings > 0) && (
                 <div className="mt-2 py-2 px-3 border border-dashed border-emerald-600 bg-emerald-50 rounded-lg text-[11px] space-y-1">

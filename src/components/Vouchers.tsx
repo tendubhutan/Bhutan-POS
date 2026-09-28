@@ -162,6 +162,392 @@ export const Vouchers: React.FC<VouchersProps> = ({
   const [receiptNoteTab, setReceiptNoteTab] = useState<'create' | 'register'>('create');
   const [showRecurringModal, setShowRecurringModal] = useState(false);
 
+  // Single mode state
+  const [amount, setAmount] = useState<number | ''>('');
+  const [partyLedger, setPartyLedger] = useState('');
+  const [modeLedger, setModeLedger] = useState('');
+  const [debitLedger, setDebitLedger] = useState('');
+  const [creditLedger, setCreditLedger] = useState('');
+  const [fromAccount, setFromAccount] = useState('');
+  const [toAccount, setToAccount] = useState('');
+  const [transactionId, setTransactionId] = useState('');
+  
+  // GST Input Tracking State
+  const [gstInputType, setGstInputType] = useState<'Local Purchase' | 'Local Expenses' | 'Bank Charges' | 'Import Customs GST Payment' | 'Import Purchase' | 'None'>('None');
+  const [supplierName, setSupplierName] = useState('');
+  const [supplierGstNo, setSupplierGstNo] = useState('');
+  const [supplierCountry, setSupplierCountry] = useState('');
+  const [invoiceNo, setInvoiceNo] = useState('');
+  const [invoiceDate, setInvoiceDate] = useState('');
+  const [referenceNo, setReferenceNo] = useState('');
+  const [declarationNo, setDeclarationNo] = useState('');
+  const [declarationDate, setDeclarationDate] = useState('');
+  const [taxableAmount, setTaxableAmount] = useState<number | ''>('');
+  const [exemptedAmount, setExemptedAmount] = useState<number | ''>('');
+  const [gstAmount, setGstAmount] = useState<number | ''>('');
+  const [totalImportAmount, setTotalImportAmount] = useState<number | ''>('');
+  const [customGstData, setCustomGstData] = useState<Record<string, any>>({});
+
+  // TDS 2% (Liability) Form IT-7(B) Tracking State
+  const [isTdsApplicable, setIsTdsApplicable] = useState(false);
+  const [tdsTpn, setTdsTpn] = useState('');
+  const [tdsContractorNameAndAddress, setTdsContractorNameAndAddress] = useState('');
+  const [tdsWorkDescription, setTdsWorkDescription] = useState('');
+  const [tdsInvoiceNo, setTdsInvoiceNo] = useState('');
+  const [tdsInvoiceDate, setTdsInvoiceDate] = useState('');
+  const [tdsBillAmount, setTdsBillAmount] = useState<number | ''>('');
+  const [tdsRate, setTdsRate] = useState<number | ''>(2);
+  const [tdsAmount, setTdsAmount] = useState<number | ''>('');
+
+  // Multi mode grid state
+  const [lines, setLines] = useState<VoucherGridLine[]>([
+    { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
+    { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
+  ]);
+
+  const linesRef = useRef(lines);
+  useEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
+
+  const [bankTxnModal, setBankTxnModal] = useState<{
+    isOpen: boolean;
+    bankLedgerName: string;
+    focusNextElementId?: string;
+  }>({
+    isOpen: false,
+    bankLedgerName: '',
+    focusNextElementId: undefined
+  });
+
+  // Bill-wise Allocation State
+  const [billAllocations, setBillAllocations] = useState<BillAllocation[]>([]);
+  const [billModalOpen, setBillModalOpen] = useState(false);
+  const [showAcceptModal, setShowAcceptModal] = useState<'save' | 'share' | 'print' | false>(false);
+  const [billModalParty, setBillModalParty] = useState('');
+  const [billModalTargetLineId, setBillModalTargetLineId] = useState<string | null>(null);
+
+  // Quick Ledger Modal State (Create & Edit Mode)
+  const [showLedgerModal, setShowLedgerModal] = useState(false);
+  const [isEditingLedger, setIsEditingLedger] = useState(false);
+  const [editingOldName, setEditingOldName] = useState<string | null>(null);
+  const [targetLineId, setTargetLineId] = useState<string | null>(null);
+  const [targetSingleField, setTargetSingleField] = useState<string | null>(null);
+
+  const [newLedgerName, setNewLedgerName] = useState('');
+  const [newLedgerGroup, setNewLedgerGroup] = useState('Indirect Expenses');
+  const [newOpBalance, setNewOpBalance] = useState<number | ''>(0);
+  const [newBalanceType, setNewBalanceType] = useState<'Dr' | 'Cr'>('Dr');
+  const [newGstNo, setNewGstNo] = useState('');
+  const [newTpnNo, setNewTpnNo] = useState('');
+  const [newContactNo, setNewContactNo] = useState('');
+
+  // Voucher Register & View Modal
+  const [recentVouchers, setRecentVouchers] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [filterEndDate, setFilterEndDate] = useState('');
+  const [filterVType, setFilterVType] = useState('ALL');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'CANCELLED'>('ALL');
+  const [filterBillNo, setFilterBillNo] = useState('');
+  const [filterLedger, setFilterLedger] = useState('');
+  const [filterNarration, setFilterNarration] = useState('');
+  const [viewVoucher, setViewVoucher] = useState<any | null>(null);
+  const [successModalDetails, setSuccessModalDetails] = useState<VoucherSuccessDetails | null>(null);
+  const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [mismatchModal, setMismatchModal] = useState<{ totalDr: number; totalCr: number; diff: number } | null>(null);
+
+  // Cancellation and Sharing Modals State
+  const [cancelModalVoucher, setCancelModalVoucher] = useState<any | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [deleteConfirmVoucher, setDeleteConfirmVoucher] = useState<any | null>(null);
+  const [shareModalVoucher, setShareModalVoucher] = useState<VoucherShareData | null>(null);
+  const [showShareRegisterModal, setShowShareRegisterModal] = useState(false);
+  const [voucherTypeHistory, setVoucherTypeHistory] = useState<VoucherActionType[]>(['P']);
+  const [pendingRecurringCount, setPendingRecurringCount] = useState<number>(0);
+
+  // Prompt & Detail Modals for TDS 2% and GST Input
+  const [tdsPromptOpen, setTdsPromptOpen] = useState(false);
+  const [showTdsDetailModal, setShowTdsDetailModal] = useState(false);
+  const [gstPromptOpen, setGstPromptOpen] = useState(false);
+  const [showGstDetailModal, setShowGstDetailModal] = useState(false);
+  const promptNextFocusRef = useRef<{ isMulti: boolean; lineIndex?: number; field?: 'debit' | 'credit' | 'ledger'; elementId?: string } | null>(null);
+
+  const resumeBackgroundFocus = () => {
+    const target = promptNextFocusRef.current;
+    if (!target) return;
+    promptNextFocusRef.current = null;
+    setTimeout(() => {
+      if (target.isMulti && target.lineIndex !== undefined && target.field) {
+        focusGridField(target.lineIndex, target.field);
+      } else if (target.elementId) {
+        focusElement(target.elementId);
+      }
+    }, 60);
+  };
+
+  const loadedTargetKeyRef = useRef<string | null>(null);
+  const [showQuitModal, setShowQuitModal] = useState(false);
+
+  const lastDerivedGst = useRef({
+    supplierName: '',
+    taxableAmount: '',
+    gstAmount: '',
+    referenceNo: '',
+    invoiceDate: ''
+  });
+
+  const currencySymbol = config?.CurrencySymbol || 'Nu.';
+
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setToastMsg({ text, type });
+    setTimeout(() => setToastMsg(null), 3500);
+  };
+
+  const isTdsLedger = (name: string): boolean => {
+    if (!name || config.EnableTDS2Tracking === 'false') return false;
+    const clean = name.toLowerCase().trim();
+    return (
+      clean === 'tds 2% (liability)' ||
+      clean === 'tds 2%' ||
+      clean === 'tds liability' ||
+      clean.includes('tds 2%') ||
+      clean.includes('tds 2') ||
+      (clean.includes('tds') && clean.includes('liability')) ||
+      (clean.includes('tds') && clean.includes('contract'))
+    );
+  };
+
+  const isGstInputLedger = (name: string): boolean => {
+    if (!name || config.EnableGSTInputTax === 'false') return false;
+    const clean = name.toLowerCase().trim();
+    return (
+      clean === 'gst input' ||
+      clean === 'gst input tax' ||
+      clean.includes('gst input') ||
+      clean.includes('gst-input')
+    );
+  };
+
+  const prepareTdsDefaults = (context?: { isMulti?: boolean; lineId?: string; type?: 'Dr' | 'Cr'; lineAmt?: number }) => {
+    setIsTdsApplicable(true);
+    const party = partyLedger || (lines.find(l => l.ledger && !isTdsLedger(l.ledger) && !l.ledger.toLowerCase().includes('cash') && !l.ledger.toLowerCase().includes('bank'))?.ledger) || '';
+    if (party) {
+      if (!tdsContractorNameAndAddress) {
+        setTdsContractorNameAndAddress(party);
+        const matched = ledgers.find(l => (l['Ledger Name'] || '').trim().toLowerCase() === party.trim().toLowerCase());
+        if (matched) {
+          const lTpn = matched['TPN No'] || matched['GST No'] || (matched as any).TPN || (matched as any).GSTIN || '';
+          if (lTpn && !tdsTpn) setTdsTpn(lTpn);
+          if (matched.Address && !tdsContractorNameAndAddress.includes(matched.Address)) {
+            setTdsContractorNameAndAddress(`${party}, ${matched.Address}`);
+          }
+        }
+      }
+    }
+    if (date && !tdsInvoiceDate) setTdsInvoiceDate(date);
+    if (invoiceNo && !tdsInvoiceNo) setTdsInvoiceNo(invoiceNo);
+    if (narration && !tdsWorkDescription) setTdsWorkDescription(narration);
+
+    if (context?.lineAmt && context.lineAmt > 0) {
+      setTdsAmount(context.lineAmt);
+      setTdsBillAmount(Math.round((context.lineAmt / 0.02) * 100) / 100);
+    } else if (!tdsBillAmount || Number(tdsBillAmount) === 0) {
+      const otherDr = lines.find(l => l.type === 'Dr' && !isTdsLedger(l.ledger));
+      let gross = 0;
+      if (otherDr && Number(otherDr.debit) > 0) gross = Number(otherDr.debit);
+      else if (Number(amount) > 0) gross = Number(amount);
+      else if (totalDr > 0) gross = totalDr;
+      if (gross > 0) {
+        setTdsBillAmount(gross);
+        const rate = Number(tdsRate) || 2;
+        setTdsAmount(Math.round((gross * (rate / 100)) * 100) / 100);
+      }
+    }
+  };
+
+  const prepareGstDefaults = (context?: { isMulti?: boolean; lineId?: string; type?: 'Dr' | 'Cr'; lineAmt?: number }) => {
+    if (gstInputType === 'None') {
+      setGstInputType('Local Purchase');
+    }
+    const party = partyLedger || (lines.find(l => l.ledger && !isGstInputLedger(l.ledger) && !l.ledger.toLowerCase().includes('cash') && !l.ledger.toLowerCase().includes('bank'))?.ledger) || '';
+    if (party && !supplierName) {
+      setSupplierName(party);
+      const matched = ledgers.find(l => (l['Ledger Name'] || '').trim().toLowerCase() === party.trim().toLowerCase());
+      if (matched) {
+        const lGst = matched['GST No'] || matched['TPN No'] || '';
+        if (lGst) setSupplierGstNo(lGst);
+      }
+    }
+    if (date && !invoiceDate) setInvoiceDate(date);
+    if (invoiceNo && !invoiceNo) setInvoiceNo(invoiceNo);
+
+    let expAmt = 0;
+    const otherDr = lines.find(l => l.type === 'Dr' && !isGstInputLedger(l.ledger));
+    if (otherDr && Number(otherDr.debit) > 0) expAmt = Number(otherDr.debit);
+    else if (Number(amount) > 0) expAmt = Number(amount);
+
+    if (expAmt > 0 && (!taxableAmount || Number(taxableAmount) === 0)) {
+      setTaxableAmount(expAmt);
+      if (!gstAmount || Number(gstAmount) === 0) {
+        setGstAmount(Math.round((expAmt * 0.05) * 100) / 100);
+      }
+    }
+  };
+
+  const handleLedgerSelected = (
+    selectedName: string,
+    context?: { isMulti?: boolean; lineId?: string; lineIndex?: number; type?: 'Dr' | 'Cr'; lineAmt?: number; nextElementId?: string }
+  ) => {
+    if (isTdsLedger(selectedName)) {
+      if (context?.isMulti && context.lineIndex !== undefined) {
+        promptNextFocusRef.current = {
+          isMulti: true,
+          lineIndex: context.lineIndex,
+          field: context.type === 'Dr' ? 'debit' : 'credit'
+        };
+      } else {
+        promptNextFocusRef.current = {
+          isMulti: false,
+          elementId: context?.nextElementId || 'single-amount'
+        };
+      }
+      prepareTdsDefaults(context);
+      setTdsPromptOpen(true);
+    } else if (isGstInputLedger(selectedName) && activeVType === 'P') {
+      if (context?.isMulti && context.lineIndex !== undefined) {
+        promptNextFocusRef.current = {
+          isMulti: true,
+          lineIndex: context.lineIndex,
+          field: context.type === 'Dr' ? 'debit' : 'credit'
+        };
+      } else {
+        promptNextFocusRef.current = {
+          isMulti: false,
+          elementId: context?.nextElementId || 'single-amount'
+        };
+      }
+      prepareGstDefaults(context);
+      setGstPromptOpen(true);
+    }
+  };
+
+  // Keyboard navigation & focus trapper for TDS and GST prompt modals
+  useEffect(() => {
+    if (!tdsPromptOpen && !gstPromptOpen) return;
+
+    const timer = setTimeout(() => {
+      const yesBtn = document.getElementById('v-prompt-yes-btn');
+      if (yesBtn) {
+        yesBtn.focus();
+      }
+    }, 40);
+
+    const handlePromptKeys = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === 'y' || e.key === 'Y') {
+        e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
+        if (tdsPromptOpen) {
+          setTdsPromptOpen(false);
+          setShowTdsDetailModal(true);
+        } else if (gstPromptOpen) {
+          setGstPromptOpen(false);
+          setShowGstDetailModal(true);
+        }
+      } else if (e.key === 'Escape' || e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        e.stopPropagation();
+        (e as any).stopImmediatePropagation?.();
+        if (tdsPromptOpen) {
+          setTdsPromptOpen(false);
+          setIsTdsApplicable(false);
+          resumeBackgroundFocus();
+        } else if (gstPromptOpen) {
+          setGstPromptOpen(false);
+          setGstInputType('None');
+          resumeBackgroundFocus();
+        }
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Tab') {
+        const yesBtn = document.getElementById('v-prompt-yes-btn');
+        const noBtn = document.getElementById('v-prompt-no-btn');
+        if (document.activeElement === yesBtn && noBtn) {
+          e.preventDefault();
+          noBtn.focus();
+        } else if (document.activeElement === noBtn && yesBtn) {
+          e.preventDefault();
+          yesBtn.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handlePromptKeys, true);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('keydown', handlePromptKeys, true);
+    };
+  }, [tdsPromptOpen, gstPromptOpen]);
+
+  // Handle voucher type switch
+  const handleVTypeChange = (type: VoucherActionType | '', pushHistory = true) => {
+    if (!type) {
+      setActiveVType('');
+      return;
+    }
+    if (type === 'S') {
+      if (onNavigateTo) onNavigateTo('pos');
+      return;
+    }
+    if (type === 'PUR') {
+      if (onNavigateTo) onNavigateTo('purchase');
+      return;
+    }
+
+    setMainTab('entry');
+    setActiveVType(type);
+
+    if (pushHistory) {
+      setVoucherTypeHistory(prev => (prev[prev.length - 1] === type ? prev : [...prev, type]));
+    }
+
+    // Auto update category
+    if (['P', 'R', 'J', 'C'].includes(type)) {
+      setActiveCategory('financial');
+    } else if (['CN', 'DN'].includes(type)) {
+      setActiveCategory('invoicing');
+    } else if (['DEL_NOTE', 'PHYSICAL_STOCK'].includes(type)) {
+      setActiveCategory('inventory');
+    } else if (type === 'QUOTATION') {
+      setActiveCategory('orders');
+    }
+
+    if (isAutoMode && ['P', 'R', 'J', 'C'].includes(type)) {
+      setVoucherNo(peekNextVoucherNo(type as any, config));
+    }
+
+    if (type === 'P') { // Payment
+      setLines([
+        { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
+        { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
+      ]);
+    } else if (type === 'R') { // Receipt
+      setLines([
+        { id: '1', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' },
+        { id: '2', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' }
+      ]);
+    } else if (type === 'J') { // Journal
+      setLines([
+        { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
+        { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
+      ]);
+    } else if (type === 'C') { // Contra
+      setLines([
+        { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
+        { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
+      ]);
+    }
+  };
+
   // Method to load an existing voucher or report record directly into Entry screen (supports duplication / cloning)
   const loadVoucherIntoEntry = (v: any, isDuplicate: boolean = false) => {
     if (!v) return;
@@ -261,6 +647,17 @@ export const Vouchers: React.FC<VouchersProps> = ({
       setTotalImportAmount(v.totalImportAmount !== undefined ? v.totalImportAmount : '');
       setCustomGstData(v.customGstData || {});
 
+      // Load TDS 2% (Liability) Form IT-7(B) Tracking Fields
+      setIsTdsApplicable(Boolean(v.isTdsApplicable));
+      setTdsTpn(v.tdsTpn || '');
+      setTdsContractorNameAndAddress(v.tdsContractorNameAndAddress || '');
+      setTdsWorkDescription(v.tdsWorkDescription || '');
+      setTdsInvoiceNo(isDuplicate ? '' : (v.tdsInvoiceNo || ''));
+      setTdsInvoiceDate(v.tdsInvoiceDate || '');
+      setTdsBillAmount(v.tdsBillAmount !== undefined ? v.tdsBillAmount : '');
+      setTdsRate(v.tdsRate !== undefined ? v.tdsRate : 2);
+      setTdsAmount(v.tdsAmount !== undefined ? v.tdsAmount : '');
+
       if (isDuplicate) {
         showToast(`Voucher duplicated from ${v.voucherNo || v.refNo}! Review and press Save.`, 'success');
       }
@@ -291,93 +688,14 @@ export const Vouchers: React.FC<VouchersProps> = ({
     }
   };
 
-  const loadedTargetKeyRef = useRef<string | null>(null);
-  const [showQuitModal, setShowQuitModal] = useState(false);
-
-  // Listen to incoming initialVoucherTarget from reports or drilldown
-  useEffect(() => {
-    if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
-      const key = `${initialVoucherTarget.voucherNo}_${initialVoucherTarget.timestamp}`;
-      if (loadedTargetKeyRef.current !== key) {
-        loadedTargetKeyRef.current = key;
-        const details = getVoucherDetails(initialVoucherTarget.voucherNo);
-        if (details) {
-          loadVoucherIntoEntry(details.header || details, Boolean((initialVoucherTarget as any)?.isDuplicate));
-        }
-      }
-    } else {
-      if (loadedTargetKeyRef.current !== null) {
-        loadedTargetKeyRef.current = null;
-        setEditingVoucherNo(null);
-        setAmount('');
-        setPartyLedger('');
-        setModeLedger('');
-        setDebitLedger('');
-        setCreditLedger('');
-        setFromAccount('');
-        setToAccount('');
-        setTransactionId('');
-        setLines([
-          { id: '1', type: 'Dr', ledger: '', debit: '', credit: '', narration: '' },
-          { id: '2', type: 'Cr', ledger: '', debit: '', credit: '', narration: '' }
-        ]);
-        if (isAutoMode && activeVType && ['P', 'R', 'J', 'C'].includes(activeVType)) {
-          setVoucherNo(peekNextVoucherNo(activeVType as any, config));
-        }
-      }
-    }
-  }, [initialVoucherTarget]);
-
-  // Sync voucher number with type / config if auto mode
-  useEffect(() => {
-    if (editingVoucherNo) return; // Do not overwrite voucher number while editing an existing voucher
-    if (isAutoMode && activeVType && ['P', 'R', 'J', 'C'].includes(activeVType)) {
-      setVoucherNo(peekNextVoucherNo(activeVType as any, config));
-    }
-  }, [activeVType, config, isAutoMode, editingVoucherNo]);
-
-  // Single mode state
-  const [amount, setAmount] = useState<number | ''>('');
-  const [partyLedger, setPartyLedger] = useState('');
-  const [modeLedger, setModeLedger] = useState('');
-  const [debitLedger, setDebitLedger] = useState('');
-  const [creditLedger, setCreditLedger] = useState('');
-  const [fromAccount, setFromAccount] = useState('');
-  const [toAccount, setToAccount] = useState('');
-  const [transactionId, setTransactionId] = useState('');
-  
-  // GST Input Tracking State
-  const [gstInputType, setGstInputType] = useState<'Local Purchase' | 'Local Expenses' | 'Bank Charges' | 'Import Customs GST Payment' | 'Import Purchase' | 'None'>('None');
-  const [supplierName, setSupplierName] = useState('');
-  const [supplierGstNo, setSupplierGstNo] = useState('');
-  const [supplierCountry, setSupplierCountry] = useState('');
-  const [invoiceNo, setInvoiceNo] = useState('');
-  const [invoiceDate, setInvoiceDate] = useState('');
-  const [referenceNo, setReferenceNo] = useState('');
-  const [declarationNo, setDeclarationNo] = useState('');
-  const [declarationDate, setDeclarationDate] = useState('');
-  const [taxableAmount, setTaxableAmount] = useState<number | ''>('');
-  const [exemptedAmount, setExemptedAmount] = useState<number | ''>('');
-  const [gstAmount, setGstAmount] = useState<number | ''>('');
-  const [totalImportAmount, setTotalImportAmount] = useState<number | ''>('');
-  const [customGstData, setCustomGstData] = useState<Record<string, any>>({});
-
-  const [bankTxnModal, setBankTxnModal] = useState<{
-    isOpen: boolean;
-    bankLedgerName: string;
-    focusNextElementId?: string;
-  }>({
-    isOpen: false,
-    bankLedgerName: '',
-    focusNextElementId: undefined
-  });
-
-  // Bill-wise Allocation State
-  const [billAllocations, setBillAllocations] = useState<BillAllocation[]>([]);
-  const [billModalOpen, setBillModalOpen] = useState(false);
-  const [showAcceptModal, setShowAcceptModal] = useState<'save' | 'share' | 'print' | false>(false);
-  const [billModalParty, setBillModalParty] = useState('');
-  const [billModalTargetLineId, setBillModalTargetLineId] = useState<string | null>(null);
+  // Refresh recent vouchers list
+  const loadRecentVouchers = () => {
+    const list = getVouchers();
+    setRecentVouchers(list);
+    // Refresh pending recurring count
+    const pending = getPendingDueRecurringVouchers();
+    setPendingRecurringCount(pending.length);
+  };
 
   const partyOutstandingBills = useMemo(() => {
     if (config.EnableBillWiseDetails === 'false') return [];
@@ -433,12 +751,6 @@ export const Vouchers: React.FC<VouchersProps> = ({
     }
   };
 
-  // Multi mode grid state
-  const [lines, setLines] = useState<VoucherGridLine[]>([
-    { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
-    { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
-  ]);
-
   // Check if bank account is involved in the current voucher
   const isBankInvolved = useMemo(() => {
     const bankLedgersSet = new Set(
@@ -454,19 +766,136 @@ export const Vouchers: React.FC<VouchersProps> = ({
     }
   }, [ledgers, entryMode, lines, partyLedger, modeLedger, debitLedger, creditLedger, fromAccount, toAccount]);
 
-
-  const linesRef = useRef(lines);
+  // Listen to incoming initialVoucherTarget from reports or drilldown
   useEffect(() => {
-    linesRef.current = lines;
-  }, [lines]);
+    if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
+      const key = `${initialVoucherTarget.voucherNo}_${initialVoucherTarget.timestamp}`;
+      if (loadedTargetKeyRef.current !== key) {
+        loadedTargetKeyRef.current = key;
+        const details = getVoucherDetails(initialVoucherTarget.voucherNo);
+        if (details) {
+          loadVoucherIntoEntry(details.header || details, Boolean((initialVoucherTarget as any)?.isDuplicate));
+        }
+      }
+    } else {
+      if (loadedTargetKeyRef.current !== null) {
+        loadedTargetKeyRef.current = null;
+        setEditingVoucherNo(null);
+        setAmount('');
+        setPartyLedger('');
+        setModeLedger('');
+        setDebitLedger('');
+        setCreditLedger('');
+        setFromAccount('');
+        setToAccount('');
+        setTransactionId('');
+        setLines([
+          { id: '1', type: 'Dr', ledger: '', debit: '', credit: '', narration: '' },
+          { id: '2', type: 'Cr', ledger: '', debit: '', credit: '', narration: '' }
+        ]);
+        if (isAutoMode && activeVType && ['P', 'R', 'J', 'C'].includes(activeVType)) {
+          setVoucherNo(peekNextVoucherNo(activeVType as any, config));
+        }
+      }
+    }
+  }, [initialVoucherTarget]);
 
-  const lastDerivedGst = useRef({
-    supplierName: '',
-    taxableAmount: '',
-    gstAmount: '',
-    referenceNo: '',
-    invoiceDate: ''
-  });
+  // Sync voucher number with type / config if auto mode
+  useEffect(() => {
+    if (editingVoucherNo) return; // Do not overwrite voucher number while editing an existing voucher
+    if (isAutoMode && activeVType && ['P', 'R', 'J', 'C'].includes(activeVType)) {
+      setVoucherNo(peekNextVoucherNo(activeVType as any, config));
+    }
+  }, [activeVType, config, isAutoMode, editingVoucherNo]);
+
+  // Auto-detect & auto-populate TDS 2% (Liability) Form IT-7(B) fields when TDS 2% is entered/debited
+  useEffect(() => {
+    if (config.EnableTDS2Tracking === 'false') return;
+
+    let detectedTds = false;
+    let detectedTdsAmount: number | '' = '';
+    let detectedGrossAmount: number | '' = '';
+    let detectedPartyName = '';
+
+    if (entryMode === 'multi') {
+      const tdsLine = lines.find(l => {
+        const name = (l.ledger || '').toLowerCase();
+        return name.includes('tds 2%') || name.includes('tds 2') || (name.includes('tds') && name.includes('liability')) || (name.includes('tds') && name.includes('contract'));
+      });
+
+      if (tdsLine) {
+        detectedTds = true;
+        const lineAmt = tdsLine.type === 'Dr' ? Number(tdsLine.debit) : Number(tdsLine.credit);
+        if (lineAmt > 0) {
+          detectedTdsAmount = lineAmt;
+        }
+        // Look for contractor / expense line (non-cash/non-bank/non-TDS)
+        const partyLine = lines.find(l => {
+          if (l === tdsLine) return false;
+          const lname = (l.ledger || '').toLowerCase();
+          return !lname.includes('cash') && !lname.includes('bank');
+        }) || lines.find(l => l !== tdsLine);
+
+        if (partyLine) {
+          detectedPartyName = partyLine.ledger;
+          const pAmt = partyLine.type === 'Dr' ? Number(partyLine.debit) : Number(partyLine.credit);
+          if (pAmt > (Number(detectedTdsAmount) || 0)) {
+            detectedGrossAmount = pAmt;
+          }
+        }
+      }
+    } else {
+      // Single mode
+      const hasTdsSingle = [partyLedger, debitLedger, creditLedger, modeLedger].some(l => {
+        const name = (l || '').toLowerCase();
+        return name.includes('tds 2%') || name.includes('tds 2') || (name.includes('tds') && name.includes('liability')) || (name.includes('tds') && name.includes('contract'));
+      });
+      if (hasTdsSingle) {
+        detectedTds = true;
+        if (amount && Number(amount) > 0) {
+          detectedTdsAmount = Number(amount);
+        }
+        const nonTds = [partyLedger, debitLedger, creditLedger, modeLedger].find(l => {
+          const name = (l || '').toLowerCase();
+          return l && !name.includes('tds') && !name.includes('cash') && !name.includes('bank');
+        }) || partyLedger || debitLedger || creditLedger;
+        if (nonTds) detectedPartyName = nonTds;
+      }
+    }
+
+    if (detectedTds) {
+      setIsTdsApplicable(true);
+      if (detectedTdsAmount !== '') {
+        setTdsAmount(detectedTdsAmount);
+        const curRate = Number(tdsRate) || 2;
+        if (detectedGrossAmount !== '') {
+          setTdsBillAmount(detectedGrossAmount);
+        } else {
+          setTdsBillAmount(Math.round((Number(detectedTdsAmount) / (curRate / 100)) * 100) / 100);
+        }
+      } else if (detectedGrossAmount !== '') {
+        setTdsBillAmount(detectedGrossAmount);
+        const curRate = Number(tdsRate) || 2;
+        setTdsAmount(Math.round((Number(detectedGrossAmount) * (curRate / 100)) * 100) / 100);
+      }
+
+      if (detectedPartyName) {
+        setTdsContractorNameAndAddress(prev => prev || detectedPartyName);
+        const matchedLedger = ledgers.find(l => (l['Ledger Name'] || '').trim().toLowerCase() === detectedPartyName.trim().toLowerCase());
+        if (matchedLedger) {
+          const lTpn = matchedLedger['TPN No'] || matchedLedger['GST No'] || (matchedLedger as any).TPN || (matchedLedger as any).GSTIN || '';
+          if (lTpn) setTdsTpn(prev => prev || lTpn);
+          if (matchedLedger.Address && !tdsContractorNameAndAddress.includes(matchedLedger.Address)) {
+            setTdsContractorNameAndAddress(prev => prev ? `${prev}, ${matchedLedger.Address}` : `${detectedPartyName}, ${matchedLedger.Address}`);
+          }
+        }
+      }
+
+      if (invoiceNo) setTdsInvoiceNo(prev => prev || invoiceNo);
+      if (invoiceDate || date) setTdsInvoiceDate(prev => prev || invoiceDate || date);
+      if (narration) setTdsWorkDescription(prev => prev || narration);
+    }
+  }, [lines, entryMode, partyLedger, debitLedger, creditLedger, modeLedger, amount, date, invoiceNo, invoiceDate, config.EnableTDS2Tracking]);
 
   useEffect(() => {
     if (activeVType === 'P' && config.EnableGSTInputTax === 'true' && gstInputType !== 'None') {
@@ -542,57 +971,6 @@ export const Vouchers: React.FC<VouchersProps> = ({
     }
   }, [gstInputType, lines, amount, partyLedger, modeLedger, transactionId, date, entryMode, ledgers, config.EnableGSTInputTax, activeVType]);
 
-
-  // Quick Ledger Modal State (Create & Edit Mode)
-  const [showLedgerModal, setShowLedgerModal] = useState(false);
-  const [isEditingLedger, setIsEditingLedger] = useState(false);
-  const [editingOldName, setEditingOldName] = useState<string | null>(null);
-  const [targetLineId, setTargetLineId] = useState<string | null>(null);
-  const [targetSingleField, setTargetSingleField] = useState<string | null>(null);
-
-  const [newLedgerName, setNewLedgerName] = useState('');
-  const [newLedgerGroup, setNewLedgerGroup] = useState('Indirect Expenses');
-  const [newOpBalance, setNewOpBalance] = useState<number | ''>(0);
-  const [newBalanceType, setNewBalanceType] = useState<'Dr' | 'Cr'>('Dr');
-  const [newGstNo, setNewGstNo] = useState('');
-  const [newTpnNo, setNewTpnNo] = useState('');
-  const [newContactNo, setNewContactNo] = useState('');
-
-  // Voucher Register & View Modal
-  const [recentVouchers, setRecentVouchers] = useState<any[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
-  const [filterVType, setFilterVType] = useState('ALL');
-  const [filterStatus, setFilterStatus] = useState<'ALL' | 'ACTIVE' | 'CANCELLED'>('ALL');
-  const [filterBillNo, setFilterBillNo] = useState('');
-  const [filterLedger, setFilterLedger] = useState('');
-  const [filterNarration, setFilterNarration] = useState('');
-  const [viewVoucher, setViewVoucher] = useState<any | null>(null);
-  const [successModalDetails, setSuccessModalDetails] = useState<VoucherSuccessDetails | null>(null);
-  const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-  const [mismatchModal, setMismatchModal] = useState<{ totalDr: number; totalCr: number; diff: number } | null>(null);
-
-  // Cancellation and Sharing Modals State
-  const [cancelModalVoucher, setCancelModalVoucher] = useState<any | null>(null);
-  const [cancelReason, setCancelReason] = useState('');
-  const [deleteConfirmVoucher, setDeleteConfirmVoucher] = useState<any | null>(null);
-  const [shareModalVoucher, setShareModalVoucher] = useState<VoucherShareData | null>(null);
-  const [showShareRegisterModal, setShowShareRegisterModal] = useState(false);
-  const [voucherTypeHistory, setVoucherTypeHistory] = useState<VoucherActionType[]>(['P']);
-  const [pendingRecurringCount, setPendingRecurringCount] = useState<number>(0);
-
-  const currencySymbol = config?.CurrencySymbol || 'Nu.';
-
-  // Refresh recent vouchers list
-  const loadRecentVouchers = () => {
-    const list = getVouchers();
-    setRecentVouchers(list);
-    // Refresh pending recurring count
-    const pending = getPendingDueRecurringVouchers();
-    setPendingRecurringCount(pending.length);
-  };
-
   useEffect(() => {
     loadRecentVouchers();
     // Check if any auto-vouchers are due for auto-posting
@@ -619,76 +997,25 @@ export const Vouchers: React.FC<VouchersProps> = ({
     // Intentionally left blank to avoid auto-filling ledgers
   }, [ledgers]);
 
-  // Handle voucher type switch
-  const handleVTypeChange = (type: VoucherActionType | '', pushHistory = true) => {
-    if (!type) {
-      setActiveVType('');
-      return;
-    }
-    if (type === 'S') {
-      if (onNavigateTo) onNavigateTo('pos');
-      return;
-    }
-    if (type === 'PUR') {
-      if (onNavigateTo) onNavigateTo('purchase');
-      return;
-    }
-
-    setMainTab('entry');
-    setActiveVType(type);
-
-    if (pushHistory) {
-      setVoucherTypeHistory(prev => (prev[prev.length - 1] === type ? prev : [...prev, type]));
-    }
-
-    // Auto update category
-    if (['P', 'R', 'J', 'C'].includes(type)) {
-      setActiveCategory('financial');
-    } else if (['CN', 'DN'].includes(type)) {
-      setActiveCategory('invoicing');
-    } else if (['DEL_NOTE', 'PHYSICAL_STOCK'].includes(type)) {
-      setActiveCategory('inventory');
-    } else if (type === 'QUOTATION') {
-      setActiveCategory('orders');
-    }
-
-    if (isAutoMode && ['P', 'R', 'J', 'C'].includes(type)) {
-      setVoucherNo(peekNextVoucherNo(type as any, config));
-    }
-
-    const cashOrBank = ledgers.find(l => l.Group === 'Cash-in-Hand' || l.Group === 'Bank Accounts')?.['Ledger Name'] || 'Cash';
-    const expenseOrParty = ledgers.find(l => l.Group === 'Indirect Expenses' || l.Group === 'Sundry Creditors')?.['Ledger Name'] || (ledgers[0]?.['Ledger Name'] || '');
-    const incomeOrParty = ledgers.find(l => l.Group === 'Sales Account' || l.Group === 'Sundry Debtors')?.['Ledger Name'] || (ledgers[0]?.['Ledger Name'] || '');
-
-    if (type === 'P') { // Payment
-      setLines([
-        { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
-        { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
-      ]);
-    } else if (type === 'R') { // Receipt
-      setLines([
-        { id: '1', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' },
-        { id: '2', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' }
-      ]);
-    } else if (type === 'J') { // Journal
-      setLines([
-        { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
-        { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
-      ]);
-    } else if (type === 'C') { // Contra
-      setLines([
-        { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
-        { id: '2', type: 'Cr', ledger: '', debit: 0, credit: '', narration: '' }
-      ]);
-    }
-  };
-
-  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
-    setToastMsg({ text, type });
-    setTimeout(() => setToastMsg(null), 3500);
-  };
-
   const handleVoucherBack = () => {
+    if (tdsPromptOpen) {
+      setTdsPromptOpen(false);
+      setIsTdsApplicable(false);
+      return true;
+    }
+    if (showTdsDetailModal) {
+      setShowTdsDetailModal(false);
+      return true;
+    }
+    if (gstPromptOpen) {
+      setGstPromptOpen(false);
+      setGstInputType('None');
+      return true;
+    }
+    if (showGstDetailModal) {
+      setShowGstDetailModal(false);
+      return true;
+    }
     if (showQuitModal) {
       setShowQuitModal(false);
       return true;
@@ -1182,6 +1509,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
       const line = idx >= 0 ? lines[idx] : undefined;
       const targetId = idx >= 0 ? (line?.type === 'Dr' ? `grid-debit-${idx}` : `grid-credit-${idx}`) : undefined;
       checkAndPromptBankLedger(value, targetId);
+      handleLedgerSelected(value, { isMulti: true, lineId: id, lineIndex: idx, type: line?.type, lineAmt: Number(line?.type === 'Dr' ? line?.debit : line?.credit) });
     }
     setLines(prev => {
       const newLines = prev.map(l => {
@@ -1344,6 +1672,19 @@ export const Vouchers: React.FC<VouchersProps> = ({
           gstAmount: Number(gstAmount) || undefined,
           totalImportAmount: Number(totalImportAmount) || undefined,
           customGstData
+        } : {}),
+
+        // TDS 2% Form IT-7(B) Contract Tracking Fields
+        ...(isTdsApplicable ? {
+          isTdsApplicable: true,
+          tdsTpn: tdsTpn.trim() || undefined,
+          tdsContractorNameAndAddress: tdsContractorNameAndAddress.trim() || undefined,
+          tdsWorkDescription: tdsWorkDescription.trim() || undefined,
+          tdsInvoiceNo: tdsInvoiceNo.trim() || undefined,
+          tdsInvoiceDate: tdsInvoiceDate || undefined,
+          tdsBillAmount: tdsBillAmount !== '' ? Number(tdsBillAmount) : undefined,
+          tdsRate: tdsRate !== '' ? Number(tdsRate) : 2,
+          tdsAmount: tdsAmount !== '' ? Number(tdsAmount) : undefined
         } : {})
       };
 
@@ -1478,6 +1819,19 @@ export const Vouchers: React.FC<VouchersProps> = ({
           gstAmount: Number(gstAmount) || undefined,
           totalImportAmount: Number(totalImportAmount) || undefined,
           customGstData
+        } : {}),
+
+        // TDS 2% Form IT-7(B) Contract Tracking Fields
+        ...(isTdsApplicable ? {
+          isTdsApplicable: true,
+          tdsTpn: tdsTpn.trim() || undefined,
+          tdsContractorNameAndAddress: tdsContractorNameAndAddress.trim() || undefined,
+          tdsWorkDescription: tdsWorkDescription.trim() || undefined,
+          tdsInvoiceNo: tdsInvoiceNo.trim() || undefined,
+          tdsInvoiceDate: tdsInvoiceDate || undefined,
+          tdsBillAmount: tdsBillAmount !== '' ? Number(tdsBillAmount) : undefined,
+          tdsRate: tdsRate !== '' ? Number(tdsRate) : 2,
+          tdsAmount: tdsAmount !== '' ? Number(tdsAmount) : undefined
         } : {})
       };
 
@@ -1573,6 +1927,15 @@ export const Vouchers: React.FC<VouchersProps> = ({
     }
     setNarration('');
     setTransactionId('');
+    setIsTdsApplicable(false);
+    setTdsTpn('');
+    setTdsContractorNameAndAddress('');
+    setTdsWorkDescription('');
+    setTdsInvoiceNo('');
+    setTdsInvoiceDate('');
+    setTdsBillAmount('');
+    setTdsRate(2);
+    setTdsAmount('');
     if (isAutoMode && activeVType && ['P', 'R', 'J', 'C'].includes(activeVType)) {
       setVoucherNo(peekNextVoucherNo(activeVType as any, config));
     }
@@ -2535,7 +2898,12 @@ export const Vouchers: React.FC<VouchersProps> = ({
                                 }
                                 onChange={val => updateGridLine(line.id, 'ledger', val)}
                                 onCreateNew={() => openCreateLedgerModal(line.id)}
-                                onEnterNext={() => focusGridField(index, line.type === 'Dr' ? 'debit' : 'credit')}
+                                onEnterNext={() => {
+                                  if (isTdsLedger(line.ledger) || (isGstInputLedger(line.ledger) && activeVType === 'P')) {
+                                    return;
+                                  }
+                                  focusGridField(index, line.type === 'Dr' ? 'debit' : 'credit');
+                                }}
                                 onArrowLeft={() => focusGridField(index, 'type')}
                                 onArrowRight={() => focusGridField(index, line.type === 'Dr' ? 'debit' : 'credit')}
                                 onArrowUp={() => index > 0 && focusGridField(index - 1, 'ledger')}
@@ -2551,6 +2919,44 @@ export const Vouchers: React.FC<VouchersProps> = ({
                                 </div>
                               )}
                             </div>
+                            {isTdsLedger(line.ledger) && (
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => {
+                                  prepareTdsDefaults({ isMulti: true, lineId: line.id, type: line.type, lineAmt: Number(line.type === 'Dr' ? line.debit : line.credit) });
+                                  setShowTdsDetailModal(true);
+                                }}
+                                className={`px-2 py-1 rounded-lg border text-[10px] font-black shrink-0 flex items-center gap-1 transition cursor-pointer ${
+                                  isTdsApplicable
+                                    ? 'bg-amber-100 border-amber-400 text-amber-950 shadow-2xs'
+                                    : 'border-amber-200 bg-amber-50/80 text-amber-700 hover:bg-amber-100'
+                                }`}
+                                title="Click to view/edit TDS 2% (Form IT-7B) statutory details"
+                              >
+                                <FileText className="h-3 w-3 text-amber-600" />
+                                <span>{isTdsApplicable ? 'TDS Details (✓)' : '+ TDS'}</span>
+                              </button>
+                            )}
+                            {isGstInputLedger(line.ledger) && activeVType === 'P' && (
+                              <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => {
+                                  prepareGstDefaults({ isMulti: true, lineId: line.id, type: line.type, lineAmt: Number(line.type === 'Dr' ? line.debit : line.credit) });
+                                  setShowGstDetailModal(true);
+                                }}
+                                className={`px-2 py-1 rounded-lg border text-[10px] font-black shrink-0 flex items-center gap-1 transition cursor-pointer ${
+                                  gstInputType !== 'None'
+                                    ? 'bg-indigo-100 border-indigo-400 text-indigo-950 shadow-2xs'
+                                    : 'border-indigo-200 bg-indigo-50/80 text-indigo-700 hover:bg-indigo-100'
+                                }`}
+                                title="Click to view/edit GST Input Tax claim details"
+                              >
+                                <Receipt className="h-3 w-3 text-indigo-600" />
+                                <span>{gstInputType !== 'None' ? 'GST Details (✓)' : '+ GST'}</span>
+                              </button>
+                            )}
                             {config.EnableBillWiseDetails !== 'false' && line.ledger && (
                               <button
                                 type="button"
@@ -2811,9 +3217,15 @@ export const Vouchers: React.FC<VouchersProps> = ({
                       else if (activeVType === 'J') setDebitLedger(val);
                       else setToAccount(val);
                       checkAndPromptBankLedger(val, 'single-ledger-2');
+                      handleLedgerSelected(val, { isMulti: false, nextElementId: 'single-ledger-2' });
                     }}
                     onCreateNew={() => openCreateLedgerModal(undefined, 'single-1')}
-                    onEnterNext={() => focusElement('single-ledger-2')}
+                    onEnterNext={() => {
+                      if (isTdsLedger(partyLedger) || (isGstInputLedger(partyLedger) && activeVType === 'P')) {
+                        return;
+                      }
+                      focusElement('single-ledger-2');
+                    }}
                     onArrowRight={() => focusElement('single-ledger-2')}
                     onArrowDown={() => focusElement('single-ledger-2')}
                     placeholder="Select Ledger Account"
@@ -2920,9 +3332,16 @@ export const Vouchers: React.FC<VouchersProps> = ({
                       else if (activeVType === 'J') setCreditLedger(val);
                       else setFromAccount(val);
                       checkAndPromptBankLedger(val, 'single-amount');
+                      handleLedgerSelected(val, { isMulti: false, nextElementId: 'single-amount' });
                     }}
                     onCreateNew={() => openCreateLedgerModal(undefined, 'single-2')}
-                    onEnterNext={() => focusElement('single-amount')}
+                    onEnterNext={() => {
+                      const currentVal = activeVType === 'P' || activeVType === 'R' ? modeLedger : activeVType === 'J' ? creditLedger : fromAccount;
+                      if (isTdsLedger(currentVal) || (isGstInputLedger(currentVal) && activeVType === 'P')) {
+                        return;
+                      }
+                      focusElement('single-amount');
+                    }}
                     onArrowLeft={() => focusElement('single-ledger-1')}
                     onArrowRight={() => focusElement('single-amount')}
                     onArrowUp={() => focusElement('single-ledger-1')}
@@ -2971,119 +3390,73 @@ export const Vouchers: React.FC<VouchersProps> = ({
             </div>
           )}
 
-
-
-          {/* GST Input Claim Tracking Form (Only for Payment Vouchers) */}
-          {activeVType === 'P' && config.EnableGSTInputTax === 'true' && (
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-3 shadow-xs space-y-3 text-xs">
-              <div className="flex items-center justify-between mb-1">
-                <label className="block font-bold text-indigo-900">GST Input Claim Details</label>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-indigo-600 font-medium">Transaction Type:</span>
-                  <select
-                    className="rounded border border-indigo-300 bg-white px-2 py-1 text-[11px] font-bold text-indigo-900 outline-none focus:border-indigo-500"
-                    value={gstInputType}
-                    onChange={(e: any) => setGstInputType(e.target.value)}
-                  >
-                    <option value="None">Not Applicable</option>
-                    <option value="Local Purchase">Local Purchase</option>
-                    <option value="Local Expenses">Local Expenses</option>
-                    <option value="Bank Charges">Bank Charges</option>
-                    <option value="Import Customs GST Payment">Import Customs GST Payment</option>
-                    <option value="Import Purchase">Import Purchase</option>
-                  </select>
-                </div>
-              </div>
-
-              {gstInputType !== 'None' && (() => {
-                const activeFields = getGstFieldsForType(config.gstInputConfigs, gstInputType);
-                return (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 bg-white p-3 rounded-lg border border-indigo-100 shadow-sm">
-                    {activeFields.map(field => {
-                      let val: any = '';
-                      let handleChange = (eVal: any) => {};
-
-                      if (field.id === 'supplierName') {
-                        val = supplierName;
-                        handleChange = (v) => setSupplierName(v);
-                      } else if (field.id === 'supplierGstNo') {
-                        val = supplierGstNo;
-                        handleChange = (v) => setSupplierGstNo(v);
-                      } else if (field.id === 'invoiceNo') {
-                        val = invoiceNo;
-                        handleChange = (v) => setInvoiceNo(v);
-                      } else if (field.id === 'invoiceDate') {
-                        val = invoiceDate;
-                        handleChange = (v) => setInvoiceDate(v);
-                      } else if (field.id === 'referenceNo') {
-                        val = referenceNo;
-                        handleChange = (v) => setReferenceNo(v);
-                      } else if (field.id === 'declarationNo') {
-                        val = declarationNo;
-                        handleChange = (v) => setDeclarationNo(v);
-                      } else if (field.id === 'declarationDate') {
-                        val = declarationDate;
-                        handleChange = (v) => setDeclarationDate(v);
-                      } else if (field.id === 'taxableAmount') {
-                        val = taxableAmount !== undefined && taxableAmount !== null ? taxableAmount : '';
-                        handleChange = (v) => setTaxableAmount(v === '' ? '' : Number(v));
-                      } else if (field.id === 'exemptedAmount') {
-                        val = exemptedAmount !== undefined && exemptedAmount !== null ? exemptedAmount : '';
-                        handleChange = (v) => setExemptedAmount(v === '' ? '' : Number(v));
-                      } else if (field.id === 'gstAmount') {
-                        val = gstAmount !== undefined && gstAmount !== null ? gstAmount : '';
-                        handleChange = (v) => {
-                          const num = v === '' ? '' : Number(v);
-                          setGstAmount(num);
-                          if (typeof num === 'number') {
-                            const taxField = activeFields.find(f => f.id === 'taxableAmount');
-                            let calc = 0;
-                            if (taxField && taxField.sourceType === 'formula' && taxField.sourceValue) {
-                              calc = evaluateGstFormula(taxField.sourceValue, { gstAmount: num, amount: Number(amount) || totalDr || 0 });
-                            } else if (!taxField || taxField.sourceType === 'formula') {
-                              calc = num * 20;
-                            }
-                            const rounded = Math.round((calc + Number.EPSILON) * 100) / 100;
-                            setTaxableAmount(rounded);
-                            lastDerivedGst.current.taxableAmount = rounded.toString();
-                            lastDerivedGst.current.gstAmount = num.toString();
-                          }
-                        };
-                      } else if (field.id === 'totalImportAmount') {
-                        val = totalImportAmount !== undefined && totalImportAmount !== null ? totalImportAmount : '';
-                        handleChange = (v) => setTotalImportAmount(v === '' ? '' : Number(v));
-                      } else {
-                        val = customGstData[field.id] !== undefined ? customGstData[field.id] : '';
-                        handleChange = (v) => setCustomGstData(prev => ({ ...prev, [field.id]: v }));
-                      }
-
-                      const isFullWidth = field.id === 'supplierName' && activeFields.some(f => f.id === 'supplierGstNo');
-
-                      return (
-                        <div key={field.id} className={isFullWidth ? 'sm:col-span-2' : ''}>
-                          <label className={`block text-[10px] font-bold mb-0.5 ${field.id === 'gstAmount' ? 'text-indigo-700' : 'text-slate-600'}`}>
-                            {field.label}
-                            {field.sourceType === 'formula' && <span className="ml-1 text-[9px] text-purple-600 font-mono">(Formula)</span>}
-                          </label>
-                          <input
-                            type={field.dataType === 'number' ? 'number' : field.dataType === 'date' ? 'date' : 'text'}
-                            step={field.dataType === 'number' ? 'any' : undefined}
-                            className={`w-full rounded border px-2 py-1.5 text-xs outline-none ${
-                              field.id === 'gstAmount' 
-                                ? 'border-indigo-300 bg-indigo-50 font-bold text-indigo-900 focus:border-indigo-500' 
-                                : field.sourceType === 'formula' 
-                                ? 'border-purple-200 bg-purple-50/30 focus:border-purple-500' 
-                                : 'border-slate-300 focus:border-indigo-500'
-                            }`}
-                            value={val}
-                            onChange={e => handleChange(e.target.value)}
-                          />
-                        </div>
-                      );
-                    })}
+          {/* Statutory TDS 2% and GST Input Active Details Badge Row */}
+          {(isTdsApplicable || (activeVType === 'P' && config.EnableGSTInputTax !== 'false' && gstInputType !== 'None')) && (
+            <div className="flex items-center flex-wrap gap-2 px-1 py-0.5">
+              {isTdsApplicable && (
+                <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-300 rounded-xl px-3 py-1.5 text-xs text-amber-950 shadow-2xs">
+                  <FileText className="w-4 h-4 text-amber-600 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-extrabold text-amber-900">TDS 2% (IT-7B):</span>
+                    <span className="font-mono font-bold text-amber-950">
+                      Nu. {Number(tdsAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    {tdsContractorNameAndAddress && (
+                      <span className="text-[11px] text-slate-500 font-medium truncate max-w-[140px]">
+                        ({tdsContractorNameAndAddress})
+                      </span>
+                    )}
                   </div>
-                );
-              })()}
+                  <button
+                    type="button"
+                    onClick={() => setShowTdsDetailModal(true)}
+                    className="text-[11px] font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer px-1 py-0.5 rounded hover:bg-amber-100 transition"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsTdsApplicable(false);
+                      showToast('TDS details removed', 'success');
+                    }}
+                    className="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer transition"
+                    title="Remove TDS Details"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {activeVType === 'P' && config.EnableGSTInputTax !== 'false' && gstInputType !== 'None' && (
+                <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-300 rounded-xl px-3 py-1.5 text-xs text-indigo-950 shadow-2xs">
+                  <Receipt className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-extrabold text-indigo-900">GST Input ({gstInputType}):</span>
+                    <span className="font-mono font-bold text-indigo-950">
+                      Nu. {Number(gstAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowGstDetailModal(true)}
+                    className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 underline cursor-pointer px-1 py-0.5 rounded hover:bg-indigo-100 transition"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGstInputType('None');
+                      showToast('GST Input details removed', 'success');
+                    }}
+                    className="text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer transition"
+                    title="Remove GST Input Details"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -4084,6 +4457,487 @@ export const Vouchers: React.FC<VouchersProps> = ({
           }
         }}
       />
+
+      {/* TDS 2% Statutory Details Prompt Modal (Yes / No) */}
+      {tdsPromptOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-amber-200 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="p-3 rounded-xl bg-amber-100 text-amber-700 shrink-0">
+                <FileText className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <div className="inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 mb-1">
+                  Statutory Compliance
+                </div>
+                <h3 className="text-base font-black text-slate-900">
+                  TDS 2% (Liability) Selected
+                </h3>
+                <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
+                  Do you want to provide statutory <strong>TDS 2% Form IT-7(B)</strong> contractor &amp; bill details for this transaction?
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 text-[11px] text-amber-950 space-y-1">
+              <p className="font-semibold">
+                • <strong>Yes (Enter)</strong>: Opens detailed contractor, TPN, invoice &amp; tax deduction form.
+              </p>
+              <p className="text-slate-600">
+                • <strong>No (Esc)</strong>: Continues standard voucher entry without statutory report linkage.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                id="v-prompt-no-btn"
+                type="button"
+                onClick={() => {
+                  setTdsPromptOpen(false);
+                  setIsTdsApplicable(false);
+                  resumeBackgroundFocus();
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-bold text-xs transition cursor-pointer"
+              >
+                No, Skip
+              </button>
+              <button
+                id="v-prompt-yes-btn"
+                type="button"
+                autoFocus
+                onClick={() => {
+                  setTdsPromptOpen(false);
+                  setShowTdsDetailModal(true);
+                }}
+                className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs shadow-xs transition active:scale-95 cursor-pointer flex items-center gap-1.5 ring-2 ring-amber-300"
+              >
+                <Check className="w-4 h-4" />
+                <span>Yes, Provide Details</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TDS 2% Form IT-7(B) Details Modal */}
+      {showTdsDetailModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-amber-300 space-y-4 my-8">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-100 text-amber-800">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    TDS 2% Statutory Details (Form IT-7B)
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Department of Revenue &amp; Customs (DRC) Statutory Withholding Tax
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTdsDetailModal(false);
+                  resumeBackgroundFocus();
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+              <div className="sm:col-span-2">
+                <label className="block font-bold text-slate-700 mb-1">Contractor / Payee Name &amp; Address</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Karma Builders Pvt Ltd, Thimphu"
+                  value={tdsContractorNameAndAddress}
+                  onChange={e => setTdsContractorNameAndAddress(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-medium outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-100"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Tax Payer Number (TPN) / CID</label>
+                <input
+                  type="text"
+                  placeholder="e.g. TPN-1029384 / 1150100..."
+                  value={tdsTpn}
+                  onChange={e => setTdsTpn(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-medium outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-100 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Invoice / Bill Ref No.</label>
+                <input
+                  type="text"
+                  placeholder="e.g. INV-2026-001"
+                  value={tdsInvoiceNo}
+                  onChange={e => setTdsInvoiceNo(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-medium outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-100 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Invoice / Bill Date</label>
+                <input
+                  type="date"
+                  value={tdsInvoiceDate}
+                  onChange={e => setTdsInvoiceDate(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-medium outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-100"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Nature of Work / Supply</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Civil Construction / Renovation Works"
+                  value={tdsWorkDescription}
+                  onChange={e => setTdsWorkDescription(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-medium outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-100"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Gross Bill Amount ({currencySymbol})</label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="0.00"
+                  value={tdsBillAmount || ''}
+                  onChange={e => {
+                    const gross = parseFloat(e.target.value) || 0;
+                    setTdsBillAmount(gross);
+                    const rate = parseFloat(String(tdsRate)) || 2;
+                    setTdsAmount(Math.round((gross * (rate / 100)) * 100) / 100);
+                  }}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-black outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-100 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">TDS Rate (%)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={tdsRate}
+                  onChange={e => {
+                    const r = parseFloat(e.target.value) || 0;
+                    setTdsRate(r);
+                    const gross = parseFloat(String(tdsBillAmount)) || 0;
+                    setTdsAmount(Math.round((gross * (r / 100)) * 100) / 100);
+                  }}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-black outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-100 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">TDS Deducted Amount ({currencySymbol})</label>
+                <input
+                  type="number"
+                  step="any"
+                  value={tdsAmount || ''}
+                  onChange={e => setTdsAmount(parseFloat(e.target.value) || 0)}
+                  className="w-full rounded-xl border border-amber-300 bg-amber-50/50 px-3 py-2 text-amber-950 font-black outline-none focus:border-amber-600 focus:ring-2 focus:ring-amber-100 font-mono"
+                />
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
+                <div>
+                  <span className="block text-[11px] text-slate-500 font-semibold">Net Payable to Contractor</span>
+                  <span className="font-mono font-black text-sm text-emerald-700">
+                    {currencySymbol} {((parseFloat(String(tdsBillAmount)) || 0) - (parseFloat(String(tdsAmount)) || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <span className="text-[10px] font-bold text-slate-400">Auto-Calculated</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTdsApplicable(false);
+                  setShowTdsDetailModal(false);
+                  resumeBackgroundFocus();
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-bold text-xs transition cursor-pointer"
+              >
+                Clear &amp; Remove
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTdsApplicable(true);
+                  setShowTdsDetailModal(false);
+                  resumeBackgroundFocus();
+                  showToast('TDS statutory details saved', 'success');
+                }}
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-xs transition active:scale-95 cursor-pointer flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Done &amp; Save Details</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GST Input Tax Details Prompt Modal (Yes / No) */}
+      {gstPromptOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-indigo-200 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="p-3 rounded-xl bg-indigo-100 text-indigo-700 shrink-0">
+                <Receipt className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <div className="inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-900 mb-1">
+                  Tax Credit &amp; Reporting
+                </div>
+                <h3 className="text-base font-black text-slate-900">
+                  GST Input Selected
+                </h3>
+                <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed">
+                  Do you want to provide <strong>GST Input Tax details</strong> (Supplier GSTIN, Invoice/Customs info, and Taxable Base) for this voucher?
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-xl p-3 text-[11px] text-indigo-950 space-y-1">
+              <p className="font-semibold">
+                • <strong>Yes (Enter)</strong>: Opens supplier invoice, Bill of Entry, and taxable input calculation.
+              </p>
+              <p className="text-slate-600">
+                • <strong>No (Esc)</strong>: Continues standard voucher entry without input tax schedule tracking.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-1">
+              <button
+                id="v-prompt-no-btn"
+                type="button"
+                onClick={() => {
+                  setGstPromptOpen(false);
+                  setGstInputType('None');
+                  resumeBackgroundFocus();
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-bold text-xs transition cursor-pointer"
+              >
+                No, Skip
+              </button>
+              <button
+                id="v-prompt-yes-btn"
+                type="button"
+                autoFocus
+                onClick={() => {
+                  setGstPromptOpen(false);
+                  setShowGstDetailModal(true);
+                }}
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-xs transition active:scale-95 cursor-pointer flex items-center gap-1.5 ring-2 ring-indigo-300"
+              >
+                <Check className="w-4 h-4" />
+                <span>Yes, Provide Details</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GST Input Tax Details Modal */}
+      {showGstDetailModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-150 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-indigo-300 space-y-4 my-8">
+            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-100 text-indigo-800">
+                  <Receipt className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    GST Input Tax Details
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Input Tax Credit &amp; Bhutan GST Purchase / Import Schedule
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGstDetailModal(false);
+                  resumeBackgroundFocus();
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+              <div className="sm:col-span-2">
+                <label className="block font-bold text-slate-700 mb-1">Transaction Category</label>
+                <select
+                  value={gstInputType}
+                  onChange={e => setGstInputType(e.target.value as any)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-bold outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="Local Purchase">Local Purchase (Domestic Supplier)</option>
+                  <option value="Local Expenses">Local Expenses</option>
+                  <option value="Bank Charges">Bank Charges &amp; Financial Fees</option>
+                  <option value="Import Customs GST Payment">Import Customs GST Payment</option>
+                  <option value="Import Purchase">Import Purchase</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Supplier / Vendor Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Karma Enterprise"
+                  value={supplierName}
+                  onChange={e => setSupplierName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-medium outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Supplier GSTIN / TPN</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 30BBBBB1111B1Z2 / TPN-..."
+                  value={supplierGstNo}
+                  onChange={e => setSupplierGstNo(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-medium outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Supplier Invoice No.</label>
+                <input
+                  type="text"
+                  placeholder="e.g. SUP-INV-001"
+                  value={invoiceNo}
+                  onChange={e => setInvoiceNo(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-medium outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Supplier Invoice Date</label>
+                <input
+                  type="date"
+                  value={invoiceDate}
+                  onChange={e => setInvoiceDate(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-medium outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              {(gstInputType === 'Import Customs GST Payment' || gstInputType === 'Import Purchase') && (
+                <>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Customs Declaration / BOE No.</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. DEC-2026-0099"
+                      value={declarationNo}
+                      onChange={e => setDeclarationNo(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-medium outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Declaration Date</label>
+                    <input
+                      type="date"
+                      value={declarationDate}
+                      onChange={e => setDeclarationDate(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-medium outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Taxable Amount ({currencySymbol})</label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="0.00"
+                  value={taxableAmount || ''}
+                  onChange={e => {
+                    const amt = parseFloat(e.target.value) || 0;
+                    setTaxableAmount(amt);
+                    if (!gstAmount || Number(gstAmount) === 0) {
+                      setGstAmount(Math.round((amt * 0.05) * 100) / 100);
+                    }
+                  }}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-900 font-black outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">GST Input Tax Amount ({currencySymbol})</label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="0.00"
+                  value={gstAmount || ''}
+                  onChange={e => setGstAmount(parseFloat(e.target.value) || 0)}
+                  className="w-full rounded-xl border border-indigo-300 bg-indigo-50/50 px-3 py-2 text-indigo-950 font-black outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 font-mono"
+                />
+              </div>
+
+              <div className="sm:col-span-2 flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                <span className="text-[11px] font-semibold text-slate-600">Quick 5% GST Helper:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tax = Number(taxableAmount) || 0;
+                    if (tax > 0) {
+                      setGstAmount(Math.round((tax * 0.05) * 100) / 100);
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-indigo-700 font-bold text-[11px] transition shadow-2xs cursor-pointer"
+                >
+                  Recalculate 5% (Nu. {((Number(taxableAmount) || 0) * 0.05).toFixed(2)})
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setGstInputType('None');
+                  setShowGstDetailModal(false);
+                  resumeBackgroundFocus();
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 font-bold text-xs transition cursor-pointer"
+              >
+                Clear &amp; Remove
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGstDetailModal(false);
+                  resumeBackgroundFocus();
+                  showToast('GST Input details saved', 'success');
+                }}
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-xs transition active:scale-95 cursor-pointer flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Done &amp; Save Details</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

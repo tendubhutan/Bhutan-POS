@@ -985,12 +985,13 @@ export function drawDetailedBillSummaryBox(
   currency: string,
   margin: number,
   pageWidth: number,
-  totalLabel: string = 'Total Invoice Amount:'
+  totalLabel: string = 'Total Invoice Amount:',
+  config?: Config
 ): number {
   const totals = extractInvoiceTotals(invoice);
   const savings = calculateInvoiceSavings(invoice);
   const undiscounted = calculateUndiscountedBillAndSavings(invoice);
-  const boxW = 84;
+  const boxW = 86;
   const boxX = pageWidth - margin - boxW;
 
   const hasGstOnBill = Number(totals.gstAmt || 0) > 0.001 || (Array.isArray(invoice.items) && invoice.items.some((it: any) =>
@@ -998,28 +999,82 @@ export function drawDetailedBillSummaryBox(
     (Number(it['GST %'] ?? it.gstPct ?? 0) > 0 && it['Zero Rated (Y/N)'] !== 'Y' && !it.zeroRated)
   ));
 
-  const rows: { label: string; value: string; isBold?: boolean; isHighlight?: boolean; isSavings?: boolean; isNet?: boolean; isSavingsHeader?: boolean }[] = [];
+  const isRestaurant = (config && String(config.EnableRestaurantMode) === 'true') ||
+    Boolean(invoice.isRestaurantOrder) ||
+    Boolean(invoice.tableName) ||
+    Number(invoice.serviceChargeAmt || 0) > 0 ||
+    invoice.billTotal !== undefined;
 
-  if (hasGstOnBill) {
-    rows.push({ label: 'Taxable Amount:', value: `${currency} ${totals.taxable.toFixed(2)}` });
-    if (totals.zeroRated > 0) {
+  const billTotal = Number(invoice.billTotal !== undefined ? invoice.billTotal : (invoice.subtotal ? Math.max(0, Number(invoice.subtotal) - Number(invoice.discount || 0)) : Number(invoice.total || 0)));
+  const rawSubtotal = Number(invoice.subtotal !== undefined ? invoice.subtotal : (billTotal + totals.discount));
+  const rDiscount = Number(invoice.discount || 0);
+  const rFoodSubtotalNet = Math.max(0, rawSubtotal - rDiscount);
+  const serviceChargePct = Number(invoice.serviceChargePct !== undefined ? invoice.serviceChargePct : (Number(config?.RestaurantServiceChargePct || '10') || 10));
+  const serviceChargeAmt = Number(invoice.serviceChargeAmt !== undefined ? invoice.serviceChargeAmt : ((config?.EnableRestaurantServiceCharge !== 'false' && isRestaurant) ? ((rFoodSubtotalNet * serviceChargePct) / 100) : 0));
+  const totalWithServiceCharge = Number(invoice.totalWithServiceCharge !== undefined ? invoice.totalWithServiceCharge : (rFoodSubtotalNet + serviceChargeAmt));
+
+  const rows: { label: string; value: string; isBold?: boolean; isHighlight?: boolean; isSavings?: boolean; isNet?: boolean; isSavingsHeader?: boolean; isBillAmount?: boolean; isTotal?: boolean; isPaid?: boolean; isStatus?: boolean; isDiscount?: boolean }[] = [];
+
+  if (isRestaurant) {
+    rows.push({ label: 'Subtotal:', value: `${currency} ${rawSubtotal.toFixed(2)}` });
+    if (rDiscount > 0) {
+      rows.push({ label: 'Less: Discount:', value: `-${currency} ${rDiscount.toFixed(2)}`, isDiscount: true });
+    }
+    if (serviceChargeAmt > 0) {
+      rows.push({ label: `Add: Service Charge (${serviceChargePct}%):`, value: `+${currency} ${serviceChargeAmt.toFixed(2)}` });
+    }
+    rows.push({ label: 'Bill Amount:', value: `${currency} ${totalWithServiceCharge.toFixed(2)}`, isBillAmount: true });
+
+    if (hasGstOnBill) {
+      const exemptedSale = Number(totals.zeroRated || 0);
+      const taxableSale = Math.max(0, totalWithServiceCharge - exemptedSale);
+      const gstAmt = Number(totals.gstAmt || 0) > 0 ? Number(totals.gstAmt || 0) : (taxableSale * 0.05);
+      rows.push({ label: 'Taxable Sale:', value: `${currency} ${taxableSale.toFixed(2)}` });
+      rows.push({ label: 'Exempted Sale:', value: `${currency} ${exemptedSale.toFixed(2)}` });
+      rows.push({ label: 'GST Amount (5%):', value: `+${currency} ${gstAmt.toFixed(2)}` });
+    }
+
+    rows.push({
+      label: totalLabel,
+      value: `${currency} ${totals.total.toFixed(2)}`,
+      isTotal: true
+    });
+
+    // Paid and Status
+    const paidAmt = Number(invoice.cash || 0) + Number(invoice.bank1 || 0) + Number(invoice.bank2 || 0);
+    const creditDue = Number(invoice.credit || 0);
+    rows.push({
+      label: 'Paid (Cash + Bank):',
+      value: `${currency} ${(paidAmt > 0 ? paidAmt : totals.total).toFixed(2)}`,
+      isPaid: true
+    });
+    rows.push({
+      label: 'Status:',
+      value: creditDue > 0 ? `DUE ${currency} ${creditDue.toFixed(2)}` : 'PAID IN FULL',
+      isStatus: true
+    });
+  } else {
+    if (hasGstOnBill) {
+      rows.push({ label: 'Taxable Amount:', value: `${currency} ${totals.taxable.toFixed(2)}` });
+      if (totals.zeroRated > 0) {
+        rows.push({ label: 'Exempted / Zero Rated Sale:', value: `${currency} ${totals.zeroRated.toFixed(2)}` });
+      }
+      rows.push({ label: 'GST Amount:', value: `${currency} ${totals.gstAmt.toFixed(2)}` });
+    } else if (totals.zeroRated > 0) {
       rows.push({ label: 'Exempted / Zero Rated Sale:', value: `${currency} ${totals.zeroRated.toFixed(2)}` });
     }
-    rows.push({ label: 'GST Amount:', value: `${currency} ${totals.gstAmt.toFixed(2)}` });
-  } else if (totals.zeroRated > 0) {
-    rows.push({ label: 'Exempted / Zero Rated Sale:', value: `${currency} ${totals.zeroRated.toFixed(2)}` });
-  }
 
-  if (totals.discount > 0) {
-    rows.push({ label: 'Bill Discount:', value: `-${currency} ${totals.discount.toFixed(2)}` });
-  }
+    if (totals.discount > 0) {
+      rows.push({ label: 'Bill Discount:', value: `-${currency} ${totals.discount.toFixed(2)}`, isDiscount: true });
+    }
 
-  rows.push({
-    label: totalLabel,
-    value: `${currency} ${totals.total.toFixed(2)}`,
-    isBold: true,
-    isHighlight: true
-  });
+    rows.push({
+      label: totalLabel,
+      value: `${currency} ${totals.total.toFixed(2)}`,
+      isBold: true,
+      isHighlight: true
+    });
+  }
 
   if (undiscounted.totalSavingsIncGst > 0.005 || savings.totalSavings > 0) {
     rows.push({
@@ -1046,7 +1101,7 @@ export function drawDetailedBillSummaryBox(
     });
   }
 
-  const rowHeight = 5.3;
+  const rowHeight = 5.2;
   const paddingY = 3.0;
   const totalBoxHeight = rows.length * rowHeight + paddingY * 2;
 
@@ -1083,6 +1138,35 @@ export function drawDetailedBillSummaryBox(
       doc.setFontSize(8.2);
       doc.setTextColor(22, 101, 52);
       doc.text(r.value, boxX + boxW - 4, currentY, { align: 'right' });
+    } else if (r.isBillAmount) {
+      const bY = currentY - 3.8;
+      doc.setFillColor(241, 245, 249); // light slate #f1f5f9
+      doc.setDrawColor(203, 213, 225); // #cbd5e1
+      doc.roundedRect(boxX + 2, bY, boxW - 4, 5.5, 1, 1, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.6);
+      doc.setTextColor(30, 41, 59);
+      doc.text(r.label, boxX + 4, currentY);
+
+      doc.setFontSize(8.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(r.value, boxX + boxW - 4, currentY, { align: 'right' });
+    } else if (r.isTotal) {
+      const tY = currentY - 3.8;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(15, 23, 42);
+      doc.setLineWidth(0.5);
+      doc.line(boxX + 2, tY, boxX + boxW - 2, tY);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.2);
+      doc.setTextColor(15, 23, 42);
+      doc.text(r.label, boxX + 4, currentY + 0.3);
+
+      doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(r.value, boxX + boxW - 4, currentY + 0.3, { align: 'right' });
     } else if (r.isHighlight) {
       const hY = currentY - 3.9;
       doc.setFillColor(239, 246, 255);
@@ -1096,6 +1180,31 @@ export function drawDetailedBillSummaryBox(
 
       doc.setFontSize(9);
       doc.setTextColor(29, 78, 216);
+      doc.text(r.value, boxX + boxW - 4, currentY, { align: 'right' });
+    } else if (r.isDiscount) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(220, 38, 38); // red
+      doc.text(r.label, boxX + 4, currentY);
+
+      doc.text(r.value, boxX + boxW - 4, currentY, { align: 'right' });
+    } else if (r.isStatus) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.4);
+      doc.setTextColor(71, 85, 105);
+      doc.text(r.label, boxX + 4, currentY);
+
+      const isPaidFull = r.value.includes('PAID');
+      doc.setTextColor(isPaidFull ? 22 : 220, isPaidFull ? 101 : 38, isPaidFull ? 52 : 38);
+      doc.text(r.value, boxX + boxW - 4, currentY, { align: 'right' });
+    } else if (r.isPaid) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.4);
+      doc.setTextColor(71, 85, 105);
+      doc.text(r.label, boxX + 4, currentY);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
       doc.text(r.value, boxX + boxW - 4, currentY, { align: 'right' });
     } else if (r.isNet) {
       doc.setFont('helvetica', 'bold');

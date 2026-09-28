@@ -272,6 +272,8 @@ export const DEFAULT_CONFIG: Config = {
   SelectedBankLedgerForPrint: 'BOB Account',
   PrintBankDetailsOnInvoice: 'true',
   EnableGST: 'true',
+  EnableGSTInputTax: 'true',
+  EnableTDS2Tracking: 'true',
   EnableSerials: 'true',
   EnablePharmacyBatch: 'true',
   EnableItemDiscount: 'true',
@@ -518,8 +520,9 @@ export const DEFAULT_LEDGERS: Ledger[] = [
   { 'Ledger Name': 'Dorji Traders', Group: 'Sundry Creditors', 'GST No': '30BBBBB1111B1Z2', 'TPN No': 'TPN-998877', Address: 'Main Street, Thimphu', 'Contact No': '17112233', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'Sales Account', Group: 'Sales Account', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'Purchase Account', Group: 'Purchase Account', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
-  { 'Ledger Name': 'GST Payable', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
-  { 'Ledger Name': 'GST Receivable', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'GST Input', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'GST Output', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
+  { 'Ledger Name': 'TDS 2% (Liability)', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'Duties & Taxes', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'NPPF Payable', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'GIS Payable', Group: 'Duties & Taxes', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
@@ -1545,9 +1548,10 @@ export function getLedgers(targetCompanyId?: string): Ledger[] {
   const deletedLedgers = new Set(loadJson<string[]>(STORAGE_KEYS.DELETED_LEDGERS, [], cId).map(d => (d || '').trim().toLowerCase()));
   const isDefaultDemoCompany = !cId || cId === DEFAULT_TENANT_COMPANY.id;
 
-  // Auto-purge TD/DA Expenses if present and unused (consolidating to TA/DA Expenses)
+  // Auto-purge duplicate GST Payable / GST Receivable if present (keeping GST Input and GST Output)
   leds = leds.filter(l => {
     const norm = (l['Ledger Name'] || '').trim().toLowerCase();
+    if (norm === 'gst payable' || norm === 'gst receivable') return false;
     if (norm === 'td/da expenses' && !isLedgerInUse('TD/DA Expenses')) return false;
     if (deletedLedgers.has(norm)) return false;
     return true;
@@ -1983,6 +1987,61 @@ export function saveItemCategory(catName: string) {
   list.push(trimmed);
   saveJson(STORAGE_KEYS.ITEM_CATEGORIES, list);
   return { ok: true, categories: list };
+}
+
+export function updateItemCategory(oldName: string, newName: string) {
+  const trimmedOld = oldName.trim();
+  const trimmedNew = newName.trim();
+  if (!trimmedNew) return { ok: false, error: 'Category Name is required.', categories: getItemCategories() };
+  let list = getItemCategories();
+  if (trimmedOld.toLowerCase() !== trimmedNew.toLowerCase()) {
+    if (list.some(c => c.trim().toLowerCase() === trimmedNew.toLowerCase())) {
+      return { ok: false, error: `Category "${trimmedNew}" already exists.`, categories: list };
+    }
+  }
+  list = list.map(c => (c === trimmedOld ? trimmedNew : c));
+  saveJson(STORAGE_KEYS.ITEM_CATEGORIES, list);
+
+  // Also cascade update items that used the old category
+  try {
+    const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, []);
+    let modified = false;
+    items.forEach(it => {
+      if (it.Category === trimmedOld) {
+        it.Category = trimmedNew;
+        modified = true;
+      }
+    });
+    if (modified) {
+      saveJson(STORAGE_KEYS.ITEMS, items);
+    }
+  } catch (e) {}
+
+  return { ok: true, categories: list };
+}
+
+export function deleteItemCategory(catName: string) {
+  const trimmed = catName.trim();
+  const list = getItemCategories();
+  const filtered = list.filter(c => c !== trimmed);
+  saveJson(STORAGE_KEYS.ITEM_CATEGORIES, filtered);
+
+  // Also clean up items that used this category
+  try {
+    const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, []);
+    let modified = false;
+    items.forEach(it => {
+      if (it.Category === trimmed) {
+        it.Category = '';
+        modified = true;
+      }
+    });
+    if (modified) {
+      saveJson(STORAGE_KEYS.ITEMS, items);
+    }
+  } catch (e) {}
+
+  return { ok: true, categories: filtered };
 }
 
 export function getRacks(): string[] {
@@ -3811,9 +3870,45 @@ export function saveSalesInvoice(payload: {
     expensesTotal += Number(exp.amount) || 0;
   });
 
-  tax = round2(tax); zro = round2(zro); gst = round2(gst); rawTot = round2(rawTot + expensesTotal);
-  const appliedDiscount = Math.min(rawTot, Math.max(0, round2(Number(billDiscount) || 0)));
-  const finalTot = Math.max(0, round2(rawTot - appliedDiscount));
+  const isRestaurant = cfg.EnableRestaurantMode === 'true' || Boolean((payload as any).isRestaurantOrder);
+  let billTotal = (payload as any).billTotal !== undefined ? Number((payload as any).billTotal) : undefined;
+  let serviceChargeAmt = (payload as any).serviceChargeAmt !== undefined ? Number((payload as any).serviceChargeAmt) : undefined;
+  let serviceChargePct = (payload as any).serviceChargePct !== undefined ? Number((payload as any).serviceChargePct) : (Number(cfg.RestaurantServiceChargePct || '10') || 0);
+  let totalWithServiceCharge = (payload as any).totalWithServiceCharge !== undefined ? Number((payload as any).totalWithServiceCharge) : undefined;
+
+  let appliedDiscount = 0;
+  let finalTot = 0;
+
+  if (isRestaurant) {
+    tax = round2(tax);
+    zro = round2(zro);
+    rawTot = round2(tax + zro);
+    appliedDiscount = Math.min(rawTot, Math.max(0, round2(Number(billDiscount) || 0)));
+    if (billTotal === undefined) {
+      billTotal = Math.max(0, round2(rawTot - appliedDiscount));
+    }
+    if (serviceChargeAmt === undefined) {
+      if (cfg.EnableRestaurantServiceCharge !== 'false') {
+        serviceChargeAmt = round2((billTotal * serviceChargePct) / 100);
+      } else {
+        serviceChargeAmt = 0;
+        serviceChargePct = 0;
+      }
+    }
+    if (totalWithServiceCharge === undefined) {
+      totalWithServiceCharge = round2(billTotal + serviceChargeAmt);
+    }
+    if (cfg.EnableGST === 'false' || isCustomerGstExempted) {
+      gst = 0;
+    } else {
+      gst = round2((totalWithServiceCharge * 5) / 100);
+    }
+    finalTot = Math.max(0, round2(totalWithServiceCharge + gst));
+  } else {
+    tax = round2(tax); zro = round2(zro); gst = round2(gst); rawTot = round2(rawTot + expensesTotal);
+    appliedDiscount = Math.min(rawTot, Math.max(0, round2(Number(billDiscount) || 0)));
+    finalTot = Math.max(0, round2(rawTot - appliedDiscount));
+  }
 
   // Determine series prefix and voucher number based on selected Voucher Type
   const allVTypes = getVoucherTypes();
@@ -3909,6 +4004,15 @@ export function saveSalesInvoice(payload: {
     zeroRated: zro,
     gstAmt: gst,
     total: finalTot,
+    isRestaurantOrder: isRestaurant,
+    tableId: (payload as any).tableId || undefined,
+    tableName: (payload as any).tableName || undefined,
+    waiterName: (payload as any).waiterName || undefined,
+    guestCount: (payload as any).guestCount || undefined,
+    billTotal: isRestaurant ? billTotal : undefined,
+    serviceChargeAmt: isRestaurant ? serviceChargeAmt : undefined,
+    serviceChargePct: isRestaurant ? serviceChargePct : undefined,
+    totalWithServiceCharge: isRestaurant ? totalWithServiceCharge : undefined,
     cash,
     bank1: b1,
     bank2: b2,
@@ -10936,6 +11040,154 @@ export function getGSTSummaryReport(from: string, to: string) {
       netPayable: netPayable > 0 ? netPayable : 0,
       netRefundable: netPayable < 0 ? Math.abs(netPayable) : 0
     }
+  };
+}
+
+export function getTDS2Report(from: string, to: string) {
+  const parseDateToMs = (d: any, defaultHours = 12): number => {
+    if (!d) return 0;
+    if (typeof d === 'number') return d;
+    const str = String(d).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      const [y, m, day] = str.slice(0, 10).split('-').map(Number);
+      return new Date(y, m - 1, day, defaultHours, 0, 0).getTime();
+    }
+    const dt = new Date(str);
+    return isNaN(dt.getTime()) ? 0 : dt.getTime();
+  };
+
+  const fr = parseDateToMs(from, 0);
+  const toDt = parseDateToMs(to, 23) + (59 * 60 * 1000) + (59 * 1000) + 999;
+
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+  const ledgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
+
+  const results: any[] = [];
+
+  vouchers.forEach(v => {
+    if (v.status === 'Cancelled') return;
+    const rawDate = v.date || (v as any).DateIso || (v as any).Date;
+    const d = parseDateToMs(rawDate);
+    if (d < fr || d > toDt) return;
+
+    // Check if TDS is applicable
+    const isTdsExplicit = Boolean(v.isTdsApplicable);
+    
+    // Check multi-line for TDS ledger
+    let tdsLine: any = null;
+    let otherLines: any[] = [];
+    if (v.lines && Array.isArray(v.lines) && v.lines.length > 0) {
+      tdsLine = v.lines.find(l => {
+        const name = (l.ledger || '').toLowerCase();
+        return name.includes('tds 2%') || name.includes('tds 2') || (name.includes('tds') && name.includes('liability')) || (name.includes('tds') && name.includes('contract'));
+      });
+      otherLines = v.lines.filter(l => l !== tdsLine);
+    }
+
+    const vAny = v as any;
+    // Check single-line for TDS
+    const singleTds = [vAny.partyLedger, vAny.modeLedger, vAny.debitLedger, vAny.creditLedger].some(l => {
+      const name = (l || '').toLowerCase();
+      return name.includes('tds 2%') || name.includes('tds 2') || (name.includes('tds') && name.includes('liability')) || (name.includes('tds') && name.includes('contract'));
+    });
+
+    if (!isTdsExplicit && !tdsLine && !singleTds) return;
+
+    // Extract TDS rate & amount
+    const tdsRate = Number(vAny.tdsRate) || 2;
+    let tdsAmount = 0;
+    if (vAny.tdsAmount !== undefined && vAny.tdsAmount !== null && Number(vAny.tdsAmount) > 0) {
+      tdsAmount = Number(vAny.tdsAmount);
+    } else if (tdsLine) {
+      tdsAmount = Number(tdsLine.amount) || Number(tdsLine.debit) || Number(tdsLine.credit) || 0;
+    } else if (singleTds) {
+      tdsAmount = Number(vAny.amount) || 0;
+    }
+
+    // Extract Bill Amount
+    let billAmount = 0;
+    if (vAny.tdsBillAmount !== undefined && vAny.tdsBillAmount !== null && Number(vAny.tdsBillAmount) > 0) {
+      billAmount = Number(vAny.tdsBillAmount);
+    } else if (tdsAmount > 0) {
+      // In multi-line, check if there is an expense/party line with gross amount
+      const expenseLine = otherLines.find(l => {
+        const amt = Number(l.amount) || Number(l.debit) || Number(l.credit) || 0;
+        return amt > tdsAmount;
+      });
+      if (expenseLine) {
+        billAmount = Number(expenseLine.amount) || Number(expenseLine.debit) || Number(expenseLine.credit) || 0;
+      } else {
+        billAmount = Math.round((tdsAmount / (tdsRate / 100)) * 100) / 100;
+      }
+    } else {
+      billAmount = Number(vAny.amount) || Number(vAny.totalAmount) || 0;
+      tdsAmount = Math.round((billAmount * (tdsRate / 100)) * 100) / 100;
+    }
+
+    const netPaid = Math.max(0, Math.round((billAmount - tdsAmount) * 100) / 100);
+
+    // Resolve contractor/party name and address
+    let contractorName = vAny.tdsContractorNameAndAddress || '';
+    if (!contractorName) {
+      if (otherLines.length > 0) {
+        // Find party/vendor ledger (non-cash/non-bank if possible)
+        const pLine = otherLines.find(l => {
+          const lname = (l.ledger || '').toLowerCase();
+          return !lname.includes('cash') && !lname.includes('bank');
+        }) || otherLines[0];
+        contractorName = pLine?.ledger || '';
+      } else {
+        contractorName = vAny.partyLedger || vAny.supplierName || vAny.partyName || vAny.debitLedger || vAny.creditLedger || '';
+      }
+    }
+
+    // Resolve TPN
+    let tpn = vAny.tdsTpn || '';
+    if (!tpn && contractorName) {
+      const matchedLedger = ledgers.find(l => (l['Ledger Name'] || '').trim().toLowerCase() === contractorName.trim().toLowerCase());
+      if (matchedLedger) {
+        tpn = matchedLedger['TPN No'] || matchedLedger['GST No'] || (matchedLedger as any).TPN || (matchedLedger as any).GSTIN || '';
+      }
+    }
+
+    // Resolve work description
+    const workDescription = v.tdsWorkDescription || v.narration || 'Contractual Work / Supply';
+
+    // Resolve invoice details
+    const invoiceNo = v.tdsInvoiceNo || v.invoiceNo || v.referenceNo || v.billNo || v.voucherNo || '-';
+    const invoiceDate = v.tdsInvoiceDate || v.invoiceDate || v.date;
+
+    results.push({
+      date: v.date,
+      voucherNo: v.voucherNo,
+      voucherType: v.type,
+      contractorNameAndAddress: contractorName || 'Contractor / Payee',
+      tpn: tpn || '-',
+      workDescription,
+      invoiceNo,
+      invoiceDate,
+      billAmount,
+      tdsRate,
+      tdsAmount,
+      netPaid,
+      narration: v.narration || ''
+    });
+  });
+
+  results.sort((a, b) => parseDateToMs(a.date) - parseDateToMs(b.date));
+
+  const totals = results.reduce((acc, r) => {
+    acc.totalBillAmount += Number(r.billAmount) || 0;
+    acc.totalTdsAmount += Number(r.tdsAmount) || 0;
+    acc.totalNetPaid += Number(r.netPaid) || 0;
+    acc.count += 1;
+    return acc;
+  }, { totalBillAmount: 0, totalTdsAmount: 0, totalNetPaid: 0, count: 0 });
+
+  return {
+    mode: 'tds_report',
+    rows: results,
+    totals
   };
 }
   

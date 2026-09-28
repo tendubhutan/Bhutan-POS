@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
 import { Config, Item, Ledger } from '../types';
 import {
-  getDailyColumnarReport, getGSTReport, getGSTInputDomReport, getGSTInputImpReport, getGSTSummaryReport, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig,
+  getDailyColumnarReport, getGSTReport, getGSTInputDomReport, getGSTInputImpReport, getGSTSummaryReport, getTDS2Report, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig,
   getPartyOutstandingBills, saveVoucher, canUserViewAuditTrail, getActiveUser, getBranches, getGodowns, getEmployees
 } from '../services/storageService';
 import { AssignmentReportView } from './employee/AssignmentReportView';
 import XLSX from 'xlsx-js-style';
 import {
-  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, Warehouse, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History, Plus, Minus, Eye, ZoomIn, ZoomOut
+  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, Warehouse, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History, Plus, Minus, Eye, ZoomIn, ZoomOut, Utensils
 } from 'lucide-react';
 import { PrintReportModal } from './PrintReportModal';
 import { generateReportPDF, shareOrDownloadPDF } from '../utils/pdfExport';
@@ -128,7 +128,7 @@ export function formatDisplayDate(isoStr: string): string {
 }
 
 interface ReportViewState {
-  mainCategory: 'daily' | 'gst' | 'gst_summary' | 'gst_input_dom' | 'gst_input_imp' | 'inv' | 'fin' | 'reg' | 'audit';
+  mainCategory: 'daily' | 'gst' | 'gst_summary' | 'gst_input_dom' | 'gst_input_imp' | 'tds_report' | 'inv' | 'fin' | 'reg' | 'audit';
   finSubTab: 'TB' | 'PNL' | 'BS' | 'REC' | 'PAY' | 'LED';
   invSubTab: 'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary' | 'godown_summary';
   regSubTab: 'daybook' | 'vouchers' | 'sales' | 'purchases' | 'quotations' | 'delivery_notes' | 'assignments';
@@ -149,7 +149,7 @@ export const Reports: React.FC<ReportsProps> = ({
   initialReportTarget,
   isActive = true
 }) => {
-  const [mainCategory, setMainCategory] = useState<'daily' | 'gst' | 'gst_summary' | 'gst_input_dom' | 'gst_input_imp' | 'inv' | 'fin' | 'reg' | 'audit'>('daily');
+  const [mainCategory, setMainCategory] = useState<'daily' | 'gst' | 'gst_summary' | 'gst_input_dom' | 'gst_input_imp' | 'tds_report' | 'inv' | 'fin' | 'reg' | 'audit'>('daily');
   const activeUser = useMemo(() => getActiveUser(), []);
   const canViewAudit = canUserViewAuditTrail(activeUser);
   const [invSubTab, setInvSubTab] = useState<'summary' | 'variant_summary' | 'part_summary' | 'mov' | 'prof' | 'top' | 'serials' | 'batch_summary' | 'godown_summary'>('summary');
@@ -566,10 +566,19 @@ export const Reports: React.FC<ReportsProps> = ({
 
   const showGst = String(config.EnableGST) !== 'false';
 
-  // All structured report categories arranged in exact sequence:
-  // 1. Daily Sales Report, 2. Stock & Inventory, 3. GST & Taxation, 4. Final Account & Audit Log, 5. Voucher Register
+  // All structured report categories dynamically filtered based on enabled system features
   const allReportCategories = useMemo(() => {
-    return [
+    const showMultiGodown = config.EnableMultiGodown === 'true' || config.EnableMultiBranch === 'true';
+    const showVariants = config.EnableGarmentsAndFootwear === 'true';
+    const showSpareParts = config.EnableSpareParts === 'true';
+    const showSerials = config.EnableSerials === 'true';
+    const showBatch = config.EnablePharmacyBatch === 'true' || config.EnablePharmacyBatch !== 'false';
+    const showPurchase = config.EnablePurchase !== 'false';
+    const showVouchers = config.EnableVouchers !== 'false';
+    const showStaffAssignments = config.EnableStaffAssignments === 'true' || config.EnableStaffAssignments !== 'false';
+    const showRestaurant = config.EnableRestaurantMode === 'true';
+
+    const categories = [
       {
         id: 'daily_sales',
         name: '1. Daily Sales Report',
@@ -582,6 +591,18 @@ export const Reports: React.FC<ReportsProps> = ({
           { id: 'daily-item', name: 'Daily Sales (Item-wise)', group: 'Daily Sales', desc: 'Item-by-item sales quantity & revenue', keywords: ['item', 'products', 'sold', 'itemwise', 'quantity'] }
         ]
       },
+      ...(showRestaurant ? [{
+        id: 'restaurant_dining',
+        name: 'Restaurant & Dining Reports',
+        shortName: 'Restaurant',
+        badge: 'Dining',
+        icon: Utensils,
+        color: 'amber',
+        items: [
+          { id: 'daily-bill', name: 'Table Sales & Billing Summary', group: 'Restaurant', desc: 'Running & completed table orders, bill wise revenue & GST', keywords: ['table', 'restaurant', 'dining', 'bill', 'kot', 'orders'] },
+          { id: 'daily-item', name: 'Kitchen Order (KOT) & Dish Item Sales', group: 'Restaurant', desc: 'Dishes served, quantity & itemized sales breakdown', keywords: ['kot', 'kitchen', 'dish', 'food', 'itemwise'] }
+        ]
+      }] : []),
       {
         id: 'stock_inventory',
         name: '2. Stock & Inventory',
@@ -592,16 +613,16 @@ export const Reports: React.FC<ReportsProps> = ({
         items: [
           { id: 'inv-summary', name: 'Stock Summary & Valuation', group: 'Inventory', desc: 'Opening, closing, rate & asset value', keywords: ['stock', 'inventory', 'valuation', 'assets', 'balance'] },
           { id: 'inv-mov', name: 'Stock Movement (In / Out)', group: 'Inventory', desc: 'Purchase inflows & sales outflows', keywords: ['movement', 'inflow', 'outflow', 'in out', 'transfers'] },
-          { id: 'inv-godown_summary', name: 'Godown & Store Wise Stock', group: 'Inventory', desc: 'Multi-location warehouse balances', keywords: ['godown', 'store', 'warehouse', 'location'] },
-          { id: 'inv-variant_summary', name: 'Size & Color Wise Stock', group: 'Inventory', desc: 'Matrix breakdown of apparel & variants', keywords: ['size', 'color', 'matrix', 'apparel', 'variants'] },
-          { id: 'inv-part_summary', name: 'Part Number Wise Stock', group: 'Inventory', desc: 'Stock filtered by OEM / part numbers', keywords: ['part number', 'parts', 'oem', 'automotive'] },
-          { id: 'inv-serials', name: 'Serialwise Stock', group: 'Inventory', desc: 'Tracked by individual serial / IMEI', keywords: ['serial', 'imei', 'barcode', 'device'] },
-          { id: 'inv-batch_summary', name: 'Batch & Expiry Wise Stock', group: 'Inventory', desc: 'Pharmaceutical batch lots & expiry dates', keywords: ['batch', 'expiry', 'exp', 'mfg', 'lot', 'pharma'] },
+          ...(showMultiGodown ? [{ id: 'inv-godown_summary', name: 'Godown & Store Wise Stock', group: 'Inventory', desc: 'Multi-location warehouse balances', keywords: ['godown', 'store', 'warehouse', 'location'] }] : []),
+          ...(showVariants ? [{ id: 'inv-variant_summary', name: 'Size & Color Wise Stock', group: 'Inventory', desc: 'Matrix breakdown of apparel & variants', keywords: ['size', 'color', 'matrix', 'apparel', 'variants'] }] : []),
+          ...(showSpareParts ? [{ id: 'inv-part_summary', name: 'Part Number Wise Stock', group: 'Inventory', desc: 'Stock filtered by OEM / part numbers', keywords: ['part number', 'parts', 'oem', 'automotive'] }] : []),
+          ...(showSerials ? [{ id: 'inv-serials', name: 'Serialwise Stock', group: 'Inventory', desc: 'Tracked by individual serial / IMEI', keywords: ['serial', 'imei', 'barcode', 'device'] }] : []),
+          ...(showBatch ? [{ id: 'inv-batch_summary', name: 'Batch & Expiry Wise Stock', group: 'Inventory', desc: 'Pharmaceutical batch lots & expiry dates', keywords: ['batch', 'expiry', 'exp', 'mfg', 'lot', 'pharma'] }] : []),
           { id: 'inv-prof', name: 'Item Profitability', group: 'Inventory', desc: 'Gross margin & markup percentage', keywords: ['profit', 'margin', 'markup', 'profitability'] },
           { id: 'inv-top', name: 'Top 15 Sellers', group: 'Inventory', desc: 'Fastest-moving high volume products', keywords: ['top', 'sellers', 'best', 'fast moving'] }
         ]
       },
-      {
+      ...(showGst ? [{
         id: 'gst_taxation',
         name: '3. GST & Taxation',
         shortName: 'GST & Tax',
@@ -609,18 +630,15 @@ export const Reports: React.FC<ReportsProps> = ({
         icon: CircleDollarSign,
         color: 'amber',
         items: [
-          ...(showGst ? [
-            { id: 'gst', name: 'GST Output (Sales)', group: 'Taxation', desc: 'Output sales tax collections', keywords: ['gst', 'tax', 'output', 'sales tax'] },
-            ...(config.EnableGSTInputTax === 'true' ? [
-              { id: 'gst_summary', name: 'Net GST Summary', group: 'Taxation', desc: 'Net tax liability (Output minus Input)', keywords: ['net gst', 'tax liability', 'tax summary'] },
-              { id: 'gst_input_dom', name: 'GST Input (Domestic & Exp)', group: 'Taxation', desc: 'ITC claimable on domestic purchases', keywords: ['gst input', 'domestic', 'itc', 'claim', 'expenses'] },
-              { id: 'gst_input_imp', name: 'GST Input (Import Purchase)', group: 'Taxation', desc: 'Customs and import purchase tax claims', keywords: ['gst input import', 'import', 'customs'] }
-            ] : [])
-          ] : [
-            { id: 'gst', name: 'GST / Tax Report', group: 'Taxation', desc: 'Taxable amounts & collections', keywords: ['tax', 'gst'] }
-          ])
+          { id: 'gst', name: 'GST Output (Sales)', group: 'Taxation', desc: 'Output sales tax collections', keywords: ['gst', 'tax', 'output', 'sales tax'] },
+          ...(config.EnableGSTInputTax === 'true' ? [
+            { id: 'gst_summary', name: 'Net GST Summary', group: 'Taxation', desc: 'Net tax liability (Output minus Input)', keywords: ['net gst', 'tax liability', 'tax summary'] },
+            { id: 'gst_input_dom', name: 'GST Input (Domestic & Exp)', group: 'Taxation', desc: 'ITC claimable on domestic purchases', keywords: ['gst input', 'domestic', 'itc', 'claim', 'expenses'] },
+            { id: 'gst_input_imp', name: 'GST Input (Import Purchase)', group: 'Taxation', desc: 'Customs and import purchase tax claims', keywords: ['gst input import', 'import', 'customs'] }
+          ] : []),
+          { id: 'tds_report', name: 'TDS 2% Contract Schedule (Form IT-7(B))', group: 'Taxation', desc: 'DRC Bhutan Form IT-7(B) monthly TDS submission schedule & Excel export', keywords: ['tds', 'tds 2%', 'liability', 'tax', 'it-7', 'contract', 'withholding', 'schedule'] }
         ]
-      },
+      }] : []),
       {
         id: 'final_accounts',
         name: '4. Final Account & Audit Log',
@@ -635,7 +653,7 @@ export const Reports: React.FC<ReportsProps> = ({
           { id: 'fin-BS', name: 'Balance Sheet', group: 'Final Accounts', desc: 'Assets, liabilities, capital & net worth', keywords: ['balance sheet', 'bs', 'assets', 'liabilities'] },
           { id: 'fin-REC', name: 'Receivables (Debtors)', group: 'Final Accounts', desc: 'Customer outstanding overdue balances', keywords: ['receivables', 'debtors', 'unpaid', 'customer balance'] },
           { id: 'fin-PAY', name: 'Payables (Creditors)', group: 'Final Accounts', desc: 'Supplier bills due for payment', keywords: ['payables', 'creditors', 'vendor balance', 'bills due'] },
-          ...(canViewAudit ? [
+          ...(canViewAudit && config.EnableAuditTrail !== 'false' ? [
             { id: 'audit', name: 'Audit Trail & Activity Log', group: 'Audit', desc: 'Tamper-evident system activity history', keywords: ['audit', 'trail', 'security', 'logs', 'history'] }
           ] : [])
         ]
@@ -649,16 +667,18 @@ export const Reports: React.FC<ReportsProps> = ({
         color: 'purple',
         items: [
           { id: 'reg-daybook', name: 'Day Book (Daily All-Transaction Journal)', group: 'Registers', desc: 'All daily sales, purchases, vouchers & journal logbook', keywords: ['daybook', 'day book', 'daily', 'journal', 'all transactions'] },
-          { id: 'reg-vouchers', name: 'Accounting Voucher Register', group: 'Registers', desc: 'All journal, payment, receipt vouchers', keywords: ['voucher', 'journal', 'payment', 'receipt', 'contra'] },
+          ...(showVouchers ? [{ id: 'reg-vouchers', name: 'Accounting Voucher Register', group: 'Registers', desc: 'All journal, payment, receipt vouchers', keywords: ['voucher', 'journal', 'payment', 'receipt', 'contra'] }] : []),
           { id: 'reg-sales', name: 'Sales Register', group: 'Registers', desc: 'Detailed sales invoice logbook', keywords: ['sales register', 'invoices', 'billed'] },
-          { id: 'reg-purchases', name: 'Purchase Register', group: 'Registers', desc: 'Supplier purchase invoice register', keywords: ['purchase register', 'vendor', 'bills'] },
-          { id: 'reg-quotations', name: 'Quotation Register', group: 'Registers', desc: 'Proforma and sales quotations', keywords: ['quote', 'estimate', 'quotation'] },
-          { id: 'reg-delivery_notes', name: 'Delivery Note Register', group: 'Registers', desc: 'Goods dispatch and delivery challans', keywords: ['delivery', 'challan', 'dispatch', 'dc'] },
-          { id: 'reg-assignments', name: 'Staff Task & Assignment Report', group: 'Registers', desc: 'Employee task register, operational audits & workload KPIs', keywords: ['assignment', 'task', 'staff', 'employee', 'delegation', 'todo', 'kpi', 'audit'] }
+          ...(showPurchase ? [{ id: 'reg-purchases', name: 'Purchase Register', group: 'Registers', desc: 'Supplier purchase invoice register', keywords: ['purchase register', 'vendor', 'bills'] }] : []),
+          ...(config.EnableQuotations !== 'false' ? [{ id: 'reg-quotations', name: 'Quotation Register', group: 'Registers', desc: 'Proforma and sales quotations', keywords: ['quote', 'estimate', 'quotation'] }] : []),
+          ...(config.EnableDeliveryNotes !== 'false' ? [{ id: 'reg-delivery_notes', name: 'Delivery Note Register', group: 'Registers', desc: 'Goods dispatch and delivery challans', keywords: ['delivery', 'challan', 'dispatch', 'dc'] }] : []),
+          ...(showStaffAssignments ? [{ id: 'reg-assignments', name: 'Staff Task & Assignment Report', group: 'Registers', desc: 'Employee task register, operational audits & workload KPIs', keywords: ['assignment', 'task', 'staff', 'employee', 'delegation', 'todo', 'kpi', 'audit'] }] : [])
         ]
       }
     ];
-  }, [showGst, config.EnableGSTInputTax, canViewAudit]);
+
+    return categories.filter(c => c.items.length > 0);
+  }, [showGst, config, canViewAudit]);
 
   // Current active report key
   const currentActiveReportKey = useMemo(() => {
@@ -667,6 +687,7 @@ export const Reports: React.FC<ReportsProps> = ({
     if (mainCategory === 'gst_summary') return 'gst_summary';
     if (mainCategory === 'gst_input_dom') return 'gst_input_dom';
     if (mainCategory === 'gst_input_imp') return 'gst_input_imp';
+    if (mainCategory === 'tds_report') return 'tds_report';
     if (mainCategory === 'inv') return `inv-${invSubTab}`;
     if (mainCategory === 'reg') return `reg-${regSubTab}`;
     if (mainCategory === 'audit') return 'audit';
@@ -791,7 +812,7 @@ export const Reports: React.FC<ReportsProps> = ({
     } else if (val === 'daily-item') {
       setMainCategory('daily');
       setItemWise(true);
-    } else if (val === 'gst' || val === 'gst_summary' || val === 'gst_input_dom' || val === 'gst_input_imp') {
+    } else if (val === 'gst' || val === 'gst_summary' || val === 'gst_input_dom' || val === 'gst_input_imp' || val === 'tds_report') {
       setMainCategory(val as any);
     } else if (val.startsWith('inv-')) {
       setMainCategory('inv');
@@ -811,16 +832,36 @@ export const Reports: React.FC<ReportsProps> = ({
   const allReportsList = useMemo(() => [
     { cat: 'daily', itemWise: false, label: 'Daily Sales (Bill-wise)' },
     { cat: 'daily', itemWise: true, label: 'Daily Sales (Item-wise)' },
+    ...(config.EnableRestaurantMode === 'true' ? [
+      { cat: 'daily', itemWise: false, label: 'Table Sales & Billing Summary' },
+      { cat: 'daily', itemWise: true, label: 'Kitchen Order (KOT) & Dish Item Sales' }
+    ] : []),
     ...(showGst ? [
       { cat: 'gst', label: 'GST Output (Sales)' },
       ...(config.EnableGSTInputTax === 'true' ? [
+        { cat: 'gst_summary', label: 'Net GST Summary' },
         { cat: 'gst_input_dom', label: 'GST Input (Domestic Purchase & Expenses)' },
         { cat: 'gst_input_imp', label: 'GST Input (Import Purchase)' }
-      ] : [])
+      ] : []),
+      { cat: 'tds_report', label: 'TDS 2% Contract Schedule (Form IT-7(B))' }
     ] : []),
     { cat: 'inv', invSub: 'summary', label: 'Stock Summary & Valuation' },
     { cat: 'inv', invSub: 'mov', label: 'Stock Movement (In / Out)' },
-    { cat: 'inv', invSub: 'godown_summary', label: 'Godown & Store Wise Stock' },
+    ...((config.EnableMultiGodown === 'true' || config.EnableMultiBranch === 'true') ? [
+      { cat: 'inv', invSub: 'godown_summary', label: 'Godown & Store Wise Stock' }
+    ] : []),
+    ...(config.EnableGarmentsAndFootwear === 'true' ? [
+      { cat: 'inv', invSub: 'variant_summary', label: 'Size & Color Wise Stock' }
+    ] : []),
+    ...(config.EnableSpareParts === 'true' ? [
+      { cat: 'inv', invSub: 'part_summary', label: 'Part Number Wise Stock' }
+    ] : []),
+    ...(config.EnableSerials === 'true' ? [
+      { cat: 'inv', invSub: 'serials', label: 'Serialwise Stock' }
+    ] : []),
+    ...((config.EnablePharmacyBatch === 'true' || config.EnablePharmacyBatch !== 'false') ? [
+      { cat: 'inv', invSub: 'batch_summary', label: 'Batch & Expiry Wise Stock' }
+    ] : []),
     { cat: 'inv', invSub: 'prof', label: 'Item Profitability' },
     { cat: 'inv', invSub: 'top', label: 'Top 15 Sellers' },
     { cat: 'fin', finSub: 'TB', label: 'Trial Balance' },
@@ -829,13 +870,13 @@ export const Reports: React.FC<ReportsProps> = ({
     { cat: 'fin', finSub: 'REC', label: 'Receivables (Debtors)' },
     { cat: 'fin', finSub: 'PAY', label: 'Payables (Creditors)' },
     { cat: 'fin', finSub: 'LED', label: 'Ledger Statement' },
-    { cat: 'reg', regSub: 'vouchers', label: 'Accounting Voucher Register' },
+    ...(config.EnableVouchers !== 'false' ? [{ cat: 'reg', regSub: 'vouchers', label: 'Accounting Voucher Register' }] : []),
     { cat: 'reg', regSub: 'sales', label: 'Sales Register' },
-    { cat: 'reg', regSub: 'purchases', label: 'Purchase Register' },
-    { cat: 'reg', regSub: 'quotations', label: 'Quotation Register' },
-    { cat: 'reg', regSub: 'delivery_notes', label: 'Delivery Note Register' },
-    { cat: 'reg', regSub: 'assignments', label: 'Staff Task & Assignment Report' }
-  ], [showGst]);
+    ...(config.EnablePurchase !== 'false' ? [{ cat: 'reg', regSub: 'purchases', label: 'Purchase Register' }] : []),
+    ...(config.EnableQuotations !== 'false' ? [{ cat: 'reg', regSub: 'quotations', label: 'Quotation Register' }] : []),
+    ...(config.EnableDeliveryNotes !== 'false' ? [{ cat: 'reg', regSub: 'delivery_notes', label: 'Delivery Note Register' }] : []),
+    ...((config.EnableStaffAssignments === 'true' || config.EnableStaffAssignments !== 'false') ? [{ cat: 'reg', regSub: 'assignments', label: 'Staff Task & Assignment Report' }] : [])
+  ], [showGst, config]);
 
   // Track report navigation transitions for strict sequential step-back
   useEffect(() => {
@@ -1125,6 +1166,9 @@ export const Reports: React.FC<ReportsProps> = ({
       } else if (mainCategory === 'gst_input_imp') {
         const data = getGSTInputImpReport(fromDate, toDate);
         setReportData(data);
+      } else if (mainCategory === 'tds_report') {
+        const data = getTDS2Report(fromDate, toDate);
+        setReportData(data);
       } else if (mainCategory === 'inv') {
         const data = getAdvancedReports(invSubTab, fromDate, toDate);
         setReportData(data);
@@ -1280,6 +1324,60 @@ export const Reports: React.FC<ReportsProps> = ({
           { label: 'Exempted Value', value: `Nu. ${fmt(reportData.totals.exemptedAmount)}` },
           { label: 'Total Import Amount', value: `Nu. ${fmt(reportData.totals.totalImportAmount)}` },
           { label: 'GST Claimable', value: `Nu. ${fmt(reportData.totals.gstAmount)}` }
+        ];
+      }
+    } else if (mainCategory === 'tds_report') {
+      reportTitle = 'TDS 2% Contract Submission Schedule (Form IT-7(B))';
+      headers = [
+        'Sl No',
+        'Date of Payment',
+        'Voucher No',
+        'Name & Address of Contractor / Payee',
+        'Contractor TPN',
+        'Description of Contract / Supply',
+        'Bill / Invoice No',
+        'Bill / Invoice Date',
+        'Gross Bill Amount (Nu.)',
+        'TDS Rate (%)',
+        'TDS Amount (Nu.)',
+        'Net Amount Paid (Nu.)'
+      ];
+      (reportData.rows || []).forEach((r: any, idx: number) => {
+        rows.push([
+          idx + 1,
+          formatDateStr(r.date),
+          r.voucherNo || '-',
+          r.contractorNameAndAddress || '-',
+          r.tpn || '-',
+          r.workDescription || '-',
+          r.invoiceNo || '-',
+          r.invoiceDate ? formatDateStr(r.invoiceDate) : '-',
+          fmt(r.billAmount),
+          `${r.tdsRate || 2}%`,
+          fmt(r.tdsAmount),
+          fmt(r.netPaid)
+        ]);
+      });
+      if (reportData.totals) {
+        totalsRow = [
+          'TOTAL',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          fmt(reportData.totals.totalBillAmount),
+          '',
+          fmt(reportData.totals.totalTdsAmount),
+          fmt(reportData.totals.totalNetPaid)
+        ];
+        summaryCards = [
+          { label: 'Total Contract Bills', value: reportData.rows?.length || 0 },
+          { label: 'Total Gross Bill Amount', value: `Nu. ${fmt(reportData.totals.totalBillAmount)}` },
+          { label: 'Total TDS 2% Deducted', value: `Nu. ${fmt(reportData.totals.totalTdsAmount)}` },
+          { label: 'Total Net Paid', value: `Nu. ${fmt(reportData.totals.totalNetPaid)}` }
         ];
       }
     } else if (mainCategory === 'inv') {
@@ -2183,7 +2281,242 @@ export const Reports: React.FC<ReportsProps> = ({
     return { reportTitle, headers, rows, totalsRow, summaryCards };
   };
 
+  const exportDrcTds7bExcel = () => {
+    if (!reportData || !reportData.rows) return;
+
+    try {
+      const orgName = config.CompanyName || 'BUSINESS / CONTRACTING ENTITY';
+      const orgTpn = config.CompanyTPNNo || config.CompanyGSTNo || '-';
+      const orgAddress = config.Address || '-';
+      const rows = reportData.rows || [];
+      const totals = reportData.totals || { totalBillAmount: 0, totalTdsAmount: 0, totalNetPaid: 0 };
+
+      // Header information for DRC Form IT-7(B)
+      const aoa: any[][] = [
+        ['ROYAL GOVERNMENT OF BHUTAN'],
+        ['DEPARTMENT OF REVENUE & CUSTOMS, MINISTRY OF FINANCE'],
+        ['SCHEDULE OF TAX DEDUCTED AT SOURCE ON CONTRACTS & SUPPLIES (FORM IT-7(B))'],
+        [],
+        ['Name of Deducting Organization / Agency / Business:', orgName, '', '', '', '', 'TPN of Deductor:', orgTpn],
+        ['Address / Dzongkhag / Location:', orgAddress, '', '', '', '', 'Tax Period / Month:', `${fromDate} to ${toDate}`],
+        [],
+        [
+          'Sl. No.',
+          'Date of Payment / Entry',
+          'Voucher No.',
+          'Name and Address of Contractor / Supplier / Payee',
+          'TPN of Contractor / Payee',
+          'Description of Contract / Supply / Work',
+          'Bill / Invoice Number',
+          'Bill / Invoice Date',
+          'Gross Bill Amount (Nu.)',
+          'Rate of TDS (%)',
+          'TDS Amount Deducted (Nu.)',
+          'Net Amount Paid (Nu.)'
+        ]
+      ];
+
+      // Data Rows
+      rows.forEach((r: any, idx: number) => {
+        aoa.push([
+          idx + 1,
+          formatDateStr(r.date),
+          r.voucherNo || '-',
+          r.contractorNameAndAddress || '-',
+          r.tpn || '-',
+          r.workDescription || '-',
+          r.invoiceNo || '-',
+          r.invoiceDate ? formatDateStr(r.invoiceDate) : '-',
+          Number(r.billAmount) || 0,
+          Number(r.tdsRate) || 2,
+          Number(r.tdsAmount) || 0,
+          Number(r.netPaid) || 0
+        ]);
+      });
+
+      // Totals Row
+      const totalRowIdx = aoa.length;
+      aoa.push([
+        'TOTAL',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        Number(totals.totalBillAmount) || 0,
+        '',
+        Number(totals.totalTdsAmount) || 0,
+        Number(totals.totalNetPaid) || 0
+      ]);
+
+      // Footer notes and certification signatures
+      aoa.push([]);
+      aoa.push(['CERTIFICATION & DECLARATION:']);
+      aoa.push(['I hereby declare and certify that all the particulars and information stated in this TDS submission schedule are true, correct and complete in accordance with the Income Tax Act of the Kingdom of Bhutan and DRC rules.']);
+      aoa.push([]);
+      aoa.push(['Prepared By (Accountant): ___________________________', '', '', '', 'Verified By (Internal Auditor / Manager): ___________________________', '', '', '', 'Authorized Signatory (Seal & Date): ___________________________']);
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+      const maxColIdx = 11;
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: maxColIdx } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: maxColIdx } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: maxColIdx } },
+        { s: { r: 4, c: 1 }, e: { r: 4, c: 5 } },
+        { s: { r: 4, c: 7 }, e: { r: 4, c: maxColIdx } },
+        { s: { r: 5, c: 1 }, e: { r: 5, c: 5 } },
+        { s: { r: 5, c: 7 }, e: { r: 5, c: maxColIdx } },
+        { s: { r: totalRowIdx, c: 0 }, e: { r: totalRowIdx, c: 7 } },
+        { s: { r: totalRowIdx + 2, c: 0 }, e: { r: totalRowIdx + 2, c: maxColIdx } },
+        { s: { r: totalRowIdx + 3, c: 0 }, e: { r: totalRowIdx + 3, c: maxColIdx } },
+        { s: { r: totalRowIdx + 5, c: 0 }, e: { r: totalRowIdx + 5, c: 3 } },
+        { s: { r: totalRowIdx + 5, c: 4 }, e: { r: totalRowIdx + 5, c: 7 } },
+        { s: { r: totalRowIdx + 5, c: 8 }, e: { r: totalRowIdx + 5, c: maxColIdx } }
+      ];
+
+      // Style Royal Gov / DRC title rows
+      [0, 1, 2].forEach(r => {
+        for (let c = 0; c <= maxColIdx; c++) {
+          const ref = XLSX.utils.encode_cell({ r, c });
+          if (ws[ref]) {
+            ws[ref].s = {
+              font: { name: 'Calibri', sz: r === 2 ? 12 : 11, bold: true, color: { rgb: r === 2 ? '1E3A8A' : '0F172A' } },
+              alignment: { horizontal: 'center', vertical: 'center' }
+            };
+          }
+        }
+      });
+
+      // Style Deductor Info (Rows 4, 5)
+      [4, 5].forEach(r => {
+        [0, 6].forEach(c => {
+          const ref = XLSX.utils.encode_cell({ r, c });
+          if (ws[ref]) {
+            ws[ref].s = {
+              font: { name: 'Calibri', sz: 10, bold: true, color: { rgb: '334155' } },
+              alignment: { horizontal: 'left', vertical: 'center' }
+            };
+          }
+        });
+        [1, 7].forEach(c => {
+          const ref = XLSX.utils.encode_cell({ r, c });
+          if (ws[ref]) {
+            ws[ref].s = {
+              font: { name: 'Calibri', sz: 10.5, bold: true, color: { rgb: '0F172A' } },
+              alignment: { horizontal: 'left', vertical: 'center' }
+            };
+          }
+        });
+      });
+
+      // Style Table Header (Row 7)
+      for (let c = 0; c <= maxColIdx; c++) {
+        const ref = XLSX.utils.encode_cell({ r: 7, c });
+        if (ws[ref]) {
+          ws[ref].s = {
+            font: { name: 'Calibri', sz: 10.5, bold: true, color: { rgb: 'FFFFFF' } },
+            fill: { fgColor: { rgb: '1E3A8A' } },
+            alignment: { horizontal: c >= 8 ? 'right' : (c === 0 || c === 1 || c === 7 ? 'center' : 'left'), vertical: 'center', wrapText: true },
+            border: {
+              top: { style: 'medium', color: { rgb: '0F172A' } },
+              bottom: { style: 'medium', color: { rgb: '0F172A' } },
+              left: { style: 'thin', color: { rgb: '94A3B8' } },
+              right: { style: 'thin', color: { rgb: '94A3B8' } }
+            }
+          };
+        }
+      }
+
+      // Style Data Rows
+      const startDataRow = 8;
+      const endDataRow = startDataRow + rows.length;
+      for (let r = startDataRow; r < endDataRow; r++) {
+        const isEven = (r - startDataRow) % 2 === 0;
+        for (let c = 0; c <= maxColIdx; c++) {
+          const ref = XLSX.utils.encode_cell({ r, c });
+          if (!ws[ref]) continue;
+
+          const isNumberCol = (c === 8 || c === 10 || c === 11);
+          if (isNumberCol && typeof ws[ref].v === 'number') {
+            ws[ref].z = '#,##0.00';
+          }
+
+          ws[ref].s = {
+            font: { name: 'Calibri', sz: 10, color: { rgb: '0F172A' } },
+            fill: { fgColor: { rgb: isEven ? 'FFFFFF' : 'F8FAFC' } },
+            alignment: {
+              horizontal: isNumberCol ? 'right' : (c === 0 || c === 1 || c === 7 || c === 9 ? 'center' : 'left'),
+              vertical: 'center',
+              wrapText: true
+            },
+            border: {
+              top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+              bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+              left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+              right: { style: 'thin', color: { rgb: 'CBD5E1' } }
+            }
+          };
+        }
+      }
+
+      // Style Totals Row
+      for (let c = 0; c <= maxColIdx; c++) {
+        const ref = XLSX.utils.encode_cell({ r: totalRowIdx, c });
+        if (!ws[ref]) continue;
+        const isNumberCol = (c === 8 || c === 10 || c === 11);
+        if (isNumberCol && typeof ws[ref].v === 'number') {
+          ws[ref].z = '#,##0.00';
+        }
+        ws[ref].s = {
+          font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: '0F172A' } },
+          fill: { fgColor: { rgb: 'E2E8F0' } },
+          alignment: {
+            horizontal: isNumberCol ? 'right' : (c === 0 ? 'left' : 'center'),
+            vertical: 'center'
+          },
+          border: {
+            top: { style: 'medium', color: { rgb: '0F172A' } },
+            bottom: { style: 'double', color: { rgb: '0F172A' } },
+            left: { style: 'thin', color: { rgb: '94A3B8' } },
+            right: { style: 'thin', color: { rgb: '94A3B8' } }
+          }
+        };
+      }
+
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 8 },  // Sl No
+        { wch: 14 }, // Date
+        { wch: 16 }, // Voucher No
+        { wch: 32 }, // Contractor Name & Address
+        { wch: 16 }, // TPN
+        { wch: 28 }, // Work Description
+        { wch: 16 }, // Invoice No
+        { wch: 14 }, // Invoice Date
+        { wch: 20 }, // Gross Bill Amount
+        { wch: 14 }, // Rate
+        { wch: 18 }, // TDS Amount
+        { wch: 20 }  // Net Paid
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Form_IT_7B_TDS');
+      const safeComp = (config.CompanyName || 'Store').replace(/\s+/g, '_');
+      XLSX.writeFile(wb, `${safeComp}_DRC_Form_IT_7B_TDS_${fromDate}_to_${toDate}.xlsx`);
+    } catch (err) {
+      console.error('Failed to export Form IT-7(B) Excel:', err);
+    }
+  };
+
   const exportToExcel = () => {
+    if (mainCategory === 'tds_report') {
+      exportDrcTds7bExcel();
+      return;
+    }
+
     const payload = getReportDataExportPayload();
     if (!payload || !payload.headers.length) return;
 
@@ -2489,6 +2822,7 @@ export const Reports: React.FC<ReportsProps> = ({
   if (mainCategory === 'gst_summary') currentActiveReportTitle = 'Net GST Summary Statement';
   if (mainCategory === 'gst_input_dom') currentActiveReportTitle = 'GST Input - Domestic Purchase & Expenses';
   if (mainCategory === 'gst_input_imp') currentActiveReportTitle = 'GST Input - Import Purchase';
+  if (mainCategory === 'tds_report') currentActiveReportTitle = 'TDS 2% Contract Schedule (Form IT-7(B))';
   if (mainCategory === 'fin') {
     if (finSubTab === 'TB') currentActiveReportTitle = 'Trial Balance Statement';
     if (finSubTab === 'PNL') currentActiveReportTitle = 'Profit & Loss Account';
@@ -3074,6 +3408,15 @@ export const Reports: React.FC<ReportsProps> = ({
                       </button>
                     </>
                   )}
+                  <button
+                    onClick={() => {
+                      setMainCategory('tds_report');
+                      setShowReportCatalog(false);
+                    }}
+                    className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition ${mainCategory === 'tds_report' ? 'bg-indigo-600 text-white' : 'bg-slate-50 hover:bg-indigo-50 text-slate-700'}`}
+                  >
+                    TDS 2% Contract Schedule (Form IT-7(B))
+                  </button>
                 </div>
               </div>
             )}
@@ -3681,6 +4024,141 @@ export const Reports: React.FC<ReportsProps> = ({
               </table>
             );
           })()}
+
+            {/* TDS 2% Contract Schedule (Form IT-7(B)) Report */}
+            {mainCategory === 'tds_report' && (() => {
+              const rows = reportData?.rows || [];
+              const totals = reportData?.totals || { totalBillAmount: 0, totalTdsAmount: 0, totalNetPaid: 0 };
+
+              return (
+                <div className="space-y-4 p-2 sm:p-4">
+                  {/* Form IT-7(B) Header Banner & Action Bar */}
+                  <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-slate-800 text-white p-4 sm:p-5 rounded-2xl border border-indigo-500/30 shadow-md flex flex-wrap items-center justify-between gap-4">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-md tracking-wider">
+                          DRC Bhutan Statutory Form
+                        </span>
+                        <span className="text-xs font-mono text-slate-300">
+                          Form IT-7(B)
+                        </span>
+                      </div>
+                      <h3 className="text-sm sm:text-base font-black text-white tracking-wide">
+                        Schedule of Tax Deducted at Source (TDS 2%) on Contracts & Supplies
+                      </h3>
+                      <p className="text-xs text-slate-300">
+                        Monthly submission schedule with contractor TPN, invoice reference, and 2% statutory withholding.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={exportDrcTds7bExcel}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm shadow-md hover:shadow-lg transition cursor-pointer active:scale-95"
+                        title="Download exact DRC Form IT-7(B) Excel Schedule"
+                      >
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-100" />
+                        <span>Export DRC Form IT-7(B) (Excel)</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Summary KPI Metric Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Contract Entries</span>
+                      <span className="text-lg font-black text-slate-900 font-mono">{rows.length}</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block">Total Gross Bill Amount</span>
+                      <span className="text-lg font-black text-blue-900 font-mono">Nu. {fmt(totals.totalBillAmount)}</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[11px] font-bold text-amber-600 uppercase tracking-wider block">Total TDS 2% Deducted</span>
+                      <span className="text-lg font-black text-amber-900 font-mono">Nu. {fmt(totals.totalTdsAmount)}</span>
+                    </div>
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                      <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider block">Total Net Paid</span>
+                      <span className="text-lg font-black text-emerald-900 font-mono">Nu. {fmt(totals.totalNetPaid)}</span>
+                    </div>
+                  </div>
+
+                  {/* Form IT-7(B) Detailed Schedule Table */}
+                  <div className="border border-slate-200 rounded-xl bg-white shadow-2xs overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm min-w-[1050px]">
+                        <thead className="sticky z-20 bg-slate-100 shadow-xs ring-1 ring-slate-200" style={{ top: `${stickyTopPx}px` }}>
+                          <tr className="bg-slate-100 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-2.5 text-center w-12">Sl No</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Payment Date</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Voucher No</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Contractor / Payee Name & Address</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">TPN</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Work Description</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Bill / Inv No</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Bill Date</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Bill Amt (Nu.)</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-2 text-center">Rate</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">TDS (Nu.)</th>
+                            <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Net Paid (Nu.)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {rows.length === 0 ? (
+                            <tr>
+                              <td colSpan={12} className="py-12 text-center text-slate-400 italic">
+                                No TDS 2% transactions recorded for this period. To track TDS, debit "TDS 2% (Liability)" or check the TDS tracking box in Payment/Journal vouchers.
+                              </td>
+                            </tr>
+                          ) : (
+                            rows.map((r: any, idx: number) => (
+                              <tr
+                                key={`tds-row-${r.voucherNo || idx}-${idx}`}
+                                onClick={() => r.voucherNo && onDrillVoucher(r.voucherNo, fromDate, toDate)}
+                                className="hover:bg-indigo-50/50 cursor-pointer transition"
+                              >
+                                <td className="py-2.5 px-2.5 text-center font-mono text-slate-500">{idx + 1}</td>
+                                <td className="py-2.5 px-3 text-center font-mono text-slate-700 whitespace-nowrap">{formatDateStr(r.date)}</td>
+                                <td className="py-2.5 px-3 font-mono font-bold text-indigo-600 whitespace-nowrap">{r.voucherNo || '-'}</td>
+                                <td className="py-2.5 px-3 font-semibold text-slate-900 max-w-xs">{r.contractorNameAndAddress || '-'}</td>
+                                <td className="py-2.5 px-3 font-mono font-bold text-slate-700 whitespace-nowrap">{r.tpn || '-'}</td>
+                                <td className="py-2.5 px-3 text-slate-600 max-w-xs truncate" title={r.workDescription}>{r.workDescription || '-'}</td>
+                                <td className="py-2.5 px-3 font-semibold text-slate-800 whitespace-nowrap">{r.invoiceNo || '-'}</td>
+                                <td className="py-2.5 px-3 text-center font-mono text-slate-600 whitespace-nowrap">{r.invoiceDate ? formatDateStr(r.invoiceDate) : '-'}</td>
+                                <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">{fmt(r.billAmount)}</td>
+                                <td className="py-2.5 px-2 text-center font-mono text-amber-700 font-bold">{r.tdsRate || 2}%</td>
+                                <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-800">{fmt(r.tdsAmount)}</td>
+                                <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-800">{fmt(r.netPaid)}</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                        {rows.length > 0 && (
+                          <tfoot className="sticky bottom-0 z-20 bg-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] ring-1 ring-slate-200 font-bold border-t-2 border-slate-300">
+                            <tr className="bg-slate-100 border-t-2 border-slate-800 font-bold text-slate-900 text-xs sm:text-sm">
+                              <td colSpan={8} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left uppercase">
+                                TOTAL SCHEDULE SUMMARY ({rows.length} Contracts)
+                              </td>
+                              <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-blue-900">
+                                {fmt(totals.totalBillAmount)}
+                              </td>
+                              <td className="bg-slate-100 bg-clip-padding py-3 px-2 text-center font-mono"></td>
+                              <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-amber-900 font-extrabold">
+                                {fmt(totals.totalTdsAmount)}
+                              </td>
+                              <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono text-emerald-900 font-extrabold">
+                                {fmt(totals.totalNetPaid)}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Inventory Reports */}
             {mainCategory === 'inv' && (

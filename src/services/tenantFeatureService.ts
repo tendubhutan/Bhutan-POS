@@ -48,6 +48,48 @@ export const ALL_SYSTEM_FEATURES: FeatureDefinition[] = [
     category: 'Billing & POS',
     defaultEnabled: false
   },
+  {
+    id: 'EnableRestaurantMode',
+    label: 'Restaurant POS & Dining Mode',
+    shortDesc: 'Activates Restaurant POS interface, table management, KDS, and dining bill totals.',
+    category: 'Billing & POS',
+    defaultEnabled: false
+  },
+  {
+    id: 'EnableTableBilling',
+    label: 'Table-Wise Floor Grid & Billing',
+    shortDesc: 'Visual table layout (T1, T2, VIP) with status colors, order tracking, and table checkout.',
+    category: 'Billing & POS',
+    defaultEnabled: false
+  },
+  {
+    id: 'EnableDigitalMenuQR',
+    label: 'QR Code Digital Menu (View Only)',
+    shortDesc: 'Generate downloadable/printable table QR codes for customer smartphone menu viewing.',
+    category: 'Billing & POS',
+    defaultEnabled: false
+  },
+  {
+    id: 'EnableQRDirectOrdering',
+    label: 'QR Code Direct Customer Self-Ordering',
+    shortDesc: 'Allows customers to place orders directly from table QR code into Kitchen Display (KDS).',
+    category: 'Billing & POS',
+    defaultEnabled: false
+  },
+  {
+    id: 'EnableWaiterMobilePad',
+    label: 'Waiter Smartphone/Tablet Order Pad',
+    shortDesc: 'Mobile-friendly order pad for waiters to take table orders and send KOT to kitchen.',
+    category: 'Billing & POS',
+    defaultEnabled: false
+  },
+  {
+    id: 'EnableKDSAndKitchenIssue',
+    label: 'Kitchen Display (KDS) & Store Auto-Deduction',
+    shortDesc: 'Live kitchen ticket screen with "Mark Ready" alerts + auto-consumption of raw store stock.',
+    category: 'Billing & POS',
+    defaultEnabled: false
+  },
 
   // Inventory & Variants
   {
@@ -121,6 +163,13 @@ export const ALL_SYSTEM_FEATURES: FeatureDefinition[] = [
     shortDesc: 'Capture ITC claim details in Purchases and Payments for Input GST Reports.',
     category: 'Taxation & Accounts',
     defaultEnabled: false
+  },
+  {
+    id: 'EnableTDS2Tracking',
+    label: 'TDS 2% (Liability) Contract Tracking',
+    shortDesc: 'Track Bhutanese Contract TDS 2% and generate Form IT-7(B) submission report.',
+    category: 'Taxation & Accounts',
+    defaultEnabled: true
   },
   {
     id: 'EnableBillWiseDetails',
@@ -212,6 +261,43 @@ export interface FeaturePreset {
 }
 
 export const FEATURE_PRESETS: FeaturePreset[] = [
+  {
+    id: 'restaurant',
+    name: 'Restaurant POS & Dining Suite',
+    badge: '🍽️ Restaurant',
+    description: 'Table billing, QR Code Digital Menu, Waiter Mobile Pad, Kitchen Display (KDS), and 5% GST.',
+    features: {
+      EnablePOS: true,
+      EnableNormalSale: true,
+      EnableWholesalePrice: false,
+      EnableItemDiscount: true,
+      EnableBillDiscount: true,
+      EnableRestaurantMode: true,
+      EnableTableBilling: true,
+      EnableDigitalMenuQR: true,
+      EnableQRDirectOrdering: true,
+      EnableWaiterMobilePad: true,
+      EnableKDSAndKitchenIssue: true,
+      EnableRestaurantServiceCharge: true,
+      EnableSerials: false,
+      EnablePharmacyBatch: false,
+      EnableSpareParts: false,
+      EnableGarmentsAndFootwear: false,
+      EnableAltUnitPrice: false,
+      EnableCategory: true,
+      EnableGST: true,
+      EnableGSTInputTax: false,
+      EnableBillWiseDetails: false,
+      EnableBankReconciliation: false,
+      EnableBankTxnId: true,
+      IntegrateAccountsWithInventory: true,
+      EnablePayroll: true,
+      EnableEmployeeAdvances: false,
+      EnableAssetManagement: false,
+      EnableAuditTrail: true,
+      EnableAdvancedAI: false
+    }
+  },
   {
     id: 'retail',
     name: 'Standard Retail / Grocery',
