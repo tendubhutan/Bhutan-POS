@@ -425,73 +425,46 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
         </div>
       </header>
 
-      {/* Hero Section (Bright, Clean, Illuminated) */}
-      <section className="relative pt-12 pb-16 sm:pt-16 sm:pb-20 text-center overflow-hidden bg-gradient-to-b from-sky-50/50 via-white to-slate-50/50">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+      {/* Hero Section (Proposed Look: Luminous, Clean, Centered with Capsule Badge) */}
+      <section className="relative pt-12 pb-16 sm:pt-18 sm:pb-24 text-center overflow-hidden bg-gradient-to-b from-sky-50/40 via-white to-slate-50/40">
+        {/* Soft Ambient Corner Glows matching the proposed image */}
+        <div className="absolute -bottom-16 -left-16 w-80 h-80 rounded-full bg-amber-100/60 blur-3xl pointer-events-none" />
+        <div className="absolute -top-16 -right-16 w-96 h-96 rounded-full bg-sky-100/60 blur-3xl pointer-events-none" />
+
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           
           {/* Main Headline */}
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold text-slate-900 tracking-tight leading-[1.15]">
-            All your business on{' '}
-            <span className="relative inline-block text-slate-900 whitespace-nowrap">
-              <span className="relative z-10 px-2 py-0.5">one platform.</span>
-              <span 
-                className="absolute inset-x-0 bottom-1 sm:bottom-2 h-7 sm:h-10 bg-amber-400/80 -rotate-1 rounded-sm -z-0" 
-                aria-hidden="true"
-              />
-            </span>
-            <br className="hidden sm:inline" />
-            <span className="font-serif italic font-bold text-slate-800">
-              Simple, efficient, yet{' '}
-              <span className="relative inline-block text-slate-900">
-                <span className="relative z-10">affordable!</span>
-                <svg 
-                  className="absolute left-0 -bottom-2 w-full h-3 text-sky-500" 
-                  viewBox="0 0 100 20" 
-                  preserveAspectRatio="none" 
-                  fill="none" 
-                  xmlns="http://www.w3.org/2000/svg"
-                  aria-hidden="true"
-                >
-                  <path d="M 0 12 Q 50 2 100 12" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                </svg>
-              </span>
+          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold text-[#0a1e44] tracking-tight leading-[1.12]">
+            Everything Your<br />
+            Business Needs,<br />
+            <span className="inline-block bg-[#fec84b] text-[#0a1e44] px-8 sm:px-12 py-1.5 sm:py-2 rounded-full font-black mt-2 sm:mt-3 shadow-xs">
+              in One Place
             </span>
           </h1>
 
-          <p className="mt-6 text-base sm:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed font-medium">
-            Click any app below to explore features. Built specifically for businesses in Bhutan — from upload-ready DRC GST filings to restaurant QR ordering and mobile staff attendance.
+          {/* Sub-headline in Serif Italic */}
+          <p className="font-serif italic font-bold text-2xl sm:text-3xl lg:text-4xl text-[#0a1e44] mt-5 sm:mt-6">
+            Simple, efficient, yet affordable!
           </p>
 
-          {/* Action Buttons */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:gap-4 relative">
+          {/* Small Golden-Yellow Divider Line */}
+          <div className="w-16 h-1 bg-[#fec84b] rounded-full mx-auto my-4 sm:my-5" />
+
+          {/* Explanatory Paragraph */}
+          <p className="text-slate-600 text-sm sm:text-base max-w-xl mx-auto font-normal leading-relaxed">
+            Built specifically for businesses in Bhutan — from DRC GST filings<br className="hidden sm:inline" /> to restaurant QR ordering and mobile staff attendance.
+          </p>
+
+          {/* Centered Sleek Navy Capsule Button */}
+          <div className="mt-8 flex justify-center">
             <button
               type="button"
               onClick={onOpenLogin}
-              className="px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl bg-gradient-to-r from-blue-600 via-blue-700 to-sky-500 hover:from-blue-700 hover:to-sky-600 text-white font-extrabold text-sm sm:text-base shadow-xl shadow-blue-500/25 transition-transform hover:-translate-y-0.5 cursor-pointer flex items-center gap-2"
+              className="bg-[#0a1e44] hover:bg-[#061530] text-white px-9 py-3.5 sm:py-4 rounded-full font-bold text-sm sm:text-base shadow-xl hover:shadow-2xl transition-all duration-200 inline-flex items-center gap-2.5 cursor-pointer group"
             >
-              <span>Launch ERP · Client Login</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>Get Started</span>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
-
-            <button
-              type="button"
-              onClick={() => setShowDemoModal(true)}
-              className="px-5 sm:px-7 py-3.5 sm:py-4 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 font-bold text-sm sm:text-base shadow-xs transition-colors cursor-pointer"
-            >
-              Meet an Advisor / Demo
-            </button>
-
-            {/* Playful Handwritten Price Annotation Arrow */}
-            <div className="hidden lg:flex items-center gap-2 absolute -right-20 top-4 text-left pointer-events-none">
-              <svg className="w-12 h-12 text-blue-600 -rotate-12" viewBox="0 0 50 50" fill="none">
-                <path d="M 10 40 Q 25 10 45 15" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-                <path d="M 38 8 L 46 15 L 39 23" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <div className="font-serif italic text-sm text-blue-700 font-black leading-tight">
-                Nu. 1,500 / month<br />
-                <span className="text-xs font-normal text-slate-500">for ALL apps included!</span>
-              </div>
-            </div>
           </div>
         </div>
       </section>

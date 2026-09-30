@@ -12,11 +12,11 @@ export const DrukErpLogo: React.FC<DrukErpLogoProps> = ({
   size = 'md'
 }) => {
   const heightMap = {
-    xs: 'h-6 sm:h-7',
-    sm: 'h-8 sm:h-9',
-    md: 'h-11 sm:h-12',
-    lg: 'h-14 sm:h-16',
-    xl: 'h-20 sm:h-24'
+    xs: 'h-7 sm:h-8',
+    sm: 'h-9 sm:h-10',
+    md: 'h-12 sm:h-14',
+    lg: 'h-16 sm:h-18',
+    xl: 'h-22 sm:h-26'
   };
 
   const textMap = {
@@ -34,7 +34,7 @@ export const DrukErpLogo: React.FC<DrukErpLogoProps> = ({
         <img 
           src="/druk_erp_logo.svg" 
           alt="Druk ERP - Everything Your Business Needs, in One Place." 
-          className={`${heightMap[size]} w-auto object-contain drop-shadow-xs transition-transform hover:scale-102 duration-200`}
+          className={`${heightMap[size]} w-auto object-contain transition-transform hover:scale-102 duration-200`}
         />
       </div>
     );

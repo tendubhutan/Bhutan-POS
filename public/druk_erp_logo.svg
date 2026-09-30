@@ -1,25 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 160" width="100%" height="100%">
   <defs>
-    <!-- Background Gradient for 'D' -->
-    <linearGradient id="dGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <!-- Vibrant Royal & Electric Blue Gradient for 'D' -->
+    <linearGradient id="brightDGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stopColor="#1d4ed8" />
       <stop offset="35%" stopColor="#2563eb" />
-      <stop offset="75%" stopColor="#38bdf8" />
+      <stop offset="70%" stopColor="#3b82f6" />
       <stop offset="100%" stopColor="#60a5fa" />
     </linearGradient>
 
-    <!-- Upward Orbital Arrow Swoosh Gradient -->
-    <linearGradient id="swooshGrad" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stopColor="#1e40af" />
-      <stop offset="40%" stopColor="#0284c7" />
+    <!-- Upward Growth Swoosh Arrow: Radiant Cyan-to-Sky Gradient -->
+    <linearGradient id="brightSwooshGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stopColor="#0284c7" />
+      <stop offset="45%" stopColor="#00b4d8" />
       <stop offset="85%" stopColor="#38bdf8" />
       <stop offset="100%" stopColor="#7dd3fc" />
     </linearGradient>
 
-    <!-- ERP Text Gradient -->
-    <linearGradient id="erpGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+    <!-- Mountain Right Slope Royal Blue (Vibrant, Not Dark) -->
+    <linearGradient id="mountainSlopeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#1e40af" />
+      <stop offset="100%" stopColor="#2563eb" />
+    </linearGradient>
+
+    <!-- Bright Electric Sky Gradient for 'ERP' Text -->
+    <linearGradient id="brightErpGrad" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stopColor="#2563eb" />
-      <stop offset="60%" stopColor="#38bdf8" />
+      <stop offset="50%" stopColor="#38bdf8" />
       <stop offset="100%" stopColor="#60a5fa" />
     </linearGradient>
   </defs>
@@ -28,31 +34,31 @@
   <!-- LEFT EMBLEM: D-SHAPED HIMALAYAN MOUNTAIN & SWOOSH -->
   <!-- ============================================== -->
   <g transform="translate(10, 8)">
-    <!-- 1. Main Blue 'D' Silhouette -->
+    <!-- 1. Main Vibrant Blue 'D' Silhouette -->
     <path 
       d="M 38 12 L 88 12 C 122 12, 146 34, 146 72 C 146 106, 120 128, 88 128 L 38 128 Z" 
-      fill="url(#dGrad)" 
+      fill="url(#brightDGrad)" 
     />
 
-    <!-- 2. Mountain Base & Dark Shadow (Right Face) -->
+    <!-- 2. Mountain Peak Right Slope (Vibrant Royal Blue, not dark) -->
     <path 
       d="M 76 44 L 105 106 L 76 106 Z" 
-      fill="#0c234a" 
+      fill="url(#mountainSlopeGrad)" 
     />
     <path 
       d="M 105 106 L 120 124 L 92 124 Z" 
-      fill="#162d66" 
+      fill="#1d4ed8" 
     />
 
-    <!-- White Snow Peak Summit & Left Ridge -->
+    <!-- Pure Brilliant White Snow Peak Summit & Left Ridge -->
     <path 
       d="M 76 44 L 46 112 L 66 112 L 76 74 L 88 106 L 76 106 Z" 
       fill="#ffffff" 
     />
     <polygon points="76,44 68,64 84,60" fill="#ffffff" />
-    <polygon points="76,44 84,60 92,72 86,74" fill="#cbd5e1" />
+    <polygon points="76,44 84,60 92,72 86,74" fill="#e0f2fe" />
 
-    <!-- White Cutout Counter of the D -->
+    <!-- Pure White Cutout Counter of the D -->
     <path 
       d="M 52 30 L 86 30 C 108 30, 126 46, 126 72 C 126 88, 116 104, 98 110 L 98 98 C 110 92, 114 82, 114 72 C 114 54, 102 42, 82 42 L 52 42 Z" 
       fill="#ffffff" 
@@ -61,13 +67,13 @@
     <!-- 3. Bottom Orbital Swoosh Wrapping Around to Arrowhead -->
     <path 
       d="M 16 110 C 10 132, 34 146, 74 146 C 110 146, 140 130, 150 102 L 138 98 C 128 120, 102 134, 74 134 C 44 134, 26 122, 28 106 C 30 96, 40 86, 58 76 L 52 66 C 32 78, 18 92, 16 110 Z" 
-      fill="url(#swooshGrad)" 
+      fill="url(#brightSwooshGrad)" 
     />
 
-    <!-- Arrow Head pointing Up-Right -->
+    <!-- Radiant Cyan Arrow Head pointing Up-Right -->
     <path 
       d="M 134 90 L 162 84 L 152 118 L 144 100 L 134 90 Z" 
-      fill="url(#swooshGrad)" 
+      fill="url(#brightSwooshGrad)" 
     />
   </g>
 
@@ -75,7 +81,7 @@
   <!-- RIGHT TYPOGRAPHY: Druk ERP + SUBTITLE           -->
   <!-- ============================================== -->
   <g transform="translate(195, 20)">
-    <!-- Word: Druk -->
+    <!-- Word: Druk (Deep Rich Navy) -->
     <text 
       x="0" 
       y="62" 
@@ -83,10 +89,10 @@
       font-size="64" 
       font-weight="900" 
       letter-spacing="-1.5" 
-      fill="#0c234a"
+      fill="#0a1e44"
     >Druk</text>
 
-    <!-- Word: ERP -->
+    <!-- Word: ERP (Bright Electric Sky Blue) -->
     <text 
       x="162" 
       y="62" 
@@ -94,7 +100,7 @@
       font-size="64" 
       font-weight="900" 
       letter-spacing="-1.5" 
-      fill="url(#erpGrad)"
+      fill="url(#brightErpGrad)"
     >ERP</text>
 
     <!-- Subtitle Line 1: Everything Your Business Needs, -->
