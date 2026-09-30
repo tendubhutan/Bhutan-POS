@@ -31,6 +31,7 @@ import { BulkDeleteModal } from './components/BulkDeleteModal';
 import { CompanyManagerModal } from './components/CompanyManagerModal';
 import { UserAuthModal } from './components/UserAuthModal';
 import { LoginGate } from './components/LoginGate';
+import { LandingPage } from './components/landing/LandingPage';
 import { getActiveUser } from './services/storageService';
 import { AppUser } from './types';
 import { 
@@ -354,6 +355,24 @@ export default function App() {
     // Require explicit authentication by default: lock screen until a valid session is confirmed
     const sessionUnlocked = sessionStorage.getItem('bhutan_pos_session_unlocked');
     return sessionUnlocked !== 'true';
+  });
+
+  const [showLandingPage, setShowLandingPage] = useState<boolean>(() => {
+    if (typeof sessionStorage !== 'undefined') {
+      const sessionUnlocked = sessionStorage.getItem('bhutan_pos_session_unlocked');
+      if (sessionUnlocked === 'true') return false;
+    }
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('portal') === 'app' || params.get('portal') === 'login' || params.get('portal') === 'gate') {
+        return false;
+      }
+      const dedicatedId = getDedicatedCompanyIdFromUrl();
+      if (dedicatedId) {
+        return false;
+      }
+    }
+    return true;
   });
   const [activeCompany, setActiveCompany] = useState<SupabaseCompany | null>(null);
   const [activeFY, setActiveFY] = useState<SupabaseFinancialYear | null>(null);
@@ -903,6 +922,17 @@ export default function App() {
     );
   }
 
+  if (showLandingPage && isTerminalLocked) {
+    return (
+      <LandingPage
+        onOpenLogin={() => {
+          setShowLandingPage(false);
+          setIsTerminalLocked(true);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
       {/* Sidebar Navigation */}
@@ -1317,11 +1347,15 @@ export default function App() {
         <LoginGate
           activeCompany={activeCompany}
           activeFY={activeFY}
+          onBackToLanding={() => {
+            setShowLandingPage(true);
+          }}
           onUnlock={(user) => {
             sessionStorage.removeItem('bhutan_pos_terminal_explicitly_locked');
             sessionStorage.setItem('bhutan_pos_session_unlocked', 'true');
             setCurrentUser(user);
             setIsTerminalLocked(false);
+            setShowLandingPage(false);
             if (!isModulePermitted(user, currentView, 'display')) {
               if (isModulePermitted(user, 'pos', 'display')) {
                 setCurrentView('pos');

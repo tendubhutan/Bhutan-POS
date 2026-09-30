@@ -138,7 +138,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                if (!isNaN(d.getTime())) {
                  const dStr = d.toISOString().split('T')[0];
                  setBillDate(dStr);
-                 setSupplierBillDate(dStr);
+                 setSupplierBillDate(inv.supplierBillDate || dStr);
                }
             }
             if (Array.isArray(inv.additionalExpenses)) {
@@ -653,6 +653,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       },
       billNo: purchaseVoucherNo.trim() || undefined,
       supplierBillNo: billNo,
+      supplierBillDate: supplierBillDate || undefined,
       receiptNoteNo: receiptNoteNo || undefined,
       poNo: poNo || undefined,
       notes: narration ? narration : (billNo ? `Supplier Bill: ${billNo}` : ''),

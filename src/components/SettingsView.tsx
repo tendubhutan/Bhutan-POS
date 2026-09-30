@@ -10,6 +10,7 @@ import { GstConfigModal } from './GstConfigModal';
 import { SparePartsConfigModal } from './SparePartsConfigModal';
 import { GarmentsConfigModal } from './GarmentsConfigModal';
 import { RestaurantConfigModal } from './restaurant/RestaurantConfigModal';
+import { BranchMaster } from './masters/BranchMaster';
 import { 
   Save, CheckCircle2, Shield, FileText, Image as ImageIcon, PenTool, Plus, Lock, UserCheck, RefreshCw, 
   ShoppingCart, Zap, SlidersHorizontal, AlertTriangle, Keyboard, Percent, CreditCard, RotateCcw,
@@ -41,6 +42,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [showSparePartsModal, setShowSparePartsModal] = useState(false);
   const [showGarmentsModal, setShowGarmentsModal] = useState(false);
   const [showRestaurantModal, setShowRestaurantModal] = useState(false);
+  const [showBranchMasterModal, setShowBranchMasterModal] = useState(false);
 
   useEffect(() => {
     setForm({ ...config });
@@ -1181,6 +1183,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <p className="text-[10px] text-indigo-800/80 mt-1 leading-snug">
                           ✓ <strong>Independent per Computer</strong>: Changing this only affects transactions entered on this specific screen/computer. Outstation branches (Paro, Phuntsholing, etc.) select their own branch on their respective terminals.
                         </p>
+                      </div>
+
+                      <div className="md:col-span-2 pt-2 border-t border-indigo-100 flex items-center justify-between">
+                        <div className="text-[11px] text-slate-600">
+                          Configure branch details, edit <strong>Branch Codes</strong> (e.g. <code>HQ</code>, <code>PHU</code>, <code>PAR</code>), addresses, and view dedicated voucher identities.
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowBranchMasterModal(true)}
+                          className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+                        >
+                          <Building2 className="h-3.5 w-3.5" />
+                          <span>Manage Branches &amp; Branch Codes</span>
+                        </button>
                       </div>
                     </div>
                   )}
@@ -3199,6 +3215,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           onDataRefresh();
         }}
       />
+
+      {/* Branch & Outstation Management Modal */}
+      {showBranchMasterModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="relative w-full max-w-5xl bg-slate-50 rounded-2xl shadow-2xl border border-slate-300 overflow-hidden my-auto max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-900 text-white shrink-0">
+              <div className="flex items-center gap-2.5">
+                <Building2 className="h-5 w-5 text-indigo-400" />
+                <div>
+                  <h3 className="text-sm font-black">Branch &amp; Outstation Locations</h3>
+                  <p className="text-[10px] text-slate-400">Configure Branch Names, Branch Codes, and dedicated voucher identities</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBranchMasterModal(false)}
+                className="h-8 w-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 sm:p-5 overflow-y-auto flex-1">
+              <BranchMaster
+                config={form}
+                onUpdated={() => {
+                  onDataRefresh();
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

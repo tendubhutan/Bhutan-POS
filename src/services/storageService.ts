@@ -2446,9 +2446,23 @@ export function canCurrentDeviceBillOffline(customCompanyId?: string): {
   };
 }
 
-export function getEffectiveVoucherPrefix(basePrefix: string, isForcedOnline?: boolean): string {
-  // Always return unified continuous series prefix (e.g., 'POS-', 'SAL-') without counter suffixes
-  return basePrefix || 'POS-';
+export function getEffectiveVoucherPrefix(basePrefix: string, isForcedOnline?: boolean, cfg?: Config): string {
+  const config = cfg || loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG as any);
+  let prefix = basePrefix || 'POS-';
+  if (config?.EnableMultiBranch === 'true') {
+    const activeBranchId = getTerminalBranchId(config);
+    if (activeBranchId) {
+      const branches = getBranches();
+      const currentBranch = branches.find(b => b.id === activeBranchId);
+      if (currentBranch && currentBranch.code) {
+        const bCode = currentBranch.code.trim().toUpperCase();
+        if (bCode && !prefix.toUpperCase().startsWith(`${bCode}-`) && !prefix.toUpperCase().startsWith(`${bCode}/`)) {
+          prefix = `${bCode}-${prefix}`;
+        }
+      }
+    }
+  }
+  return prefix;
 }
 
 // ----------------- TERMINALS MANAGEMENT & LICENSING -----------------
@@ -3916,10 +3930,13 @@ export function saveSalesInvoice(payload: {
   const defaultPrefix = isPOS ? (cfg.POSInvoicePrefix || 'POS-') : (cfg.SalesInvoicePrefix || 'SAL-');
   const rawPrefix = matchedVt?.prefix || defaultPrefix;
   const isOnline = isSystemOnline();
-  const invPrefix = getEffectiveVoucherPrefix(rawPrefix, isOnline);
-  const counterKey = matchedVt 
+  const invPrefix = getEffectiveVoucherPrefix(rawPrefix, isOnline, cfg);
+  const isMultiBranch = cfg?.EnableMultiBranch === 'true';
+  const activeBranchId = isMultiBranch ? getTerminalBranchId(cfg) : '';
+  const baseCounterKey = matchedVt 
     ? `Voucher_${matchedVt.id}` 
     : (isPOS ? 'POSInvoice' : 'SalesInvoice');
+  const counterKey = (activeBranchId && !matchedVt) ? `${baseCounterKey}_${activeBranchId}` : baseCounterKey;
 
   let iNo = (originalInvoiceNo || invoiceNo)?.trim();
   if (!iNo) {
@@ -4225,6 +4242,7 @@ export function savePurchaseInvoice(payload: {
   supplier: { name: string; gstNo?: string; tpnNo?: string; address?: string; phone?: string };
   payment: PaymentDetails;
   supplierBillNo?: string;
+  supplierBillDate?: string;
   receiptNoteNo?: string;
   poNo?: string;
   notes?: string;
@@ -4387,6 +4405,7 @@ export function savePurchaseInvoice(payload: {
     company_id: currentActiveCompanyId,
     billNo: bNo,
     supplierBillNo: payload.supplierBillNo || '',
+    supplierBillDate: payload.supplierBillDate || (payload.date ? new Date(payload.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
     receiptNoteNo: payload.receiptNoteNo || '',
     poNo: payload.poNo || '',
     date: purchaseDate,
@@ -4531,21 +4550,37 @@ export function getVouchers(customCompanyId?: string): Voucher[] {
 
 export function getVoucherPrefix(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'PHYSICAL_STOCK' | 'QUOTATION' | 'SALES_ORDER' | 'PURCHASE_ORDER' | 'RECEIPT_NOTE', cfg?: Config): string {
   const config = cfg || loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
-  if (type === 'P') return config.PaymentVoucherPrefix !== undefined && config.PaymentVoucherPrefix !== '' ? config.PaymentVoucherPrefix : 'PMT-';
-  if (type === 'R') return config.ReceiptVoucherPrefix !== undefined && config.ReceiptVoucherPrefix !== '' ? config.ReceiptVoucherPrefix : 'RCT-';
-  if (type === 'J') return config.JournalVoucherPrefix !== undefined && config.JournalVoucherPrefix !== '' ? config.JournalVoucherPrefix : 'JRN-';
-  if (type === 'C') return config.ContraVoucherPrefix !== undefined && config.ContraVoucherPrefix !== '' ? config.ContraVoucherPrefix : 'CTR-';
-  if (type === 'CN') return config.CreditNotePrefix !== undefined && config.CreditNotePrefix !== '' ? config.CreditNotePrefix : 'CN-';
-  if (type === 'DN') return config.DebitNotePrefix !== undefined && config.DebitNotePrefix !== '' ? config.DebitNotePrefix : 'DN-';
-  if (type === 'DEL_NOTE') return config.DeliveryNotePrefix !== undefined && config.DeliveryNotePrefix !== '' ? config.DeliveryNotePrefix : 'DLV-';
-  if (type === 'PHYSICAL_STOCK') return config.PhysicalStockPrefix !== undefined && config.PhysicalStockPrefix !== '' ? config.PhysicalStockPrefix : 'PHY-';
-  if (type === 'QUOTATION') return config.QuotationPrefix !== undefined && config.QuotationPrefix !== '' ? config.QuotationPrefix : 'QTN-';
-  if (type === 'SALES_ORDER') return config.SalesOrderPrefix !== undefined && config.SalesOrderPrefix !== '' ? config.SalesOrderPrefix : 'SO-';
-  if (type === 'PURCHASE_ORDER') return config.PurchaseOrderPrefix !== undefined && config.PurchaseOrderPrefix !== '' ? config.PurchaseOrderPrefix : 'PO-';
-  if (type === 'RECEIPT_NOTE') return config.ReceiptNotePrefix !== undefined && config.ReceiptNotePrefix !== '' ? config.ReceiptNotePrefix : 'GRN-';
-  if (type === 'S') return config.SalesInvoicePrefix !== undefined && config.SalesInvoicePrefix !== '' ? config.SalesInvoicePrefix : 'SAL-';
-  if (type === 'PUR') return config.PurchaseInvoicePrefix !== undefined && config.PurchaseInvoicePrefix !== '' ? config.PurchaseInvoicePrefix : 'PUR-';
-  return 'VOU-';
+  let basePx = 'VOU-';
+  if (type === 'P') basePx = config.PaymentVoucherPrefix !== undefined && config.PaymentVoucherPrefix !== '' ? config.PaymentVoucherPrefix : 'PMT-';
+  else if (type === 'R') basePx = config.ReceiptVoucherPrefix !== undefined && config.ReceiptVoucherPrefix !== '' ? config.ReceiptVoucherPrefix : 'RCT-';
+  else if (type === 'J') basePx = config.JournalVoucherPrefix !== undefined && config.JournalVoucherPrefix !== '' ? config.JournalVoucherPrefix : 'JRN-';
+  else if (type === 'C') basePx = config.ContraVoucherPrefix !== undefined && config.ContraVoucherPrefix !== '' ? config.ContraVoucherPrefix : 'CTR-';
+  else if (type === 'CN') basePx = config.CreditNotePrefix !== undefined && config.CreditNotePrefix !== '' ? config.CreditNotePrefix : 'CN-';
+  else if (type === 'DN') basePx = config.DebitNotePrefix !== undefined && config.DebitNotePrefix !== '' ? config.DebitNotePrefix : 'DN-';
+  else if (type === 'DEL_NOTE') basePx = config.DeliveryNotePrefix !== undefined && config.DeliveryNotePrefix !== '' ? config.DeliveryNotePrefix : 'DLV-';
+  else if (type === 'PHYSICAL_STOCK') basePx = config.PhysicalStockPrefix !== undefined && config.PhysicalStockPrefix !== '' ? config.PhysicalStockPrefix : 'PHY-';
+  else if (type === 'QUOTATION') basePx = config.QuotationPrefix !== undefined && config.QuotationPrefix !== '' ? config.QuotationPrefix : 'QTN-';
+  else if (type === 'SALES_ORDER') basePx = config.SalesOrderPrefix !== undefined && config.SalesOrderPrefix !== '' ? config.SalesOrderPrefix : 'SO-';
+  else if (type === 'PURCHASE_ORDER') basePx = config.PurchaseOrderPrefix !== undefined && config.PurchaseOrderPrefix !== '' ? config.PurchaseOrderPrefix : 'PO-';
+  else if (type === 'RECEIPT_NOTE') basePx = config.ReceiptNotePrefix !== undefined && config.ReceiptNotePrefix !== '' ? config.ReceiptNotePrefix : 'GRN-';
+  else if (type === 'S') basePx = config.SalesInvoicePrefix !== undefined && config.SalesInvoicePrefix !== '' ? config.SalesInvoicePrefix : 'SAL-';
+  else if (type === 'PUR') basePx = config.PurchaseInvoicePrefix !== undefined && config.PurchaseInvoicePrefix !== '' ? config.PurchaseInvoicePrefix : 'PUR-';
+
+  if (config.EnableMultiBranch === 'true') {
+    const activeBranchId = getTerminalBranchId(config);
+    if (activeBranchId) {
+      const branches = getBranches();
+      const currentBranch = branches.find(b => b.id === activeBranchId);
+      if (currentBranch && currentBranch.code) {
+        const bCode = currentBranch.code.trim().toUpperCase();
+        if (bCode && !basePx.toUpperCase().startsWith(`${bCode}-`) && !basePx.toUpperCase().startsWith(`${bCode}/`)) {
+          return `${bCode}-${basePx}`;
+        }
+      }
+    }
+  }
+
+  return basePx;
 }
 
 export function peekNextVoucherNo(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'CN' | 'DN' | 'DEL_NOTE' | 'PHYSICAL_STOCK' | 'QUOTATION' | 'SALES_ORDER' | 'PURCHASE_ORDER' | 'RECEIPT_NOTE', cfg?: Config): string {
@@ -4553,6 +4588,8 @@ export function peekNextVoucherNo(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'C
     return peekNextInvoiceNumber(false);
   }
   const px = getVoucherPrefix(type, cfg);
+  const config = cfg || loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
+  const activeBranchId = config.EnableMultiBranch === 'true' ? getTerminalBranchId(config) : '';
   const counters = loadJson<Record<string, number>>(STORAGE_KEYS.COUNTERS, {
     InternalBarcode: 5,
     SalesInvoice: 32,
@@ -4571,7 +4608,7 @@ export function peekNextVoucherNo(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'C
     ReceiptNote: 1,
     Voucher: 0
   });
-  const counterKey = type === 'CN' ? 'CreditNote' :
+  const baseCounterKey = type === 'CN' ? 'CreditNote' :
     type === 'DN' ? 'DebitNote' :
     type === 'DEL_NOTE' ? 'DeliveryNote' :
     type === 'PHYSICAL_STOCK' ? 'PhysicalStock' :
@@ -4579,7 +4616,9 @@ export function peekNextVoucherNo(type: 'P' | 'R' | 'J' | 'C' | 'S' | 'PUR' | 'C
     type === 'SALES_ORDER' ? 'SalesOrder' :
     type === 'PURCHASE_ORDER' ? 'PurchaseOrder' :
     type === 'RECEIPT_NOTE' ? 'ReceiptNote' : 'Voucher';
-  const val = (counters[counterKey] || counters['Voucher'] || 0) + 1;
+
+  const counterKey = activeBranchId ? `${baseCounterKey}_${activeBranchId}` : baseCounterKey;
+  const val = (counters[counterKey] || counters[baseCounterKey] || counters['Voucher'] || 0) + 1;
   return `${px}${val}`;
 }
 
@@ -4590,10 +4629,13 @@ export function peekNextInvoiceNumber(isPOS: boolean = false, voucherTypeId?: st
   const defaultPrefix = isPOS ? (cfg.POSInvoicePrefix || 'POS-') : (cfg.SalesInvoicePrefix || 'SAL-');
   const rawPrefix = matchedVt?.prefix !== undefined ? matchedVt.prefix : defaultPrefix;
   const isOnline = forceOnline !== undefined ? forceOnline : isSystemOnline();
-  const invPrefix = getEffectiveVoucherPrefix(rawPrefix, isOnline);
-  const counterKey = matchedVt 
+  const invPrefix = getEffectiveVoucherPrefix(rawPrefix, isOnline, cfg);
+  const isMultiBranch = cfg?.EnableMultiBranch === 'true';
+  const activeBranchId = isMultiBranch ? getTerminalBranchId(cfg) : '';
+  const baseCounterKey = matchedVt 
     ? `Voucher_${matchedVt.id}` 
     : (isPOS ? 'POSInvoice' : 'SalesInvoice');
+  const counterKey = (activeBranchId && !matchedVt) ? `${baseCounterKey}_${activeBranchId}` : baseCounterKey;
 
   const counters = loadJson<Record<string, number>>(STORAGE_KEYS.COUNTERS, {
     InternalBarcode: 5,
@@ -4704,6 +4746,17 @@ export function saveMultiLineVoucher(payload: {
     invoiceNo: payload.invoiceNo,
     invoiceDate: payload.invoiceDate,
     referenceNo: payload.referenceNo,
+    supplierBillNo: (payload as any).supplierBillNo || payload.referenceNo || payload.invoiceNo,
+    supplierBillDate: (payload as any).supplierBillDate || payload.invoiceDate,
+    isTdsApplicable: (payload as any).isTdsApplicable,
+    tdsTpn: (payload as any).tdsTpn,
+    tdsContractorNameAndAddress: (payload as any).tdsContractorNameAndAddress,
+    tdsWorkDescription: (payload as any).tdsWorkDescription,
+    tdsInvoiceNo: (payload as any).tdsInvoiceNo,
+    tdsInvoiceDate: (payload as any).tdsInvoiceDate,
+    tdsBillAmount: (payload as any).tdsBillAmount,
+    tdsRate: (payload as any).tdsRate,
+    tdsAmount: (payload as any).tdsAmount,
     declarationNo: payload.declarationNo,
     declarationDate: payload.declarationDate,
     taxableAmount: payload.taxableAmount,
@@ -4719,6 +4772,7 @@ export function saveMultiLineVoucher(payload: {
     chequeNo: payload.chequeNo || '',
     billNo: payload.billNo,
     billAllocations: payload.billAllocations,
+    items: (payload as any).items,
     lines: payload.lines.map(l => ({
       type: l.type,
       ledger: l.ledger,
@@ -4729,6 +4783,23 @@ export function saveMultiLineVoucher(payload: {
   };
 
   const existIdx = vouchers.findIndex(v => v.voucherNo?.trim().toLowerCase() === no.trim().toLowerCase() || v.voucherNo?.trim().toLowerCase() === finalNo.trim().toLowerCase());
+  
+  // Update inventory stock for items attached to Journal vouchers (e.g. stock purchased for internal consumption)
+  if (payload.type === 'J' && Array.isArray((payload as any).items) && (payload as any).items.length > 0) {
+    if (existIdx >= 0 && Array.isArray(vouchers[existIdx]?.items)) {
+      vouchers[existIdx].items!.forEach((oldItem: any) => {
+        if (oldItem.itemCode && Number(oldItem.qty) > 0) {
+          updateItemStock(oldItem.itemCode, -Number(oldItem.qty), oldItem.unit);
+        }
+      });
+    }
+    (payload as any).items.forEach((item: any) => {
+      if (item.itemCode && Number(item.qty) > 0) {
+        updateItemStock(item.itemCode, Number(item.qty), item.unit);
+      }
+    });
+  }
+
   if (existIdx >= 0) {
     vouchers[existIdx] = newVoucher;
     // Clear out earlier ledger log rows for this voucher to prevent duplicate ledger balance postings
@@ -4858,6 +4929,21 @@ export function restoreAllFromTrash() {
   return { ok: true, message: `Restored ${count} items from trash` };
 }
 
+export function getVoucherTypeName(type?: string): string {
+  if (!type) return 'Journal';
+  const t = type.trim().toUpperCase();
+  if (t === 'P' || t === 'PAYMENT') return 'Payment';
+  if (t === 'R' || t === 'RECEIPT') return 'Receipt';
+  if (t === 'C' || t === 'CONTRA') return 'Contra';
+  if (t === 'S' || t === 'SALE' || t === 'SALES') return 'Sale';
+  if (t === 'PUR' || t === 'PURCHASE') return 'Purchase';
+  if (t === 'CN' || t === 'CREDIT NOTE' || t === 'SALES RETURN') return 'Sales Return';
+  if (t === 'DN' || t === 'DEBIT NOTE' || t === 'PURCHASE RETURN') return 'Purchase Return';
+  if (t === 'DEL_NOTE' || t === 'DELIVERY NOTE') return 'Delivery Note';
+  if (t === 'J' || t === 'JOURNAL') return 'Journal';
+  return type;
+}
+
 export function recalculateLedgerBalances() {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const ledgers = sanitizeLedgers(loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS));
@@ -4975,22 +5061,29 @@ export function recalculateLedgerBalances() {
   const existingVouchRefs = new Set(cleanLogs.filter(l => l.Type !== 'Sale' && l.Type !== 'Purchase' && l.Type !== 'Sales Return' && l.Type !== 'Purchase Return').map(l => l['Ref No']));
   vouchers.forEach(v => {
     if (v.status === 'Cancelled') return;
-    const no = v.voucherNo || '';
+    const no = (v.voucherNo || '').trim();
     if (!no || existingVouchRefs.has(no)) return;
 
-    if (v.type === 'J') {
-      (v.lines || []).forEach(line => {
-        if (line.ledger && Number(line.amount) > 0) {
-          adjustLedgerBalance(line.ledger, Number(line.amount), line.type as 'Dr' | 'Cr', no, v.narration || '', 'Journal');
+    const tType = getVoucherTypeName(v.type);
+
+    if (v.lines && v.lines.length > 0) {
+      v.lines.forEach(line => {
+        const lName = (line.ledger || '').trim();
+        const lineAmt = Number(line.amount) || Number((line as any).debit) || Number((line as any).credit) || 0;
+        if (lName && lineAmt > 0) {
+          const lineType: 'Dr' | 'Cr' = (line.type === 'Dr' || line.type === 'Cr') ? line.type : (Number((line as any).debit) > 0 ? 'Dr' : 'Cr');
+          adjustLedgerBalance(lName, lineAmt, lineType, no, line.narration || v.narration || '', tType, v.transactionId);
         }
       });
     } else {
-      const dr = v.debitLedger || '';
-      const cr = v.creditLedger || '';
-      const t = v.type === 'P' ? 'Payment' : (v.type === 'R' ? 'Receipt' : (v.type === 'C' ? 'Contra' : 'Journal'));
-      if (dr && cr && Number(v.amount) > 0) {
-        adjustLedgerBalance(dr, Number(v.amount), 'Dr', no, v.narration || '', t);
-        adjustLedgerBalance(cr, Number(v.amount), 'Cr', no, v.narration || '', t);
+      const dr = (v.debitLedger || '').trim();
+      const cr = (v.creditLedger || '').trim();
+      const amt = Number(v.amount) || 0;
+      if (dr && amt > 0) {
+        adjustLedgerBalance(dr, amt, 'Dr', no, v.narration || '', tType, v.transactionId);
+      }
+      if (cr && amt > 0) {
+        adjustLedgerBalance(cr, amt, 'Cr', no, v.narration || '', tType, v.transactionId);
       }
     }
   });
@@ -5665,14 +5758,42 @@ export function saveVoucher(t: 'P' | 'R' | 'J' | 'C', v: {
     invoiceNo: v.invoiceNo,
     invoiceDate: v.invoiceDate,
     referenceNo: v.referenceNo,
+    supplierBillNo: (v as any).supplierBillNo || v.referenceNo || v.invoiceNo,
+    supplierBillDate: (v as any).supplierBillDate || v.invoiceDate,
+    isTdsApplicable: (v as any).isTdsApplicable,
+    tdsTpn: (v as any).tdsTpn,
+    tdsContractorNameAndAddress: (v as any).tdsContractorNameAndAddress,
+    tdsWorkDescription: (v as any).tdsWorkDescription,
+    tdsInvoiceNo: (v as any).tdsInvoiceNo,
+    tdsInvoiceDate: (v as any).tdsInvoiceDate,
+    tdsBillAmount: (v as any).tdsBillAmount,
+    tdsRate: (v as any).tdsRate,
+    tdsAmount: (v as any).tdsAmount,
     declarationNo: v.declarationNo,
     declarationDate: v.declarationDate,
     taxableAmount: v.taxableAmount,
     exemptedAmount: v.exemptedAmount,
     gstAmount: v.gstAmount,
-    totalImportAmount: v.totalImportAmount
+    totalImportAmount: v.totalImportAmount,
+    items: (v as any).items
   };
   const existIdx = vouchers.findIndex(x => x.voucherNo?.trim().toLowerCase() === no.trim().toLowerCase() || x.voucherNo?.trim().toLowerCase() === finalNo.trim().toLowerCase());
+  
+  if (t === 'J' && Array.isArray((v as any).items) && (v as any).items.length > 0) {
+    if (existIdx >= 0 && Array.isArray(vouchers[existIdx]?.items)) {
+      vouchers[existIdx].items!.forEach((oldItem: any) => {
+        if (oldItem.itemCode && Number(oldItem.qty) > 0) {
+          updateItemStock(oldItem.itemCode, -Number(oldItem.qty), oldItem.unit);
+        }
+      });
+    }
+    (v as any).items.forEach((item: any) => {
+      if (item.itemCode && Number(item.qty) > 0) {
+        updateItemStock(item.itemCode, Number(item.qty), item.unit);
+      }
+    });
+  }
+
   if (existIdx >= 0) {
     vouchers[existIdx] = newV;
     // Clear out earlier ledger log rows for this voucher to prevent duplicate ledger balance postings
@@ -5900,6 +6021,75 @@ export function getPartyOutstandingBills(partyLedgerName: string, partyType?: 'd
       }
     }
   }
+
+  // 3. New Ref bills created via Journal or Financial Vouchers
+  vouchers.forEach(v => {
+    if (v.status === 'Cancelled') return;
+    const isPartyCredited = v.lines?.some(l => l.type === 'Cr' && l.ledger.trim().toLowerCase() === cleanParty) || (v.creditLedger && v.creditLedger.trim().toLowerCase() === cleanParty);
+    const isPartyDebited = v.lines?.some(l => l.type === 'Dr' && l.ledger.trim().toLowerCase() === cleanParty) || (v.debitLedger && v.debitLedger.trim().toLowerCase() === cleanParty);
+
+    if (pType === 'creditor' && isPartyCredited) {
+      const newRefAllocs = (v.billAllocations || []).filter(a => a.refType === 'New Ref' || (!a.refType && a.billNo && !a.billNo.toLowerCase().includes('on account') && !a.billNo.toLowerCase().includes('advance')));
+      if (newRefAllocs.length > 0) {
+        newRefAllocs.forEach(a => {
+          const bNo = a.billNo.trim();
+          const billKey = bNo.toLowerCase();
+          const originalAmt = Number(a.amount);
+          const alreadySettled = settledMap.get(billKey) || 0;
+          const pending = Math.max(0, round2(originalAmt - alreadySettled));
+          if (pending > 0.005 && !results.some(r => r.billNo.toLowerCase() === billKey)) {
+            results.push({
+              billNo: bNo,
+              billDate: a.billDate || v.date,
+              originalAmount: round2(originalAmt),
+              paidAmount: round2(alreadySettled),
+              pendingAmount: pending,
+              billType: 'Journal',
+              dueDate: a.dueDate
+            });
+          }
+        });
+      } else if (v.supplierBillNo) {
+        const bNo = v.supplierBillNo.trim();
+        const billKey = bNo.toLowerCase();
+        const originalAmt = Number(v.amount);
+        const alreadySettled = settledMap.get(billKey) || 0;
+        const pending = Math.max(0, round2(originalAmt - alreadySettled));
+        if (pending > 0.005 && !results.some(r => r.billNo.toLowerCase() === billKey)) {
+          results.push({
+            billNo: bNo,
+            billDate: v.supplierBillDate || v.date,
+            originalAmount: round2(originalAmt),
+            paidAmount: round2(alreadySettled),
+            pendingAmount: pending,
+            billType: 'Journal'
+          });
+        }
+      }
+    } else if (pType === 'debtor' && isPartyDebited) {
+      const newRefAllocs = (v.billAllocations || []).filter(a => a.refType === 'New Ref' || (!a.refType && a.billNo && !a.billNo.toLowerCase().includes('on account') && !a.billNo.toLowerCase().includes('advance')));
+      if (newRefAllocs.length > 0) {
+        newRefAllocs.forEach(a => {
+          const bNo = a.billNo.trim();
+          const billKey = bNo.toLowerCase();
+          const originalAmt = Number(a.amount);
+          const alreadySettled = settledMap.get(billKey) || 0;
+          const pending = Math.max(0, round2(originalAmt - alreadySettled));
+          if (pending > 0.005 && !results.some(r => r.billNo.toLowerCase() === billKey)) {
+            results.push({
+              billNo: bNo,
+              billDate: a.billDate || v.date,
+              originalAmount: round2(originalAmt),
+              paidAmount: round2(alreadySettled),
+              pendingAmount: pending,
+              billType: 'Journal',
+              dueDate: a.dueDate
+            });
+          }
+        });
+      }
+    }
+  });
 
   // Sort bills by date ascending (FIFO order)
   return results.sort((a, b) => new Date(a.billDate).getTime() - new Date(b.billDate).getTime());
@@ -7113,7 +7303,7 @@ export function getItemStockLedger(code: string, fromDate?: string, toDate?: str
   return finalLogs;
 }
 
-export function getFullLedgerStatement(name: string, fromDate?: string, toDate?: string) {
+export function getFullLedgerStatement(name: string, fromDate?: string, toDate?: string, branchId?: string) {
   syncPayrollToAccounting();
   const ledgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
   const cleanTarget = (name || '').trim().toLowerCase();
@@ -7124,9 +7314,11 @@ export function getFullLedgerStatement(name: string, fromDate?: string, toDate?:
   const purchases = getDeduplicatedPurchases();
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
 
+  const isBranchFilter = Boolean(branchId && branchId !== 'ALL' && branchId !== 'all');
+
   // Filter logs for this ledger and sort chronologically
   const targetLogs = logs
-    .filter(r => (r['Ledger Name'] || '').trim().toLowerCase() === cleanTarget)
+    .filter(r => (r['Ledger Name'] || '').trim().toLowerCase() === cleanTarget && (!isBranchFilter || r.branchId === branchId || (!r.branchId && branchId === 'branch_ho')))
     .sort((a, b) => new Date(a.DateIso).getTime() - new Date(b.DateIso).getTime());
 
   let periodOpBal = masterOp;
@@ -7265,16 +7457,19 @@ export function getDeduplicatedPurchases(targetCompanyId?: string): PurchaseInvo
   return Array.from(map.values());
 }
 
-export function getDailyColumnarReport(from: string, to: string, flt?: { itemWise?: boolean; gstOnly?: boolean; includeSalesReturn?: boolean }) {
+export function getDailyColumnarReport(from: string, to: string, flt?: { itemWise?: boolean; gstOnly?: boolean; includeSalesReturn?: boolean }, branchId?: string) {
   const fr = new Date(from).setHours(0, 0, 0, 0);
   const toDt = new Date(to).setHours(23, 59, 59, 999);
   const sales = getDeduplicatedSales();
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG as any);
 
+  const isBranchFilter = Boolean(branchId && branchId !== 'ALL' && branchId !== 'all');
+
   let rows = sales.filter(r => {
     const d = new Date(r.date).getTime();
-    return d >= fr && d <= toDt;
+    const branchMatch = !isBranchFilter || r.branchId === branchId || (!r.branchId && branchId === 'branch_ho');
+    return d >= fr && d <= toDt && branchMatch;
   });
 
   if (flt && flt.gstOnly) {
@@ -7289,7 +7484,8 @@ export function getDailyColumnarReport(from: string, to: string, flt?: { itemWis
     const rawDate = (v as any).DateIso || v.date || (v as any).Date;
     if (!rawDate) return false;
     const d = new Date(rawDate).getTime();
-    return !isNaN(d) && d >= fr && d <= toDt;
+    const branchMatch = !isBranchFilter || v.branchId === branchId || (!v.branchId && branchId === 'branch_ho');
+    return !isNaN(d) && d >= fr && d <= toDt && branchMatch;
   }) : [];
 
   if (flt && flt.itemWise) {
@@ -7491,14 +7687,44 @@ export function getGSTReport(from: string, to: string) {
     };
   });
 
-  // Include Credit Notes (Sales Return GST Reversals)
+  // Include Credit Notes (Sales Return GST Reversals) and Sales Vouchers
   vouchers.forEach(v => {
-    const vType = v.type as any;
-    if (vType !== 'CN' && vType !== 'Credit Note' && (v as any).voucherTypeName !== 'Credit Note' && vType !== 'Sales Return') return;
+    const vType = (v.type || '').toString().toUpperCase();
     const rawDate = (v as any).DateIso || v.date || (v as any).Date;
     if (!rawDate) return;
     const d = new Date(rawDate).getTime();
     if (isNaN(d) || d < fr || d > toDt) return;
+
+    if (vType === 'S' || vType === 'SALE' || vType === 'SALES' || (v as any).voucherTypeName === 'Sales') {
+      if (data.some(dItem => dItem.billNumber === v.voucherNo)) return;
+      const isCancelled = v.status === 'Cancelled';
+      let gstVal = Number((v as any).gstAmt || (v as any).gstAmount) || 0;
+      let taxableVal = Number((v as any).taxable || (v as any).taxableAmount) || 0;
+      if (!gstVal && v.lines && v.lines.length > 0) {
+        const gstLine = v.lines.find(l => (l.ledger.toLowerCase().includes('gst') || l.ledger.toLowerCase().includes('tax')));
+        if (gstLine) gstVal = Number(gstLine.amount) || Number((gstLine as any).credit) || Number((gstLine as any).debit) || 0;
+      }
+      const totalAmt = Number(v.amount) || 0;
+      if (!taxableVal) taxableVal = Math.max(0, totalAmt - gstVal);
+
+      data.push({
+        billNumber: v.voucherNo,
+        billDate: v.date,
+        customerName: (v as any).party || 'Customer',
+        customerGST: '',
+        taxable: isCancelled ? 0 : taxableVal,
+        zeroRated: 0,
+        gstAmount: isCancelled ? 0 : gstVal,
+        total: isCancelled ? 0 : totalAmt,
+        status: v.status || 'Active',
+        isCancelled,
+        remarks: 'Migrated Sales Voucher',
+        type: 'SALE'
+      });
+      return;
+    }
+
+    if (vType !== 'CN' && vType !== 'CREDIT NOTE' && (v as any).voucherTypeName !== 'Credit Note' && vType !== 'SALES RETURN') return;
 
     const isCancelled = v.status === 'Cancelled';
     const totalAmt = Number(v.amount || (v as any).totalAmount) || 0;
@@ -7645,7 +7871,7 @@ export function getSerialNumbersStockReport() {
   return Array.from(map.values());
 }
 
-export function getAdvancedReports(type: string, from?: string, to?: string) {
+export function getAdvancedReports(type: string, from?: string, to?: string, branchId?: string) {
   const items = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   if (type === 'summary') {
     return items
@@ -8903,7 +9129,7 @@ export function getFinancialReports(type: string, from: string, to: string, bran
   return { tb, pnl, bs, rec, pay, unpaidSalesInvoices, unpaidPurchaseInvoices };
 }
 
-export function getAdvancedDashboardData(from: string, to: string) {
+export function getAdvancedDashboardData(from: string, to: string, branchId?: string) {
   const fr = new Date(from).setHours(0, 0, 0, 0);
   const toDt = new Date(to).setHours(23, 59, 59, 999);
   
@@ -8916,9 +9142,12 @@ export function getAdvancedDashboardData(from: string, to: string) {
   const items = loadJson<any[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS, currentCompId);
   const ledgers = getLedgers(currentCompId);
   
+  const isBranchFilter = Boolean(branchId && branchId !== 'ALL' && branchId !== 'all');
+
   const sls = sales.filter(r => {
     const d = new Date(r.date).getTime();
-    return d >= fr && d <= toDt;
+    const branchMatch = !isBranchFilter || r.branchId === branchId || (!r.branchId && branchId === 'branch_ho');
+    return d >= fr && d <= toDt && branchMatch;
   });
   
   const totSales = sls.reduce((s, r) => s + (Number(r.total) || 0), 0);
@@ -10571,20 +10800,29 @@ export function rebuildAccountingLogs() {
 
   vouchers.forEach(v => {
     if (v.status === 'Cancelled') return;
-    const no = v.voucherNo || '';
-    if (v.type === 'J') {
-      (v.lines || []).forEach(line => {
-        if (line.ledger && Number(line.amount) > 0) {
-          adjustLedgerBalance(line.ledger, Number(line.amount), line.type as 'Dr' | 'Cr', no, v.narration || '', 'Journal');
+    const no = (v.voucherNo || '').trim();
+    if (!no) return;
+
+    const tType = getVoucherTypeName(v.type);
+
+    if (v.lines && v.lines.length > 0) {
+      v.lines.forEach(line => {
+        const lName = (line.ledger || '').trim();
+        const lineAmt = Number(line.amount) || Number((line as any).debit) || Number((line as any).credit) || 0;
+        if (lName && lineAmt > 0) {
+          const lineType: 'Dr' | 'Cr' = (line.type === 'Dr' || line.type === 'Cr') ? line.type : (Number((line as any).debit) > 0 ? 'Dr' : 'Cr');
+          adjustLedgerBalance(lName, lineAmt, lineType, no, line.narration || v.narration || '', tType, v.transactionId);
         }
       });
     } else {
-      const dr = v.debitLedger || '';
-      const cr = v.creditLedger || '';
-      const t = v.type === 'P' ? 'Payment' : (v.type === 'R' ? 'Receipt' : (v.type === 'C' ? 'Contra' : 'Journal'));
-      if (dr && cr && Number(v.amount) > 0) {
-        adjustLedgerBalance(dr, Number(v.amount), 'Dr', no, v.narration || '', t);
-        adjustLedgerBalance(cr, Number(v.amount), 'Cr', no, v.narration || '', t);
+      const dr = (v.debitLedger || '').trim();
+      const cr = (v.creditLedger || '').trim();
+      const amt = Number(v.amount) || 0;
+      if (dr && amt > 0) {
+        adjustLedgerBalance(dr, amt, 'Dr', no, v.narration || '', tType, v.transactionId);
+      }
+      if (cr && amt > 0) {
+        adjustLedgerBalance(cr, amt, 'Cr', no, v.narration || '', tType, v.transactionId);
       }
     }
   });
@@ -11060,6 +11298,7 @@ export function getTDS2Report(from: string, to: string) {
   const toDt = parseDateToMs(to, 23) + (59 * 60 * 1000) + (59 * 1000) + 999;
 
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
+  const purchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
   const ledgers = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
 
   const results: any[] = [];
@@ -11092,6 +11331,16 @@ export function getTDS2Report(from: string, to: string) {
     });
 
     if (!isTdsExplicit && !tdsLine && !singleTds) return;
+
+    // Find matching purchase invoice if linked/referenced
+    const pMatch = purchases.find(p => {
+      const pNo = (p.billNo || p.invoiceNo || '').trim().toLowerCase();
+      const vNo = (v.voucherNo || '').trim().toLowerCase();
+      const vRef = (v.referenceNo || v.billNo || v.supplierBillNo || '').trim().toLowerCase();
+      if (pNo && (pNo === vNo || pNo === vRef)) return true;
+      if (v.billAllocations && v.billAllocations.some(b => (b.billNo || '').trim().toLowerCase() === pNo || (p.supplierBillNo && (b.billNo || '').trim().toLowerCase() === p.supplierBillNo.trim().toLowerCase()))) return true;
+      return false;
+    });
 
     // Extract TDS rate & amount
     const tdsRate = Number(vAny.tdsRate) || 2;
@@ -11133,7 +11382,7 @@ export function getTDS2Report(from: string, to: string) {
         // Find party/vendor ledger (non-cash/non-bank if possible)
         const pLine = otherLines.find(l => {
           const lname = (l.ledger || '').toLowerCase();
-          return !lname.includes('cash') && !lname.includes('bank');
+          return !lname.includes('cash') && !lname.includes('bank') && !lname.includes('tds');
         }) || otherLines[0];
         contractorName = pLine?.ledger || '';
       } else {
@@ -11150,12 +11399,90 @@ export function getTDS2Report(from: string, to: string) {
       }
     }
 
-    // Resolve work description
-    const workDescription = v.tdsWorkDescription || v.narration || 'Contractual Work / Supply';
+    // Resolve work description from purchase ledger / Journal narration
+    let workDescription = (v.tdsWorkDescription || '').trim();
+    if (!workDescription || workDescription === 'Contractual Work / Supply') {
+      if (v.narration && v.narration.trim()) {
+        workDescription = v.narration.trim();
+      }
+      if (!workDescription && otherLines.length > 0) {
+        const expLine = otherLines.find(l => {
+          const isDr = l.type === 'Dr' || Number(l.debit) > 0;
+          const lname = (l.ledger || '').toLowerCase();
+          return isDr && !lname.includes('cash') && !lname.includes('bank') && !lname.includes('tds');
+        });
+        if (expLine) {
+          workDescription = expLine.narration?.trim() || expLine.ledger?.trim() || '';
+        }
+      }
+      if (!workDescription && (v as any).debitLedger) {
+        workDescription = (v as any).debitLedger;
+      }
+      if (!workDescription && pMatch) {
+        const pM = pMatch as any;
+        workDescription = pM.narration || pM.notes || (pM.items && pM.items.length > 0 ? pM.items.map((it: any) => it['Item Name'] || it.itemName || it.description || it.lineDescription).filter(Boolean).join(', ') : '');
+      }
+      if (!workDescription) {
+        workDescription = 'Contractual Work / Supply';
+      }
+    }
 
-    // Resolve invoice details
-    const invoiceNo = v.tdsInvoiceNo || v.invoiceNo || v.referenceNo || v.billNo || v.voucherNo || '-';
-    const invoiceDate = v.tdsInvoiceDate || v.invoiceDate || v.date;
+    // Resolve Supplier Bill / Invoice details (auto-detecting Supplier Bill / Ref No instead of Purchase Voucher No)
+    let invoiceNo = (v.supplierBillNo || (v as any).supplierInvoiceNo || '').trim();
+    if (!invoiceNo) {
+      const tInv = (v.tdsInvoiceNo || '').trim();
+      if (tInv && tInv.toLowerCase() !== (v.voucherNo || '').trim().toLowerCase() && !tInv.startsWith('PV-') && !tInv.startsWith('PUR-') && !tInv.startsWith('JV-')) {
+        invoiceNo = tInv;
+      }
+    }
+    if (!invoiceNo) {
+      const rNo = (v.referenceNo || '').trim();
+      if (rNo && rNo.toLowerCase() !== (v.voucherNo || '').trim().toLowerCase() && !rNo.startsWith('PV-') && !rNo.startsWith('PUR-') && !rNo.startsWith('JV-')) {
+        invoiceNo = rNo;
+      }
+    }
+    if (!invoiceNo && v.billAllocations && v.billAllocations.length > 0) {
+      const allocBills = v.billAllocations.map(a => a.billNo).filter(b => b && b.toLowerCase() !== (v.voucherNo || '').trim().toLowerCase() && !b.startsWith('PV-') && !b.startsWith('PUR-') && !b.startsWith('JV-'));
+      if (allocBills.length > 0) {
+        invoiceNo = allocBills.join(', ');
+      }
+    }
+    if (!invoiceNo && pMatch?.supplierBillNo) {
+      invoiceNo = pMatch.supplierBillNo.trim();
+    }
+    if (!invoiceNo && (pMatch as any)?.referenceNo && (pMatch as any).referenceNo !== pMatch?.billNo) {
+      invoiceNo = (pMatch as any).referenceNo.trim();
+    }
+    if (!invoiceNo && (v as any).refNo && (v as any).refNo.toLowerCase() !== (v.voucherNo || '').trim().toLowerCase()) {
+      invoiceNo = (v as any).refNo.trim();
+    }
+    if (!invoiceNo && v.billNo && !v.billNo.startsWith('PV-') && !v.billNo.startsWith('JV-') && !v.billNo.startsWith('PUR-') && !v.billNo.startsWith('RV-') && !v.billNo.startsWith('CV-') && v.billNo.trim().toLowerCase() !== (v.voucherNo || '').trim().toLowerCase()) {
+      invoiceNo = v.billNo.trim();
+    }
+    if (!invoiceNo && v.tdsInvoiceNo && v.tdsInvoiceNo.trim()) {
+      invoiceNo = v.tdsInvoiceNo.trim();
+    }
+    if (!invoiceNo) {
+      invoiceNo = '-';
+    }
+
+    // Resolve Bill / Invoice Date (auto-catch from supplier bill date)
+    let invoiceDate = (v.supplierBillDate || (v as any).supplierInvoiceDate || (v as any).supplierDate || '').trim();
+    if (!invoiceDate && pMatch?.supplierBillDate) {
+      invoiceDate = pMatch.supplierBillDate;
+    }
+    if (!invoiceDate && (v as any).refDate) {
+      invoiceDate = (v as any).refDate;
+    }
+    if (!invoiceDate) {
+      invoiceDate = (v.tdsInvoiceDate || '').trim();
+    }
+    if (!invoiceDate && (v as any).billDate) {
+      invoiceDate = (v as any).billDate;
+    }
+    if (!invoiceDate) {
+      invoiceDate = (v as any).invoiceDate || v.date;
+    }
 
     results.push({
       date: v.date,
@@ -11171,6 +11498,52 @@ export function getTDS2Report(from: string, to: string) {
       tdsAmount,
       netPaid,
       narration: v.narration || ''
+    });
+  });
+
+  // Also include direct purchase invoices with statutory TDS 2% if not already captured
+  purchases.forEach(p => {
+    if (p.status === 'Cancelled') return;
+    const rawDate = p.date;
+    const d = parseDateToMs(rawDate);
+    if (d < fr || d > toDt) return;
+
+    const tdsExp = (p.additionalExpenses || []).find(e => {
+      const name = (e.ledger || '').toLowerCase();
+      return name.includes('tds 2%') || name.includes('tds 2') || (name.includes('tds') && name.includes('liability')) || (name.includes('tds') && name.includes('contract'));
+    });
+
+    if (!tdsExp && !(p as any).isTdsApplicable) return;
+
+    const pRef = (p.billNo || p.invoiceNo || '').trim();
+    if (results.some(r => (r.voucherNo && r.voucherNo.toLowerCase() === pRef.toLowerCase()) || (p.supplierBillNo && r.invoiceNo === p.supplierBillNo))) return;
+
+    const tdsAmt = tdsExp ? Number(tdsExp.amount) : round2((Number(p.taxable || p.total) || 0) * 0.02);
+    const billAmt = Number(p.taxable || p.total) || 0;
+    const netPaid = Math.max(0, round2(billAmt - tdsAmt));
+
+    const sName = typeof p.supplier === 'object' ? (p.supplier?.name || p.supplier?.ledger) : p.supplier;
+    const sTpn = typeof p.supplier === 'object' ? (p.supplier?.tpnNo || p.supplier?.gstNo || '') : '';
+    const purchaseLedgerName = (p as any).purchaseLedger || (p as any).purchaseAccount || '';
+    const sWork = (p as any).narration || (p as any).notes || purchaseLedgerName || (p.items && p.items.length > 0 ? p.items.map((i: any) => i['Item Name'] || i.itemName || i.description).filter(Boolean).join(', ') : 'Purchase / Supply Contract');
+
+    const sInvoiceNo = (p.supplierBillNo || ((p as any).referenceNo && (p as any).referenceNo !== p.billNo && !(p as any).referenceNo.startsWith('PUR-') ? (p as any).referenceNo : '') || (p as any).supplierInvoiceNo || '').trim() || '-';
+    const sInvoiceDate = (p.supplierBillDate || (p as any).supplierInvoiceDate || (p as any).supplierDate || (p as any).refDate || p.date || '').trim();
+
+    results.push({
+      date: p.date,
+      voucherNo: p.billNo || p.invoiceNo || 'PUR-BILL',
+      voucherType: 'PUR',
+      contractorNameAndAddress: sName || 'Supplier / Contractor',
+      tpn: sTpn || '-',
+      workDescription: sWork,
+      invoiceNo: sInvoiceNo,
+      invoiceDate: sInvoiceDate,
+      billAmount: billAmt,
+      tdsRate: 2,
+      tdsAmount: tdsAmt,
+      netPaid: netPaid,
+      narration: (p as any).narration || (p as any).notes || ''
     });
   });
 

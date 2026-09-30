@@ -17,8 +17,7 @@ import {
   Download,
   CheckCircle2,
   Smartphone,
-  ChevronRight,
-  ChevronDown
+  ChevronRight
 } from 'lucide-react';
 import { Config, AppUser } from "../types";
 import { isSuperAdmin, getCurrentTenantSession } from '../services/authTenantContext';
@@ -49,14 +48,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isInstalled, setIsInstalled] = useState<boolean>(() => isPwaInstalled());
   const [hasPrompt, setHasPrompt] = useState<boolean>(() => canInstallPwa());
   const [showPwaModal, setShowPwaModal] = useState<boolean>(false);
-
-  // Active inline expandable submenu state: 'vouchers' | 'reports' | 'masters' | null
-  const [openSubmenu, setOpenSubmenu] = useState<string | null>(() => {
-    if (currentView === 'reports') return 'reports';
-    if (currentView === 'vouchers') return 'vouchers';
-    if (currentView === 'masters') return 'masters';
-    return null;
-  });
 
   useEffect(() => {
     setIsInstalled(isPwaInstalled());
@@ -128,8 +119,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ...(((isFeatureAllowed(config, 'EnablePOS', isSuperadminUser) && config.EnablePOS !== 'false') || config.EnableRestaurantMode === 'true') && isModulePermitted(currentUser, 'pos', 'display', isSuperadminUser) ? [{ id: 'pos', label: config.EnableRestaurantMode === 'true' ? 'Restaurant POS' : 'POS Billing', icon: ShoppingCart, shortcut: 'Alt+P' }] : []),
     ...(isFeatureAllowed(config, 'EnableNormalSale', isSuperadminUser) && config.EnableNormalSale !== 'false' && isModulePermitted(currentUser, 'normalsale', 'display', isSuperadminUser) ? [{ id: 'normalsale', label: 'Sales Invoice', icon: ShoppingBag, shortcut: 'Alt+N' }] : []),
     ...(isFeatureAllowed(config, 'EnablePurchase', isSuperadminUser) && config.EnablePurchase !== 'false' && isModulePermitted(currentUser, 'purchase', 'display', isSuperadminUser) ? [{ id: 'purchase', label: 'Purchase Entry', icon: ShoppingBag, shortcut: 'Alt+U' }] : []),
-    ...(isFeatureAllowed(config, 'EnableVouchers', isSuperadminUser) && config.EnableVouchers !== 'false' && isModulePermitted(currentUser, 'vouchers', 'display', isSuperadminUser) ? [{ id: 'vouchers', label: 'Vouchers', icon: BookOpen, shortcut: 'Alt+V', hasSubmenu: true }] : []),
-    ...(isModulePermitted(currentUser, 'masters', 'display', isSuperadminUser) ? [{ id: 'masters', label: 'Masters', icon: FolderKanban, shortcut: 'Alt+M', hasSubmenu: true }] : []),
+    ...(isFeatureAllowed(config, 'EnableVouchers', isSuperadminUser) && config.EnableVouchers !== 'false' && isModulePermitted(currentUser, 'vouchers', 'display', isSuperadminUser) ? [{ id: 'vouchers', label: 'Vouchers', icon: BookOpen, shortcut: 'Alt+V' }] : []),
+    ...(isModulePermitted(currentUser, 'masters', 'display', isSuperadminUser) ? [{ id: 'masters', label: 'Masters', icon: FolderKanban, shortcut: 'Alt+M' }] : []),
     ...(isFeatureAllowed(config, 'EnableSchemes', isSuperadminUser) && config.EnableSchemes !== 'false' && isModulePermitted(currentUser, 'schemes', 'display', isSuperadminUser) ? [{ id: 'schemes', label: 'Schemes & Offers', icon: Tags, shortcut: 'Alt+O' }] : []),
     ...(isFeatureAllowed(config, 'EnableBarcodePrinting', isSuperadminUser) && config.EnableBarcodePrinting !== 'false' && isModulePermitted(currentUser, 'barcode', 'display', isSuperadminUser) ? [{ id: 'barcode', label: 'Barcode Print', icon: Barcode, shortcut: 'Alt+K' }] : []),
     ...(isFeatureAllowed(config, 'EnablePayroll', isSuperadminUser) && config.EnablePayroll !== 'false' && isModulePermitted(currentUser, 'payroll', 'display', isSuperadminUser) ? [{ id: 'payroll', label: 'Payroll & HR', icon: Users, shortcut: 'Alt+Y' }] : []),
@@ -141,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }] : []),
     ...(isFeatureAllowed(config, 'EnableAssetManagement', isSuperadminUser) && config.EnableAssetManagement !== 'false' && isModulePermitted(currentUser, 'masters', 'display', isSuperadminUser) ? [{ id: 'assets', label: 'Asset Management', icon: Building, shortcut: 'Alt+E' }] : []),
     ...(isFeatureAllowed(config, 'EnableBankReconciliation', isSuperadminUser) && config.EnableBankReconciliation !== 'false' && isModulePermitted(currentUser, 'vouchers', 'display', isSuperadminUser) ? [{ id: 'bankrecon', label: 'Bank Reconciliation', icon: Landmark, shortcut: 'Alt+B' }] : []),
-    ...(isModulePermitted(currentUser, 'reports', 'display', isSuperadminUser) ? [{ id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R', hasSubmenu: true }] : []),
+    ...(isModulePermitted(currentUser, 'reports', 'display', isSuperadminUser) ? [{ id: 'reports', label: 'Reports', icon: BarChart3, shortcut: 'Alt+R' }] : []),
     ...(isModulePermitted(currentUser, 'settings', 'display', isSuperadminUser) ? [{ id: 'settings', label: 'Settings', icon: Settings, shortcut: 'Alt+S' }] : []),
     ...(isSuperadminUser ? [{ 
       id: 'superadmin', 
@@ -271,24 +262,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             const Icon = item.icon;
             const isActive = currentView === item.id;
             const isSuper = (item as any).isSuperBadge;
-            const hasSubmenu = (item as any).hasSubmenu;
-            const isOpenSub = openSubmenu === item.id;
 
             return (
               <div key={item.id} className="space-y-1">
                 <button
                   id={`sidebar-nav-${item.id}`}
                   ref={el => (itemRefs.current[idx] = el)}
-                  onClick={() => {
-                    if (hasSubmenu) {
-                      setOpenSubmenu(prev => prev === item.id ? null : item.id);
-                      if (currentView !== item.id) {
-                        handleExecuteNavigation(item.id);
-                      }
-                    } else {
-                      handleExecuteNavigation(item.id);
-                    }
-                  }}
+                  onClick={() => handleExecuteNavigation(item.id)}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg font-bold text-xs sm:text-sm transition group cursor-pointer focus:outline-none focus-visible:ring-2 ${
                     isSuper
                       ? isActive
@@ -311,15 +291,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                    {hasSubmenu && (
-                      <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${isOpenSub ? 'rotate-180 text-white' : 'text-slate-400 group-hover:text-blue-300'}`} />
-                    )}
                     {isSuper && (
                       <span className="px-1.5 py-0.5 text-[9px] uppercase font-black tracking-wider rounded bg-amber-500/25 text-amber-200 border border-amber-500/40">
                         SUPER
                       </span>
                     )}
-                    {item.shortcut && !hasSubmenu && (
+                    {item.shortcut && (
                       <kbd
                         className={`px-1.5 py-0.5 text-[10px] rounded font-mono whitespace-nowrap transition ${
                           isSuper
@@ -334,320 +311,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                   </div>
                 </button>
-
-                {/* INLINE EXPANDABLE SUBMENU ACCORDION */}
-                {isOpenSub && (
-                  <div className="my-1 ml-3.5 pl-2.5 border-l-2 border-blue-500/50 space-y-2 py-1 text-xs animate-in fade-in duration-150">
-                    {/* Vouchers Submenu */}
-                    {item.id === 'vouchers' && (
-                      <div className="space-y-2">
-                        {/* Financial & Accounting */}
-                        <div className="space-y-0.5">
-                          <div className="text-[10px] font-black uppercase text-blue-300 tracking-wider px-1">Financial & Accounting</div>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('vouchers', { voucherTypeFilter: 'Payment' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-between font-semibold cursor-pointer"
-                          >
-                            <span>Payment Voucher</span>
-                            <span className="text-[9px] font-mono text-slate-400">F5</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('vouchers', { voucherTypeFilter: 'Receipt' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-between font-semibold cursor-pointer"
-                          >
-                            <span>Receipt Voucher</span>
-                            <span className="text-[9px] font-mono text-slate-400">F6</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('vouchers', { voucherTypeFilter: 'Journal' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-between font-semibold cursor-pointer"
-                          >
-                            <span>Journal Voucher</span>
-                            <span className="text-[9px] font-mono text-slate-400">F7</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('vouchers', { voucherTypeFilter: 'Contra' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-between font-semibold cursor-pointer"
-                          >
-                            <span>Contra Voucher</span>
-                            <span className="text-[9px] font-mono text-slate-400">F4</span>
-                          </button>
-                        </div>
-
-                        {/* Invoicing & Sales */}
-                        <div className="space-y-0.5 pt-1 border-t border-slate-800">
-                          <div className="text-[10px] font-black uppercase text-blue-300 tracking-wider px-1">Invoicing & Sales</div>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('pos')}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-between font-semibold cursor-pointer"
-                          >
-                            <span>Sales Invoice / POS</span>
-                            <span className="text-[9px] font-mono text-slate-400">F8</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('purchase')}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-between font-semibold cursor-pointer"
-                          >
-                            <span>Purchase Invoice</span>
-                            <span className="text-[9px] font-mono text-slate-400">F9</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('vouchers', { voucherTypeFilter: 'Credit Note' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-between font-semibold cursor-pointer"
-                          >
-                            <span>Credit Note / Sales Return</span>
-                            <span className="text-[9px] font-mono text-slate-400">Ctrl+F8</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('vouchers', { voucherTypeFilter: 'Debit Note' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-between font-semibold cursor-pointer"
-                          >
-                            <span>Debit Note / Purchase Return</span>
-                            <span className="text-[9px] font-mono text-slate-400">Ctrl+F9</span>
-                          </button>
-                        </div>
-
-                        {/* Orders & Quotations */}
-                        <div className="space-y-0.5 pt-1 border-t border-slate-800">
-                          <div className="text-[10px] font-black uppercase text-blue-300 tracking-wider px-1">Orders & Challans</div>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('vouchers', { voucherTypeFilter: 'Quotation' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-between font-semibold cursor-pointer"
-                          >
-                            <span>Sales Quotation</span>
-                            <span className="text-[9px] font-mono text-slate-400">Alt+F4</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('vouchers', { voucherTypeFilter: 'Delivery Note' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 flex items-center justify-between font-semibold cursor-pointer"
-                          >
-                            <span>Delivery Note / Challan</span>
-                            <span className="text-[9px] font-mono text-slate-400">Alt+F8</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Reports Submenu */}
-                    {item.id === 'reports' && (
-                      <div className="space-y-2">
-                        {/* Financial Statements */}
-                        <div className="space-y-0.5">
-                          <div className="text-[10px] font-black uppercase text-blue-300 tracking-wider px-1">Financial Statements</div>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('reports', { category: 'fin', finSubTab: 'TB' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                          >
-                            Trial Balance Statement
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('reports', { category: 'fin', finSubTab: 'PNL' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                          >
-                            Profit & Loss Account
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('reports', { category: 'fin', finSubTab: 'BS' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                          >
-                            Balance Sheet Statement
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('reports', { category: 'fin', finSubTab: 'LED' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                          >
-                            Ledger Statements & Accounts
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('reports', { category: 'fin', finSubTab: 'REC' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                          >
-                            Receivables & Payables
-                          </button>
-                        </div>
-
-                        {/* Daily & Registers */}
-                        <div className="space-y-0.5 pt-1 border-t border-slate-800">
-                          <div className="text-[10px] font-black uppercase text-blue-300 tracking-wider px-1">Daily & Registers</div>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('reports', { category: 'daily' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                          >
-                            Daily Sales & Collection
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('reports', { category: 'reg', regSubTab: 'daybook' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                          >
-                            Day Book Register
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('reports', { category: 'reg', regSubTab: 'sales' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                          >
-                            Sales Register
-                          </button>
-                          {config.EnablePurchase !== 'false' && (
-                            <button
-                              type="button"
-                              onClick={() => handleExecuteNavigation('reports', { category: 'reg', regSubTab: 'purchases' })}
-                              className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                            >
-                              Purchase Register
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Restaurant & Dining Reports (When Restaurant Mode Enabled) */}
-                        {config.EnableRestaurantMode === 'true' && (
-                          <div className="space-y-0.5 pt-1 border-t border-slate-800">
-                            <div className="text-[10px] font-black uppercase text-amber-300 tracking-wider px-1">Restaurant & Dining</div>
-                            <button
-                              type="button"
-                              onClick={() => handleExecuteNavigation('reports', { category: 'daily', itemWise: false })}
-                              className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                            >
-                              Table Sales & Billing
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleExecuteNavigation('reports', { category: 'daily', itemWise: true })}
-                              className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                            >
-                              KOT Kitchen Orders & Dish Sales
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Inventory & Stock */}
-                        <div className="space-y-0.5 pt-1 border-t border-slate-800">
-                          <div className="text-[10px] font-black uppercase text-blue-300 tracking-wider px-1">Inventory & Stock</div>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('reports', { category: 'inv', invSubTab: 'summary' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                          >
-                            Stock Summary & Valuation
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('reports', { category: 'inv', invSubTab: 'prof' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                          >
-                            Item Profitability Analysis
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExecuteNavigation('reports', { category: 'inv', invSubTab: 'mov' })}
-                            className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                          >
-                            Fast / Slow Moving Items
-                          </button>
-                          {(config.EnableSerials === 'true' || config.EnablePharmacyBatch === 'true' || config.EnablePharmacyBatch !== 'false') && (
-                            <button
-                              type="button"
-                              onClick={() => handleExecuteNavigation('reports', { category: 'inv', invSubTab: 'serials' })}
-                              className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                            >
-                              Serial & Batch Tracking
-                            </button>
-                          )}
-                          {(config.EnableMultiGodown === 'true' || config.EnableMultiBranch === 'true') && (
-                            <button
-                              type="button"
-                              onClick={() => handleExecuteNavigation('reports', { category: 'inv', invSubTab: 'godown_summary' })}
-                              className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                            >
-                              Godown / Store Wise Stock
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Tax & Audit */}
-                        <div className="space-y-0.5 pt-1 border-t border-slate-800">
-                          <div className="text-[10px] font-black uppercase text-blue-300 tracking-wider px-1">Tax & Audit</div>
-                          {config.EnableGST !== 'false' && (
-                            <button
-                              type="button"
-                              onClick={() => handleExecuteNavigation('reports', { category: config.EnableGSTInputTax === 'true' ? 'gst_summary' : 'gst' })}
-                              className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                            >
-                              Net GST Summary
-                            </button>
-                          )}
-                          {config.EnableAuditTrail !== 'false' && isSuperadminUser && (
-                            <button
-                              type="button"
-                              onClick={() => handleExecuteNavigation('reports', { category: 'audit' })}
-                              className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                            >
-                              Audit Trail & System Logs
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Masters Submenu */}
-                    {item.id === 'masters' && (
-                      <div className="space-y-1">
-                        <button
-                          type="button"
-                          onClick={() => handleExecuteNavigation('masters')}
-                          className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                        >
-                          Accounts & Ledgers Master
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleExecuteNavigation('masters')}
-                          className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                        >
-                          Items & Products Master
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleExecuteNavigation('schemes')}
-                          className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                        >
-                          Schemes & Offers
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleExecuteNavigation('barcode')}
-                          className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                        >
-                          Barcode Label Printing
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleExecuteNavigation('assets')}
-                          className="w-full text-left px-2 py-1 rounded text-slate-300 hover:text-white hover:bg-slate-800 font-semibold cursor-pointer"
-                        >
-                          Asset Management
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
             );
           })}

@@ -624,6 +624,11 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
           ref={inputRef}
           id={id}
           type="text"
+          name="no_autocomplete_ledger"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           disabled={disabled}
           autoFocus={autoFocus}
           value={isOpen ? searchTerm : value || searchTerm}
@@ -704,7 +709,15 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
         <div
           ref={listRef}
           onWheel={handleWheel}
-          className="fixed right-4 top-24 bottom-24 z-[100] w-[350px] shadow-2xl overflow-y-auto rounded-xl border border-slate-300 bg-white divide-y divide-slate-100 animate-in slide-in-from-right-8 duration-200"
+          style={{
+            position: 'fixed',
+            left: `${Math.max(12, Math.min(coords.left, window.innerWidth - Math.max(coords.width, 360) - 16))}px`,
+            top: coords.placement === 'bottom' ? `${coords.top}px` : 'auto',
+            bottom: coords.placement === 'top' ? `${window.innerHeight - coords.top + 8}px` : 'auto',
+            width: `${Math.max(coords.width, 360)}px`,
+            maxHeight: '340px'
+          }}
+          className="z-[100] shadow-2xl overflow-y-auto rounded-xl border border-slate-300 bg-white divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-150"
         >
           <div className="sticky top-0 bg-slate-800 text-white px-3 py-2 text-xs font-bold shadow-md z-20 flex justify-between items-center">
             <span>List of Ledger Accounts</span>

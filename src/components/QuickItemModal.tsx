@@ -78,7 +78,7 @@ export const QuickItemModal: React.FC<QuickItemModalProps> = ({
           'Sale Rate': '' as any,
           'Wholesale Rate': '' as any,
           MRP: '' as any,
-          'GST %': 0,
+          'GST %': 5,
           'Zero Rated (Y/N)': 'N',
           'Opening Stock': '' as any,
           'Opening Amount': 0,

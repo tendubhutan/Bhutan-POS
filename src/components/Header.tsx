@@ -73,6 +73,24 @@ export const Header: React.FC<HeaderProps> = ({
 
   const [terminalBranchId, setLocalTerminalBranchId] = useState<string>(() => getTerminalBranchId(config));
   const [deviceCounterId, setLocalDeviceCounterId] = useState<string>(() => getDeviceCounterId());
+
+  // Enforce branch lock if active user is assigned to a specific branch
+  const userAssignedBranchId = currentUser?.assignedBranchId;
+  const isBranchLockedForUser = Boolean(
+    userAssignedBranchId && 
+    userAssignedBranchId !== 'ALL' && 
+    !isSuperAdmin && 
+    currentUser?.role !== 'Administrator'
+  );
+
+  useEffect(() => {
+    if (isBranchLockedForUser && userAssignedBranchId) {
+      if (terminalBranchId !== userAssignedBranchId) {
+        setLocalTerminalBranchId(userAssignedBranchId);
+        setTerminalBranchId(userAssignedBranchId);
+      }
+    }
+  }, [isBranchLockedForUser, userAssignedBranchId, currentUser?.id]);
   const [isLanHubModalOpen, setIsLanHubModalOpen] = useState<boolean>(false);
   const [isClientLinkModalOpen, setIsClientLinkModalOpen] = useState<boolean>(false);
   const [clientLinkModalTab, setClientLinkModalTab] = useState<'links' | 'manage' | 'pwa'>('links');
@@ -195,18 +213,20 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Terminal Branch Selector Dropdown (Desktop) */}
           {config?.EnableMultiBranch === 'true' && (
             <div 
-              className="hidden sm:flex items-center gap-1 bg-blue-900/80 border border-blue-400/40 hover:border-blue-300 px-2 py-1 rounded-xl text-xs font-bold text-white shadow-xs transition shrink min-w-0"
-              title="Active Branch for this Terminal/Computer (click to switch branch)"
+              className={`hidden sm:flex items-center gap-1 ${isBranchLockedForUser ? 'bg-amber-950/60 border-amber-500/50' : 'bg-blue-900/80 border-blue-400/40 hover:border-blue-300'} px-2 py-1 rounded-xl text-xs font-bold text-white shadow-xs transition shrink min-w-0`}
+              title={isBranchLockedForUser ? "Branch access is locked to your assigned staff branch" : "Active Branch for this Terminal/Computer (click to switch branch)"}
             >
-              <Building2 className="h-3.5 w-3.5 text-amber-300 shrink-0" />
+              <Building2 className={`h-3.5 w-3.5 ${isBranchLockedForUser ? 'text-amber-400' : 'text-amber-300'} shrink-0`} />
               <select
                 value={terminalBranchId || config.ActiveBranchId || ''}
+                disabled={isBranchLockedForUser}
                 onChange={(e) => {
+                  if (isBranchLockedForUser) return;
                   const newId = e.target.value;
                   setLocalTerminalBranchId(newId);
                   setTerminalBranchId(newId);
                 }}
-                className="bg-transparent text-white font-extrabold text-xs outline-none cursor-pointer pr-1 max-w-[70px] md:max-w-[100px] xl:max-w-[140px] truncate"
+                className={`bg-transparent text-white font-extrabold text-xs outline-none ${isBranchLockedForUser ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'} pr-1 max-w-[70px] md:max-w-[100px] xl:max-w-[140px] truncate`}
               >
                 {branches.map(b => (
                   <option key={b.id} value={b.id} className="text-slate-900 bg-white font-bold">
@@ -214,6 +234,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </option>
                 ))}
               </select>
+              {isBranchLockedForUser && <span className="text-[10px] text-amber-300 ml-0.5">🔒</span>}
             </div>
           )}
         </div>

@@ -233,9 +233,11 @@ export interface AuditLogEntry {
 }
 
 export interface BillAllocation {
+  refType?: 'New Ref' | 'Agst Ref' | 'On Account' | 'Advance';
   billNo: string;
   billDate?: string;
   billAmount?: number;
+  dueDate?: string;
   amount: number;
 }
 
@@ -269,6 +271,7 @@ export interface AppUser {
   status: 'Active' | 'Inactive';
   permissions: UserPermission[];
   assignedCompanyId?: string;
+  assignedBranchId?: string;
 }
 
 export interface ItemVariant {
@@ -581,6 +584,7 @@ export interface PurchaseInvoice {
   billNo: string;
   invoiceNo?: string;
   supplierBillNo?: string;
+  supplierBillDate?: string;
   receiptNoteNo?: string;
   poNo?: string;
   date: string;
@@ -759,6 +763,8 @@ export interface Voucher {
   lines?: VoucherLine[];
   partyName?: string;
   partyGstNo?: string;
+  supplierBillNo?: string;
+  supplierBillDate?: string;
   originalInvoiceRef?: string;
   taxable?: number;
   gstAmt?: number;
@@ -792,8 +798,9 @@ export interface Voucher {
   items?: Array<{
     itemCode: string;
     itemName: string;
+    unit?: string;
     description?: string;
-  lineDescription?: string;
+    lineDescription?: string;
     qty: number;
     rate?: number;
     discount?: number;

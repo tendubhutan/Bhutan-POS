@@ -4,6 +4,7 @@ import {
   ShieldCheck, 
   Building2, 
   ArrowRight, 
+  ArrowLeft,
   AlertCircle,
   CheckCircle2,
   Mail,
@@ -56,6 +57,7 @@ interface LoginGateProps {
   activeCompany?: SupabaseCompany | null;
   activeFY?: SupabaseFinancialYear | null;
   onUnlock: (user: AppUser) => void;
+  onBackToLanding?: () => void;
 }
 
 export const BHUTAN_LANDSCAPE_WALLPAPERS = [
@@ -92,7 +94,8 @@ export const BHUTAN_LANDSCAPE_WALLPAPERS = [
 export const LoginGate: React.FC<LoginGateProps> = ({
   activeCompany,
   activeFY,
-  onUnlock
+  onUnlock,
+  onBackToLanding
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -431,6 +434,21 @@ export const LoginGate: React.FC<LoginGateProps> = ({
           <div className="lg:col-span-6 w-full max-w-md lg:max-w-md mx-auto lg:ml-auto">
             <div className="bg-white/95 backdrop-blur-2xl border border-slate-200/90 rounded-[28px] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.25)] p-6 sm:p-8 space-y-5 animate-in fade-in zoom-in-95 duration-200">
               
+              {/* Back to Website Button */}
+              {onBackToLanding && (
+                <div className="pb-1 border-b border-slate-100 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={onBackToLanding}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-amber-600 transition-colors cursor-pointer"
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5" />
+                    <span>Back to DrukERP Website</span>
+                  </button>
+                  <span className="text-[10px] text-slate-400 font-mono">drukerp.com</span>
+                </div>
+              )}
+
               {/* Header Title with Avatar Circle */}
               <div className="flex items-center gap-3">
                 <div className="h-12 w-12 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 ring-4 ring-blue-100 shrink-0">

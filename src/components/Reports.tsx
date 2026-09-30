@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffe
 import { Config, Item, Ledger } from '../types';
 import {
   getDailyColumnarReport, getGSTReport, getGSTInputDomReport, getGSTInputImpReport, getGSTSummaryReport, getTDS2Report, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig,
-  getPartyOutstandingBills, saveVoucher, canUserViewAuditTrail, getActiveUser, getBranches, getGodowns, getEmployees
+  getPartyOutstandingBills, saveVoucher, canUserViewAuditTrail, getActiveUser, getBranches, getGodowns, getEmployees, getTerminalBranchId
 } from '../services/storageService';
 import { AssignmentReportView } from './employee/AssignmentReportView';
 import XLSX from 'xlsx-js-style';
@@ -166,14 +166,31 @@ export const Reports: React.FC<ReportsProps> = ({
   const [toDate, setToDate] = useState(todayStr);
 
   const [itemWise, setItemWise] = useState(false);
+  const [isRestaurantReport, setIsRestaurantReport] = useState(false);
   const [isControlsCollapsed, setIsControlsCollapsed] = useState(false);
   const [gstOnly, setGstOnly] = useState(false);
   const [includeSalesReturn, setIncludeSalesReturn] = useState(true);
   const [selectedLedger, setSelectedLedger] = useState('');
   const [ledgerViewMode, setLedgerViewMode] = useState<'chronological' | 'billwise'>('chronological');
   const isSelectedLedgerParty = useMemo(() => isPartyLedger(selectedLedger), [selectedLedger]);
-  const [selectedBranchId, setSelectedBranchId] = useState<string>('ALL');
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(() => {
+    return getTerminalBranchId(config) || 'ALL';
+  });
   const availableBranches = useMemo(() => getBranches(), [config]);
+
+  // Listen for active branch changes in header dropdown
+  useEffect(() => {
+    const handleBranchChanged = (e: any) => {
+      const bId = e?.detail?.branchId || getTerminalBranchId(config);
+      if (bId) {
+        setSelectedBranchId(bId);
+      }
+    };
+    window.addEventListener('terminal:branch_changed', handleBranchChanged);
+    return () => {
+      window.removeEventListener('terminal:branch_changed', handleBranchChanged);
+    };
+  }, [config]);
 
   // Measured Sticky Header Banner Height for dynamic sub-header & table header docking
   const headerRef = useRef<HTMLDivElement>(null);
@@ -599,8 +616,8 @@ export const Reports: React.FC<ReportsProps> = ({
         icon: Utensils,
         color: 'amber',
         items: [
-          { id: 'daily-bill', name: 'Table Sales & Billing Summary', group: 'Restaurant', desc: 'Running & completed table orders, bill wise revenue & GST', keywords: ['table', 'restaurant', 'dining', 'bill', 'kot', 'orders'] },
-          { id: 'daily-item', name: 'Kitchen Order (KOT) & Dish Item Sales', group: 'Restaurant', desc: 'Dishes served, quantity & itemized sales breakdown', keywords: ['kot', 'kitchen', 'dish', 'food', 'itemwise'] }
+          { id: 'resto-bill', name: 'Table Sales & Billing Summary', group: 'Restaurant', desc: 'Running & completed table orders, bill wise revenue & GST', keywords: ['table', 'restaurant', 'dining', 'bill', 'kot', 'orders'] },
+          { id: 'resto-item', name: 'Kitchen Order (KOT) & Dish Item Sales', group: 'Restaurant', desc: 'Dishes served, quantity & itemized sales breakdown', keywords: ['kot', 'kitchen', 'dish', 'food', 'itemwise'] }
         ]
       }] : []),
       {
@@ -682,7 +699,12 @@ export const Reports: React.FC<ReportsProps> = ({
 
   // Current active report key
   const currentActiveReportKey = useMemo(() => {
-    if (mainCategory === 'daily') return itemWise ? 'daily-item' : 'daily-bill';
+    if (mainCategory === 'daily') {
+      if (isRestaurantReport) {
+        return itemWise ? 'resto-item' : 'resto-bill';
+      }
+      return itemWise ? 'daily-item' : 'daily-bill';
+    }
     if (mainCategory === 'gst') return 'gst';
     if (mainCategory === 'gst_summary') return 'gst_summary';
     if (mainCategory === 'gst_input_dom') return 'gst_input_dom';
@@ -692,7 +714,7 @@ export const Reports: React.FC<ReportsProps> = ({
     if (mainCategory === 'reg') return `reg-${regSubTab}`;
     if (mainCategory === 'audit') return 'audit';
     return `fin-${finSubTab}`;
-  }, [mainCategory, itemWise, invSubTab, regSubTab, finSubTab]);
+  }, [mainCategory, itemWise, isRestaurantReport, invSubTab, regSubTab, finSubTab]);
 
   // Current report display metadata
   const currentReportDisplay = useMemo(() => {
@@ -806,23 +828,38 @@ export const Reports: React.FC<ReportsProps> = ({
   const handleSelectReport = (val: string) => {
     if (val === 'audit') {
       setMainCategory('audit');
+      setIsRestaurantReport(false);
     } else if (val === 'daily-bill') {
       setMainCategory('daily');
       setItemWise(false);
+      setIsRestaurantReport(false);
     } else if (val === 'daily-item') {
       setMainCategory('daily');
       setItemWise(true);
+      setIsRestaurantReport(false);
+    } else if (val === 'resto-bill') {
+      setMainCategory('daily');
+      setItemWise(false);
+      setIsRestaurantReport(true);
+    } else if (val === 'resto-item') {
+      setMainCategory('daily');
+      setItemWise(true);
+      setIsRestaurantReport(true);
     } else if (val === 'gst' || val === 'gst_summary' || val === 'gst_input_dom' || val === 'gst_input_imp' || val === 'tds_report') {
       setMainCategory(val as any);
+      setIsRestaurantReport(false);
     } else if (val.startsWith('inv-')) {
       setMainCategory('inv');
       setInvSubTab(val.replace('inv-', '') as any);
+      setIsRestaurantReport(false);
     } else if (val.startsWith('reg-')) {
       setMainCategory('reg');
       setRegSubTab(val.replace('reg-', '') as any);
+      setIsRestaurantReport(false);
     } else if (val.startsWith('fin-')) {
       setMainCategory('fin');
       setFinSubTab(val.replace('fin-', '') as any);
+      setIsRestaurantReport(false);
     }
     setIsReportMenuOpen(false);
     setReportMenuSearch('');
@@ -830,11 +867,11 @@ export const Reports: React.FC<ReportsProps> = ({
   };
 
   const allReportsList = useMemo(() => [
-    { cat: 'daily', itemWise: false, label: 'Daily Sales (Bill-wise)' },
-    { cat: 'daily', itemWise: true, label: 'Daily Sales (Item-wise)' },
+    { cat: 'daily', itemWise: false, isResto: false, label: 'Daily Sales (Bill-wise)' },
+    { cat: 'daily', itemWise: true, isResto: false, label: 'Daily Sales (Item-wise)' },
     ...(config.EnableRestaurantMode === 'true' ? [
-      { cat: 'daily', itemWise: false, label: 'Table Sales & Billing Summary' },
-      { cat: 'daily', itemWise: true, label: 'Kitchen Order (KOT) & Dish Item Sales' }
+      { cat: 'daily', itemWise: false, isResto: true, label: 'Table Sales & Billing Summary' },
+      { cat: 'daily', itemWise: true, isResto: true, label: 'Kitchen Order (KOT) & Dish Item Sales' }
     ] : []),
     ...(showGst ? [
       { cat: 'gst', label: 'GST Output (Sales)' },
@@ -1026,7 +1063,7 @@ export const Reports: React.FC<ReportsProps> = ({
       if (e.altKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
         e.preventDefault();
         const currentIdx = allReportsList.findIndex(r => {
-          if (r.cat === 'daily') return mainCategory === 'daily' && itemWise === r.itemWise;
+          if (r.cat === 'daily') return mainCategory === 'daily' && itemWise === r.itemWise && isRestaurantReport === Boolean(r.isResto);
           if (r.cat === 'gst') return mainCategory === 'gst';
           if (r.cat === 'inv') return mainCategory === 'inv' && invSubTab === r.invSub;
           if (r.cat === 'fin') return mainCategory === 'fin' && finSubTab === r.finSub;
@@ -1040,7 +1077,10 @@ export const Reports: React.FC<ReportsProps> = ({
 
         const target = allReportsList[nextIdx];
         setMainCategory(target.cat as any);
-        if (target.cat === 'daily') setItemWise(target.itemWise || false);
+        if (target.cat === 'daily') {
+          setItemWise(target.itemWise || false);
+          setIsRestaurantReport(Boolean(target.isResto));
+        }
         if (target.invSub) setInvSubTab(target.invSub as any);
         if (target.finSub) setFinSubTab(target.finSub as any);
       }
@@ -1151,8 +1191,9 @@ export const Reports: React.FC<ReportsProps> = ({
   const runReport = () => {
     setLoading(true);
     try {
+      const activeBranchArg = selectedBranchId === 'ALL' ? undefined : selectedBranchId;
       if (mainCategory === 'daily') {
-        const data = getDailyColumnarReport(fromDate, toDate, { itemWise, gstOnly, includeSalesReturn });
+        const data = getDailyColumnarReport(fromDate, toDate, { itemWise, gstOnly, includeSalesReturn }, activeBranchArg);
         setReportData(data);
       } else if (mainCategory === 'gst') {
         const data = getGSTReport(fromDate, toDate);
@@ -1170,10 +1211,10 @@ export const Reports: React.FC<ReportsProps> = ({
         const data = getTDS2Report(fromDate, toDate);
         setReportData(data);
       } else if (mainCategory === 'inv') {
-        const data = getAdvancedReports(invSubTab, fromDate, toDate);
+        const data = getAdvancedReports(invSubTab, fromDate, toDate, activeBranchArg);
         setReportData(data);
       } else if (mainCategory === 'reg') {
-        const data = getAdvancedReports(regSubTab, fromDate, toDate);
+        const data = getAdvancedReports(regSubTab, fromDate, toDate, activeBranchArg);
         setReportData(data);
       } else if (mainCategory === 'fin') {
         if (finSubTab === 'LED') {
@@ -1187,7 +1228,7 @@ export const Reports: React.FC<ReportsProps> = ({
             setSelectedLedger(defaultLedger);
           }
           if (activeLedger) {
-            const data = getFullLedgerStatement(activeLedger, fromDate, toDate);
+            const data = getFullLedgerStatement(activeLedger, fromDate, toDate, activeBranchArg);
             setReportData(data);
           }
         } else {
@@ -1195,7 +1236,7 @@ export const Reports: React.FC<ReportsProps> = ({
             finSubTab,
             fromDate,
             toDate,
-            selectedBranchId === 'ALL' ? undefined : selectedBranchId
+            activeBranchArg
           );
           setReportData(data);
         }
@@ -3340,9 +3381,10 @@ export const Reports: React.FC<ReportsProps> = ({
                   onClick={() => {
                     setMainCategory('daily');
                     setItemWise(false);
+                    setIsRestaurantReport(false);
                     setShowReportCatalog(false);
                   }}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition ${mainCategory === 'daily' && !itemWise ? 'bg-indigo-600 text-white' : 'bg-slate-50 hover:bg-indigo-50 text-slate-700'}`}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition ${mainCategory === 'daily' && !isRestaurantReport && !itemWise ? 'bg-indigo-600 text-white' : 'bg-slate-50 hover:bg-indigo-50 text-slate-700'}`}
                 >
                   Bill-wise Columnar Sales
                 </button>
@@ -3350,9 +3392,10 @@ export const Reports: React.FC<ReportsProps> = ({
                   onClick={() => {
                     setMainCategory('daily');
                     setItemWise(true);
+                    setIsRestaurantReport(false);
                     setShowReportCatalog(false);
                   }}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition ${mainCategory === 'daily' && itemWise ? 'bg-indigo-600 text-white' : 'bg-slate-50 hover:bg-indigo-50 text-slate-700'}`}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold text-left transition ${mainCategory === 'daily' && !isRestaurantReport && itemWise ? 'bg-indigo-600 text-white' : 'bg-slate-50 hover:bg-indigo-50 text-slate-700'}`}
                 >
                   Item-wise Sales Breakdown
                 </button>

@@ -14,9 +14,10 @@ import {
   loadJson, 
   saveJson, 
   STORAGE_KEYS, 
-  recalculateLedgerBalances 
+  recalculateLedgerBalances,
+  rebuildAccountingLogs
 } from './storageService';
-import { syncLedgerToSupabase, syncItemToSupabase } from './supabaseSyncService';
+import { syncLedgerToSupabase, syncItemToSupabase, syncVoucherToSupabase } from './supabaseSyncService';
 
 export type MigrationSource = 'tally' | 'busy';
 export type MigrationMode = 'cutoff_opening' | 'full_historical';
@@ -150,6 +151,100 @@ export function normalizeAccountGroup(rawGroup: string): string {
   return rawGroup.trim();
 }
 
+// -------------------------------------------------------------
+// HELPER: Sanitize Tally / Busy XML String
+// Fixes invalid XML character references (e.g. &#4;), control bytes, unescaped &
+// -------------------------------------------------------------
+export function sanitizeXmlString(rawXml: string): string {
+  if (!rawXml) return '';
+
+  let clean = rawXml;
+
+  // 1. Remove BOM (Byte Order Mark) if present
+  if (clean.charCodeAt(0) === 0xFEFF) {
+    clean = clean.slice(1);
+  }
+
+  // 2. Strip invalid XML 1.0 character references (0-8, 11-12, 14-31, surrogates)
+  clean = clean.replace(/&#x?([0-9a-fA-F]+);?/gi, (match, hexOrDec) => {
+    const isHex = match.toLowerCase().startsWith('&#x');
+    const code = parseInt(hexOrDec, isHex ? 16 : 10);
+    if (isNaN(code)) return '';
+    if ((code >= 0 && code <= 8) || code === 11 || code === 12 || (code >= 14 && code <= 31) || (code >= 55296 && code <= 57343) || code === 65534 || code === 65535) {
+      return ''; // Strip illegal XML 1.0 character
+    }
+    return `&#${code};`;
+  });
+
+  // 3. Strip raw control characters (ASCII 0x00-0x08, 0x0B-0x0C, 0x0E-0x1F)
+  clean = clean.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
+
+  // 4. Escape standalone & that are not part of valid XML entities
+  clean = clean.replace(/&(?!amp;|lt;|gt;|quot;|apos;|#[0-9]+;|#x[0-9a-fA-F]+;)/gi, '&amp;');
+
+  return clean;
+}
+
+// Case-tolerant tag queries for DOM trees (supports text/xml, text/html parsers, and tag names containing dots like ALLLEDGERENTRIES.LIST)
+export function findAllElements(parent: ParentNode | Element, tagName: string): Element[] {
+  if (!parent) return [];
+  const upper = tagName.toUpperCase();
+  const lower = tagName.toLowerCase();
+
+  // 1. Try getElementsByTagName (fast, exact match for tag names with dots)
+  if ('getElementsByTagName' in parent && typeof (parent as any).getElementsByTagName === 'function') {
+    const set = new Set<Element>();
+    const list1 = (parent as any).getElementsByTagName(upper);
+    if (list1) for (let i = 0; i < list1.length; i++) set.add(list1[i]);
+    const list2 = (parent as any).getElementsByTagName(lower);
+    if (list2) for (let i = 0; i < list2.length; i++) set.add(list2[i]);
+    const list3 = (parent as any).getElementsByTagName(tagName);
+    if (list3) for (let i = 0; i < list3.length; i++) set.add(list3[i]);
+    if (set.size > 0) return Array.from(set);
+  }
+
+  // 2. Fallback: querySelectorAll with CSS-escaped dot selector
+  try {
+    const escapedTag = tagName.replace(/\./g, '\\.');
+    const escapedUpper = upper.replace(/\./g, '\\.');
+    const escapedLower = lower.replace(/\./g, '\\.');
+    const list = parent.querySelectorAll(`${escapedUpper}, ${escapedLower}, ${escapedTag}`);
+    if (list && list.length > 0) return Array.from(list);
+  } catch (e) {
+    // ignore
+  }
+
+  // 3. Wildcard iteration fallback
+  const results: Element[] = [];
+  const all = parent.querySelectorAll ? parent.querySelectorAll('*') : [];
+  for (let i = 0; i < all.length; i++) {
+    const el = all[i];
+    const tName = el.tagName ? el.tagName.toUpperCase() : '';
+    if (tName === upper || tName === lower || tName === tagName.toUpperCase()) {
+      results.push(el);
+    }
+  }
+  return results;
+}
+
+export function findSingleElement(parent: ParentNode | Element, tagName: string): Element | null {
+  const list = findAllElements(parent, tagName);
+  return list.length > 0 ? list[0] : null;
+}
+
+export function getTagText(parent: ParentNode | Element, tagName: string): string {
+  const el = findSingleElement(parent, tagName);
+  return el?.textContent?.trim() || '';
+}
+
+function querySelectorAllTags(parent: ParentNode | Element, tag: string): Element[] {
+  return findAllElements(parent, tag);
+}
+
+function querySelectorTag(parent: ParentNode | Element, selector: string): Element | null {
+  return findSingleElement(parent, selector);
+}
+
 export function parseTallyDate(dateStr: string): string {
   if (!dateStr) return new Date().toISOString().split('T')[0];
   const clean = dateStr.trim();
@@ -177,16 +272,296 @@ export function parseTallyDate(dateStr: string): string {
 }
 
 // -------------------------------------------------------------
+// REGEX FALLBACK PARSER FOR TALLY XML
+// -------------------------------------------------------------
+function parseTallyXmlRegexFallback(xmlString: string, mode: MigrationMode, fileName: string): MigrationParsedData {
+  const ledgers: Ledger[] = [];
+  const items: Item[] = [];
+  const openingBills: MigrationOpeningBill[] = [];
+  const vouchers: Voucher[] = [];
+
+  // Regex for <LEDGER NAME="...">...</LEDGER>
+  const ledgerRegex = /<LEDGER\b([^>]*)>([\s\S]*?)<\/LEDGER>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = ledgerRegex.exec(xmlString)) !== null) {
+    const attrs = match[1];
+    const body = match[2];
+
+    const nameAttrMatch = attrs.match(/NAME="([^"]+)"/i) || body.match(/<NAME>([^<]+)<\/NAME>/i);
+    const name = nameAttrMatch ? nameAttrMatch[1].trim() : '';
+    if (!name) continue;
+
+    const parentMatch = body.match(/<PARENT>([^<]+)<\/PARENT>/i);
+    const rawParent = parentMatch ? parentMatch[1].trim() : 'Sundry Debtors';
+    const mappedGroup = normalizeAccountGroup(rawParent);
+
+    const opBalMatch = body.match(/<OPENINGBALANCE>([^<]+)<\/OPENINGBALANCE>/i);
+    const opBalText = opBalMatch ? opBalMatch[1].trim() : '0';
+    let opBalNum = parseFloat(opBalText.replace(/[^0-9.-]/g, '')) || 0;
+
+    let balType: 'Dr' | 'Cr' = 'Dr';
+    if (opBalText.toUpperCase().includes('CR')) balType = 'Cr';
+    else if (opBalText.toUpperCase().includes('DR')) balType = 'Dr';
+    else if (opBalNum > 0) balType = 'Cr';
+
+    opBalNum = Math.abs(opBalNum);
+
+    const gstinMatch = body.match(/<(?:PARTYGSTIN|GSTREGISTRATIONNUMBER|INCOMETAXNUMBER)>([^<]+)<\//i);
+    const phoneMatch = body.match(/<(?:LEDGERPHONE|LEDGERMOBILE|PHONE)>([^<]+)<\//i);
+    const emailMatch = body.match(/<EMAIL>([^<]+)<\/EMAIL>/i);
+
+    ledgers.push({
+      'Ledger Name': name,
+      Group: mappedGroup,
+      'Opening Balance': opBalNum,
+      'Balance Type (Dr/Cr)': balType,
+      'Current Balance': opBalNum,
+      'GST No': gstinMatch ? gstinMatch[1].trim() : undefined,
+      'TPN No': gstinMatch ? gstinMatch[1].trim() : undefined,
+      'Contact No': phoneMatch ? phoneMatch[1].trim() : undefined,
+      Email: emailMatch ? emailMatch[1].trim() : undefined
+    });
+
+    const isDebtor = mappedGroup.toLowerCase().includes('debtor');
+    const isCreditor = mappedGroup.toLowerCase().includes('creditor');
+    if (opBalNum > 0 && (isDebtor || isCreditor)) {
+      openingBills.push({
+        partyName: name,
+        partyType: isDebtor ? 'debtor' : 'creditor',
+        billNo: `OB-${name.slice(0, 10).replace(/[^A-Za-z0-9]/g, '').toUpperCase()}`,
+        billDate: new Date().toISOString().split('T')[0],
+        amount: opBalNum
+      });
+    }
+  }
+
+  // Regex for <STOCKITEM NAME="...">...</STOCKITEM>
+  const itemRegex = /<STOCKITEM\b([^>]*)>([\s\S]*?)<\/STOCKITEM>/gi;
+  let itemIdx = 0;
+  while ((match = itemRegex.exec(xmlString)) !== null) {
+    const attrs = match[1];
+    const body = match[2];
+
+    const nameAttrMatch = attrs.match(/NAME="([^"]+)"/i) || body.match(/<NAME>([^<]+)<\/NAME>/i);
+    const name = nameAttrMatch ? nameAttrMatch[1].trim() : '';
+    if (!name) continue;
+
+    itemIdx++;
+    const parentMatch = body.match(/<PARENT>([^<]+)<\/PARENT>/i);
+    const parentGroup = parentMatch ? parentMatch[1].trim() : 'General';
+
+    const unitMatch = body.match(/<BASEUNITS>([^<]+)<\/BASEUNITS>/i);
+    const baseUnits = unitMatch ? unitMatch[1].trim() : 'Pcs';
+
+    const hsnMatch = body.match(/<HSNCODE>([^<]+)<\/HSNCODE>/i);
+    const hsn = hsnMatch ? hsnMatch[1].trim() : '';
+
+    const opBalMatch = body.match(/<OPENINGBALANCE>([^<]+)<\/OPENINGBALANCE>/i);
+    const opQtyMatch = opBalMatch ? opBalMatch[1].match(/([0-9.-]+)/) : null;
+    const opQty = opQtyMatch ? Math.abs(parseFloat(opQtyMatch[1])) || 0 : 0;
+
+    const opValMatch = body.match(/<OPENINGVALUE>([^<]+)<\/OPENINGVALUE>/i);
+    const opVal = opValMatch ? Math.abs(parseFloat(opValMatch[1].replace(/[^0-9.-]/g, ''))) || 0 : 0;
+
+    let purchaseRate = opQty > 0 && opVal > 0 ? Math.round((opVal / opQty) * 100) / 100 : 0;
+    let saleRate = purchaseRate > 0 ? Math.round(purchaseRate * 1.25 * 100) / 100 : 0;
+
+    const gstMatch = body.match(/<(?:GSTRATE|IGSTRATE|TAXPERCENTAGE)>([^<]+)<\//i);
+    let gstPct = 5;
+    if (gstMatch) {
+      const parsedGst = parseFloat(gstMatch[1]);
+      if (!isNaN(parsedGst) && parsedGst > 0) gstPct = parsedGst;
+    }
+
+    items.push({
+      'Item Code': `ITEM-${itemIdx.toString().padStart(4, '0')}`,
+      Barcode: `ITEM-${itemIdx.toString().padStart(4, '0')}`,
+      'Item Name': name,
+      'Print Name': name,
+      Group: parentGroup,
+      Unit: baseUnits,
+      'Purchase Rate': purchaseRate,
+      'Sale Rate': saleRate,
+      MRP: Math.round(saleRate * 1.1 * 100) / 100,
+      'GST %': gstPct,
+      'Zero Rated (Y/N)': gstPct === 0 ? 'Y' : 'N',
+      'Is Serialized': 'N',
+      'HSN/SAC': hsn,
+      'Opening Stock': opQty,
+      'Opening Amount': opVal,
+      'Current Stock': opQty,
+      'Reorder Level': 5
+    });
+  }
+
+  // Regex for <VOUCHER\b[^>]*>...</VOUCHER>
+  const voucherRegex = /<VOUCHER\b([^>]*)>([\s\S]*?)<\/VOUCHER>/gi;
+  let vIdx = 0;
+  while ((match = voucherRegex.exec(xmlString)) !== null) {
+    const attrs = match[1];
+    const body = match[2];
+
+    vIdx++;
+    const vTypeMatch = attrs.match(/VCHTYPE="([^"]+)"/i) || body.match(/<VOUCHERTYPENAME>([^<]+)<\/VOUCHERTYPENAME>/i);
+    const vTypeName = vTypeMatch ? vTypeMatch[1].trim() : 'Journal';
+
+    const dateMatch = body.match(/<DATE>([^<]+)<\/DATE>/i);
+    const vDate = parseTallyDate(dateMatch ? dateMatch[1].trim() : '');
+
+    const vNoMatch = body.match(/<VOUCHERNUMBER>([^<]+)<\/VOUCHERNUMBER>/i);
+    const rawVNo = vNoMatch ? vNoMatch[1].trim() : '';
+    const vNo = rawVNo !== '' ? rawVNo : `VCH-${vIdx}`;
+
+    const narrationMatch = body.match(/<NARRATION>([^<]+)<\/NARRATION>/i);
+    const narration = narrationMatch ? narrationMatch[1].trim() : '';
+
+    const partyMatch = body.match(/<PARTYLEDGERNAME>([^<]+)<\/PARTYLEDGERNAME>/i) || body.match(/<PARTYNAME>([^<]+)<\/PARTYNAME>/i);
+    const partyName = partyMatch ? partyMatch[1].trim() : '';
+
+    let grpType: Voucher['type'] = 'P';
+    const vTypeLower = vTypeName.toLowerCase();
+    if (vTypeLower.includes('receipt')) grpType = 'R';
+    else if (vTypeLower.includes('payment')) grpType = 'P';
+    else if (vTypeLower.includes('contra')) grpType = 'C';
+    else if (vTypeLower.includes('sales return') || vTypeLower.includes('credit note')) grpType = 'CN';
+    else if (vTypeLower.includes('purchase return') || vTypeLower.includes('debit note')) grpType = 'DN';
+    else if (vTypeLower.includes('sales')) grpType = 'S';
+    else if (vTypeLower.includes('purchase')) grpType = 'PUR';
+    else if (vTypeLower.includes('delivery')) grpType = 'DEL_NOTE';
+    else grpType = 'J';
+
+    const entryRegex = /<(?:ALLLEDGERENTRIES\.LIST|LEDGERENTRIES\.LIST|ALLINVENTORYENTRIES\.LIST|INVENTORYENTRIES\.LIST|LEDGERENTRIES)\b[^>]*>([\s\S]*?)<\/(?:ALLLEDGERENTRIES\.LIST|LEDGERENTRIES\.LIST|ALLINVENTORYENTRIES\.LIST|INVENTORYENTRIES\.LIST|LEDGERENTRIES)>/gi;
+    let entryMatch: RegExpExecArray | null;
+    const lines: any[] = [];
+    let totalAmt = 0;
+    let lIdx = 0;
+
+    while ((entryMatch = entryRegex.exec(body)) !== null) {
+      const entryBody = entryMatch[1];
+      const lNameMatch = entryBody.match(/<(?:LEDGERNAME|STOCKITEMNAME|NAME)>([^<]+)<\//i);
+      if (!lNameMatch) continue;
+      const lName = lNameMatch[1].trim();
+
+      const amtMatch = entryBody.match(/<AMOUNT>([^<]+)<\/AMOUNT>/i);
+      const amtText = amtMatch ? amtMatch[1].trim() : '0';
+      const numAmt = parseFloat(amtText.replace(/[^0-9.-]/g, '')) || 0;
+      const isDeemedPos = /<ISDEEMEDPOSITIVE>\s*yes\s*<\/ISDEEMEDPOSITIVE>/i.test(entryBody);
+
+      const isDr = numAmt < 0 || isDeemedPos;
+      const absAmt = Math.abs(numAmt);
+      lIdx++;
+
+      if (isDr) {
+        lines.push({ id: String(lIdx), type: 'Dr', ledger: lName, debit: absAmt, credit: '', amount: absAmt });
+      } else {
+        lines.push({ id: String(lIdx), type: 'Cr', ledger: lName, debit: '', credit: absAmt, amount: absAmt });
+      }
+      totalAmt = Math.max(totalAmt, absAmt);
+    }
+
+    if (lines.length === 0 && partyName) {
+      lines.push({ id: '1', type: 'Dr', ledger: partyName, debit: 0, credit: '', amount: 0 });
+    }
+
+    if (lines.length > 0) {
+      vouchers.push({
+        id: `vch-reg-${vIdx}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        transactionId: `vch-reg-${vIdx}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        voucherNo: vNo,
+        type: grpType,
+        date: vDate,
+        party: partyName || (lines[0] ? lines[0].ledger : 'Party'),
+        amount: totalAmt,
+        status: 'Active',
+        narration,
+        lines
+      } as any);
+    }
+  }
+
+  // Calculate summary stats
+  const totalOpeningDr = ledgers.filter(l => l['Balance Type (Dr/Cr)'] === 'Dr').reduce((s, l) => s + l['Opening Balance'], 0);
+  const totalOpeningCr = ledgers.filter(l => l['Balance Type (Dr/Cr)'] === 'Cr').reduce((s, l) => s + l['Opening Balance'], 0);
+  const totalStockQty = items.reduce((s, i) => s + i['Opening Stock'], 0);
+  const totalStockValue = items.reduce((s, i) => s + i['Opening Amount'], 0);
+  const totalBillsAmt = openingBills.reduce((s, b) => s + b.amount, 0);
+
+  return {
+    source: 'tally',
+    mode,
+    sourceFileName: fileName,
+    ledgers,
+    ledgerGroups: [],
+    items,
+    itemGroups: [],
+    units: [],
+    openingBills,
+    vouchers,
+    stats: {
+      totalLedgers: ledgers.length,
+      totalDebtors: ledgers.filter(l => l.Group === 'Sundry Debtors').length,
+      totalCreditors: ledgers.filter(l => l.Group === 'Sundry Creditors').length,
+      totalOpeningDr: Math.round(totalOpeningDr * 100) / 100,
+      totalOpeningCr: Math.round(totalOpeningCr * 100) / 100,
+      drCrDifference: Math.round(Math.abs(totalOpeningDr - totalOpeningCr) * 100) / 100,
+      totalItems: items.length,
+      totalStockQty,
+      totalStockValue: Math.round(totalStockValue * 100) / 100,
+      totalPendingBills: openingBills.length,
+      totalPendingBillsAmount: Math.round(totalBillsAmt * 100) / 100,
+      totalHistoricalVouchers: vouchers.length,
+      serialNumbersCount: 0
+    },
+    warnings: [],
+    errors: []
+  };
+}
+
+// -------------------------------------------------------------
 // 1. TALLY XML PARSER
 // -------------------------------------------------------------
-export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_opening', fileName: string = 'TallyExport.xml'): MigrationParsedData {
+export function parseTallyXml(rawXmlString: string, mode: MigrationMode = 'cutoff_opening', fileName: string = 'TallyExport.xml'): MigrationParsedData {
+  const xmlString = sanitizeXmlString(rawXmlString);
   const parser = new DOMParser();
-  const xmlDoc = parser.parseFromString(xmlString, 'text/xml');
 
-  // Check for XML parse errors
-  const parseError = xmlDoc.querySelector('parsererror');
+  let xmlDoc: ParentNode;
+  let parseError: Element | null = null;
+
+  // First pass: strict XML parsing
+  try {
+    const doc = parser.parseFromString(xmlString, 'text/xml');
+    parseError = doc.querySelector('parsererror');
+    xmlDoc = doc;
+  } catch (err) {
+    parseError = { textContent: String(err) } as any;
+    xmlDoc = document.createElement('div');
+  }
+
+  // Second pass: if strict XML parsing reported an error, aggressively strip non-standard entities & retry
   if (parseError) {
-    throw new Error(`XML parsing error: ${parseError.textContent?.slice(0, 200)}`);
+    try {
+      const aggressiveXml = xmlString.replace(/&#\d+;/g, '').replace(/&#x[0-9a-fA-F]+;/g, '');
+      const doc = parser.parseFromString(aggressiveXml, 'text/xml');
+      const err = doc.querySelector('parsererror');
+      if (!err) {
+        xmlDoc = doc;
+        parseError = null;
+      }
+    } catch (err) {
+      // ignore
+    }
+  }
+
+  // Third pass: tolerant HTML parser fallback (parses custom XML tags into DOM nodes without throwing XML syntax errors)
+  if (parseError) {
+    try {
+      const doc = parser.parseFromString(xmlString, 'text/html');
+      xmlDoc = doc;
+      parseError = null;
+    } catch (err) {
+      throw new Error(`XML parsing error: ${parseError?.textContent?.slice(0, 200) || String(err)}`);
+    }
   }
 
   const warnings: string[] = [];
@@ -202,18 +577,18 @@ export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_o
 
   // Check company info if present
   let companyName: string | undefined;
-  const companyNode = xmlDoc.querySelector('COMPANY, SVCCOMPANY');
+  const companyNode = querySelectorTag(xmlDoc, 'COMPANY') || querySelectorTag(xmlDoc, 'SVCCOMPANY');
   if (companyNode) {
-    companyName = companyNode.getAttribute('NAME') || companyNode.querySelector('NAME')?.textContent?.trim() || undefined;
+    companyName = companyNode.getAttribute('NAME') || getTagText(companyNode, 'NAME') || undefined;
   }
 
   // 1. Parse Groups <GROUP>
-  const groupNodes = xmlDoc.querySelectorAll('GROUP');
+  const groupNodes = querySelectorAllTags(xmlDoc, 'GROUP');
   groupNodes.forEach(node => {
-    const name = node.getAttribute('NAME') || node.querySelector('NAME')?.textContent?.trim();
+    const name = node.getAttribute('NAME') || getTagText(node, 'NAME');
     if (!name) return;
-    const parent = node.querySelector('PARENT')?.textContent?.trim() || '';
-    const isDeemedPositive = node.querySelector('ISDEEMEDPOSITIVE')?.textContent?.trim().toLowerCase() === 'yes';
+    const parent = getTagText(node, 'PARENT');
+    const isDeemedPositive = getTagText(node, 'ISDEEMEDPOSITIVE').toLowerCase() === 'yes';
     
     let nature: LedgerGroup['Nature'] = 'Asset';
     const lower = name.toLowerCase();
@@ -230,11 +605,11 @@ export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_o
   });
 
   // 2. Parse Units <UNIT>
-  const unitNodes = xmlDoc.querySelectorAll('UNIT');
+  const unitNodes = querySelectorAllTags(xmlDoc, 'UNIT');
   unitNodes.forEach(node => {
-    const name = node.getAttribute('NAME') || node.querySelector('NAME')?.textContent?.trim();
+    const name = node.getAttribute('NAME') || getTagText(node, 'NAME');
     if (!name) return;
-    const symbol = node.querySelector('ORIGINALNAME')?.textContent?.trim() || name;
+    const symbol = getTagText(node, 'ORIGINALNAME') || name;
     units.push({
       'Unit Name': name,
       Symbol: symbol,
@@ -244,11 +619,11 @@ export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_o
   });
 
   // 3. Parse Stock Groups <STOCKGROUP>
-  const stockGroupNodes = xmlDoc.querySelectorAll('STOCKGROUP');
+  const stockGroupNodes = querySelectorAllTags(xmlDoc, 'STOCKGROUP');
   stockGroupNodes.forEach(node => {
-    const name = node.getAttribute('NAME') || node.querySelector('NAME')?.textContent?.trim();
+    const name = node.getAttribute('NAME') || getTagText(node, 'NAME');
     if (!name) return;
-    const parent = node.querySelector('PARENT')?.textContent?.trim();
+    const parent = getTagText(node, 'PARENT');
     itemGroups.push({
       'Group Name': name,
       'Parent Group': parent || undefined
@@ -256,21 +631,18 @@ export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_o
   });
 
   // 4. Parse Ledgers <LEDGER>
-  const ledgerNodes = xmlDoc.querySelectorAll('LEDGER');
+  const ledgerNodes = querySelectorAllTags(xmlDoc, 'LEDGER');
   ledgerNodes.forEach(node => {
     const name = node.getAttribute('NAME') || 
-      node.querySelector('NAME.LIST > NAME')?.textContent?.trim() || 
-      node.querySelector('NAME')?.textContent?.trim();
+      querySelectorTag(node, 'NAME.LIST > NAME')?.textContent?.trim() || 
+      getTagText(node, 'NAME');
     
     if (!name || name.trim() === '') return;
 
-    const rawParent = node.querySelector('PARENT')?.textContent?.trim() || '';
+    const rawParent = getTagText(node, 'PARENT');
     const mappedGroup = normalizeAccountGroup(rawParent);
 
-    // Tally Opening Balance convention:
-    // In Tally: Negative value means Debit (Dr) for Assets/Debtors, Positive means Credit (Cr) for Liabilities/Creditors
-    // Sometimes Tally outputs raw numeric strings like "-5000.00" or "5000.00 Dr"
-    const opBalText = node.querySelector('OPENINGBALANCE')?.textContent?.trim() || '0';
+    const opBalText = getTagText(node, 'OPENINGBALANCE') || '0';
     let opBalNum = parseFloat(opBalText.replace(/[^0-9.-]/g, '')) || 0;
     
     let balType: 'Dr' | 'Cr' = 'Dr';
@@ -281,35 +653,33 @@ export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_o
       balType = 'Dr';
       opBalNum = Math.abs(opBalNum);
     } else {
-      // Standard Tally XML logic:
       if (opBalNum < 0) {
         balType = 'Dr';
         opBalNum = Math.abs(opBalNum);
       } else if (opBalNum > 0) {
-        // Positive number in Tally XML represents Credit (Liability/Equity/Income)
         balType = 'Cr';
       }
     }
 
-    const gstin = node.querySelector('PARTYGSTIN')?.textContent?.trim() || 
-      node.querySelector('GSTREGISTRATIONNUMBER')?.textContent?.trim() || 
-      node.querySelector('INCOMETAXNUMBER')?.textContent?.trim() || '';
+    const gstin = getTagText(node, 'PARTYGSTIN') || 
+      getTagText(node, 'GSTREGISTRATIONNUMBER') || 
+      getTagText(node, 'INCOMETAXNUMBER');
 
-    const phone = node.querySelector('LEDGERPHONE')?.textContent?.trim() || 
-      node.querySelector('LEDGERMOBILE')?.textContent?.trim() || 
-      node.querySelector('PHONE')?.textContent?.trim() || '';
+    const phone = getTagText(node, 'LEDGERPHONE') || 
+      getTagText(node, 'LEDGERMOBILE') || 
+      getTagText(node, 'PHONE');
 
-    const email = node.querySelector('EMAIL')?.textContent?.trim() || '';
+    const email = getTagText(node, 'EMAIL');
 
     let address = '';
-    const addressNodes = node.querySelectorAll('ADDRESS.LIST > ADDRESS, ADDRESS');
+    const addressNodes = node.querySelectorAll('ADDRESS.LIST > ADDRESS, ADDRESS, address.list > address, address');
     if (addressNodes.length > 0) {
       address = Array.from(addressNodes).map(a => a.textContent?.trim()).filter(Boolean).join(', ');
     }
 
-    const bankName = node.querySelector('BANKNAME')?.textContent?.trim() || '';
-    const accNo = node.querySelector('BANKACCOUNTNUMBER')?.textContent?.trim() || '';
-    const branch = node.querySelector('BANKBRANCH')?.textContent?.trim() || '';
+    const bankName = getTagText(node, 'BANKNAME');
+    const accNo = getTagText(node, 'BANKACCOUNTNUMBER');
+    const branch = getTagText(node, 'BANKBRANCH');
 
     const ledgerObj: Ledger = {
       'Ledger Name': name,
@@ -330,16 +700,16 @@ export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_o
     ledgers.push(ledgerObj);
 
     // Parse Bill Allocations inside Ledger <BILLALLOCATIONS.LIST>
-    const billNodes = node.querySelectorAll('BILLALLOCATIONS.LIST');
+    const billNodes = querySelectorAllTags(node, 'BILLALLOCATIONS.LIST');
     const isDebtor = mappedGroup.toLowerCase().includes('debtor');
     const isCreditor = mappedGroup.toLowerCase().includes('creditor');
 
     if (billNodes.length > 0 && (isDebtor || isCreditor)) {
       billNodes.forEach(bNode => {
-        const bName = bNode.querySelector('NAME')?.textContent?.trim();
+        const bName = getTagText(bNode, 'NAME');
         if (!bName) return;
-        const bDate = parseTallyDate(bNode.querySelector('BILLDATE')?.textContent?.trim() || '');
-        const bAmtText = bNode.querySelector('AMOUNT')?.textContent?.trim() || '0';
+        const bDate = parseTallyDate(getTagText(bNode, 'BILLDATE'));
+        const bAmtText = getTagText(bNode, 'AMOUNT') || '0';
         const bAmt = Math.abs(parseFloat(bAmtText.replace(/[^0-9.-]/g, '')) || 0);
 
         if (bAmt > 0) {
@@ -353,7 +723,6 @@ export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_o
         }
       });
     } else if (opBalNum > 0 && (isDebtor || isCreditor)) {
-      // If no itemized bills but has opening balance, create single OB bill
       openingBills.push({
         partyName: name,
         partyType: isDebtor ? 'debtor' : 'creditor',
@@ -365,30 +734,28 @@ export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_o
   });
 
   // 5. Parse Stock Items <STOCKITEM>
-  const itemNodes = xmlDoc.querySelectorAll('STOCKITEM');
+  const itemNodes = querySelectorAllTags(xmlDoc, 'STOCKITEM');
   itemNodes.forEach((node, idx) => {
     const name = node.getAttribute('NAME') || 
-      node.querySelector('NAME.LIST > NAME')?.textContent?.trim() || 
-      node.querySelector('NAME')?.textContent?.trim();
+      querySelectorTag(node, 'NAME.LIST > NAME')?.textContent?.trim() || 
+      getTagText(node, 'NAME');
 
     if (!name || name.trim() === '') return;
 
-    const parentGroup = node.querySelector('PARENT')?.textContent?.trim() || 'General';
-    const baseUnits = node.querySelector('BASEUNITS')?.textContent?.trim() || 'Pcs';
-    const hsn = node.querySelector('HSNCODE')?.textContent?.trim() || 
-      node.querySelector('HSNDETAILS.LIST > HSNCODE')?.textContent?.trim() || '';
+    const parentGroup = getTagText(node, 'PARENT') || 'General';
+    const baseUnits = getTagText(node, 'BASEUNITS') || 'Pcs';
+    const hsn = getTagText(node, 'HSNCODE') || 
+      querySelectorTag(node, 'HSNDETAILS.LIST > HSNCODE')?.textContent?.trim() || '';
 
-    // Opening Stock & Value
-    const opStockText = node.querySelector('OPENINGBALANCE')?.textContent?.trim() || '0';
+    const opStockText = getTagText(node, 'OPENINGBALANCE') || '0';
     const opQtyMatch = opStockText.match(/([0-9.-]+)/);
     const opQty = opQtyMatch ? Math.abs(parseFloat(opQtyMatch[1])) || 0 : 0;
 
-    const opValText = node.querySelector('OPENINGVALUE')?.textContent?.trim() || '0';
+    const opValText = getTagText(node, 'OPENINGVALUE') || '0';
     const opVal = Math.abs(parseFloat(opValText.replace(/[^0-9.-]/g, '')) || 0);
 
-    // Standard Cost / Purchase Rate
     let purchaseRate = 0;
-    const stdCostText = node.querySelector('STANDARDCOSTLIST.LIST > RATE, OPENINGRATE')?.textContent?.trim() || '';
+    const stdCostText = querySelectorTag(node, 'STANDARDCOSTLIST.LIST > RATE, OPENINGRATE')?.textContent?.trim() || '';
     if (stdCostText) {
       const match = stdCostText.match(/([0-9.-]+)/);
       if (match) purchaseRate = parseFloat(match[1]) || 0;
@@ -397,9 +764,8 @@ export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_o
       purchaseRate = Math.round((opVal / opQty) * 100) / 100;
     }
 
-    // Standard Selling Price / Sale Rate
     let saleRate = purchaseRate;
-    const stdPriceText = node.querySelector('STANDARDPRICELIST.LIST > RATE, BASICPRICE')?.textContent?.trim() || '';
+    const stdPriceText = querySelectorTag(node, 'STANDARDPRICELIST.LIST > RATE, BASICPRICE')?.textContent?.trim() || '';
     if (stdPriceText) {
       const match = stdPriceText.match(/([0-9.-]+)/);
       if (match) saleRate = parseFloat(match[1]) || 0;
@@ -408,32 +774,32 @@ export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_o
       saleRate = Math.round(purchaseRate * 1.25 * 100) / 100;
     }
 
-    // GST %
-    let gstPct = 0;
-    const gstRateText = node.querySelector('GSTRATEDETAILS.LIST > GSTRATE, IGSTRATE')?.textContent?.trim() || '';
+    let gstPct = 5;
+    const gstRateText = querySelectorTag(node, 'GSTRATEDETAILS.LIST > GSTRATE, IGSTRATE, GSTRATE, TAXPERCENTAGE')?.textContent?.trim() || '';
     if (gstRateText) {
-      gstPct = parseFloat(gstRateText) || 0;
+      const parsedGst = parseFloat(gstRateText);
+      if (!isNaN(parsedGst) && parsedGst > 0) {
+        gstPct = parsedGst;
+      }
     }
 
-    // Part Number / Code
-    const partNo = node.querySelector('PARTNUMBER')?.textContent?.trim() || '';
+    const partNo = getTagText(node, 'PARTNUMBER');
     const itemCode = partNo || `ITEM-${(idx + 1).toString().padStart(4, '0')}`;
 
-    // Batches / Serial Numbers <BATCHALLOCATIONS.LIST>
     const batches: ItemBatch[] = [];
     const serialList: string[] = [];
-    const batchNodes = node.querySelectorAll('BATCHALLOCATIONS.LIST');
+    const batchNodes = querySelectorAllTags(node, 'BATCHALLOCATIONS.LIST');
 
     batchNodes.forEach((bNode, bIdx) => {
-      const bName = bNode.querySelector('BATCHNAME')?.textContent?.trim();
+      const bName = getTagText(bNode, 'BATCHNAME');
       if (!bName || bName === 'Primary Batch' || bName === 'Not Applicable') return;
 
-      const bQtyText = bNode.querySelector('OPENINGBALANCE')?.textContent?.trim() || '1';
+      const bQtyText = getTagText(bNode, 'OPENINGBALANCE') || '1';
       const bQtyMatch = bQtyText.match(/([0-9.-]+)/);
       const bQty = bQtyMatch ? Math.abs(parseFloat(bQtyMatch[1])) || 1 : 1;
 
-      const expDate = parseTallyDate(bNode.querySelector('EXPIRYDATE')?.textContent?.trim() || '');
-      const mfgDate = parseTallyDate(bNode.querySelector('MFGDATE')?.textContent?.trim() || '');
+      const expDate = parseTallyDate(getTagText(bNode, 'EXPIRYDATE'));
+      const mfgDate = parseTallyDate(getTagText(bNode, 'MFGDATE'));
 
       batches.push({
         id: `batch-${idx}-${bIdx}`,
@@ -446,7 +812,6 @@ export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_o
         mfgDate: mfgDate || undefined
       });
 
-      // If batch appears to be a unique serial number
       if (bQty === 1 || bName.length > 5) {
         serialList.push(bName);
       }
@@ -480,83 +845,113 @@ export function parseTallyXml(xmlString: string, mode: MigrationMode = 'cutoff_o
     items.push(itemObj);
   });
 
-  // 6. Parse Historical Vouchers if in full_historical mode
-  if (mode === 'full_historical') {
-    const voucherNodes = xmlDoc.querySelectorAll('VOUCHER');
-    voucherNodes.forEach((node, vIdx) => {
-      const vTypeName = node.querySelector('VOUCHERTYPENAME')?.textContent?.trim() || 
-        node.getAttribute('VCHTYPE') || 'Journal';
-      
-      const vDate = parseTallyDate(node.querySelector('DATE')?.textContent?.trim() || '');
-      const vNo = node.querySelector('VOUCHERNUMBER')?.textContent?.trim() || `VCH-${vIdx + 1}`;
-      const narration = node.querySelector('NARRATION')?.textContent?.trim() || '';
+  // 6. Parse Historical Vouchers / DayBook
+  const voucherNodes = querySelectorAllTags(xmlDoc, 'VOUCHER');
+  voucherNodes.forEach((node, vIdx) => {
+    const vTypeName = getTagText(node, 'VOUCHERTYPENAME') || 
+      node.getAttribute('VCHTYPE') || 'Journal';
+    
+    const vDate = parseTallyDate(getTagText(node, 'DATE'));
+    const rawVNo = getTagText(node, 'VOUCHERNUMBER');
+    const vNo = (rawVNo && rawVNo.trim() !== '') ? rawVNo.trim() : `VCH-${vIdx + 1}`;
+    const narration = getTagText(node, 'NARRATION');
 
-      // Map Tally voucher type to ERP group type
-      let grpType: Voucher['type'] = 'P';
-      const vTypeLower = vTypeName.toLowerCase();
-      if (vTypeLower.includes('receipt')) grpType = 'R';
-      else if (vTypeLower.includes('payment')) grpType = 'P';
-      else if (vTypeLower.includes('contra')) grpType = 'C';
-      else if (vTypeLower.includes('sales return') || vTypeLower.includes('credit note')) grpType = 'CN';
-      else if (vTypeLower.includes('purchase return') || vTypeLower.includes('debit note')) grpType = 'DN';
-      else if (vTypeLower.includes('sales')) grpType = 'S';
-      else if (vTypeLower.includes('purchase')) grpType = 'PUR';
-      else if (vTypeLower.includes('delivery')) grpType = 'DEL_NOTE';
-      else grpType = 'J';
+    let grpType: Voucher['type'] = 'P';
+    const vTypeLower = vTypeName.toLowerCase();
+    if (vTypeLower.includes('receipt')) grpType = 'R';
+    else if (vTypeLower.includes('payment')) grpType = 'P';
+    else if (vTypeLower.includes('contra')) grpType = 'C';
+    else if (vTypeLower.includes('sales return') || vTypeLower.includes('credit note')) grpType = 'CN';
+    else if (vTypeLower.includes('purchase return') || vTypeLower.includes('debit note')) grpType = 'DN';
+    else if (vTypeLower.includes('sales')) grpType = 'S';
+    else if (vTypeLower.includes('purchase')) grpType = 'PUR';
+    else if (vTypeLower.includes('delivery')) grpType = 'DEL_NOTE';
+    else grpType = 'J';
 
-      // Parse ledger entries
-      const lineNodes = node.querySelectorAll('ALLLEDGERENTRIES.LIST, LEDGERENTRIES.LIST');
-      let totalVoucherAmt = 0;
-      let debitParty = '';
-      let creditParty = '';
+    const lineNodes = querySelectorAllTags(node, 'ALLLEDGERENTRIES.LIST')
+      .concat(querySelectorAllTags(node, 'LEDGERENTRIES.LIST'))
+      .concat(querySelectorAllTags(node, 'ALLINVENTORYENTRIES.LIST'))
+      .concat(querySelectorAllTags(node, 'INVENTORYENTRIES.LIST'))
+      .concat(querySelectorAllTags(node, 'ALLLEDGERENTRIES'))
+      .concat(querySelectorAllTags(node, 'LEDGERENTRIES'));
 
-      const lines: any[] = [];
-      lineNodes.forEach((lNode, lIdx) => {
-        const lName = lNode.querySelector('LEDGERNAME')?.textContent?.trim();
-        if (!lName) return;
-        const amtText = lNode.querySelector('AMOUNT')?.textContent?.trim() || '0';
-        const numAmt = parseFloat(amtText.replace(/[^0-9.-]/g, '')) || 0;
-        const isDeemedPos = lNode.querySelector('ISDEEMEDPOSITIVE')?.textContent?.trim().toLowerCase() === 'yes';
+    let totalVoucherAmt = 0;
+    let debitParty = '';
+    let creditParty = '';
 
-        // Tally convention: Negative amount or isDeemedPositive is Debit
-        const isDr = numAmt < 0 || isDeemedPos;
-        const absAmt = Math.abs(numAmt);
+    const lines: any[] = [];
+    lineNodes.forEach((lNode, lIdx) => {
+      const lName = getTagText(lNode, 'LEDGERNAME') || getTagText(lNode, 'STOCKITEMNAME') || getTagText(lNode, 'NAME');
+      if (!lName) return;
+      const amtText = getTagText(lNode, 'AMOUNT') || '0';
+      const numAmt = parseFloat(amtText.replace(/[^0-9.-]/g, '')) || 0;
+      const isDeemedPos = getTagText(lNode, 'ISDEEMEDPOSITIVE').toLowerCase() === 'yes';
 
-        if (isDr) {
-          if (!debitParty) debitParty = lName;
-          lines.push({
-            id: String(lIdx + 1),
-            type: 'Dr',
-            ledger: lName,
-            debit: absAmt,
-            credit: ''
-          });
-        } else {
-          if (!creditParty) creditParty = lName;
-          lines.push({
-            id: String(lIdx + 1),
-            type: 'Cr',
-            ledger: lName,
-            debit: '',
-            credit: absAmt
-          });
-        }
-        totalVoucherAmt = Math.max(totalVoucherAmt, absAmt);
-      });
+      const isDr = numAmt < 0 || isDeemedPos;
+      const absAmt = Math.abs(numAmt);
 
-      if (lines.length > 0) {
-        vouchers.push({
-          voucherNo: vNo,
-          type: grpType,
-          date: vDate,
-          party: debitParty || creditParty || 'Party',
-          amount: totalVoucherAmt,
-          status: 'Active',
-          narration: narration,
-          lines: lines
-        } as any);
+      if (isDr) {
+        if (!debitParty) debitParty = lName;
+        lines.push({
+          id: String(lIdx + 1),
+          type: 'Dr',
+          ledger: lName,
+          debit: absAmt,
+          credit: '',
+          amount: absAmt
+        });
+      } else {
+        if (!creditParty) creditParty = lName;
+        lines.push({
+          id: String(lIdx + 1),
+          type: 'Cr',
+          ledger: lName,
+          debit: '',
+          credit: absAmt,
+          amount: absAmt
+        });
       }
+      totalVoucherAmt = Math.max(totalVoucherAmt, absAmt);
     });
+
+    if (lines.length === 0) {
+      const partyName = getTagText(node, 'PARTYLEDGERNAME') || getTagText(node, 'PARTYNAME') || getTagText(node, 'BASICBUYERNAME');
+      if (partyName) {
+        const vAmtText = getTagText(node, 'AMOUNT') || getTagText(node, 'NETAMOUNT') || '0';
+        const vAmt = Math.abs(parseFloat(vAmtText.replace(/[^0-9.-]/g, '')) || 0);
+        lines.push({
+          id: '1',
+          type: 'Dr',
+          ledger: partyName,
+          debit: vAmt,
+          credit: ''
+        });
+        totalVoucherAmt = vAmt;
+      }
+    }
+
+    if (lines.length > 0) {
+      vouchers.push({
+        id: `vch-tally-${vIdx + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        transactionId: `vch-tally-${vIdx + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        voucherNo: vNo,
+        type: grpType,
+        date: vDate,
+        party: debitParty || creditParty || getTagText(node, 'PARTYLEDGERNAME') || 'Party',
+        amount: totalVoucherAmt,
+        status: 'Active',
+        narration: narration,
+        lines: lines
+      } as any);
+    }
+  });
+
+  // If DOM parsing yielded 0 ledgers, items and vouchers, run regex fallback parser
+  if (ledgers.length === 0 && items.length === 0 && vouchers.length === 0) {
+    const fallbackParsed = parseTallyXmlRegexFallback(xmlString, mode, fileName);
+    if (fallbackParsed.ledgers.length > 0 || fallbackParsed.items.length > 0 || fallbackParsed.vouchers.length > 0) {
+      return fallbackParsed;
+    }
   }
 
   // Calculate Summary Statistics
@@ -732,7 +1127,8 @@ export async function parseBusyExcel(file: File, mode: MigrationMode = 'cutoff_o
         const purchaseRate = Math.abs(parseFloat(String(r['Purchase Price'] || r['Cost Price'] || r['Pur. Rate'] || 0).replace(/[^0-9.-]/g, '')) || 0);
         const saleRate = Math.abs(parseFloat(String(r['Sale Price'] || r['Selling Price'] || r['Sale Rate'] || purchaseRate * 1.25).replace(/[^0-9.-]/g, '')) || purchaseRate);
         const mrp = Math.abs(parseFloat(String(r['MRP'] || r['M.R.P'] || saleRate * 1.1).replace(/[^0-9.-]/g, '')) || saleRate);
-        const gstPct = parseFloat(String(r['GST %'] || r['Tax Rate'] || r['GST Rate'] || 0).replace(/[^0-9.-]/g, '')) || 0;
+        const rawGst = parseFloat(String(r['GST %'] || r['Tax Rate'] || r['GST Rate'] || 0).replace(/[^0-9.-]/g, '')) || 0;
+        const gstPct = rawGst > 0 ? rawGst : 5;
         const hsn = r['HSN'] || r['HSN Code'] || r['HSN/SAC'] || '';
         const opStock = Math.abs(parseFloat(String(r['Opening Qty'] || r['Op. Stock'] || r['Stock'] || 0).replace(/[^0-9.-]/g, '')) || 0);
         const opAmt = Math.abs(parseFloat(String(r['Opening Value'] || r['Op. Value'] || opStock * purchaseRate).replace(/[^0-9.-]/g, '')) || (opStock * purchaseRate));
@@ -966,29 +1362,65 @@ export async function execute1ClickMigration(
       saveJson(STORAGE_KEYS.PURCHASE_INVOICES, existingPurchases, targetCompanyId);
     }
 
-    // 5. Historical Vouchers
+    // 5. Historical Vouchers / Daybook Vouchers
     let importedVouchersCount = 0;
-    if (parsed.mode === 'full_historical' && parsed.vouchers && parsed.vouchers.length > 0) {
-      const existingVouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, [], targetCompanyId);
-      const vchNoSet = new Set(existingVouchers.map(v => (v.voucherNo || '').toLowerCase()));
+    if (parsed.vouchers && parsed.vouchers.length > 0) {
+      const existingVouchers = mergeOrReplace === 'replace'
+        ? []
+        : loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, [], targetCompanyId);
 
-      parsed.vouchers.forEach(v => {
-        if (!vchNoSet.has((v.voucherNo || '').toLowerCase())) {
-          existingVouchers.push(v);
-          vchNoSet.add((v.voucherNo || '').toLowerCase());
+      const existingSet = new Set(
+        existingVouchers.map(v =>
+          `${(v.type || '').toLowerCase()}_${(v.voucherNo || '').toLowerCase()}_${v.date || ''}_${v.amount || 0}_${((v as any).party || v.debitLedger || '').toLowerCase()}`
+        )
+      );
+
+      parsed.vouchers.forEach((v, idx) => {
+        const vNo = (v.voucherNo || '').trim() || `VCH-MIG-${idx + 1}`;
+        const key = `${(v.type || '').toLowerCase()}_${vNo.toLowerCase()}_${v.date || ''}_${v.amount || 0}_${((v as any).party || v.debitLedger || '').toLowerCase()}`;
+
+        if (mergeOrReplace === 'replace' || !existingSet.has(key)) {
+          const vchToSave: Voucher = {
+            ...v,
+            voucherNo: vNo,
+            transactionId: v.transactionId || `vch-mig-${Date.now()}-${idx + 1}-${Math.random().toString(36).substring(2, 6)}`
+          };
+          existingVouchers.push(vchToSave);
+          existingSet.add(key);
           importedVouchersCount++;
+
+          try {
+            syncVoucherToSupabase(vchToSave);
+          } catch (e) {
+            // silent sync fallback
+          }
         }
       });
       saveJson(STORAGE_KEYS.VOUCHERS, existingVouchers, targetCompanyId);
     }
 
     // 6. Recalculate all balances & trial balance
-    recalculateLedgerBalances();
+    if (mergeOrReplace === 'replace') {
+      rebuildAccountingLogs();
+    } else {
+      recalculateLedgerBalances();
+    }
 
     // Broadcast system events
     window.dispatchEvent(new CustomEvent('ledgers_updated'));
     window.dispatchEvent(new CustomEvent('items_updated'));
     window.dispatchEvent(new CustomEvent('vouchers_updated'));
+    window.dispatchEvent(new CustomEvent('deep_pos_vouchers_updated', { detail: { companyId: targetCompanyId } }));
+    window.dispatchEvent(new CustomEvent('app:dataLoaded'));
+    window.dispatchEvent(new CustomEvent('app:refresh-data'));
+
+    const summaryParts: string[] = [];
+    if (parsed.ledgers.length > 0) summaryParts.push(`${parsed.ledgers.length} ledgers`);
+    if (parsed.items.length > 0) summaryParts.push(`${parsed.items.length} items`);
+    if (importedBillsCount > 0) summaryParts.push(`${importedBillsCount} pending bills`);
+    if (importedVouchersCount > 0) summaryParts.push(`${importedVouchersCount} vouchers`);
+
+    const summaryText = summaryParts.length > 0 ? summaryParts.join(', ') : '0 records';
 
     return {
       success: true,
@@ -996,7 +1428,7 @@ export async function execute1ClickMigration(
       importedItems: parsed.items.length,
       importedOpeningBills: importedBillsCount,
       importedVouchers: importedVouchersCount,
-      message: `Successfully migrated ${parsed.ledgers.length} ledgers, ${parsed.items.length} items, and ${importedBillsCount} pending bills from ${parsed.source === 'tally' ? 'TallyPrime' : 'Busy Accounting'}.`,
+      message: `Successfully migrated ${summaryText} from ${parsed.source === 'tally' ? 'TallyPrime' : 'Busy Accounting'}.`,
       warnings: parsed.warnings
     };
   } catch (err: any) {

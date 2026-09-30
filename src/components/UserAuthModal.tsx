@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Lock, 
   User, 
@@ -27,7 +27,10 @@ import {
   saveUsers, 
   getActiveUser, 
   setActiveUser,
-  syncUsersFromSupabase 
+  syncUsersFromSupabase,
+  getBranches,
+  getTerminalBranchId,
+  setTerminalBranchId
 } from '../services/storageService';
 import { 
   supabase, 
@@ -65,6 +68,23 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
   const [newUsername, setNewUsername] = useState('');
   const [newRole, setNewRole] = useState<'Administrator' | 'Manager' | 'Cashier' | 'Accountant' | 'Custom'>('Cashier');
   const [newPin, setNewPin] = useState('');
+  const [newAssignedBranchId, setNewAssignedBranchId] = useState<string>('ALL');
+  const availableBranches = useMemo(() => getBranches(), [users]);
+
+  const handleBranchChangeForUser = (userId: string, branchId: string) => {
+    const updated = users.map(u => {
+      if (u.id === userId) {
+        return {
+          ...u,
+          assignedBranchId: branchId === 'ALL' ? undefined : branchId
+        };
+      }
+      return u;
+    });
+    saveUsers(updated);
+    setUsers(updated);
+    setSuccessMsg('Staff assigned branch updated successfully.');
+  };
 
   // Supabase Auth form
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -148,6 +168,10 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
 
   // Fast Switch User via PIN
   const handleQuickSwitch = (user: AppUser) => {
+    // If user has an assigned branch lock, enforce terminal branch
+    if (user.assignedBranchId && user.assignedBranchId !== 'ALL') {
+      setTerminalBranchId(user.assignedBranchId);
+    }
     // If user has no PIN or empty, switch immediately
     if (!user.pinCode || user.pinCode === '0000' || user.pinCode === '') {
       setActiveUser(user.id);
@@ -168,6 +192,9 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
     e.preventDefault();
     if (!selectedUserToSwitch) return;
     if (enteredPin === selectedUserToSwitch.pinCode) {
+      if (selectedUserToSwitch.assignedBranchId && selectedUserToSwitch.assignedBranchId !== 'ALL') {
+        setTerminalBranchId(selectedUserToSwitch.assignedBranchId);
+      }
       setActiveUser(selectedUserToSwitch.id);
       setCurrentUser(selectedUserToSwitch);
       onUserChanged(selectedUserToSwitch);
@@ -207,7 +234,8 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
       role: newRole,
       pinCode: newPin || '0000',
       status: 'Active',
-      permissions: defaultPerms
+      permissions: defaultPerms,
+      assignedBranchId: newAssignedBranchId !== 'ALL' ? newAssignedBranchId : undefined
     };
 
     const updated = [...users, newStaffUser];
@@ -217,6 +245,7 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
     setNewFullName('');
     setNewUsername('');
     setNewPin('');
+    setNewAssignedBranchId('ALL');
     setSuccessMsg(`Staff account "${newStaffUser.fullName}" created successfully.`);
   };
 
@@ -641,6 +670,25 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none font-mono font-bold"
                       />
                     </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-bold text-amber-300 mb-1 flex items-center gap-1.5">
+                        <Building2 className="h-3.5 w-3.5 text-amber-400" />
+                        <span>Assigned Branch Access</span>
+                      </label>
+                      <select
+                        value={newAssignedBranchId}
+                        onChange={e => setNewAssignedBranchId(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs focus:border-blue-500 focus:outline-none font-bold"
+                      >
+                        <option value="ALL">All Branches (Unrestricted Access / HO Manager)</option>
+                        {availableBranches.map(b => (
+                          <option key={b.id} value={b.id}>
+                            {b.name} {b.isHeadOffice ? '(HQ)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div className="flex justify-end gap-2 pt-2">
@@ -669,6 +717,7 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                       <th className="py-2.5 px-3">Staff Name</th>
                       <th className="py-2.5 px-3">Username</th>
                       <th className="py-2.5 px-3">Role</th>
+                      <th className="py-2.5 px-3">Assigned Branch</th>
                       <th className="py-2.5 px-3">PIN</th>
                       <th className="py-2.5 px-3 text-right">Actions</th>
                     </tr>
@@ -693,6 +742,20 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                           }`}>
                             {u.role}
                           </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <select
+                            value={u.assignedBranchId || 'ALL'}
+                            onChange={(e) => handleBranchChangeForUser(u.id, e.target.value)}
+                            className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-[11px] font-bold outline-none cursor-pointer"
+                          >
+                            <option value="ALL">All Branches (HQ)</option>
+                            {availableBranches.map(b => (
+                              <option key={b.id} value={b.id}>
+                                {b.name} {b.isHeadOffice ? '(HQ)' : ''}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className="py-2.5 px-3 font-mono text-slate-400">••••</td>
                         <td className="py-2.5 px-3 text-right">

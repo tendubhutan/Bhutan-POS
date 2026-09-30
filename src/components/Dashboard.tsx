@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Config, Item, Ledger } from '../types';
-import { getAdvancedDashboardData } from '../services/storageService';
+import { getAdvancedDashboardData, getTerminalBranchId } from '../services/storageService';
 import { ReportTarget } from './Reports';
 import { ChangePeriodModal, formatDisplayDate } from './ChangePeriodModal';
 import {
@@ -77,10 +77,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
     lowStockItems: []
   });
 
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(() => getTerminalBranchId(config));
+
+  // Listen for active branch changes in header dropdown
   useEffect(() => {
-    const data = getAdvancedDashboardData(fromDate, toDate);
+    const handleBranchChanged = (e: any) => {
+      const bId = e?.detail?.branchId || getTerminalBranchId(config);
+      if (bId) {
+        setSelectedBranchId(bId);
+      }
+    };
+
+    window.addEventListener('terminal:branch_changed', handleBranchChanged);
+    return () => {
+      window.removeEventListener('terminal:branch_changed', handleBranchChanged);
+    };
+  }, [config]);
+
+  useEffect(() => {
+    const data = getAdvancedDashboardData(fromDate, toDate, selectedBranchId);
     setDashData(data as any);
-  }, [items, ledgers, config?.CompanyName, fromDate, toDate]);
+  }, [items, ledgers, config?.CompanyName, fromDate, toDate, selectedBranchId]);
 
   // Handle Alt+D / Alt+F2 / app:dashboard-open-change-period and Escape back
   useEffect(() => {

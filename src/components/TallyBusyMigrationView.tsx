@@ -48,6 +48,8 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
   const [helpGuideTab, setHelpGuideTab] = useState<'tally' | 'busy' | 'best_practices'>('tally');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
+  const [showResultModal, setShowResultModal] = useState<boolean>(false);
 
   // Handle file upload and parsing
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,6 +70,11 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
         const text = await file.text();
         const parsed = parseTallyXml(text, mode, file.name);
         setParsedData(parsed);
+        if (parsed.vouchers.length > 0 && parsed.ledgers.length === 0 && parsed.items.length === 0) {
+          setActivePreviewTab('vouchers');
+        } else {
+          setActivePreviewTab('summary');
+        }
       } else {
         // Busy Accounting
         if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
@@ -108,6 +115,12 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
       });
 
       setExecutionResult(res);
+      setShowResultModal(true);
+
+      setTimeout(() => {
+        resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+
       if (res.success && onSuccess) {
         onSuccess();
       }
@@ -164,7 +177,7 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
       )}
 
       {executionResult && (
-        <div className={`p-5 rounded-2xl border flex items-start gap-3.5 shadow-sm ${
+        <div ref={resultRef} className={`p-5 rounded-2xl border flex items-start gap-3.5 shadow-sm ${
           executionResult.success ? 'bg-emerald-50 border-emerald-300 text-emerald-950' : 'bg-rose-50 border-rose-300 text-rose-950'
         }`}>
           {executionResult.success ? (
@@ -403,7 +416,7 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
           </div>
 
           {/* Metric KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className={`grid grid-cols-2 ${parsedData.vouchers.length > 0 ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-3`}>
             <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-100">
               <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">Account Ledgers</span>
               <div className="flex items-baseline gap-1 mt-1">
@@ -436,6 +449,19 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
                 Amount: Nu. {parsedData.stats.totalPendingBillsAmount.toLocaleString()}
               </span>
             </div>
+
+            {parsedData.vouchers.length > 0 && (
+              <div className="p-3.5 rounded-2xl bg-purple-50/70 border border-purple-100">
+                <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider block">Daybook Transactions</span>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-xl font-black text-purple-950 font-mono">{parsedData.vouchers.length}</span>
+                  <span className="text-[11px] text-purple-600">vouchers</span>
+                </div>
+                <span className="text-[10px] text-purple-700 font-bold mt-0.5 block">
+                  ✓ Ready for import
+                </span>
+              </div>
+            )}
 
             <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-100">
               <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Trial Balance Difference</span>
@@ -833,9 +859,65 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
               <button
                 type="button"
                 onClick={() => setShowHelpModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs"
+                className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs cursor-pointer"
               >
                 Close Guide
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          MIGRATION COMPLETED POPUP MODAL
+         ======================================================== */}
+      {showResultModal && executionResult && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-5 text-slate-800">
+            <div className="flex items-center gap-3">
+              <div className={`h-12 w-12 rounded-2xl flex items-center justify-center font-bold shrink-0 ${
+                executionResult.success ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+              }`}>
+                {executionResult.success ? <CheckCircle2 className="h-7 w-7" /> : <AlertCircle className="h-7 w-7" />}
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  {executionResult.success ? '🎉 Migration Completed Successfully!' : 'Migration Notice'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {executionResult.message}
+                </p>
+              </div>
+            </div>
+
+            {executionResult.success && (
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Ledgers Imported</span>
+                  <span className="text-lg font-black text-emerald-700 font-mono">{executionResult.importedLedgers}</span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Stock Items</span>
+                  <span className="text-lg font-black text-emerald-700 font-mono">{executionResult.importedItems}</span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Pending Bills</span>
+                  <span className="text-lg font-black text-emerald-700 font-mono">{executionResult.importedOpeningBills}</span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold block">Vouchers</span>
+                  <span className="text-lg font-black text-emerald-700 font-mono">{executionResult.importedVouchers}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowResultModal(false)}
+                className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs shadow-md transition cursor-pointer"
+              >
+                Done & Review
               </button>
             </div>
           </div>

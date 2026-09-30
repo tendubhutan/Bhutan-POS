@@ -13,7 +13,10 @@ import {
   peekNextVoucherNo,
   getVoucherPrefix,
   getVoucherDetails,
-  getQuotations
+  getQuotations,
+  loadJson,
+  STORAGE_KEYS,
+  DEFAULT_ITEMS
 } from '../services/storageService';
 import {
   Plus,
@@ -48,7 +51,8 @@ import {
   Copy,
   MessageSquare,
   Repeat,
-  Zap
+  Zap,
+  Package
 } from 'lucide-react';
 import { RecurringVouchersModal } from './vouchers/RecurringVouchersModal';
 import {
@@ -199,6 +203,84 @@ export const Vouchers: React.FC<VouchersProps> = ({
   const [tdsRate, setTdsRate] = useState<number | ''>(2);
   const [tdsAmount, setTdsAmount] = useState<number | ''>('');
 
+  // Supplier Bill / Invoice Details (for Journal & Financial vouchers)
+  const [supplierBillNo, setSupplierBillNo] = useState('');
+  const [supplierBillDate, setSupplierBillDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Journal Consumables / Stock Items Details (for stock purchased for internal consumption)
+  const [showJournalItems, setShowJournalItems] = useState(false);
+  const [journalItems, setJournalItems] = useState<Array<{
+    id: string;
+    itemCode: string;
+    itemName: string;
+    unit: string;
+    qty: number | '';
+    rate: number | '';
+    amount: number | '';
+    description?: string;
+  }>>([]);
+
+  const inventoryItems = useMemo(() => {
+    if (items && items.length > 0) return items;
+    return loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
+  }, [items]);
+
+  const totalJournalItemsAmount = useMemo(() => {
+    return journalItems.reduce((acc, it) => acc + (Number(it.amount) || ((Number(it.qty) || 0) * (Number(it.rate) || 0))), 0);
+  }, [journalItems]);
+
+  const handleAddJournalItemRow = () => {
+    setJournalItems(prev => [
+      ...prev,
+      {
+        id: Math.random().toString(),
+        itemCode: '',
+        itemName: '',
+        unit: 'Pcs',
+        qty: 1,
+        rate: '',
+        amount: '',
+        description: ''
+      }
+    ]);
+  };
+
+  const handleUpdateJournalItem = (id: string, field: string, value: any) => {
+    setJournalItems(prev =>
+      prev.map(it => {
+        if (it.id === id) {
+          const updated = { ...it, [field]: value };
+          if (field === 'itemName') {
+            const match = inventoryItems.find(
+              x => x['Item Name'].toLowerCase() === String(value).toLowerCase() ||
+                   x['Item Code'].toLowerCase() === String(value).toLowerCase()
+            );
+            if (match) {
+              updated.itemCode = match['Item Code'] || match['Item Name'];
+              updated.unit = match.Unit || 'Pcs';
+              if (match['Purchase Rate'] && (!updated.rate || Number(updated.rate) === 0)) {
+                updated.rate = match['Purchase Rate'];
+              }
+            }
+          }
+          if (field === 'qty' || field === 'rate') {
+            const q = field === 'qty' ? (value === '' ? 0 : Number(value)) : (updated.qty === '' ? 0 : Number(updated.qty));
+            const r = field === 'rate' ? (value === '' ? 0 : Number(value)) : (updated.rate === '' ? 0 : Number(updated.rate));
+            if (q > 0 && r > 0) {
+              updated.amount = Math.round(q * r * 100) / 100;
+            }
+          }
+          return updated;
+        }
+        return it;
+      })
+    );
+  };
+
+  const handleRemoveJournalItem = (id: string) => {
+    setJournalItems(prev => prev.filter(it => it.id !== id));
+  };
+
   // Multi mode grid state
   const [lines, setLines] = useState<VoucherGridLine[]>([
     { id: '1', type: 'Dr', ledger: '', debit: '', credit: 0, narration: '' },
@@ -345,9 +427,19 @@ export const Vouchers: React.FC<VouchersProps> = ({
         }
       }
     }
-    if (date && !tdsInvoiceDate) setTdsInvoiceDate(date);
-    if (invoiceNo && !tdsInvoiceNo) setTdsInvoiceNo(invoiceNo);
-    if (narration && !tdsWorkDescription) setTdsWorkDescription(narration);
+    const effectiveInvoiceNo = (supplierBillNo || referenceNo || invoiceNo || '').trim();
+    const effectiveInvoiceDate = (supplierBillDate || invoiceDate || date || '').trim();
+    if (effectiveInvoiceDate && !tdsInvoiceDate) setTdsInvoiceDate(effectiveInvoiceDate);
+    if (effectiveInvoiceNo && !tdsInvoiceNo) setTdsInvoiceNo(effectiveInvoiceNo);
+
+    if (!tdsWorkDescription) {
+      const expLine = lines.find(l => {
+        const lname = (l.ledger || '').toLowerCase();
+        return (l.type === 'Dr' || Number(l.debit) > 0) && !isTdsLedger(l.ledger) && !lname.includes('cash') && !lname.includes('bank');
+      });
+      const desc = expLine?.narration?.trim() || narration?.trim() || expLine?.ledger?.trim() || debitLedger?.trim() || '';
+      if (desc) setTdsWorkDescription(desc);
+    }
 
     if (context?.lineAmt && context.lineAmt > 0) {
       setTdsAmount(context.lineAmt);
@@ -631,6 +723,10 @@ export const Vouchers: React.FC<VouchersProps> = ({
         }
       }
 
+      // Load Supplier Bill / Invoice Details
+      setSupplierBillNo(isDuplicate ? '' : (v.supplierBillNo || v.refNo || v.billNo || ''));
+      setSupplierBillDate(isDuplicate ? new Date().toISOString().split('T')[0] : (v.supplierBillDate || v.billDate || v.invoiceDate || (v.date ? new Date(v.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0])));
+
       // Load GST Input Tracking Fields
       setGstInputType(v.gstInputType || 'None');
       setSupplierName(v.supplierName || '');
@@ -657,6 +753,24 @@ export const Vouchers: React.FC<VouchersProps> = ({
       setTdsBillAmount(v.tdsBillAmount !== undefined ? v.tdsBillAmount : '');
       setTdsRate(v.tdsRate !== undefined ? v.tdsRate : 2);
       setTdsAmount(v.tdsAmount !== undefined ? v.tdsAmount : '');
+
+      // Load Consumable / Stock Items (for Journal vouchers)
+      if (v.items && Array.isArray(v.items) && v.items.length > 0) {
+        setShowJournalItems(true);
+        setJournalItems(v.items.map((it: any, idx: number) => ({
+          id: String(idx + 1),
+          itemCode: it.itemCode || it['Item Code'] || '',
+          itemName: it.itemName || it['Item Name'] || '',
+          unit: it.unit || it.Unit || 'Pcs',
+          qty: it.qty !== undefined ? it.qty : (it.Qty !== undefined ? it.Qty : ''),
+          rate: it.rate !== undefined ? it.rate : (it.Rate !== undefined ? it.Rate : ''),
+          amount: it.amount !== undefined ? it.amount : (it['Line Total'] || it.total || ''),
+          description: it.description || it.lineDescription || ''
+        })));
+      } else {
+        setShowJournalItems(false);
+        setJournalItems([]);
+      }
 
       if (isDuplicate) {
         showToast(`Voucher duplicated from ${v.voucherNo || v.refNo}! Review and press Save.`, 'success');
@@ -703,39 +817,195 @@ export const Vouchers: React.FC<VouchersProps> = ({
     return getPartyOutstandingBills(partyLedger, activeVType === 'P' ? 'creditor' : 'debtor');
   }, [partyLedger, activeVType, config.EnableBillWiseDetails]);
 
-  // Intelligent Accounting Narration Auto-Generator
+  // Intelligent Accounting Narration Auto-Generator looking at Debit & Credit fields
   const getSuggestedNarration = (
     vType: string,
-    party: string,
-    mode: string,
+    debitLedgerName: string,
+    creditLedgerName: string,
     allocs: BillAllocation[] = [],
     amt?: number | string
   ): string => {
-    const cleanParty = (party || '').trim();
-    const cleanMode = (mode || '').trim();
-    const billsText = allocs.length > 0 ? ` against Bill #${allocs.map(a => a.billNo).join(', ')}` : '';
-    const viaText = cleanMode ? ` via ${cleanMode}` : '';
+    const dr = (debitLedgerName || '').trim();
+    const cr = (creditLedgerName || '').trim();
 
-    if (vType === 'R') {
-      if (cleanParty) {
-        return `Being payment received from ${cleanParty}${billsText}${viaText}`;
+    if (!dr && !cr) return '';
+
+    const getGroup = (name: string): string => {
+      const lObj = ledgers.find(l => l['Ledger Name'].toLowerCase() === name.toLowerCase());
+      return (lObj?.Group || '').toLowerCase().trim();
+    };
+
+    const isBankOrCash = (name: string): boolean => {
+      if (!name) return false;
+      const n = name.toLowerCase();
+      if (n === 'cash' || n.includes('cash-in-hand')) return true;
+      if (isBankLedger(name, ledgers, config)) return true;
+      const g = getGroup(name);
+      return g === 'bank accounts' || g === 'bank od a/c' || g === 'bank occ a/c' || g === 'cash-in-hand';
+    };
+
+    const isParty = (name: string): boolean => {
+      if (!name) return false;
+      if (isBankOrCash(name)) return false;
+      const g = getGroup(name);
+      return (
+        g.includes('creditor') ||
+        g.includes('debtor') ||
+        g.includes('supplier') ||
+        g.includes('customer') ||
+        g === 'sundry creditors' ||
+        g === 'sundry debtors'
+      );
+    };
+
+    const isExpenseOrAsset = (name: string): boolean => {
+      if (!name) return false;
+      if (isBankOrCash(name) || isParty(name)) return false;
+      const g = getGroup(name);
+      const n = name.toLowerCase();
+      return (
+        g.includes('expense') ||
+        g.includes('direct expenses') ||
+        g.includes('indirect expenses') ||
+        g.includes('fixed asset') ||
+        g.includes('current asset') ||
+        g.includes('asset') ||
+        g.includes('purchase') ||
+        g.includes('cost of goods') ||
+        g.includes('administrative') ||
+        g.includes('selling') ||
+        g.includes('duties') ||
+        n.includes('stationery') ||
+        n.includes('printing') ||
+        n.includes('rent') ||
+        n.includes('salary') ||
+        n.includes('wage') ||
+        n.includes('fuel') ||
+        n.includes('repair') ||
+        n.includes('maintenance') ||
+        n.includes('consumable') ||
+        n.includes('electricity') ||
+        n.includes('office') ||
+        n.includes('supplies') ||
+        n.includes('tea') ||
+        n.includes('refreshment') ||
+        n.includes('travel') ||
+        n.includes('vehicle') ||
+        n.includes('freight') ||
+        n.includes('carriage')
+      );
+    };
+
+    const isPhysicalItemOrConsumable = (name: string): boolean => {
+      const n = name.toLowerCase();
+      return (
+        n.includes('stationery') ||
+        n.includes('printing') ||
+        n.includes('supplies') ||
+        n.includes('consumable') ||
+        n.includes('goods') ||
+        n.includes('purchase') ||
+        n.includes('stock') ||
+        n.includes('item') ||
+        n.includes('computer') ||
+        n.includes('hardware') ||
+        n.includes('equipment') ||
+        n.includes('furniture') ||
+        n.includes('tools') ||
+        n.includes('materials') ||
+        n.includes('books')
+      );
+    };
+
+    const formatCleanName = (name: string): string => {
+      let clean = name.trim();
+      clean = clean.replace(/\s+(a\/c|account|expenses?|dr|cr|\(dr\)|\(cr\))$/i, '');
+      clean = clean.replace(/\s+(a\/c|account|expenses?)$/i, '');
+      return clean.toLowerCase();
+    };
+
+    const billsText = allocs.length > 0 ? ` against Bill #${allocs.map(a => a.billNo).join(', ')}` : '';
+
+    // CASE 1: Debit is Expense / Asset / Consumables (e.g. Printing and Stationery)
+    if (dr && isExpenseOrAsset(dr)) {
+      const expName = formatCleanName(dr);
+      const isPurchase = isPhysicalItemOrConsumable(dr);
+
+      if (cr && isParty(cr)) {
+        // e.g. Debit: Stationery, Credit: Panglung Enterprise -> "Being stationery purchased from Panglung Enterprise"
+        if (isPurchase) {
+          return `Being ${expName} purchased from ${cr}${billsText}`;
+        }
+        return `Being ${expName} provided by ${cr}${billsText}`;
       }
-      return `Being amount received${viaText}`;
+
+      if (cr && isBankOrCash(cr)) {
+        // e.g. Debit: Stationery, Credit: Bank -> "Being stationery purchased"
+        if (isPurchase) {
+          return `Being ${expName} purchased`;
+        }
+        return `Being payment made for ${expName}`;
+      }
+
+      if (cr) {
+        return `Being ${expName} adjusted against ${cr}`;
+      }
+
+      return isPurchase ? `Being ${expName} purchased` : `Being payment made for ${expName}`;
+    }
+
+    // CASE 2: Debit is a Party (Supplier / Creditor payment)
+    if (dr && isParty(dr)) {
+      if (cr && isBankOrCash(cr)) {
+        return `Being payment made to ${dr}${billsText}`;
+      }
+      if (cr) {
+        return `Being journal adjustment passed for ${dr} and ${cr}`;
+      }
+      return `Being payment made to ${dr}${billsText}`;
+    }
+
+    // CASE 3: Credit is a Party (Customer / Debtor receipt or sales)
+    if (cr && isParty(cr)) {
+      if (dr && isBankOrCash(dr)) {
+        return `Being payment received from ${cr}${billsText}`;
+      }
+      if (dr) {
+        return `Being journal adjustment passed for ${cr} and ${dr}`;
+      }
+      return `Being payment received from ${cr}${billsText}`;
+    }
+
+    // CASE 4: Contra (Bank / Cash to Bank / Cash)
+    if (isBankOrCash(dr) && isBankOrCash(cr)) {
+      if (dr.toLowerCase().includes('cash') && isBankLedger(cr, ledgers, config)) {
+        return `Being cash withdrawn from ${cr}`;
+      }
+      if (isBankLedger(dr, ledgers, config) && cr.toLowerCase().includes('cash')) {
+        return `Being cash deposited into ${dr}`;
+      }
+      return `Being funds transferred from ${cr} to ${dr}`;
+    }
+
+    // CASE 5: General Journal Fallbacks
+    if (vType === 'J') {
+      if (dr && cr) return `Being journal entry passed for ${dr} and ${cr}`;
+      if (dr || cr) return `Being journal entry passed for ${dr || cr}`;
+      return 'Being journal adjustment entry passed';
     }
 
     if (vType === 'P') {
-      if (cleanParty) {
-        return `Being payment made to ${cleanParty}${billsText}${viaText}`;
-      }
-      return `Being payment made for expenses${viaText}`;
+      if (dr) return `Being payment made for ${dr}${billsText}`;
+      return 'Being payment made for expenses';
+    }
+
+    if (vType === 'R') {
+      if (cr) return `Being payment received from ${cr}${billsText}`;
+      return 'Being amount received';
     }
 
     if (vType === 'C') {
-      return cleanParty && cleanMode ? `Being transfer from ${cleanMode} to ${cleanParty}` : 'Being cash/bank contra transfer';
-    }
-
-    if (vType === 'J') {
-      return cleanParty ? `Being journal adjustment passed for ${cleanParty}` : 'Being journal adjustment entry passed';
+      return 'Being cash/bank contra transfer';
     }
 
     return '';
@@ -891,11 +1161,20 @@ export const Vouchers: React.FC<VouchersProps> = ({
         }
       }
 
-      if (invoiceNo) setTdsInvoiceNo(prev => prev || invoiceNo);
-      if (invoiceDate || date) setTdsInvoiceDate(prev => prev || invoiceDate || date);
-      if (narration) setTdsWorkDescription(prev => prev || narration);
+      const effectiveBillNo = (supplierBillNo || referenceNo || invoiceNo || '').trim();
+      const effectiveBillDate = (supplierBillDate || invoiceDate || date || '').trim();
+
+      if (effectiveBillNo) setTdsInvoiceNo(prev => prev || effectiveBillNo);
+      if (effectiveBillDate) setTdsInvoiceDate(prev => prev || effectiveBillDate);
+
+      const expLine = lines.find(l => {
+        const lname = (l.ledger || '').toLowerCase();
+        return (l.type === 'Dr' || Number(l.debit) > 0) && !isTdsLedger(l.ledger) && !lname.includes('cash') && !lname.includes('bank');
+      });
+      const desc = expLine?.narration?.trim() || narration?.trim() || expLine?.ledger?.trim() || debitLedger?.trim() || '';
+      if (desc) setTdsWorkDescription(prev => prev || desc);
     }
-  }, [lines, entryMode, partyLedger, debitLedger, creditLedger, modeLedger, amount, date, invoiceNo, invoiceDate, config.EnableTDS2Tracking]);
+  }, [lines, entryMode, partyLedger, debitLedger, creditLedger, modeLedger, amount, date, invoiceNo, invoiceDate, supplierBillNo, supplierBillDate, referenceNo, narration, config.EnableTDS2Tracking]);
 
   useEffect(() => {
     if (activeVType === 'P' && config.EnableGSTInputTax === 'true' && gstInputType !== 'None') {
@@ -1556,6 +1835,18 @@ export const Vouchers: React.FC<VouchersProps> = ({
         }
       }
 
+      // Smart auto-narration on ledger update
+      if (field === 'ledger') {
+        const drL = newLines.find(l => l.type === 'Dr' && l.ledger)?.ledger || '';
+        const crL = newLines.find(l => l.type === 'Cr' && l.ledger)?.ledger || '';
+        if (drL || crL) {
+          const smart = getSuggestedNarration(activeVType, drL, crL, []);
+          if (smart && (!narration || narration.startsWith('Being '))) {
+            setNarration(smart);
+          }
+        }
+      }
+
       return newLines;
     });
   };
@@ -1654,6 +1945,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
         bankTxnNo: transactionId.trim() || undefined,
         billAllocations: allBillAllocations.length > 0 ? allBillAllocations : undefined,
         billNo: allBillAllocations.length > 0 ? allBillAllocations.map(b => b.billNo).join(', ') : undefined,
+        supplierBillNo: supplierBillNo.trim() || undefined,
+        supplierBillDate: supplierBillDate || undefined,
+        referenceNo: supplierBillNo.trim() || referenceNo.trim() || undefined,
         lines: formattedLines,
         
         // GST Input Tracking Fields
@@ -1664,7 +1958,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
           supplierCountry,
           invoiceNo,
           invoiceDate,
-          referenceNo,
+          referenceNo: supplierBillNo.trim() || referenceNo.trim() || undefined,
           declarationNo,
           declarationDate,
           taxableAmount: Number(taxableAmount) || undefined,
@@ -1679,13 +1973,24 @@ export const Vouchers: React.FC<VouchersProps> = ({
           isTdsApplicable: true,
           tdsTpn: tdsTpn.trim() || undefined,
           tdsContractorNameAndAddress: tdsContractorNameAndAddress.trim() || undefined,
-          tdsWorkDescription: tdsWorkDescription.trim() || undefined,
-          tdsInvoiceNo: tdsInvoiceNo.trim() || undefined,
-          tdsInvoiceDate: tdsInvoiceDate || undefined,
+          tdsWorkDescription: (tdsWorkDescription.trim() || narration.trim()) || undefined,
+          tdsInvoiceNo: (tdsInvoiceNo.trim() || supplierBillNo.trim()) || undefined,
+          tdsInvoiceDate: tdsInvoiceDate || supplierBillDate || undefined,
           tdsBillAmount: tdsBillAmount !== '' ? Number(tdsBillAmount) : undefined,
           tdsRate: tdsRate !== '' ? Number(tdsRate) : 2,
           tdsAmount: tdsAmount !== '' ? Number(tdsAmount) : undefined
-        } : {})
+        } : {}),
+
+        // Consumables / Items Breakdown for Journal Vouchers
+        items: activeVType === 'J' && journalItems.length > 0 ? journalItems.filter(it => it.itemName && (Number(it.qty) > 0 || Number(it.amount) > 0)).map(it => ({
+          itemCode: it.itemCode || it.itemName,
+          itemName: it.itemName,
+          unit: it.unit || 'Pcs',
+          qty: Number(it.qty) || 0,
+          rate: Number(it.rate) || 0,
+          amount: Number(it.amount) || ((Number(it.qty) || 0) * (Number(it.rate) || 0)),
+          description: it.description || undefined
+        })) : undefined
       };
 
       const result = saveMultiLineVoucher(vPayload);
@@ -1802,6 +2107,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
         bankTxnNo: transactionId.trim() || undefined,
         billAllocations: billAllocations.length > 0 ? billAllocations : undefined,
         billNo: billAllocations.length > 0 ? billAllocations.map(b => b.billNo).join(', ') : undefined,
+        supplierBillNo: supplierBillNo.trim() || undefined,
+        supplierBillDate: supplierBillDate || undefined,
+        referenceNo: supplierBillNo.trim() || referenceNo.trim() || undefined,
         
         // GST Input Tracking Fields
         ...(activeVType === 'P' && config.EnableGSTInputTax === 'true' && gstInputType !== 'None' ? {
@@ -1811,7 +2119,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
           supplierCountry,
           invoiceNo,
           invoiceDate,
-          referenceNo,
+          referenceNo: supplierBillNo.trim() || referenceNo.trim() || undefined,
           declarationNo,
           declarationDate,
           taxableAmount: Number(taxableAmount) || undefined,
@@ -1826,13 +2134,24 @@ export const Vouchers: React.FC<VouchersProps> = ({
           isTdsApplicable: true,
           tdsTpn: tdsTpn.trim() || undefined,
           tdsContractorNameAndAddress: tdsContractorNameAndAddress.trim() || undefined,
-          tdsWorkDescription: tdsWorkDescription.trim() || undefined,
-          tdsInvoiceNo: tdsInvoiceNo.trim() || undefined,
-          tdsInvoiceDate: tdsInvoiceDate || undefined,
+          tdsWorkDescription: (tdsWorkDescription.trim() || narration.trim()) || undefined,
+          tdsInvoiceNo: (tdsInvoiceNo.trim() || supplierBillNo.trim() || referenceNo.trim()) || undefined,
+          tdsInvoiceDate: tdsInvoiceDate || supplierBillDate || undefined,
           tdsBillAmount: tdsBillAmount !== '' ? Number(tdsBillAmount) : undefined,
           tdsRate: tdsRate !== '' ? Number(tdsRate) : 2,
           tdsAmount: tdsAmount !== '' ? Number(tdsAmount) : undefined
-        } : {})
+        } : {}),
+
+        // Consumables / Items Breakdown for Journal Vouchers
+        items: activeVType === 'J' && journalItems.length > 0 ? journalItems.filter(it => it.itemName && (Number(it.qty) > 0 || Number(it.amount) > 0)).map(it => ({
+          itemCode: it.itemCode || it.itemName,
+          itemName: it.itemName,
+          unit: it.unit || 'Pcs',
+          qty: Number(it.qty) || 0,
+          rate: Number(it.rate) || 0,
+          amount: Number(it.amount) || ((Number(it.qty) || 0) * (Number(it.rate) || 0)),
+          description: it.description || undefined
+        })) : undefined
       };
 
       const result = saveVoucher(activeVType as any, vPayload);
@@ -1843,6 +2162,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
         onDataRefresh();
         loadRecentVouchers();
         setBillAllocations([]);
+        setJournalItems([]);
+        setShowJournalItems(false);
 
         const vTypeLabel =
           activeVType === 'P'
@@ -1927,6 +2248,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
     }
     setNarration('');
     setTransactionId('');
+    setSupplierBillNo('');
+    setSupplierBillDate(new Date().toISOString().split('T')[0]);
     setIsTdsApplicable(false);
     setTdsTpn('');
     setTdsContractorNameAndAddress('');
@@ -1936,6 +2259,9 @@ export const Vouchers: React.FC<VouchersProps> = ({
     setTdsBillAmount('');
     setTdsRate(2);
     setTdsAmount('');
+    setBillAllocations([]);
+    setJournalItems([]);
+    setShowJournalItems(false);
     if (isAutoMode && activeVType && ['P', 'R', 'J', 'C'].includes(activeVType)) {
       setVoucherNo(peekNextVoucherNo(activeVType as any, config));
     }
@@ -3205,17 +3531,36 @@ export const Vouchers: React.FC<VouchersProps> = ({
                         : toAccount
                     }
                     onChange={val => {
-                      if (activeVType === 'P' || activeVType === 'R') {
+                      if (activeVType === 'P') {
                         setPartyLedger(val);
                         setBillAllocations([]);
-                        // Smart auto-generate narration if blank or previously auto-generated
-                        if (!narration || narration.startsWith('Being payment') || narration.startsWith('Being amount')) {
+                        if (!narration || narration.startsWith('Being ')) {
                           const suggested = getSuggestedNarration(activeVType, val, modeLedger, []);
                           if (suggested) setNarration(suggested);
                         }
                       }
-                      else if (activeVType === 'J') setDebitLedger(val);
-                      else setToAccount(val);
+                      else if (activeVType === 'R') {
+                        setPartyLedger(val);
+                        setBillAllocations([]);
+                        if (!narration || narration.startsWith('Being ')) {
+                          const suggested = getSuggestedNarration(activeVType, modeLedger, val, []);
+                          if (suggested) setNarration(suggested);
+                        }
+                      }
+                      else if (activeVType === 'J') {
+                        setDebitLedger(val);
+                        if (!narration || narration.startsWith('Being ')) {
+                          const suggested = getSuggestedNarration(activeVType, val, creditLedger, []);
+                          if (suggested) setNarration(suggested);
+                        }
+                      }
+                      else {
+                        setToAccount(val);
+                        if (!narration || narration.startsWith('Being ')) {
+                          const suggested = getSuggestedNarration(activeVType, val, fromAccount, []);
+                          if (suggested) setNarration(suggested);
+                        }
+                      }
                       checkAndPromptBankLedger(val, 'single-ledger-2');
                       handleLedgerSelected(val, { isMulti: false, nextElementId: 'single-ledger-2' });
                     }}
@@ -3322,15 +3667,34 @@ export const Vouchers: React.FC<VouchersProps> = ({
                         : fromAccount
                     }
                     onChange={val => {
-                      if (activeVType === 'P' || activeVType === 'R') {
+                      if (activeVType === 'P') {
                         setModeLedger(val);
-                        if (!narration || narration.startsWith('Being payment') || narration.startsWith('Being amount')) {
+                        if (!narration || narration.startsWith('Being ')) {
                           const suggested = getSuggestedNarration(activeVType, partyLedger, val, billAllocations, amount);
                           if (suggested) setNarration(suggested);
                         }
                       }
-                      else if (activeVType === 'J') setCreditLedger(val);
-                      else setFromAccount(val);
+                      else if (activeVType === 'R') {
+                        setModeLedger(val);
+                        if (!narration || narration.startsWith('Being ')) {
+                          const suggested = getSuggestedNarration(activeVType, val, partyLedger, billAllocations, amount);
+                          if (suggested) setNarration(suggested);
+                        }
+                      }
+                      else if (activeVType === 'J') {
+                        setCreditLedger(val);
+                        if (!narration || narration.startsWith('Being ')) {
+                          const suggested = getSuggestedNarration(activeVType, debitLedger, val, billAllocations, amount);
+                          if (suggested) setNarration(suggested);
+                        }
+                      }
+                      else {
+                        setFromAccount(val);
+                        if (!narration || narration.startsWith('Being ')) {
+                          const suggested = getSuggestedNarration(activeVType, toAccount, val, billAllocations, amount);
+                          if (suggested) setNarration(suggested);
+                        }
+                      }
                       checkAndPromptBankLedger(val, 'single-amount');
                       handleLedgerSelected(val, { isMulti: false, nextElementId: 'single-amount' });
                     }}
@@ -3460,6 +3824,217 @@ export const Vouchers: React.FC<VouchersProps> = ({
             </div>
           )}
 
+          {/* Item-wise Stock / Consumables Breakdown for Journal Vouchers */}
+          {activeVType === 'J' && (
+            <div className="rounded-xl border border-indigo-200 bg-linear-to-r from-indigo-50/50 via-white to-indigo-50/30 p-3 shadow-xs text-xs space-y-2.5">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
+                    <Package className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-indigo-950 text-xs">
+                        Item-wise Details / Stock for Internal Consumption
+                      </span>
+                      {journalItems.length > 0 && (
+                        <span className="bg-indigo-600 text-white font-black text-[10px] px-2 py-0.5 rounded-full shadow-2xs">
+                          {journalItems.length} {journalItems.length === 1 ? 'item' : 'items'} (Nu. {totalJournalItemsAmount.toFixed(2)})
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Purchased stationery / consumables to keep in stock and consume as needed. (Resale stock is handled in Purchase vouchers).
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {journalItems.length > 0 && totalJournalItemsAmount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (entryMode === 'single') {
+                          setAmount(totalJournalItemsAmount);
+                        } else {
+                          setLines(prev => {
+                            const updated = [...prev];
+                            if (updated[0]) updated[0].debit = totalJournalItemsAmount;
+                            if (updated[1]) updated[1].credit = totalJournalItemsAmount;
+                            return updated;
+                          });
+                        }
+                        showToast(`Voucher amount set to Nu. ${totalJournalItemsAmount.toFixed(2)}`, 'success');
+                      }}
+                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg font-bold text-[11px] flex items-center gap-1 transition cursor-pointer shadow-2xs"
+                      title="Set voucher amount to match the total item value"
+                    >
+                      <Zap className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Sync Total (Nu. {totalJournalItemsAmount.toFixed(2)})</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!showJournalItems) {
+                        setShowJournalItems(true);
+                        if (journalItems.length === 0) handleAddJournalItemRow();
+                      } else {
+                        setShowJournalItems(false);
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                      showJournalItems
+                        ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                        : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                    }`}
+                  >
+                    {showJournalItems ? (
+                      <>
+                        <ChevronDown className="w-3.5 h-3.5" />
+                        <span>Hide Item Details</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Add Item-wise Details</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {showJournalItems && (
+                <div className="space-y-2 pt-1">
+                  <div className="overflow-x-auto rounded-lg border border-indigo-100 bg-white shadow-2xs">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="bg-indigo-50/80 text-indigo-950 font-bold border-b border-indigo-100 text-[11px]">
+                        <tr>
+                          <th className="py-2 px-2.5 w-10 text-center">#</th>
+                          <th className="py-2 px-2.5 min-w-[200px]">Item Name / Description</th>
+                          <th className="py-2 px-2 w-20">Unit</th>
+                          <th className="py-2 px-2 w-24 text-right">Qty</th>
+                          <th className="py-2 px-2 w-28 text-right">Rate ({currencySymbol})</th>
+                          <th className="py-2 px-2.5 w-32 text-right">Amount ({currencySymbol})</th>
+                          <th className="py-2 px-2.5 min-w-[150px]">Purpose / Notes</th>
+                          <th className="py-2 px-2 w-10 text-center"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {journalItems.map((item, idx) => (
+                          <tr key={item.id} className="hover:bg-slate-50/60 transition">
+                            <td className="py-1.5 px-2.5 text-center text-slate-400 font-mono text-[11px]">
+                              {idx + 1}
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  list={`journal-item-list-${item.id}`}
+                                  value={item.itemName}
+                                  onChange={e => handleUpdateJournalItem(item.id, 'itemName', e.target.value)}
+                                  placeholder="e.g. A4 Paper, Ball Pens, Office Files..."
+                                  className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-900 font-medium outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-100"
+                                />
+                                <datalist id={`journal-item-list-${item.id}`}>
+                                  {inventoryItems.map((inv, i) => (
+                                    <option key={i} value={inv['Item Name']}>
+                                      {inv['Item Code'] ? `[${inv['Item Code']}] ` : ''}{inv.Unit ? `(${inv.Unit})` : ''}
+                                    </option>
+                                  ))}
+                                </datalist>
+                              </div>
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <input
+                                type="text"
+                                value={item.unit}
+                                onChange={e => handleUpdateJournalItem(item.id, 'unit', e.target.value)}
+                                placeholder="Pcs"
+                                className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-900 font-medium outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-100"
+                              />
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <input
+                                type="number"
+                                min="0.01"
+                                step="any"
+                                value={item.qty !== undefined && item.qty !== null ? item.qty : ''}
+                                onChange={e => handleUpdateJournalItem(item.id, 'qty', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                                placeholder="1"
+                                className="w-full text-right rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-900 font-bold outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-100"
+                              />
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={item.rate !== undefined && item.rate !== null ? item.rate : ''}
+                                onChange={e => handleUpdateJournalItem(item.id, 'rate', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                                placeholder="0.00"
+                                className="w-full text-right rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-900 font-bold outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-100"
+                              />
+                            </td>
+                            <td className="py-1.5 px-2.5">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={item.amount !== undefined && item.amount !== null ? item.amount : ''}
+                                onChange={e => handleUpdateJournalItem(item.id, 'amount', e.target.value === '' ? '' : parseFloat(e.target.value))}
+                                placeholder="0.00"
+                                className="w-full text-right rounded-md border border-indigo-200 bg-indigo-50/40 px-2 py-1 text-xs text-indigo-950 font-black outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-100"
+                              />
+                            </td>
+                            <td className="py-1.5 px-2.5">
+                              <input
+                                type="text"
+                                value={item.description || ''}
+                                onChange={e => handleUpdateJournalItem(item.id, 'description', e.target.value)}
+                                placeholder="e.g. Accounts Dept use"
+                                className="w-full rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-100"
+                              />
+                            </td>
+                            <td className="py-1.5 px-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveJournalItem(item.id)}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                                title="Remove row"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleAddJournalItemRow}
+                      className="px-2.5 py-1 bg-white hover:bg-slate-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Another Item</span>
+                    </button>
+
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="text-slate-500 font-medium">
+                        Total Items Value:
+                      </span>
+                      <span className="font-mono font-black text-indigo-950 text-sm">
+                        {currencySymbol} {totalJournalItemsAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Overall Narration at bottom of voucher entry */}
           <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-xs text-xs shrink-0">
             <div className="flex items-center justify-between mb-1">
@@ -3469,9 +4044,13 @@ export const Vouchers: React.FC<VouchersProps> = ({
                   type="button"
                   tabIndex={-1}
                   onClick={() => {
-                    const activeParty = partyLedger || (lines.find(l => l.ledger && l.ledger !== 'Cash' && !isBankLedger(l.ledger, ledgers, config))?.ledger) || '';
-                    const activeMode = modeLedger || (lines.find(l => isBankLedger(l.ledger, ledgers, config) || l.ledger === 'Cash')?.ledger) || '';
-                    const generated = getSuggestedNarration(activeVType, activeParty, activeMode, billAllocations, amount);
+                    const activeDr = entryMode === 'multi'
+                      ? (lines.find(l => l.type === 'Dr' && l.ledger)?.ledger || '')
+                      : (activeVType === 'P' ? partyLedger : activeVType === 'R' ? modeLedger : activeVType === 'J' ? debitLedger : toAccount);
+                    const activeCr = entryMode === 'multi'
+                      ? (lines.find(l => l.type === 'Cr' && l.ledger)?.ledger || '')
+                      : (activeVType === 'P' ? modeLedger : activeVType === 'R' ? partyLedger : activeVType === 'J' ? creditLedger : fromAccount);
+                    const generated = getSuggestedNarration(activeVType, activeDr, activeCr, billAllocations, amount);
                     if (generated) setNarration(generated);
                   }}
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border border-indigo-200 transition cursor-pointer"
@@ -4359,6 +4938,8 @@ export const Vouchers: React.FC<VouchersProps> = ({
             : amount
         }
         currencySymbol={currencySymbol}
+        defaultBillNo={supplierBillNo || undefined}
+        defaultBillDate={supplierBillDate || date || undefined}
         initialAllocations={
           billModalTargetLineId
             ? lines.find(l => l.id === billModalTargetLineId)?.billAllocations
@@ -4389,13 +4970,28 @@ export const Vouchers: React.FC<VouchersProps> = ({
             }
           }
 
+          // If a new reference was allocated, sync supplierBillNo & supplierBillDate
+          const newRefAlloc = allocs.find(a => a.refType === 'New Ref');
+          if (newRefAlloc) {
+            if (newRefAlloc.billNo && (!supplierBillNo || supplierBillNo.startsWith('REF-'))) {
+              setSupplierBillNo(newRefAlloc.billNo);
+            }
+            if (newRefAlloc.billDate) {
+              setSupplierBillDate(newRefAlloc.billDate);
+            }
+          }
+
           // Intelligent Auto-Narration Generation upon bill allocation
-          const activeParty = billModalParty || partyLedger || (billModalTargetLineId ? lines.find(l => l.id === billModalTargetLineId)?.ledger : '') || '';
-          const activeMode = modeLedger || (lines.find(l => isBankLedger(l.ledger, ledgers, config) || l.ledger === 'Cash')?.ledger) || '';
-          const smartNarration = getSuggestedNarration(activeVType, activeParty, activeMode, allocs, totalAllocated);
+          const activeDr = billModalTargetLineId
+            ? (lines.find(l => l.id === billModalTargetLineId)?.type === 'Dr' ? billModalParty : (lines.find(l => l.type === 'Dr')?.ledger || ''))
+            : (activeVType === 'P' ? (partyLedger || billModalParty) : activeVType === 'R' ? (modeLedger || '') : activeVType === 'J' ? debitLedger : toAccount);
+          const activeCr = billModalTargetLineId
+            ? (lines.find(l => l.id === billModalTargetLineId)?.type === 'Cr' ? billModalParty : (lines.find(l => l.type === 'Cr')?.ledger || ''))
+            : (activeVType === 'P' ? (modeLedger || '') : activeVType === 'R' ? (partyLedger || billModalParty) : activeVType === 'J' ? (creditLedger || billModalParty) : fromAccount);
+          const smartNarration = getSuggestedNarration(activeVType, activeDr, activeCr, allocs, totalAllocated);
 
           if (smartNarration) {
-            setNarration(prev => (!prev || prev.startsWith('Being payment') || prev.startsWith('Being amount') ? smartNarration : prev));
+            setNarration(prev => (!prev || prev.startsWith('Being ') ? smartNarration : prev));
           }
         }}
         onClose={() => {
