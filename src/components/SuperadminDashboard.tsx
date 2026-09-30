@@ -350,9 +350,9 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     }
   };
 
-  // Copy Client Dedicated URL
+  // Copy Client Dedicated URL (defaults to production drukerp.com domain)
   const handleCopyPortalUrl = (cId: string) => {
-    const url = getCompanyDedicatedUrl(cId, true);
+    const url = getCompanyDedicatedUrl(cId, false);
     navigator.clipboard.writeText(url);
     setCopiedId(cId);
     setTimeout(() => setCopiedId(null), 2500);

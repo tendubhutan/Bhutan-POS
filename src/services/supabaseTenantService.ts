@@ -92,19 +92,62 @@ export function getDedicatedCompanyIdFromUrl(): string | null {
   }
 }
 
-export const PRODUCTION_BASE_URL = 'https://bhutan-pos.tendubhutan.workers.dev';
+export const PRODUCTION_BASE_URL = 'https://drukerp.com';
+export const DEFAULT_PRODUCTION_DOMAIN = 'https://drukerp.com';
+
+/**
+ * Returns the effective base domain for client links, PWA terminals, and sharing.
+ * Defaults to the official production domain https://drukerp.com.
+ * When forceCurrentOrigin is true, uses the browser's active window.location.origin (useful for local dev testing).
+ */
+export function getAppBaseDomain(forceCurrentOrigin: boolean = false): string {
+  if (typeof localStorage !== 'undefined') {
+    const custom = localStorage.getItem('drukerp_custom_base_domain');
+    if (custom && custom.trim()) {
+      return custom.trim().replace(/\/+$/, '');
+    }
+  }
+
+  if (forceCurrentOrigin && typeof window !== 'undefined' && window.location.origin) {
+    return window.location.origin;
+  }
+
+  if (typeof window !== 'undefined' && window.location.origin) {
+    const host = window.location.hostname.toLowerCase();
+    // If the browser is directly running on drukerp.com or custom domain:
+    if (host.includes('drukerp.com')) {
+      return window.location.origin;
+    }
+    // If running in development sandbox (e.g. asia-east1.run.app or localhost):
+    // Default to the official custom domain https://drukerp.com so client links work for customers!
+    return DEFAULT_PRODUCTION_DOMAIN;
+  }
+
+  return DEFAULT_PRODUCTION_DOMAIN;
+}
+
+export function setAppCustomDomain(domain: string): void {
+  if (typeof localStorage !== 'undefined') {
+    if (!domain || !domain.trim() || domain.trim() === DEFAULT_PRODUCTION_DOMAIN) {
+      localStorage.removeItem('drukerp_custom_base_domain');
+    } else {
+      let formatted = domain.trim();
+      if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
+        formatted = `https://${formatted}`;
+      }
+      formatted = formatted.replace(/\/+$/, '');
+      localStorage.setItem('drukerp_custom_base_domain', formatted);
+    }
+  }
+}
 
 /**
  * Generates the full dedicated client portal URL for a specific company.
- * Automatically uses the active browser origin (e.g. Cloudflare domain or AI Studio preview URL)
- * or defaults to production URL.
+ * Always resolves to the official custom domain https://drukerp.com unless forceCurrentOrigin is requested.
  */
 export function getCompanyDedicatedUrl(companyId: string, forceCurrentOrigin: boolean = false): string {
-  if (typeof window !== 'undefined' && window.location.origin) {
-    const cleanPath = window.location.pathname.replace(/\/+$/, '');
-    return `${window.location.origin}${cleanPath}/?company=${companyId}`;
-  }
-  return `${PRODUCTION_BASE_URL}/?company=${companyId}`;
+  const base = getAppBaseDomain(forceCurrentOrigin);
+  return `${base}/?company=${companyId}`;
 }
 
 // Fallback / Initial Demo Company (Actual UUID from Supabase)

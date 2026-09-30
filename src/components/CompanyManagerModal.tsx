@@ -45,9 +45,13 @@ import {
   getActiveFYId, 
   setActiveFYId,
   getCompanyDedicatedUrl,
+  getAppBaseDomain,
+  setAppCustomDomain,
+  DEFAULT_PRODUCTION_DOMAIN,
   initializeBlankTenantStorage,
   DEFAULT_TENANT_COMPANY
 } from '../services/supabaseTenantService';
+import { getCompanyCode } from '../services/tenantVerificationService';
 import { 
   resetCompanyToBlank, 
   executeYearEndCarryForward, 
@@ -87,6 +91,9 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
   // Dedicated URL Share Modal state
   const [shareCompany, setShareCompany] = useState<SupabaseCompany | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [usePreviewDomain, setUsePreviewDomain] = useState<boolean>(false);
+  const [customDomainInput, setCustomDomainInput] = useState<string>(() => getAppBaseDomain(false));
+  const [isEditingDomain, setIsEditingDomain] = useState<boolean>(false);
 
   // Edit Company state
   const [editingCompany, setEditingCompany] = useState<SupabaseCompany | null>(null);
@@ -615,9 +622,12 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                                   )}
                                 </div>
                                 <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                                  <span className="text-[10px] bg-blue-900/60 text-blue-200 border border-blue-600/50 px-2 py-0.5 rounded font-mono font-bold">
+                                    Code: {getCompanyCode(comp)}
+                                  </span>
                                   {comp.trade_license_no && <span>GST: {comp.trade_license_no}</span>}
                                   {comp.tax_payer_id && <span>TPN: {comp.tax_payer_id}</span>}
-                                  {!comp.trade_license_no && !comp.tax_payer_id && <span>Clean Client Workspace</span>}
+                                  {!comp.trade_license_no && !comp.tax_payer_id && <span>Clean Workspace</span>}
                                 </p>
                                 <div className="flex items-center gap-1.5 flex-wrap mt-1">
                                   <span className="text-[10px] bg-indigo-950/80 text-indigo-300 border border-indigo-700/60 px-2 py-0.5 rounded font-mono font-semibold flex items-center gap-1">
@@ -1499,19 +1509,44 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
 
               {/* Dedicated Client Portal Link */}
               {(() => {
-                const clientDedicatedUrl = getCompanyDedicatedUrl(shareCompany.id, true);
-                const displayHost = (typeof window !== 'undefined' && window.location.host) || 'Client Portal';
+                const clientDedicatedUrl = getCompanyDedicatedUrl(shareCompany.id, usePreviewDomain);
+                const activeDomain = getAppBaseDomain(usePreviewDomain);
 
                 return (
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-semibold text-slate-300">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <label className="block text-xs font-semibold text-slate-200">
                         Dedicated Client Portal Link
                       </label>
-                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono font-semibold">
-                        {displayHost}
-                      </span>
+                      
+                      {/* Domain Switcher */}
+                      <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 p-0.5 rounded-lg text-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => setUsePreviewDomain(false)}
+                          className={`px-2.5 py-1 rounded-md font-bold transition cursor-pointer ${
+                            !usePreviewDomain 
+                              ? 'bg-emerald-600 text-white shadow-xs' 
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          🌐 drukerp.com (Production)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUsePreviewDomain(true)}
+                          className={`px-2.5 py-1 rounded-md font-bold transition cursor-pointer ${
+                            usePreviewDomain 
+                              ? 'bg-blue-600 text-white shadow-xs' 
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                          title="Generate link using current preview origin"
+                        >
+                          Preview Sandbox
+                        </button>
+                      </div>
                     </div>
+
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
@@ -1528,6 +1563,62 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                         <span>{copiedUrl ? 'Copied!' : 'Copy'}</span>
                       </button>
                     </div>
+
+                    {/* Domain customization toggle */}
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+                      <span>Base Domain: <strong className="text-emerald-400 font-mono">{activeDomain}</strong></span>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingDomain(!isEditingDomain)}
+                        className="text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                      >
+                        {isEditingDomain ? 'Close Domain Settings' : 'Customize Domain'}
+                      </button>
+                    </div>
+
+                    {/* Inline Domain Configuration */}
+                    {isEditingDomain && (
+                      <div className="p-2.5 bg-slate-900 border border-blue-500/40 rounded-xl space-y-2 text-xs animate-in fade-in">
+                        <div className="flex items-center justify-between text-slate-300">
+                          <span className="font-bold">Production Custom Domain</span>
+                          <span className="text-[10px] text-slate-400">Default: https://drukerp.com</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={customDomainInput}
+                            onChange={(e) => setCustomDomainInput(e.target.value)}
+                            placeholder="https://drukerp.com"
+                            className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:border-blue-500 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAppCustomDomain(customDomainInput);
+                              setUsePreviewDomain(false);
+                              setIsEditingDomain(false);
+                              showToast('Production domain updated to ' + customDomainInput);
+                            }}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs cursor-pointer transition"
+                          >
+                            Save Domain
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomDomainInput(DEFAULT_PRODUCTION_DOMAIN);
+                              setAppCustomDomain(DEFAULT_PRODUCTION_DOMAIN);
+                              setUsePreviewDomain(false);
+                              setIsEditingDomain(false);
+                              showToast('Reset to official domain ' + DEFAULT_PRODUCTION_DOMAIN);
+                            }}
+                            className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs cursor-pointer transition"
+                          >
+                            Reset
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -1576,7 +1667,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    const clientLink = getCompanyDedicatedUrl(shareCompany.id, true);
+                    const clientLink = getCompanyDedicatedUrl(shareCompany.id, usePreviewDomain);
                     const text = `Company: ${shareCompany.company_name}
 Direct URL: ${clientLink}
 Client Login Email: ${shareCompany.email || 'N/A'}
@@ -1599,7 +1690,7 @@ POS Quick Unlock PIN: ${shareCompany.admin_pin || '1234'}`;
                   How to share with your client:
                 </div>
                 <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-400">
-                  <li>Send <strong className="text-slate-300 break-all">{getCompanyDedicatedUrl(shareCompany.id, true)}</strong> to the client via WhatsApp, SMS, or Email.</li>
+                  <li>Send <strong className="text-slate-300 break-all">{getCompanyDedicatedUrl(shareCompany.id, usePreviewDomain)}</strong> to the client via WhatsApp, SMS, or Email.</li>
                   <li>Opening this link opens <strong>{shareCompany.company_name}</strong> in client mode.</li>
                   <li>The company is completely isolated with its own data and 0 demo records.</li>
                 </ul>
@@ -1616,7 +1707,7 @@ POS Quick Unlock PIN: ${shareCompany.admin_pin || '1234'}`;
               </button>
               <button
                 type="button"
-                onClick={() => window.open(getCompanyDedicatedUrl(shareCompany.id), '_blank')}
+                onClick={() => window.open(getCompanyDedicatedUrl(shareCompany.id, usePreviewDomain), '_blank')}
                 className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
               >
                 <ExternalLink className="h-3.5 w-3.5" />

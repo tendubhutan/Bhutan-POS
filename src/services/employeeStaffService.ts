@@ -17,7 +17,7 @@ import {
 } from '../types/staffPortal';
 import { Employee } from '../types';
 import { loadJson, saveJson, STORAGE_KEYS, getEmployees, saveEmployees } from './storageService';
-import { DEFAULT_TENANT_COMPANY, getActiveCompanyId } from './supabaseTenantService';
+import { DEFAULT_TENANT_COMPANY, getActiveCompanyId, getAppBaseDomain } from './supabaseTenantService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { db } from '../lib/firebase';
 import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
@@ -211,10 +211,7 @@ export function subscribeToRealtimeTasks(companyId?: string): () => void {
 }
 
 export const getBaseAppUrl = (): string => {
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}${window.location.pathname}`;
-  }
-  return '';
+  return getAppBaseDomain();
 };
 
 // ---------------------------------------------------------------------------
@@ -1555,7 +1552,7 @@ export function generateTaskWhatsAppUrl(
     // Bhutan 8-digit mobile number prefix with 975
     cleanPhone = `975${cleanPhone}`;
   }
-  const portalUrl = typeof window !== 'undefined' ? `${window.location.origin}/employee-portal` : '';
+  const portalUrl = `${getAppBaseDomain()}/employee-portal`;
   const text = `📋 *NEW TASK ASSIGNMENT*\n\n` +
     `🏢 *Company:* ${companyName || 'Business Operations'}\n` +
     `📌 *Task:* ${task.title} (${task.taskNo})\n` +

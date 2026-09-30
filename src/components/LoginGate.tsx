@@ -38,6 +38,7 @@ import {
 } from '../services/authTenantContext';
 import { getActiveUser } from '../services/storageService';
 import { EzeeErpLogo, DrukErpLogo } from './common/EzeeErpLogo';
+import { SapEnterpriseLogon } from './auth/SapEnterpriseLogon';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -321,6 +322,18 @@ export const LoginGate: React.FC<LoginGateProps> = ({
     // Instant fallback for preview convenience
     handleInstantUnlock(roleName, label);
   };
+
+  // When login is accessed from the website (no dedicated company URL parameter ?company=... or ?cid=...),
+  // render the authentic SAP Enterprise Logon screen!
+  // Dedicated customer links (with dedicatedId) remain untouched with their custom workspace portal.
+  if (!dedicatedId) {
+    return (
+      <SapEnterpriseLogon
+        onUnlock={onUnlock}
+        onBackToWebsite={onBackToLanding}
+      />
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col justify-between overflow-y-auto overflow-x-hidden selection:bg-blue-600 selection:text-white font-sans">

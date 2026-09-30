@@ -49,7 +49,11 @@ import {
   getOfficeNetworkConfig, 
   saveOfficeNetworkConfig 
 } from '../services/employeeStaffService';
-import { getActiveCompanyId } from '../services/supabaseTenantService';
+import { 
+  getActiveCompanyId, 
+  getAppBaseDomain, 
+  getCompanyDedicatedUrl 
+} from '../services/supabaseTenantService';
 import { EzeeErpLogo } from './common/EzeeErpLogo';
 import { TerminalConfig, Branch } from '../types';
 import { OfficeNetworkSecurityConfig } from '../types/staffPortal';
@@ -150,17 +154,15 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
   const activeTerminalsCount = terminals.filter(t => t.isActive).length;
   const isAtLimit = maxLimit > 0 && activeTerminalsCount >= maxLimit;
 
-  // Base URL calculation
+  // Base URL calculation with domain selector
+  const [usePreviewDomain, setUsePreviewDomain] = useState<boolean>(false);
+
   const getBaseAppUrl = () => {
-    if (typeof window === 'undefined') return 'https://pos.store';
-    const origin = window.location.origin;
-    const pathname = window.location.pathname;
-    return `${origin}${pathname}`;
+    return getAppBaseDomain(usePreviewDomain);
   };
 
   const getCompanyAppUrl = () => {
-    const base = getBaseAppUrl();
-    return currentCompanyId ? `${base}?company=${currentCompanyId}` : base;
+    return getCompanyDedicatedUrl(currentCompanyId || '', usePreviewDomain);
   };
 
   const generateLink = (counter: string, role: string, view: string = 'pos', branchId?: string) => {
@@ -171,7 +173,7 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
     if (role) params.set('role', role);
     if (view && view !== 'dashboard') params.set('view', view);
     if (branchId) params.set('branch', branchId);
-    return `${base}?${params.toString()}`;
+    return `${base}/?${params.toString()}`;
   };
 
   const handleCopy = (key: string, text: string) => {
@@ -600,9 +602,32 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
                     {/* URL & Features */}
                     <div className="md:col-span-2 space-y-2.5">
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          Direct Client Access URL:
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[11px] font-bold text-slate-700">
+                            Direct Client Access URL:
+                          </label>
+                          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => setUsePreviewDomain(false)}
+                              className={`px-2 py-0.5 rounded-md font-bold transition cursor-pointer ${
+                                !usePreviewDomain ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                              }`}
+                            >
+                              🌐 drukerp.com (Production)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setUsePreviewDomain(true)}
+                              className={`px-2 py-0.5 rounded-md font-bold transition cursor-pointer ${
+                                usePreviewDomain ? 'bg-indigo-600 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                              }`}
+                              title="Preview sandbox URL for local testing"
+                            >
+                              Preview Sandbox
+                            </button>
+                          </div>
+                        </div>
                         <div className="flex items-center gap-2">
                           <input
                             type="text"
