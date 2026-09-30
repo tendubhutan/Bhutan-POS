@@ -27,12 +27,12 @@ export const DrukErpLogo: React.FC<DrukErpLogoProps> = ({
     xl: { text: 'text-4xl sm:text-5xl', sub: 'text-sm sm:text-base' }
   };
 
-  // If variant is full on normal/light background, we can directly render the official logo asset
+  // If variant is full on normal/light background, we directly render the official high-resolution logo PNG
   if (variant === 'full') {
     return (
       <div className={`inline-flex items-center text-left select-none ${className}`}>
         <img 
-          src="/druk_erp_logo.svg" 
+          src="/druk_erp_logo.png" 
           alt="Druk ERP - Everything Your Business Needs, in One Place." 
           className={`${heightMap[size]} w-auto object-contain transition-transform hover:scale-102 duration-200`}
         />
