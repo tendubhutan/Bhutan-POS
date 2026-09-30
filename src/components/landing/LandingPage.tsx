@@ -366,10 +366,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-amber-400 selection:text-slate-950">
+    <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-sky-400 selection:text-slate-950">
       
-      {/* Top Clean Header (Odoo style) */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80">
+      {/* Top Clean Header */}
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 sm:h-20 flex items-center justify-between">
           
           {/* Brand Logo */}
@@ -379,25 +379,25 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
 
           {/* Center Nav Links */}
           <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
-            <a href="#apps" className="hover:text-amber-600 transition-colors">All Apps</a>
+            <a href="#apps" className="hover:text-blue-600 transition-colors">All Apps</a>
             <button 
               type="button" 
               onClick={() => setSelectedApp(APPS[0])} 
-              className="hover:text-amber-600 transition-colors cursor-pointer"
+              className="hover:text-blue-600 transition-colors cursor-pointer"
             >
               DRC Tax
             </button>
             <button 
               type="button" 
               onClick={() => setSelectedApp(APPS[3])} 
-              className="hover:text-amber-600 transition-colors cursor-pointer"
+              className="hover:text-blue-600 transition-colors cursor-pointer"
             >
               Restaurant
             </button>
             <button 
               type="button" 
               onClick={() => setShowDemoModal(true)} 
-              className="hover:text-amber-600 transition-colors cursor-pointer"
+              className="hover:text-blue-600 transition-colors cursor-pointer"
             >
               Book Demo
             </button>
@@ -408,7 +408,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
             <button
               type="button"
               onClick={onOpenLogin}
-              className="text-xs sm:text-sm font-bold text-slate-700 hover:text-amber-600 px-3 py-2 transition-colors cursor-pointer"
+              className="text-xs sm:text-sm font-bold text-slate-700 hover:text-blue-600 px-3 py-2 transition-colors cursor-pointer"
             >
               Sign In
             </button>
@@ -416,7 +416,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
             <button
               type="button"
               onClick={onOpenLogin}
-              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-[#714b67] hover:bg-[#5a3a52] text-white font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-blue-700 to-sky-500 hover:from-blue-700 hover:to-sky-600 text-white font-black text-xs sm:text-sm shadow-md shadow-blue-500/20 transition-all cursor-pointer"
             >
               <LogIn className="w-4 h-4" />
               <span>Launch ERP</span>
@@ -425,8 +425,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
         </div>
       </header>
 
-      {/* Hero Section (Odoo Inspired Typography & Playful Layout) */}
-      <section className="relative pt-12 pb-16 sm:pt-16 sm:pb-20 text-center overflow-hidden">
+      {/* Hero Section (Bright, Clean, Illuminated) */}
+      <section className="relative pt-12 pb-16 sm:pt-16 sm:pb-20 text-center overflow-hidden bg-gradient-to-b from-sky-50/50 via-white to-slate-50/50">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           
           {/* Main Headline */}
@@ -458,7 +458,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
             </span>
           </h1>
 
-          <p className="mt-6 text-base sm:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
+          <p className="mt-6 text-base sm:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed font-medium">
             Click any app below to explore features. Built specifically for businesses in Bhutan — from upload-ready DRC GST filings to restaurant QR ordering and mobile staff attendance.
           </p>
 
@@ -467,7 +467,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
             <button
               type="button"
               onClick={onOpenLogin}
-              className="px-6 sm:px-8 py-3 sm:py-3.5 rounded-xl bg-[#714b67] hover:bg-[#5a3a52] text-white font-extrabold text-sm sm:text-base shadow-lg transition-transform hover:-translate-y-0.5 cursor-pointer flex items-center gap-2"
+              className="px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl bg-gradient-to-r from-blue-600 via-blue-700 to-sky-500 hover:from-blue-700 hover:to-sky-600 text-white font-extrabold text-sm sm:text-base shadow-xl shadow-blue-500/25 transition-transform hover:-translate-y-0.5 cursor-pointer flex items-center gap-2"
             >
               <span>Launch ERP · Client Login</span>
               <ArrowRight className="w-4 h-4" />
@@ -476,18 +476,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
             <button
               type="button"
               onClick={() => setShowDemoModal(true)}
-              className="px-5 sm:px-7 py-3 sm:py-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-sm sm:text-base transition-colors cursor-pointer"
+              className="px-5 sm:px-7 py-3.5 sm:py-4 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 font-bold text-sm sm:text-base shadow-xs transition-colors cursor-pointer"
             >
               Meet an Advisor / Demo
             </button>
 
-            {/* Playful Handwritten Price Annotation Arrow (Odoo style) */}
+            {/* Playful Handwritten Price Annotation Arrow */}
             <div className="hidden lg:flex items-center gap-2 absolute -right-20 top-4 text-left pointer-events-none">
-              <svg className="w-12 h-12 text-[#714b67] -rotate-12" viewBox="0 0 50 50" fill="none">
+              <svg className="w-12 h-12 text-blue-600 -rotate-12" viewBox="0 0 50 50" fill="none">
                 <path d="M 10 40 Q 25 10 45 15" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" fill="none" />
                 <path d="M 38 8 L 46 15 L 39 23" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <div className="font-serif italic text-sm text-[#714b67] font-black leading-tight">
+              <div className="font-serif italic text-sm text-blue-700 font-black leading-tight">
                 Nu. 1,500 / month<br />
                 <span className="text-xs font-normal text-slate-500">for ALL apps included!</span>
               </div>
@@ -639,7 +639,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
                   setSelectedApp(null);
                   onOpenLogin();
                 }}
-                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#714b67] hover:bg-[#5a3a52] text-white font-extrabold text-xs shadow-md transition cursor-pointer flex items-center justify-center gap-2"
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-700 hover:to-sky-600 text-white font-extrabold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-2"
               >
                 <span>Launch {selectedApp.name} in ERP</span>
                 <ArrowRight className="w-4 h-4" />
@@ -767,7 +767,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
 
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-xl bg-[#714b67] hover:bg-[#5a3a52] text-white font-extrabold text-xs shadow-md transition cursor-pointer flex items-center justify-center gap-2"
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-sky-500 hover:from-blue-700 hover:to-sky-600 text-white font-extrabold text-xs shadow-md shadow-blue-500/20 transition cursor-pointer flex items-center justify-center gap-2"
                 >
                   <Send className="w-4 h-4" />
                   <span>Submit Demo Request</span>

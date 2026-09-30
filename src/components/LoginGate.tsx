@@ -341,16 +341,16 @@ export const LoginGate: React.FC<LoginGateProps> = ({
           
           {/* MOBILE ONLY: Top Logo (sits above login card on mobile screens) */}
           <div className="lg:hidden w-full max-w-md mx-auto text-left">
-            <div className="bg-slate-900/60 backdrop-blur-md p-4 rounded-3xl border border-white/20 shadow-xl">
-              <EzeeErpLogo size="lg" variant="light" />
+            <div className="bg-white/95 backdrop-blur-md p-4 rounded-3xl border border-slate-200/90 shadow-xl">
+              <DrukErpLogo size="md" variant="full" />
             </div>
           </div>
 
-          {/* DESKTOP ONLY LEFT PANEL: Ezee ERP Brand Showcase & Feature Badges Grid */}
+          {/* DESKTOP ONLY LEFT PANEL: Druk ERP Brand Showcase & Feature Badges Grid */}
           <div className="hidden lg:flex lg:col-span-6 flex-col space-y-6 text-left">
-            {/* Top Logo with Light Variant for High Contrast on Scenic Backdrop */}
-            <div className="flex items-center justify-between flex-wrap gap-4 pt-2 bg-slate-900/60 backdrop-blur-md p-4 rounded-3xl border border-white/20 shadow-xl max-w-lg">
-              <EzeeErpLogo size="lg" variant="light" />
+            {/* Top Logo with Pure White Card for High Definition Clarity */}
+            <div className="flex items-center justify-between flex-wrap gap-4 pt-2 bg-white/95 backdrop-blur-md p-4 sm:p-5 rounded-3xl border border-slate-200/90 shadow-xl max-w-lg">
+              <DrukErpLogo size="lg" variant="full" />
             </div>
 
             {/* Feature Modules Grid (6 Colorful Badges - 2 rows x 3 cols) */}
