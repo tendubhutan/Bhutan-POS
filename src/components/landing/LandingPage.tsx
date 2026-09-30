@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
+import { DrukErpLogo } from '../common/DrukErpLogo';
 import {
-  Building2,
-  ShieldCheck,
   Receipt,
   ShoppingCart,
   Utensils,
   Smartphone,
-  Laptop,
   QrCode,
   Boxes,
   FileSpreadsheet,
@@ -15,40 +13,342 @@ import {
   ArrowRight,
   Clock,
   Users,
-  Award,
   Sparkles,
   Calculator,
   ScanLine,
   Share2,
   MessageCircle,
-  Mail,
   Phone,
   MapPin,
   Check,
   ChevronRight,
   Layers,
-  Cpu,
   Pill,
   Wrench,
   Shirt,
-  BadgePercent,
-  Lock,
   LogIn,
   BarChart3,
-  Database,
   Calendar,
   Send,
   ExternalLink,
-  ChevronDown
+  X,
+  BadgeDollarSign,
+  Building2,
+  ShieldCheck,
+  HelpCircle,
+  Laptop
 } from 'lucide-react';
+
+interface AppDetail {
+  id: string;
+  name: string;
+  category: string;
+  color: string; // Gradient Tailwind classes
+  icon: React.ElementType;
+  tagline: string;
+  description: string;
+  features: string[];
+  bhutanBenefit: string;
+}
+
+const APPS: AppDetail[] = [
+  {
+    id: 'drc-tax',
+    name: 'DRC Tax & GST',
+    category: 'Finance & Compliance',
+    color: 'from-emerald-500 to-teal-600',
+    icon: ShieldCheck,
+    tagline: 'Upload-ready GST & TDS files matching DRC portal formats',
+    description: 'Eliminate manual tax reconciliation and spreadsheets. DrukERP exports standardized schedules verified against Bhutan Revenue & Customs (DRC / BURS) specifications.',
+    features: [
+      'GST Output Tax Return Schedule with customer TPN/GSTIN, taxable values, and rate breakdown',
+      'GST Input Tax Credit Reconciliation with purchase verification and Bill of Entry matching',
+      'TDS Withholding Tax Schedule (2%, 3%, 5%) with automated deduction & certificate generation',
+      'Monthly Salary Schedule for PIT filing with department-wise payroll export'
+    ],
+    bhutanBenefit: 'Files export in 1-click to Excel (.xlsx) ready for direct submission to the DRC online portal without reformatting.'
+  },
+  {
+    id: 'pos',
+    name: 'Point of Sale',
+    category: 'Sales & Retail',
+    color: 'from-amber-500 to-orange-600',
+    icon: ShoppingCart,
+    tagline: 'High-speed barcode checkout with offline-first reliability',
+    description: 'Built for checkout counters requiring 60+ customer bills per hour. Operates seamlessly offline during internet blackouts and syncs automatically when reconnected.',
+    features: [
+      'Dual customer mode: Walk-in Cash or Credit customers with TPN, phone, and address',
+      'Instant barcode scanner recognition and keyboard shortcut speed (Alt+P, Alt+S, F2)',
+      'Multiple payment modes: Cash, mBoB / B-Mobile QR, Credit, and split tenders',
+      'Thermal receipt printing (58mm / 80mm) with customizable Bhutanese greetings and tax summaries'
+    ],
+    bhutanBenefit: 'Store cashiers never get blocked when local internet drops in Thimphu or outstations.'
+  },
+  {
+    id: 'accounting',
+    name: 'Accounting',
+    category: 'Finance & Compliance',
+    color: 'from-blue-600 to-indigo-600',
+    icon: Calculator,
+    tagline: 'Double-entry ledgers with intelligent auto-narration',
+    description: 'Complete double-entry accounting engine with continuous-loop voucher entry. Features intelligent narration that writes transaction descriptions automatically.',
+    features: [
+      'Intelligent Voucher Narration Engine: synthesizes accurate narration from transaction context',
+      'Context-Aware Ledger Filter: prevents cashiers from selecting incorrect expense or asset accounts',
+      'Real-time Balance Sheet, Profit & Loss, Trial Balance, and Cash/Bank Daybooks',
+      'Bank Reconciliation with transaction reference ID tracking'
+    ],
+    bhutanBenefit: 'Accountants get Tally-style rapid data entry with modern cloud security and live reports.'
+  },
+  {
+    id: 'restaurant',
+    name: 'Restaurant & QR',
+    category: 'Hospitality',
+    color: 'from-rose-500 to-orange-500',
+    icon: Utensils,
+    tagline: 'Table dine-in, mobile waiter captain app, and QR self-ordering',
+    description: 'Transform your restaurant, cafe, or bar operations. Waiters take orders tableside on their smartphones, while guests can scan table QR codes to browse and order directly.',
+    features: [
+      'Visual Table Floor Plan with live status: Vacant, Occupied, Billed, and Table Transfer',
+      'Smartphone Captain App: Waiters punch orders at tables with instant Kitchen Order Ticket (KOT) printing',
+      'Contactless QR Ordering: Diners scan table QR codes on their phones to place orders directly',
+      'Split billing, service charge configuration, and multi-counter bar/kitchen routing'
+    ],
+    bhutanBenefit: 'Speeds up food service and eliminates wrong orders during busy dinner rushes.'
+  },
+  {
+    id: 'inventory',
+    name: 'Inventory & Stock',
+    category: 'Supply Chain',
+    color: 'from-violet-600 to-purple-600',
+    icon: Boxes,
+    tagline: 'Multi-unit conversions and automatic stock valuation',
+    description: 'Full visibility across warehouse stock. Handles multi-unit conversions like Carton to Box to Piece with automated cost and selling price adjustments during billing.',
+    features: [
+      'Multi-unit conversions: Master Unit to Sub-units (e.g. 1 Carton = 12 Boxes = 144 Pieces)',
+      'Real-time stock valuation using Moving Weighted Average / FIFO',
+      'Low stock warning alerts and automated reorder purchase requisitions',
+      'Physical stock verification and variance reconciliation ledger'
+    ],
+    bhutanBenefit: 'Never oversell or lose track of stock when breaking wholesale bulk cartons into retail pieces.'
+  },
+  {
+    id: 'electronics',
+    name: 'Electronics & IMEI',
+    category: 'Specialized Verticals',
+    color: 'from-sky-500 to-blue-600',
+    icon: Smartphone,
+    tagline: 'Serial number and IMEI tracking for phones and appliances',
+    description: 'Designed specifically for mobile showrooms, computer shops, and electronics dealers. Tracks every individual unit by its unique Serial / IMEI number from purchase to sale.',
+    features: [
+      'Mandatory or optional IMEI/Serial tracking at Goods Receipt and POS billing',
+      'Customer warranty tracking and repair/replacement service history ledger',
+      'Barcode scanner IMEI capture to prevent typing mistakes on 15-digit numbers',
+      'Bulk import of device serial numbers directly from distributor Excel invoices'
+    ],
+    bhutanBenefit: 'Instant warranty verification when customers bring devices back for service.'
+  },
+  {
+    id: 'pharmacy',
+    name: 'Pharmacy & Batch',
+    category: 'Specialized Verticals',
+    color: 'from-emerald-600 to-green-700',
+    icon: Pill,
+    tagline: 'Batch numbers, expiry date tracking, and FEFO automated dispatch',
+    description: 'Strict pharmaceutical inventory compliance. Ensures medicines are tracked by batch number and dispatched using First Expiry, First Out (FEFO) logic to prevent expired stock losses.',
+    features: [
+      'Batch Number & Expiry Date tracking on all pharmaceutical products',
+      'FEFO Automated Dispatch: cashier is automatically prompted to dispense the earliest expiring batch',
+      'Near-Expiry Warning Dashboard showing stock expiring within 30, 60, or 90 days',
+      'Detailed batch-wise sales and purchase audit trails for health regulatory inspections'
+    ],
+    bhutanBenefit: 'Protects patient health and eliminates financial losses from expired medicine write-offs.'
+  },
+  {
+    id: 'spares',
+    name: 'Auto Spares & Parts',
+    category: 'Specialized Verticals',
+    color: 'from-amber-600 to-orange-700',
+    icon: Wrench,
+    tagline: 'Part numbers, rack/bin locations, and vehicle compatibility',
+    description: 'Engineered for auto spare parts stores, workshops, and hardware distributors. Quickly locate parts in sprawling warehouses by Part Number and Rack/Bin locations.',
+    features: [
+      'OEM Part Number & Alternative Part Number cross-referencing for rapid search',
+      'Warehouse Rack, Shelf, and Bin Location tracking printed directly on pick slips',
+      'Vehicle Make, Model, and Year compatibility search during counter inquiries',
+      'Dead stock analysis to identify slow-moving vehicle parts'
+    ],
+    bhutanBenefit: 'Warehouse staff find the exact spare part in seconds instead of searching shelves manually.'
+  },
+  {
+    id: 'garments',
+    name: 'Garments & Footwear',
+    category: 'Specialized Verticals',
+    color: 'from-pink-500 to-rose-600',
+    icon: Shirt,
+    tagline: 'Color, Size, and Style matrix with variant barcode tags',
+    description: 'Matrix-based inventory for fashion retail, apparel, and shoe stores. Enter 50 size/color variations on a single screen and print custom price tags with barcodes.',
+    features: [
+      'Variant Matrix: track products across Color, Size, Style, and Brand attributes',
+      'Matrix Bulk Stock Entry: enter quantities for all sizes and colors in a single grid',
+      'Custom Barcode Sticker Printing with Brand, Size, Color, and MRP',
+      'Size-wise sales breakdown to identify fast-selling sizes for reordering'
+    ],
+    bhutanBenefit: 'Simplifies apparel inventory without having to create dozens of separate product items.'
+  },
+  {
+    id: 'hr-payroll',
+    name: 'HR & Payroll',
+    category: 'Human Resources',
+    color: 'from-indigo-500 to-purple-600',
+    icon: Users,
+    tagline: 'Automated salary calculations, PF, and PIT deductions',
+    description: 'Complete employee management and payroll processing. Automatically computes Basic Salary, Allowances, Provident Fund (PF), and PIT tax deductions.',
+    features: [
+      'One-click monthly payroll processing with employee master profiles',
+      'Automated deduction of Employee PF (5-10%), Employer Contribution, and PIT tax brackets',
+      'Printable and WhatsApp-shareable monthly employee payslips',
+      'Monthly Salary Schedule export formatted for direct DRC tax upload'
+    ],
+    bhutanBenefit: 'Disburse staff salaries and generate DRC monthly salary tax schedules in minutes.'
+  },
+  {
+    id: 'attendance',
+    name: 'GPS Attendance',
+    category: 'Human Resources',
+    color: 'from-teal-500 to-emerald-600',
+    icon: Clock,
+    tagline: 'Smartphone clock-in/out with GPS location geofencing',
+    description: 'Empower staff to clock in and out from their own smartphones. Geo-fencing coordinates ensure employees are physically present on store premises before clocking in.',
+    features: [
+      'Staff Mobile Clock-In / Clock-Out from any smartphone browser without installing apps',
+      'GPS Location Geofencing: verifies staff are inside the store perimeter',
+      'Shift tracking, late arrivals, overtime, and leave management',
+      'Direct integration with the payroll engine for automated attendance salary deductions'
+    ],
+    bhutanBenefit: 'Eliminates expensive biometric hardware and prevents proxy buddy-punching.'
+  },
+  {
+    id: 'barcode',
+    name: 'Barcode Studio',
+    category: 'Retail & Warehouse',
+    color: 'from-cyan-500 to-blue-600',
+    icon: ScanLine,
+    tagline: 'Custom barcode generator for thermal rolls and A4 sticker sheets',
+    description: 'Generate and print custom product barcode stickers. Supports standard thermal barcode printers (roll format) as well as regular office laser printers using multi-column A4 sticker sheets.',
+    features: [
+      'Supports Code128, EAN-13, and custom internal store barcode formats',
+      'Flexible label designer: include Item Name, Price, Size, Expiry, and Company Logo',
+      'Thermal printer presets (e.g. 50x25mm, 38x25mm) and multi-column A4 sticker sheets (24/30/40 up)',
+      'Batch printing directly from Purchase bills or inventory master'
+    ],
+    bhutanBenefit: 'Tag unbarcoded goods instantly without buying third-party labeling software.'
+  },
+  {
+    id: 'pricing',
+    name: 'Wholesale & Retail',
+    category: 'Sales & Retail',
+    color: 'from-yellow-500 to-amber-600',
+    icon: BadgeDollarSign,
+    tagline: 'Dual price tiers for wholesale distributors and retail customers',
+    description: 'Operate wholesale distribution and retail walk-in sales from the same system. Configure dual pricing tiers with minimum quantity triggers and customer-specific price lists.',
+    features: [
+      'Dual pricing per product: Wholesale Rate vs Retail Walk-in Rate',
+      'Automatic Wholesale Rate trigger when quantity exceeds minimum wholesale threshold',
+      'Customer-specific credit limits, discounts, and payment terms (e.g. Net 15, Net 30)',
+      'Price change history audit to monitor margin changes over time'
+    ],
+    bhutanBenefit: 'Serve both retail walk-in shoppers and wholesale bulk re-sellers from one system.'
+  },
+  {
+    id: 'multi-branch',
+    name: 'Multi-Branch Sync',
+    category: 'Enterprise Scaling',
+    color: 'from-blue-700 to-indigo-800',
+    icon: Building2,
+    tagline: 'Connect Head Office with Phuntsholing, Paro & Outstations',
+    description: 'Scale from a single shop to a nationwide chain. Maintain centralized inventory and consolidated accounts while providing each branch with dedicated voucher numbering.',
+    features: [
+      'Dedicated branch prefixes: HQ-POS-1 (Thimphu), PHU-POS-1 (Phuntsholing), PAR-POS-1 (Paro)',
+      'Branch-to-branch Stock Transfer with in-transit tracking and receipt confirmation',
+      'Branch-isolated inventory and sales reporting with consolidated HQ financial statements',
+      'Staff branch assignment: locks cashier access to their authorized branch only'
+    ],
+    bhutanBenefit: 'Complete multi-location control across Bhutan with zero invoice number collisions.'
+  },
+  {
+    id: 'whatsapp-share',
+    name: 'WhatsApp & Email',
+    category: 'Communication',
+    color: 'from-green-500 to-emerald-600',
+    icon: MessageCircle,
+    tagline: '1-click direct sharing of invoices, receipts, and ledger statements',
+    description: 'Go completely paperless. Send professional PDF tax invoices, thermal receipts, and customer account statements directly to your client’s WhatsApp or Email with a single click.',
+    features: [
+      '1-Click WhatsApp share: opens WhatsApp with pre-composed professional message and invoice link',
+      'Direct Email dispatch with attached PDF tax invoices and receipts',
+      'Send outstanding balance payment reminders directly to customer phones',
+      'Thermal receipt digital link sharing for paperless eco-friendly checkout'
+    ],
+    bhutanBenefit: 'Customers in Bhutan love receiving bills directly on WhatsApp on their phones.'
+  },
+  {
+    id: 'excel-import',
+    name: 'Excel Import / Export',
+    category: 'Productivity',
+    color: 'from-teal-600 to-green-700',
+    icon: FileSpreadsheet,
+    tagline: '1-click bulk import of products, serials, and opening balances',
+    description: 'Migrate your entire business in minutes. Import thousands of items with barcodes, serial numbers, rack numbers, wholesale rates, and opening balances in 1 second from Excel.',
+    features: [
+      'Bulk Excel item import with template download and validation check',
+      'Imports barcodes, categories, cost prices, selling rates, and serial numbers in bulk',
+      '1-Click Export of all financial reports, stock statements, and registers to Excel (.xlsx)',
+      'Zero downtime migration when switching from legacy software or paper registers'
+    ],
+    bhutanBenefit: 'Onboard your entire store catalog in minutes without manual typing.'
+  },
+  {
+    id: 'assets',
+    name: 'Fixed Assets',
+    category: 'Finance & Compliance',
+    color: 'from-rose-600 to-red-700',
+    icon: Layers,
+    tagline: 'Asset registry, depreciation schedules, and custodian tracking',
+    description: 'Track your organization’s physical capital investments. Manage furniture, computers, vehicles, and machinery with automated Straight Line (SLM) and Written Down (WDV) depreciation.',
+    features: [
+      'Comprehensive Fixed Asset Register with serial numbers, warranty, and purchase bills',
+      'Automated Depreciation Schedule calculation (SLM / WDV) feeding balance sheet',
+      'Asset custodian assignment: track which employee or department holds each asset',
+      'Asset disposal, scrap, and write-off ledger tracking'
+    ],
+    bhutanBenefit: 'Clean, auditable asset records required by company auditors and tax authorities.'
+  },
+  {
+    id: 'tasks',
+    name: 'Notes & Tasks',
+    category: 'Productivity',
+    color: 'from-amber-600 to-yellow-600',
+    icon: FileText,
+    tagline: 'Internal team assignments, reminders, and payment follow-ups',
+    description: 'Keep your team coordinated and accountable. Assign customer payment collection follow-ups, physical stock audit tasks, and internal reminders with due dates and priority tags.',
+    features: [
+      'Create and assign tasks to specific employees with deadlines and priority levels',
+      'Link tasks directly to customer ledgers or unpaid invoices for collection follow-ups',
+      'Internal team notes and communication trail per transaction',
+      'Activity status tracking: Pending, In-Progress, Completed, and Overdue'
+    ],
+    bhutanBenefit: 'Ensure critical store duties and customer credit follow-ups never slip through the cracks.'
+  }
+];
 
 interface LandingPageProps {
   onOpenLogin: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
-  const [activeVertical, setActiveVertical] = useState<'retail' | 'restaurant' | 'electronics' | 'pharmacy' | 'spares' | 'garments'>('retail');
-  const [activeTaxTab, setActiveTaxTab] = useState<'gst_output' | 'gst_input' | 'tds' | 'salary'>('gst_output');
+  const [selectedApp, setSelectedApp] = useState<AppDetail | null>(null);
+  const [showDemoModal, setShowDemoModal] = useState(false);
   const [demoFormData, setDemoFormData] = useState({
     name: '',
     businessName: '',
@@ -59,81 +359,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
   });
   const [demoSubmitted, setDemoSubmitted] = useState(false);
 
-  const verticals = [
-    {
-      id: 'retail' as const,
-      label: 'Retail & Supermarkets',
-      icon: ShoppingCart,
-      tagline: 'High-speed POS, wholesale & retail dual pricing, and automated multi-units',
-      highlights: [
-        'Multi-Unit Conversion: Automatically convert Carton → Box → Piece with instantaneous rate adjustments',
-        'Wholesale & Retail Dual Price Tiers for B2B bulk buyers vs walk-in retail customers',
-        'High-Speed Thermal Barcode Billing capable of 60+ customer checkouts per hour',
-        'Capture both Walk-in Cash & Credit Customer profiles with TPN/GSTIN, phone, and balance limits'
-      ]
-    },
-    {
-      id: 'restaurant' as const,
-      label: 'Restaurants & Bars',
-      icon: Utensils,
-      tagline: 'Table-wise dine-in, mobile waiter captain app, and customer QR self-ordering',
-      highlights: [
-        'Interactive Table Floor Plan with live color-coded status (Vacant, Occupied, Billed)',
-        'Smartphone Mobile Waiter App: Captains take food & drink orders tableside on their phones',
-        'Contactless Customer QR Ordering: Diners scan table QR codes to browse menu and order',
-        'Instant Kitchen Order Ticket (KOT) multi-printer dispatch and Kitchen Display integration'
-      ]
-    },
-    {
-      id: 'electronics' as const,
-      label: 'Electronics & Mobiles',
-      icon: Smartphone,
-      tagline: 'Serial number and IMEI tracking for phones, laptops, and appliances',
-      highlights: [
-        'Individual IMEI & Serial Number registration during Goods Receipt and POS billing',
-        'Comprehensive Warranty Tracking and device repair/replacement history ledger',
-        'Barcode scanner instant IMEI identification without manual typing errors',
-        'Bulk import of device serial numbers directly from supplier Excel shipments'
-      ]
-    },
-    {
-      id: 'pharmacy' as const,
-      label: 'Pharmacies & Healthcare',
-      icon: Pill,
-      tagline: 'Batch number & expiry date control with FEFO automated dispatch',
-      highlights: [
-        'Batch Number & Expiry Date tracking for every medicine, syrup, and healthcare product',
-        'FEFO (First Expiry, First Out) dispatch prompt preventing expired shelf inventory',
-        'Near-Expiry Warning Dashboard showing stock expiring within 30, 60, or 90 days',
-        'Detailed Batch-wise stock reports required by drug regulatory authorities'
-      ]
-    },
-    {
-      id: 'spares' as const,
-      label: 'Auto Spares & Hardware',
-      icon: Wrench,
-      tagline: 'Part number & rack/bin location management for fast warehouse picking',
-      highlights: [
-        'OEM Part Number & Alternative Part Number cross-referencing for rapid search',
-        'Warehouse Rack, Shelf, and Bin Location tracking printed directly on pick-lists',
-        'Vehicle Make & Model compatibility lookup during customer counter inquiries',
-        'Fast physical stock verification and audit discrepancy reconciliation'
-      ]
-    },
-    {
-      id: 'garments' as const,
-      label: 'Garments & Footwear',
-      icon: Shirt,
-      tagline: 'Color, Size, and Style matrix management with dedicated variant barcodes',
-      highlights: [
-        'Comprehensive Variant Matrix: track inventory across Color, Size, and Style codes',
-        'Matrix Bulk Stock Entry: enter 50 size/color variations in a single screen in seconds',
-        'Instant Barcode Sticker Printing with customized tags displaying Brand, Size & Price',
-        'Seasonal stock aging and category margin reports'
-      ]
-    }
-  ];
-
   const handleDemoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!demoFormData.phone || !demoFormData.name) return;
@@ -141,817 +366,440 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950">
-      {/* Top Header / Sticky Navigation */}
-      <header className="sticky top-0 z-50 bg-slate-950/90 backdrop-blur-md border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+    <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-amber-400 selection:text-slate-950">
+      
+      {/* Top Clean Header (Odoo style) */}
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 sm:h-20 flex items-center justify-between">
+          
           {/* Brand Logo */}
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-amber-500 via-orange-600 to-amber-400 p-0.5 shadow-lg shadow-amber-500/20">
-              <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-                <span className="font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">D</span>
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-2xl font-black tracking-tight text-white">Druk</span>
-                <span className="text-2xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">ERP</span>
-                <span className="ml-2 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                  Bhutan Edition
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 font-medium hidden sm:block">
-                Enterprise Cloud POS &amp; Accounting ERP
-              </p>
-            </div>
+          <div className="flex items-center">
+            <DrukErpLogo size="md" variant="full" />
           </div>
 
-          {/* Nav Links */}
-          <nav className="hidden lg:flex items-center gap-7 text-sm font-semibold text-slate-300">
-            <a href="#features" className="hover:text-amber-400 transition-colors">Core Features</a>
-            <a href="#tax-compliance" className="hover:text-amber-400 transition-colors">DRC &amp; GST Tax</a>
-            <a href="#industries" className="hover:text-amber-400 transition-colors">Industry Solutions</a>
-            <a href="#restaurant" className="hover:text-amber-400 transition-colors">Restaurant &amp; QR</a>
-            <a href="#demo" className="hover:text-amber-400 transition-colors">Request Demo</a>
+          {/* Center Nav Links */}
+          <nav className="hidden md:flex items-center gap-8 text-sm font-semibold text-slate-600">
+            <a href="#apps" className="hover:text-amber-600 transition-colors">All Apps</a>
+            <button 
+              type="button" 
+              onClick={() => setSelectedApp(APPS[0])} 
+              className="hover:text-amber-600 transition-colors cursor-pointer"
+            >
+              DRC Tax
+            </button>
+            <button 
+              type="button" 
+              onClick={() => setSelectedApp(APPS[3])} 
+              className="hover:text-amber-600 transition-colors cursor-pointer"
+            >
+              Restaurant
+            </button>
+            <button 
+              type="button" 
+              onClick={() => setShowDemoModal(true)} 
+              className="hover:text-amber-600 transition-colors cursor-pointer"
+            >
+              Book Demo
+            </button>
           </nav>
 
-          {/* Action CTAs */}
+          {/* Header Action Buttons */}
           <div className="flex items-center gap-3">
-            <a
-              href="#demo"
-              className="hidden sm:inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-slate-200 border border-slate-700 hover:border-slate-500 hover:bg-slate-900 transition-colors"
-            >
-              <Phone className="w-3.5 h-3.5 text-amber-400" />
-              <span>Contact Support</span>
-            </a>
             <button
               type="button"
               onClick={onOpenLogin}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-sm shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition-all cursor-pointer"
+              className="text-xs sm:text-sm font-bold text-slate-700 hover:text-amber-600 px-3 py-2 transition-colors cursor-pointer"
+            >
+              Sign In
+            </button>
+
+            <button
+              type="button"
+              onClick={onOpenLogin}
+              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-[#714b67] hover:bg-[#5a3a52] text-white font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer"
             >
               <LogIn className="w-4 h-4" />
-              <span>Client Login</span>
+              <span>Launch ERP</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative pt-12 pb-20 lg:pt-20 lg:pb-32 overflow-hidden">
-        {/* Subtle Background Glows */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute top-1/3 left-1/4 w-[300px] h-[300px] bg-orange-600/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          {/* Bhutan Tag Kicker */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-bold text-amber-400 mb-6 shadow-sm">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>DRC / BURS Tax Ready · Multi-Branch (Thimphu, Phuntsholing, Paro)</span>
-          </div>
-
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white max-w-5xl mx-auto leading-[1.15]">
-            Bhutan’s Premier Cloud ERP &amp; POS Built for Complete Business Control.
+      {/* Hero Section (Odoo Inspired Typography & Playful Layout) */}
+      <section className="relative pt-12 pb-16 sm:pt-16 sm:pb-20 text-center overflow-hidden">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          
+          {/* Main Headline */}
+          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold text-slate-900 tracking-tight leading-[1.15]">
+            All your business on{' '}
+            <span className="relative inline-block text-slate-900 whitespace-nowrap">
+              <span className="relative z-10 px-2 py-0.5">one platform.</span>
+              <span 
+                className="absolute inset-x-0 bottom-1 sm:bottom-2 h-7 sm:h-10 bg-amber-400/80 -rotate-1 rounded-sm -z-0" 
+                aria-hidden="true"
+              />
+            </span>
+            <br className="hidden sm:inline" />
+            <span className="font-serif italic font-bold text-slate-800">
+              Simple, efficient, yet{' '}
+              <span className="relative inline-block text-slate-900">
+                <span className="relative z-10">affordable!</span>
+                <svg 
+                  className="absolute left-0 -bottom-2 w-full h-3 text-sky-500" 
+                  viewBox="0 0 100 20" 
+                  preserveAspectRatio="none" 
+                  fill="none" 
+                  xmlns="http://www.w3.org/2000/svg"
+                  aria-hidden="true"
+                >
+                  <path d="M 0 12 Q 50 2 100 12" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+                </svg>
+              </span>
+            </span>
           </h1>
 
-          <p className="mt-6 text-base sm:text-lg lg:text-xl text-slate-300 max-w-3xl mx-auto leading-relaxed font-normal">
-            From <strong>ready-to-upload DRC GST &amp; TDS schedules</strong> to intelligent double-entry accounting, 
-            multi-unit inventory, mobile QR restaurant ordering, and smartphone GPS staff attendance — 
-            everything your Bhutanese enterprise needs under one unified roof.
+          <p className="mt-6 text-base sm:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
+            Click any app below to explore features. Built specifically for businesses in Bhutan — from upload-ready DRC GST filings to restaurant QR ordering and mobile staff attendance.
           </p>
 
-          {/* Primary CTAs */}
-          <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+          {/* Action Buttons */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:gap-4 relative">
             <button
               type="button"
               onClick={onOpenLogin}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-base shadow-xl shadow-amber-500/25 transition-transform hover:-translate-y-0.5 cursor-pointer"
+              className="px-6 sm:px-8 py-3 sm:py-3.5 rounded-xl bg-[#714b67] hover:bg-[#5a3a52] text-white font-extrabold text-sm sm:text-base shadow-lg transition-transform hover:-translate-y-0.5 cursor-pointer flex items-center gap-2"
             >
-              <LogIn className="w-5 h-5" />
-              <span>Launch ERP / Client Login</span>
+              <span>Launch ERP · Client Login</span>
               <ArrowRight className="w-4 h-4" />
             </button>
-            <a
-              href="#demo"
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-slate-600 font-bold text-base transition-colors"
-            >
-              <Calendar className="w-5 h-5 text-amber-400" />
-              <span>Request Free Demo &amp; Setup</span>
-            </a>
-          </div>
 
-          {/* Key Value Pill Highlights */}
-          <div className="mt-14 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto text-left">
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-              <div className="text-amber-400 font-black text-lg">100% DRC Ready</div>
-              <div className="text-xs text-slate-400 mt-1">Upload-ready GST Input/Output, TDS, and PIT Salary Schedules</div>
-            </div>
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-              <div className="text-emerald-400 font-black text-lg">Offline-First POS</div>
-              <div className="text-xs text-slate-400 mt-1">Billing never stops even during internet outages; auto-syncs when online</div>
-            </div>
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-              <div className="text-cyan-400 font-black text-lg">Multi-Branch Sync</div>
-              <div className="text-xs text-slate-400 mt-1">Independent series prefixes (HQ, PHU, PAR) with branch transfers</div>
-            </div>
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-              <div className="text-violet-400 font-black text-lg">Smart Mobile App</div>
-              <div className="text-xs text-slate-400 mt-1">Smartphone GPS attendance, waiter captain order taking, QR menus</div>
+            <button
+              type="button"
+              onClick={() => setShowDemoModal(true)}
+              className="px-5 sm:px-7 py-3 sm:py-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-sm sm:text-base transition-colors cursor-pointer"
+            >
+              Meet an Advisor / Demo
+            </button>
+
+            {/* Playful Handwritten Price Annotation Arrow (Odoo style) */}
+            <div className="hidden lg:flex items-center gap-2 absolute -right-20 top-4 text-left pointer-events-none">
+              <svg className="w-12 h-12 text-[#714b67] -rotate-12" viewBox="0 0 50 50" fill="none">
+                <path d="M 10 40 Q 25 10 45 15" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+                <path d="M 38 8 L 46 15 L 39 23" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <div className="font-serif italic text-sm text-[#714b67] font-black leading-tight">
+                Nu. 1,500 / month<br />
+                <span className="text-xs font-normal text-slate-500">for ALL apps included!</span>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Feature Showcase: DRC / BURS Tax & Compliance */}
-      <section id="tax-compliance" className="py-20 bg-slate-900 border-y border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-14">
-            <span className="text-xs font-black uppercase tracking-wider text-emerald-400">Bhutan Revenue Compliance</span>
-            <h2 className="text-3xl sm:text-4xl font-black text-white mt-2">
-              Ready-to-Upload DRC Tax &amp; GST Reports
+      {/* Interactive Odoo-Style App Icon Grid Section */}
+      <section id="apps" className="py-12 bg-slate-50/70 border-t border-slate-200/60">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          
+          <div className="text-center mb-10">
+            <span className="text-xs font-black uppercase tracking-wider text-amber-600 block">
+              18 Integrated Applications
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 mt-1">
+              Click any app to see its complete capabilities
             </h2>
-            <p className="text-slate-400 mt-3 text-sm sm:text-base">
-              Say goodbye to manual Excel reconciliations every tax filing deadline. DrukERP exports official, verified report formats ready for direct upload to the DRC online portal.
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Every app is interconnected. One single database, zero duplicate entries.
             </p>
           </div>
 
-          {/* Interactive Tax Tabs */}
-          <div className="flex flex-wrap items-center justify-center gap-2 p-1.5 bg-slate-950 rounded-2xl max-w-3xl mx-auto mb-10 border border-slate-800">
-            <button
-              onClick={() => setActiveTaxTab('gst_output')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeTaxTab === 'gst_output' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              GST Output Report
-            </button>
-            <button
-              onClick={() => setActiveTaxTab('gst_input')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeTaxTab === 'gst_input' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              GST Input Reconciliation
-            </button>
-            <button
-              onClick={() => setActiveTaxTab('tds')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeTaxTab === 'tds' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              TDS Withholding Schedule
-            </button>
-            <button
-              onClick={() => setActiveTaxTab('salary')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeTaxTab === 'salary' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Monthly Salary Schedule
-            </button>
-          </div>
-
-          {/* Tab Content Display */}
-          <div className="bg-slate-950 rounded-2xl border border-slate-800 p-6 sm:p-8 max-w-4xl mx-auto shadow-2xl">
-            {activeTaxTab === 'gst_output' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                      <FileSpreadsheet className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-white text-base">DRC GST Output Tax Return Schedule</h3>
-                      <p className="text-xs text-slate-400">Standardized B2B &amp; B2C sales register formatted for DRC upload</p>
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-black text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-3 py-1 rounded-lg">
-                    Format Verified
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-300 pt-2">
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span>Auto-segregates B2B Credit Sales with Customer TPN/GSTIN and retail Walk-in Cash receipts</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span>Calculates exact Taxable Value, Zero-Rated, Exempt, and standard GST slab rates</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span>1-Click Excel (.xlsx) export directly matching DRC file specifications</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span>Auditable invoice-by-invoice trail with branch identification</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTaxTab === 'gst_input' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
-                      <Receipt className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-white text-base">DRC GST Input Tax Credit Reconciliation</h3>
-                      <p className="text-xs text-slate-400">Purchase bill tax verification and supplier TPN reconciliation</p>
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-black text-cyan-400 bg-cyan-950/60 border border-cyan-800/40 px-3 py-1 rounded-lg">
-                    ITC Reconciled
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-300 pt-2">
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                    <span>Validates supplier TPNs, Bill of Entry (imports from India/overseas), and purchase invoice numbers</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                    <span>Prevents double-claiming of Input Tax Credit on duplicate purchase invoices</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                    <span>Automated separation of eligible business inputs vs non-claimable items</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                    <span>Ready for direct filing or submission to certified Bhutanese tax accountants</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTaxTab === 'tds' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                      <Calculator className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-white text-base">TDS (Tax Deducted at Source) Schedule</h3>
-                      <p className="text-xs text-slate-400">Automated 2%, 3%, 5% withholding tax tracking on contracts, rent &amp; services</p>
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-black text-amber-400 bg-amber-950/60 border border-amber-800/40 px-3 py-1 rounded-lg">
-                    DRC Schedule
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-300 pt-2">
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                    <span>Auto-deducts and tracks TDS during voucher payment entry with vendor TPN mapping</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                    <span>Generates printable TDS Certificates for contractors, landlords, and suppliers</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                    <span>Pre-formatted DRC TDS Return Schedule with exact Challan / Payment tracking</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                    <span>Never miss the monthly TDS deposit deadline again</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTaxTab === 'salary' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400">
-                      <Users className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-white text-base">Monthly Salary Schedule (PIT Return)</h3>
-                      <p className="text-xs text-slate-400">Official monthly payroll schedule with Basic, Allowances, PF &amp; PIT</p>
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-black text-violet-400 bg-violet-950/60 border border-violet-800/40 px-3 py-1 rounded-lg">
-                    Payroll Upload Ready
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-300 pt-2">
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
-                    <span>Calculates Personal Income Tax (PIT) brackets, employee PF, and employer contributions</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
-                    <span>Integrates with smartphone GPS staff attendance for automatic overtime &amp; leave deductions</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
-                    <span>Monthly Salary Schedule ready for direct upload to the DRC electronic filing portal</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
-                    <span>Generates professional printable and WhatsApp-shareable monthly payslips</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Specialized Vertical Solutions */}
-      <section id="industries" className="py-20 bg-slate-950">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-14">
-            <span className="text-xs font-black uppercase tracking-wider text-amber-400">Industry-Specific Modules</span>
-            <h2 className="text-3xl sm:text-4xl font-black text-white mt-2">
-              Engineered for Every Type of Business
-            </h2>
-            <p className="text-slate-400 mt-3 text-sm sm:text-base">
-              Unlike generic foreign software that forces your store into a rigid box, DrukERP comes equipped with native workflows for retail, restaurants, electronics, healthcare, and wholesale.
-            </p>
-          </div>
-
-          {/* Vertical Selector Buttons */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-10">
-            {verticals.map((vert) => {
-              const Icon = vert.icon;
-              const isActive = activeVertical === vert.id;
+          {/* Grid of Apps (3 cols mobile, 4 cols tablet, 6 cols desktop) */}
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-4 sm:gap-6">
+            {APPS.map((app) => {
+              const Icon = app.icon;
               return (
                 <button
-                  key={vert.id}
-                  onClick={() => setActiveVertical(vert.id)}
-                  className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col items-start gap-2.5 ${
-                    isActive
-                      ? 'bg-amber-500/10 border-amber-500 text-white shadow-lg shadow-amber-500/10'
-                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                  }`}
+                  key={app.id}
+                  type="button"
+                  onClick={() => setSelectedApp(app)}
+                  className="group flex flex-col items-center text-center p-3 sm:p-4 rounded-2xl bg-white hover:bg-white border border-slate-200/80 hover:border-amber-300 shadow-xs hover:shadow-xl transition-all duration-200 hover:-translate-y-1 cursor-pointer"
                 >
-                  <div className={`p-2 rounded-lg ${isActive ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>
-                    <Icon className="w-5 h-5" />
+                  {/* App Icon Tile */}
+                  <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr ${app.color} p-0.5 shadow-md group-hover:scale-105 transition-transform duration-200 flex items-center justify-center text-white`}>
+                    <div className="w-full h-full rounded-[14px] bg-white/10 backdrop-blur-xs flex items-center justify-center">
+                      <Icon className="w-7 h-7 sm:w-8 sm:h-8 drop-shadow-xs" />
+                    </div>
                   </div>
-                  <span className="text-xs font-bold leading-tight">{vert.label}</span>
+
+                  {/* App Name */}
+                  <span className="mt-3 text-xs sm:text-sm font-bold text-slate-800 group-hover:text-amber-600 transition-colors leading-tight line-clamp-1">
+                    {app.name}
+                  </span>
+                  <span className="text-[10px] text-slate-400 group-hover:text-slate-500 transition-colors line-clamp-1 mt-0.5">
+                    {app.category}
+                  </span>
                 </button>
               );
             })}
           </div>
 
-          {/* Active Vertical Detail Showcase */}
-          {(() => {
-            const current = verticals.find(v => v.id === activeVertical)!;
-            const Icon = current.icon;
-            return (
-              <div className="bg-slate-900 rounded-2xl border border-slate-800 p-8 max-w-5xl mx-auto shadow-2xl">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                      <Icon className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-black text-white">{current.label} Management</h3>
-                      <p className="text-xs text-slate-400 mt-0.5">{current.tagline}</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onOpenLogin}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs self-start md:self-auto cursor-pointer"
-                  >
-                    <span>Launch in ERP</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+          {/* Odoo Style Bottom Toggle bar */}
+          <div className="mt-14 pt-8 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="font-semibold text-slate-800">100% DRC BURS Tax &amp; GST Compliant</span>
+              <span>· Built for Bhutan 🇧🇹</span>
+            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                  {current.highlights.map((item, idx) => (
-                    <div key={idx} className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-950/50 border border-slate-800/80">
-                      <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                      <span className="text-xs text-slate-300 leading-relaxed">{item}</span>
+            <div className="flex items-center gap-4 font-bold text-slate-800">
+              <button 
+                type="button" 
+                onClick={onOpenLogin}
+                className="hover:text-amber-600 flex items-center gap-1 cursor-pointer"
+              >
+                <span>Client Sign In</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Selected App Detail Modal (Opens when user clicks any App Icon) */}
+      {selectedApp && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150">
+          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto animate-in zoom-in-95 duration-200">
+            
+            {/* Modal Top Header with App Gradient */}
+            <div className={`p-6 sm:p-8 bg-gradient-to-r ${selectedApp.color} text-white relative`}>
+              <button
+                type="button"
+                onClick={() => setSelectedApp(null)}
+                className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/20 hover:bg-black/40 text-white flex items-center justify-center transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-white shadow-inner">
+                  {React.createElement(selectedApp.icon, { className: 'w-9 h-9' })}
+                </div>
+                <div>
+                  <span className="text-[11px] font-black uppercase tracking-wider text-white/80 bg-black/15 px-2.5 py-0.5 rounded-md">
+                    {selectedApp.category}
+                  </span>
+                  <h3 className="text-2xl sm:text-3xl font-black mt-1">{selectedApp.name}</h3>
+                  <p className="text-xs sm:text-sm text-white/90 font-medium mt-0.5">{selectedApp.tagline}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Body: Complete Detail of Feature */}
+            <div className="p-6 sm:p-8 space-y-6 max-h-[65vh] overflow-y-auto">
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Overview</h4>
+                <p className="mt-1 text-sm text-slate-700 leading-relaxed font-normal">
+                  {selectedApp.description}
+                </p>
+              </div>
+
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3">Key Capabilities</h4>
+                <div className="space-y-2.5">
+                  {selectedApp.features.map((feat, idx) => (
+                    <div key={idx} className="flex items-start gap-2.5 text-xs text-slate-800">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <span className="leading-snug">{feat}</span>
                     </div>
                   ))}
                 </div>
               </div>
-            );
-          })()}
-        </div>
-      </section>
 
-      {/* Feature Deep Dive Grid: Intelligent Accounting, HR, Barcode, Restaurant */}
-      <section id="features" className="py-20 bg-slate-900 border-t border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <span className="text-xs font-black uppercase tracking-wider text-cyan-400">Full-Suite Enterprise Engine</span>
-            <h2 className="text-3xl sm:text-4xl font-black text-white mt-2">
-              Everything Under One Powerful Platform
-            </h2>
-            <p className="text-slate-400 mt-3 text-sm sm:text-base">
-              Built with cutting-edge intelligence to eliminate manual errors and make business operations fast, joyful, and automated.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* 1. Intelligent Voucher Narration & Ledger Filters */}
-            <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-4">
-                  <Sparkles className="w-5 h-5" />
+              {/* Bhutan Advantage Highlight Box */}
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-950">
+                <div className="font-extrabold flex items-center gap-1.5 text-amber-900 mb-1">
+                  <span>🇧🇹 The Bhutan Advantage</span>
                 </div>
-                <h3 className="text-base font-bold text-white">Intelligent Narration &amp; Ledger Filters</h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Automatically generates professional transaction narrations based on payment mode, party ledger, and bill items. Context-sensitive ledger filters prevent cashiers from accidentally picking wrong expense or asset accounts.
-                </p>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-800 text-[11px] text-amber-400 font-semibold flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5" />
-                <span>Zero accounting posting mistakes</span>
+                <p className="leading-relaxed text-amber-900/90">{selectedApp.bhutanBenefit}</p>
               </div>
             </div>
 
-            {/* 2. Restaurant Smartphone QR & Captain App */}
-            <div id="restaurant" className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400 mb-4">
-                  <QrCode className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-white">Restaurant QR &amp; Waiter Smartphone App</h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Captains take orders directly at tables on smartphones. Diners can also scan QR codes at their table to view digital menus and place self-orders. Dispatches instant KOT to kitchen printers.
-                </p>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-800 text-[11px] text-orange-400 font-semibold flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5" />
-                <span>Eliminates food order mix-ups &amp; delays</span>
-              </div>
-            </div>
+            {/* Modal Footer with Launch Button */}
+            <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setSelectedApp(null)}
+                className="text-xs font-bold text-slate-500 hover:text-slate-800 transition cursor-pointer"
+              >
+                Close App Preview
+              </button>
 
-            {/* 3. Smartphone GPS Staff Attendance & Payroll */}
-            <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-4">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-white">Smartphone GPS Attendance &amp; Payroll</h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Staff clock in and out from their own smartphones with geo-fencing validation to confirm they are physically inside the store. Automatically compiles attendance hours, overtime, leave, and monthly payslips.
-                </p>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-800 text-[11px] text-emerald-400 font-semibold flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5" />
-                <span>Geofenced location protection</span>
-              </div>
-            </div>
-
-            {/* 4. Complete Accounting & Live Balance Sheet */}
-            <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-4">
-                  <Calculator className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-white">Full Double-Entry Accounting</h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Real-time Balance Sheet, Profit &amp; Loss, Trial Balance, Cash Book, Bank Reconciliation, and Daybook. Full voucher suite: Sales, Purchase, Payment, Receipt, Journal, Contra, Debit/Credit Notes.
-                </p>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-800 text-[11px] text-blue-400 font-semibold flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5" />
-                <span>Strict Tally-style entry keyboard speed</span>
-              </div>
-            </div>
-
-            {/* 5. Barcode Printing & Unit Conversion */}
-            <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400 mb-4">
-                  <ScanLine className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-white">Custom Barcodes &amp; Unit Conversion</h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Print custom barcode stickers to thermal rolls or A4 sticker sheets. Configure complex units (Carton $\rightarrow$ Box $\rightarrow$ Piece) with automatic cost &amp; selling price calculations during billing.
-                </p>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-800 text-[11px] text-violet-400 font-semibold flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5" />
-                <span>Multi-tier packaging support</span>
-              </div>
-            </div>
-
-            {/* 6. WhatsApp & Email 1-Click Sharing */}
-            <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center text-green-400 mb-4">
-                  <Share2 className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-white">Instant WhatsApp &amp; Email Sharing</h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Send clean PDF tax invoices, thermal receipts, payment vouchers, and customer account statements directly to your customer or supplier’s WhatsApp or Email with 1 click.
-                </p>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-800 text-[11px] text-green-400 font-semibold flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5" />
-                <span>Paperless instant communication</span>
-              </div>
-            </div>
-
-            {/* 7. Excel Bulk Import & Export */}
-            <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 mb-4">
-                  <FileSpreadsheet className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-white">Excel Bulk Import &amp; Export</h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Easily migrate your entire catalog. Import thousands of stock items with barcodes, serial numbers, rack numbers, wholesale rates, and opening balances in 1 second. Export all financial reports to Excel.
-                </p>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-800 text-[11px] text-teal-400 font-semibold flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5" />
-                <span>Zero downtime during onboarding</span>
-              </div>
-            </div>
-
-            {/* 8. Fixed Asset Management System */}
-            <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-4">
-                  <Boxes className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-white">Complete Fixed Asset Management</h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Track company assets across office furniture, machinery, computers, and vehicles. Automatic depreciation calculations (SLM / WDV), custodian assignment, and asset disposal tracking.
-                </p>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-800 text-[11px] text-rose-400 font-semibold flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5" />
-                <span>Auditable balance sheet asset registers</span>
-              </div>
-            </div>
-
-            {/* 9. Notes, Tasks & Team Assignments */}
-            <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-4">
-                  <Layers className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-bold text-white">Notes, Tasks &amp; Assignment System</h3>
-                <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Assign payment follow-ups, inventory audit checks, and customer tasks to specific team members. Set due dates, priority tags, and maintain an internal team communication log.
-                </p>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-800 text-[11px] text-indigo-400 font-semibold flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5" />
-                <span>Keeps your staff accountable</span>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedApp(null);
+                  onOpenLogin();
+                }}
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#714b67] hover:bg-[#5a3a52] text-white font-extrabold text-xs shadow-md transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>Launch {selectedApp.name} in ERP</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>
-      </section>
+      )}
 
-      {/* Multi-Branch Architecture */}
-      <section className="py-20 bg-slate-950 border-t border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 rounded-3xl border border-slate-800 p-8 sm:p-12 relative overflow-hidden">
-            <div className="max-w-3xl">
-              <span className="text-xs font-black uppercase tracking-wider text-amber-400">Multi-Location Scaling</span>
-              <h2 className="text-3xl sm:text-4xl font-black text-white mt-2">
-                Connect Thimphu, Phuntsholing, Paro &amp; Beyond
-              </h2>
-              <p className="text-slate-300 mt-4 text-sm sm:text-base leading-relaxed">
-                Whether you run a single retail shop in Thimphu or a multi-location enterprise with distribution hubs in Phuntsholing and branches in Paro or Gelephu, DrukERP provides isolated branch numbering (<code className="text-amber-400">HQ-POS-1</code>, <code className="text-amber-400">PHU-POS-1</code>, <code className="text-amber-400">PAR-POS-1</code>) and centralized real-time stock transfer management.
-              </p>
+      {/* Book a Demo Modal */}
+      {showDemoModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto p-6 sm:p-8">
+            <button
+              type="button"
+              onClick={() => {
+                setShowDemoModal(false);
+                setDemoSubmitted(false);
+              }}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
 
-              <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-slate-300">
-                <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-                  <div className="font-bold text-white text-sm">Dedicated Voucher Prefix</div>
-                  <div className="text-slate-400 mt-1">Each terminal locks to its branch identity automatically</div>
+            {demoSubmitted ? (
+              <div className="text-center py-8 space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-7 h-7" />
                 </div>
-                <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-                  <div className="font-bold text-white text-sm">Stock Transfer In-Transit</div>
-                  <div className="text-slate-400 mt-1">Track goods moved between Head Office and Outstations</div>
-                </div>
-                <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-                  <div className="font-bold text-white text-sm">Consolidated Financials</div>
-                  <div className="text-slate-400 mt-1">View overall business profit or drill down by location</div>
-                </div>
-              </div>
-
-              <div className="mt-8 flex items-center gap-4">
+                <h3 className="text-xl font-black text-slate-900">Demo Request Received!</h3>
+                <p className="text-xs text-slate-600 max-w-sm mx-auto">
+                  Thank you, <strong>{demoFormData.name}</strong>. Our local Bhutanese ERP specialist will contact you via WhatsApp / Phone at <strong>{demoFormData.phone}</strong> to schedule your demonstration.
+                </p>
                 <button
                   type="button"
-                  onClick={onOpenLogin}
-                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-sm shadow-lg shadow-amber-500/20 cursor-pointer"
+                  onClick={() => {
+                    setShowDemoModal(false);
+                    setDemoSubmitted(false);
+                  }}
+                  className="px-6 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs"
                 >
-                  <LogIn className="w-4 h-4" />
-                  <span>Access Multi-Branch Portal</span>
+                  Done
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Demo Booking & Contact Section */}
-      <section id="demo" className="py-20 bg-slate-900 border-t border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            {/* Left: Contact Info & Support */}
-            <div>
-              <span className="text-xs font-black uppercase tracking-wider text-amber-400">Get Started with DrukERP</span>
-              <h2 className="text-3xl sm:text-4xl font-black text-white mt-2">
-                Book a Free On-Site Demonstration &amp; Setup
-              </h2>
-              <p className="text-slate-300 mt-4 text-sm sm:text-base leading-relaxed">
-                Our local Bhutanese ERP specialists will help you migrate your inventory from Excel, set up your thermal barcode printers, configure DRC tax reports, and train your store cashiers and accountants.
-              </p>
-
-              <div className="mt-8 space-y-4">
-                <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-slate-950 border border-slate-800">
-                  <div className="w-10 h-10 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center text-green-400">
-                    <MessageCircle className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-400">Direct WhatsApp Support</div>
-                    <a
-                      href="https://wa.me/97517000000?text=Hello%20DrukERP,%20I%20am%20interested%20in%20a%20demo%20for%20my%20business"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-bold text-white hover:text-green-400 flex items-center gap-1"
-                    >
-                      <span>Chat on WhatsApp (+975)</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
+            ) : (
+              <form onSubmit={handleDemoSubmit} className="space-y-4">
+                <div>
+                  <h3 className="text-xl font-black text-slate-900">Meet an Advisor / Free Demo</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">We will help you set up thermal printers, DRC tax exports, and migrate stock from Excel.</p>
                 </div>
 
-                <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-slate-950 border border-slate-800">
-                  <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                    <MapPin className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-400">Service Locations</div>
-                    <div className="text-sm font-bold text-white">Thimphu · Phuntsholing · Paro · Gelephu</div>
-                  </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Your Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Karma Dorji"
+                    value={demoFormData.name}
+                    onChange={(e) => setDemoFormData(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-xs focus:outline-hidden focus:border-amber-500"
+                  />
                 </div>
-              </div>
-            </div>
 
-            {/* Right: Demo Request Form */}
-            <div className="bg-slate-950 p-8 rounded-3xl border border-slate-800 shadow-2xl">
-              {demoSubmitted ? (
-                <div className="text-center py-10 space-y-4">
-                  <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto">
-                    <CheckCircle2 className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-2xl font-black text-white">Demo Request Received!</h3>
-                  <p className="text-sm text-slate-300 max-w-sm mx-auto">
-                    Thank you, <strong>{demoFormData.name}</strong>. Our team will contact you via WhatsApp / Phone at <strong>{demoFormData.phone}</strong> shortly to schedule your on-site demo.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setDemoSubmitted(false)}
-                    className="text-xs font-bold text-amber-400 hover:underline pt-4"
-                  >
-                    Submit another inquiry
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleDemoSubmit} className="space-y-4">
-                  <h3 className="text-xl font-bold text-white">Request a Consultation</h3>
-                  <p className="text-xs text-slate-400">Fill out your business details and we’ll get back to you promptly.</p>
-
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Your Full Name</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Business Name</label>
                     <input
                       type="text"
                       required
-                      placeholder="e.g. Karma Dorji"
-                      value={demoFormData.name}
-                      onChange={(e) => setDemoFormData(prev => ({ ...prev, name: e.target.value }))}
-                      className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-hidden focus:border-amber-400"
+                      placeholder="e.g. Druk Store"
+                      value={demoFormData.businessName}
+                      onChange={(e) => setDemoFormData(prev => ({ ...prev, businessName: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-xs focus:outline-hidden focus:border-amber-500"
                     />
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-1">Business Name</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. Druk Store"
-                        value={demoFormData.businessName}
-                        onChange={(e) => setDemoFormData(prev => ({ ...prev, businessName: e.target.value }))}
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-hidden focus:border-amber-400"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-1">Phone / WhatsApp</label>
-                      <input
-                        type="tel"
-                        required
-                        placeholder="e.g. +975 17123456"
-                        value={demoFormData.phone}
-                        onChange={(e) => setDemoFormData(prev => ({ ...prev, phone: e.target.value }))}
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-hidden focus:border-amber-400"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-1">Dzongkhag / City</label>
-                      <select
-                        value={demoFormData.dzongkhag}
-                        onChange={(e) => setDemoFormData(prev => ({ ...prev, dzongkhag: e.target.value }))}
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-hidden focus:border-amber-400"
-                      >
-                        <option value="Thimphu">Thimphu</option>
-                        <option value="Chhukha / Phuntsholing">Chhukha / Phuntsholing</option>
-                        <option value="Paro">Paro</option>
-                        <option value="Sarpang / Gelephu">Sarpang / Gelephu</option>
-                        <option value="Punakha">Punakha</option>
-                        <option value="Wangdue">Wangdue</option>
-                        <option value="Bumthang">Bumthang</option>
-                        <option value="Samdrup Jongkhar">Samdrup Jongkhar</option>
-                        <option value="Other Dzongkhag">Other Dzongkhag</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 mb-1">Business Type</label>
-                      <select
-                        value={demoFormData.businessType}
-                        onChange={(e) => setDemoFormData(prev => ({ ...prev, businessType: e.target.value }))}
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-hidden focus:border-amber-400"
-                      >
-                        <option value="Retail & Supermarket">Retail &amp; Supermarket</option>
-                        <option value="Restaurant / Cafe / Bar">Restaurant / Cafe / Bar</option>
-                        <option value="Electronics & Mobile">Electronics &amp; Mobile</option>
-                        <option value="Pharmacy / Healthcare">Pharmacy / Healthcare</option>
-                        <option value="Auto Spare Parts / Hardware">Auto Spare Parts / Hardware</option>
-                        <option value="Garments & Footwear">Garments &amp; Footwear</option>
-                        <option value="Wholesale & Distribution">Wholesale &amp; Distribution</option>
-                      </select>
-                    </div>
-                  </div>
-
                   <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Special Requirements / Notes (Optional)</label>
-                    <textarea
-                      rows={2}
-                      placeholder="e.g. Need barcode printer setup, 3 POS counters, and mobile captain ordering..."
-                      value={demoFormData.notes}
-                      onChange={(e) => setDemoFormData(prev => ({ ...prev, notes: e.target.value }))}
-                      className="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:outline-hidden focus:border-amber-400"
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Phone / WhatsApp</label>
+                    <input
+                      type="tel"
+                      required
+                      placeholder="e.g. +975 17123456"
+                      value={demoFormData.phone}
+                      onChange={(e) => setDemoFormData(prev => ({ ...prev, phone: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-xs focus:outline-hidden focus:border-amber-500"
                     />
                   </div>
+                </div>
 
-                  <button
-                    type="submit"
-                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-sm shadow-lg shadow-amber-500/25 transition-transform hover:-translate-y-0.5 cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span>Submit Demo Request</span>
-                  </button>
-                </form>
-              )}
-            </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Dzongkhag / City</label>
+                    <select
+                      value={demoFormData.dzongkhag}
+                      onChange={(e) => setDemoFormData(prev => ({ ...prev, dzongkhag: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-xs focus:outline-hidden focus:border-amber-500"
+                    >
+                      <option value="Thimphu">Thimphu</option>
+                      <option value="Phuntsholing">Phuntsholing</option>
+                      <option value="Paro">Paro</option>
+                      <option value="Gelephu">Gelephu</option>
+                      <option value="Punakha">Punakha</option>
+                      <option value="Wangdue">Wangdue</option>
+                      <option value="Bumthang">Bumthang</option>
+                      <option value="Samdrup Jongkhar">Samdrup Jongkhar</option>
+                      <option value="Other">Other Dzongkhag</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Business Type</label>
+                    <select
+                      value={demoFormData.businessType}
+                      onChange={(e) => setDemoFormData(prev => ({ ...prev, businessType: e.target.value }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-xs focus:outline-hidden focus:border-amber-500"
+                    >
+                      <option value="Retail & Supermarket">Retail &amp; Supermarket</option>
+                      <option value="Restaurant / Cafe / Bar">Restaurant / Bar</option>
+                      <option value="Electronics & Mobile">Electronics &amp; Mobile</option>
+                      <option value="Pharmacy / Healthcare">Pharmacy</option>
+                      <option value="Auto Spare Parts / Hardware">Auto Spare Parts</option>
+                      <option value="Garments & Footwear">Garments &amp; Footwear</option>
+                      <option value="Wholesale">Wholesale &amp; Distribution</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 rounded-xl bg-[#714b67] hover:bg-[#5a3a52] text-white font-extrabold text-xs shadow-md transition cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Submit Demo Request</span>
+                </button>
+              </form>
+            )}
           </div>
         </div>
-      </section>
+      )}
 
-      {/* Footer */}
-      <footer className="bg-slate-950 border-t border-slate-800 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-amber-500 flex items-center justify-center text-slate-950 font-black text-sm">
-                D
-              </div>
-              <div>
-                <span className="font-bold text-white text-sm">DrukERP</span>
-                <span className="text-xs text-slate-400 block">The Smart Cloud ERP &amp; POS of Bhutan</span>
-              </div>
-            </div>
+      {/* Clean Minimal Footer */}
+      <footer className="bg-white border-t border-slate-200 py-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+          <div className="flex items-center gap-2">
+            <DrukErpLogo size="sm" variant="compact" />
+          </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
-              <a href="#features" className="hover:text-white transition-colors">Features</a>
-              <a href="#tax-compliance" className="hover:text-white transition-colors">DRC &amp; GST Compliance</a>
-              <a href="#industries" className="hover:text-white transition-colors">Verticals</a>
-              <a href="#demo" className="hover:text-white transition-colors">Contact</a>
-              <button
-                type="button"
-                onClick={onOpenLogin}
-                className="text-amber-400 font-bold hover:underline cursor-pointer"
-              >
-                Client Sign In
-              </button>
-            </div>
+          <div className="flex items-center gap-6">
+            <a href="https://wa.me/97517000000" target="_blank" rel="noopener noreferrer" className="hover:text-amber-600 flex items-center gap-1">
+              <MessageCircle className="w-3.5 h-3.5 text-green-600" />
+              <span>WhatsApp Support (+975)</span>
+            </a>
+            <button type="button" onClick={() => setShowDemoModal(true)} className="hover:text-amber-600 cursor-pointer">
+              Book Demo
+            </button>
+            <button type="button" onClick={onOpenLogin} className="hover:text-amber-600 font-bold cursor-pointer">
+              Client Sign In
+            </button>
+          </div>
 
-            <div className="text-xs text-slate-400 text-center md:text-right">
-              &copy; {new Date().getFullYear()} DrukERP. All rights reserved. 🇧🇹 Made for Bhutan.
-            </div>
+          <div>
+            &copy; {new Date().getFullYear()} DrukERP. All rights reserved.
           </div>
         </div>
       </footer>

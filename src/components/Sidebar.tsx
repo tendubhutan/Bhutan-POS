@@ -25,6 +25,7 @@ import { isFeatureAllowed } from '../services/tenantFeatureService';
 import { isModulePermitted } from '../utils/permissionUtils';
 import { promptPwaInstall, isPwaInstalled, subscribePwaState, canInstallPwa } from '../services/pwaService';
 import { ClientLinkAndPwaModal } from './ClientLinkAndPwaModal';
+import { DrukErpLogo } from './common/DrukErpLogo';
 
 interface SidebarProps {
   currentView: string;
@@ -200,47 +201,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         } ${isOpenMobile ? 'translate-x-0' : '-translate-x-full'}`}
       >
         {/* Brand Header with Attached Official Logo */}
-        <div className="flex items-center justify-between px-2 py-2.5 mb-3 border-b border-slate-800">
+        <div className="flex items-center justify-between px-2 py-2 mb-3 border-b border-slate-800">
           <button
             type="button"
             onClick={() => handleExecuteNavigation(isDashboardPermitted ? 'dashboard' : 'pos')}
-            className="flex items-center gap-2.5 text-left group cursor-pointer hover:opacity-90 transition min-w-0 flex-1"
-            title="Ezee ERP Dashboard"
+            className="flex items-center text-left group cursor-pointer hover:opacity-90 transition min-w-0 flex-1"
+            title="DrukERP Dashboard"
           >
-            {/* Ezee ERP Vector Emblem matching uploaded official logo */}
-            <svg className="h-8 w-8 shrink-0 group-hover:scale-105 transition-transform" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="ezeeBlueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#2563eb" />
-                  <stop offset="100%" stopColor="#0284c7" />
-                </linearGradient>
-                <linearGradient id="ezeeCyanGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#38bdf8" />
-                  <stop offset="100%" stopColor="#06b6d4" />
-                </linearGradient>
-              </defs>
-              <path 
-                d="M 50 10 A 40 40 0 1 0 85 65 L 72 58 A 25 25 0 1 1 50 25 A 25 25 0 0 1 70 34 L 82 22 A 40 40 0 0 0 50 10 Z" 
-                fill="url(#ezeeBlueGrad)" 
-              />
-              <path 
-                d="M 85 42 L 95 68 L 68 62 Z" 
-                fill="#0284c7" 
-              />
-              <rect x="34" y="36" width="28" height="8" rx="2" fill="url(#ezeeCyanGrad)" />
-              <rect x="34" y="48" width="22" height="7" rx="2" fill="url(#ezeeCyanGrad)" />
-              <rect x="34" y="58" width="28" height="8" rx="2" fill="url(#ezeeCyanGrad)" />
-            </svg>
-
-            <div className="flex flex-col min-w-0">
-              <div className="font-black text-base tracking-wide text-white flex items-center gap-1 leading-none">
-                <span>Ezee</span>
-                <span className="text-blue-400">ERP</span>
-              </div>
-              <div className="text-[9px] font-medium text-slate-300 leading-tight truncate mt-0.5">
-                Everything Your Business Needs, in One Place.
-              </div>
-            </div>
+            <DrukErpLogo size="sm" variant="light" />
           </button>
 
           <button

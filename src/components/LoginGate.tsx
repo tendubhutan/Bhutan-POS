@@ -37,7 +37,7 @@ import {
   isDevOrPreviewEnvironment
 } from '../services/authTenantContext';
 import { getActiveUser } from '../services/storageService';
-import { EzeeErpLogo } from './common/EzeeErpLogo';
+import { EzeeErpLogo, DrukErpLogo } from './common/EzeeErpLogo';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -450,18 +450,21 @@ export const LoginGate: React.FC<LoginGateProps> = ({
               )}
 
               {/* Header Title with Avatar Circle */}
-              <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 ring-4 ring-blue-100 shrink-0">
-                  <Lock className="h-6 w-6 text-white" />
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-11 w-11 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 ring-4 ring-blue-100 shrink-0">
+                    <Lock className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight leading-none">
+                      Terminal Access
+                    </h1>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mt-1">
+                      SECURE CLIENT PORTAL
+                    </span>
+                  </div>
                 </div>
-                <div className="text-left">
-                  <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight leading-none">
-                    Terminal Access
-                  </h1>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mt-1">
-                    SECURE LOGIN PORTAL
-                  </span>
-                </div>
+                <DrukErpLogo size="xs" variant="icon" />
               </div>
 
               {/* 1-Click Instant Enter: ONLY displayed in development / preview environments */}
