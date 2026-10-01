@@ -542,6 +542,25 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {/* Header WhatsApp Pill */}
+                  <div className="space-y-2 p-3 rounded-xl bg-white border border-slate-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700">Header WhatsApp Button</span>
+                      <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={formData.header.showWhatsAppBtn !== false}
+                          onChange={(e) => setFormData(p => ({ ...p, header: { ...p.header, showWhatsAppBtn: e.target.checked } }))}
+                          className="rounded text-emerald-600"
+                        />
+                        <span>Visible</span>
+                      </label>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Shows round WhatsApp icon and phone number in top header for instant client chat.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -827,7 +846,19 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
 
               {/* Primary CTA Button */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-                <h5 className="text-xs font-extrabold text-slate-800">Primary Hero Button</h5>
+                <div className="flex items-center justify-between">
+                  <h5 className="text-xs font-extrabold text-slate-800">Primary Hero Button</h5>
+                  <label className="flex items-center gap-1.5 text-xs text-slate-700 font-bold">
+                    <input
+                      type="checkbox"
+                      checked={formData.hero.showButton !== false}
+                      onChange={(e) => setFormData(p => ({ ...p, hero: { ...p.hero, showButton: e.target.checked } }))}
+                      className="rounded text-blue-600"
+                    />
+                    <span>Show Hero Button</span>
+                  </label>
+                </div>
+                {formData.hero.showButton !== false && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">Button Label</label>
@@ -868,6 +899,7 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
                     </select>
                   </div>
                 </div>
+                )}
               </div>
             </div>
           )}
@@ -1229,6 +1261,41 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
                         className="flex-1 px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-mono"
                       />
                     </div>
+                  </div>
+                </div>
+
+                {/* Footer Action Links & Redundant Items Toggles */}
+                <div className="pt-3 border-t border-slate-200">
+                  <h6 className="text-[11px] font-bold text-slate-700 mb-2">Footer Navigation & Action Links</h6>
+                  <p className="text-[11px] text-slate-500 mb-2">Toggle optional links in the footer bar:</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <label className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-slate-200 text-xs font-medium cursor-pointer hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={formData.contact.showWhatsApp}
+                        onChange={(e) => setFormData(p => ({ ...p, contact: { ...p.contact, showWhatsApp: e.target.checked } }))}
+                        className="rounded text-emerald-600"
+                      />
+                      <span>WhatsApp Link</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-slate-200 text-xs font-medium cursor-pointer hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={formData.contact.showDemoBtn}
+                        onChange={(e) => setFormData(p => ({ ...p, contact: { ...p.contact, showDemoBtn: e.target.checked } }))}
+                        className="rounded text-blue-600"
+                      />
+                      <span>Book Demo Link</span>
+                    </label>
+                    <label className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-slate-200 text-xs font-medium cursor-pointer hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={formData.contact.showSignInBtn}
+                        onChange={(e) => setFormData(p => ({ ...p, contact: { ...p.contact, showSignInBtn: e.target.checked } }))}
+                        className="rounded text-blue-600"
+                      />
+                      <span>Client Sign In</span>
+                    </label>
                   </div>
                 </div>
               </div>

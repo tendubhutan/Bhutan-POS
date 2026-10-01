@@ -1,8 +1,10 @@
 {
   "header": {
     "bgColor": "#ffffff",
-    "textColor": "#475569",
-    "textHoverColor": "#2563eb",
+    "textColor": "#1e293b",
+    "textHoverColor": "#0284c7",
+    "navPillBgColor": "#f8fafc",
+    "navPillBorderColor": "#e2e8f0",
     "showNav": true,
     "navItems": [
       {
@@ -13,58 +15,55 @@
       },
       {
         "id": "drc-tax",
-        "label": "DRC Tax",
+        "label": "GST & TDS",
         "action": "open-app",
         "targetAppId": "drc-tax",
         "isVisible": true
       },
       {
         "id": "restaurant",
-        "label": "Restaurant",
+        "label": "Digital Restaurant",
         "action": "open-app",
         "targetAppId": "restaurant",
-        "isVisible": true
-      },
-      {
-        "id": "book-demo",
-        "label": "Book Demo",
-        "action": "open-demo",
         "isVisible": true
       }
     ],
     "signInBtnText": "Sign In",
-    "signInBtnColor": "#334155",
+    "signInBtnColor": "#ffffff",
+    "signInBtnBgColor": "#0a1e44",
     "launchBtnText": "Launch ERP",
     "launchBtnBgColor": "#2563eb",
     "launchBtnTextColor": "#ffffff",
-    "showLaunchBtn": true,
-    "showSignInBtn": true
+    "showLaunchBtn": false,
+    "showSignInBtn": true,
+    "showWhatsAppBtn": true
   },
   "hero": {
-    "headlineLine1": "Everything Your",
-    "headlineLine2": "Business Needs,",
-    "headlineFontSize": "lg",
-    "headlineFontFamily": "sans",
-    "headlineColor": "#0a1e44",
+    "headlineLine1": "Everything Your Business Needs,",
+    "headlineLine2": "",
+    "headlineFontSize": "md",
+    "headlineFontFamily": "serif",
+    "headlineColor": "#0d0d0d",
     "headlineAlign": "center",
     "capsuleText": "in One Place",
-    "capsuleBgColor": "#f59e0b",
-    "capsuleTextColor": "#0a1e44",
+    "capsuleBgColor": "#3cc1e2",
+    "capsuleTextColor": "#ffffff",
     "capsuleFontSize": "md",
     "subheadlineText": "Simple, efficient, yet affordable!",
     "subheadlineFontSize": "md",
     "subheadlineColor": "#0a1e44",
     "subheadlineFontFamily": "serif",
     "subheadlineItalic": true,
-    "showSubheadline": true,
-    "showDivider": true,
+    "showSubheadline": false,
+    "showDivider": false,
     "dividerColor": "#fec84b",
     "dividerWidth": "medium",
-    "paragraphText": "Built specifically for businesses in Bhutan ",
-    "paragraphFontSize": "md",
-    "paragraphColor": "#475569",
+    "paragraphText": "Built for Bhutan",
+    "paragraphFontSize": "xl",
+    "paragraphColor": "#047857",
     "paragraphMaxWidth": "medium",
     "paragraphLineHeight": "relaxed",
+    "showButton": false,
     "buttonText": "Get Started",
     "buttonBgColor": "#0a1e44",
     "buttonTextColor": "#ffffff",
@@ -100,21 +99,21 @@
     "footerBgColor": "#ffffff",
     "footerTextColor": "#64748b",
     "footerBorderColor": "#e2e8f0",
-    "showWhatsApp": true,
-    "showDemoBtn": true,
-    "showSignInBtn": true
+    "showWhatsApp": false,
+    "showDemoBtn": false,
+    "showSignInBtn": false
   },
   "apps": [
     {
       "id": "drc-tax",
-      "name": "DRC Tax & GST",
+      "name": "GST & TDS",
       "category": "Finance & Compliance",
       "color": "from-emerald-500 to-teal-600",
       "iconName": "ShieldCheck",
       "tagline": "Upload-ready GST & TDS files matching DRC portal formats",
-      "description": "Eliminate manual tax reconciliation and spreadsheets. DrukERP exports standardized schedules verified against Bhutan Revenue & Customs (DRC / BURS) specifications.",
+      "description": "Eliminate manual tax reconciliation and spreadsheets. DrukERP exports standardized schedules as per RRCO/DRC standard.",
       "features": [
-        "GST Output Tax Return Schedule with customer TPN/GSTIN, taxable values, and rate breakdown",
+        "GST Output Tax Return Schedule with customer TPN/GST, taxable value & other requirment.",
         "GST Input Tax Credit Reconciliation with purchase verification and Bill of Entry matching",
         "TDS Withholding Tax Schedule (2%, 3%, 5%) with automated deduction & certificate generation",
         "Monthly Salary Schedule for PIT filing with department-wise payroll export"
@@ -142,7 +141,7 @@
     {
       "id": "accounting",
       "name": "Accounting",
-      "category": "Finance & Compliance",
+      "category": "Finance & Accounting",
       "color": "from-blue-600 to-indigo-600",
       "iconName": "Calculator",
       "tagline": "Double-entry ledgers with intelligent auto-narration",
@@ -158,7 +157,7 @@
     },
     {
       "id": "restaurant",
-      "name": "Restaurant & QR",
+      "name": "Digital Restaurant",
       "category": "Hospitality",
       "color": "from-rose-500 to-orange-500",
       "iconName": "Utensils",
@@ -192,7 +191,7 @@
     },
     {
       "id": "electronics",
-      "name": "Electronics & IMEI",
+      "name": "Electronics ",
       "category": "Specialized Verticals",
       "color": "from-sky-500 to-blue-600",
       "iconName": "Smartphone",
@@ -209,7 +208,7 @@
     },
     {
       "id": "pharmacy",
-      "name": "Pharmacy & Batch",
+      "name": "Pharmacy ",
       "category": "Specialized Verticals",
       "color": "from-emerald-600 to-green-700",
       "iconName": "Pill",
@@ -277,7 +276,7 @@
     },
     {
       "id": "attendance",
-      "name": "GPS Attendance",
+      "name": "GPS/Digital  Attendance",
       "category": "Human Resources",
       "color": "from-teal-500 to-emerald-600",
       "iconName": "Clock",
@@ -328,7 +327,7 @@
     },
     {
       "id": "multi-branch",
-      "name": "Multi-Branch Sync",
+      "name": "Multi-Branch Management",
       "category": "Enterprise Scaling",
       "color": "from-blue-700 to-indigo-800",
       "iconName": "Building2",
@@ -418,7 +417,7 @@
       "color": "from-purple-600 to-indigo-700",
       "iconName": "BadgeDollarSign",
       "tagline": "Discounts, BOGO offers, and promotional pricing schemes",
-      "description": "Boost retail sales with automated promotional schemes. Configure percentage discounts, flat rate cuts, Buy-One-Get-One (BOGO), and happy-hour pricing.",
+      "description": "Boost retail sales with automated promotional schemes. Configure percentage discounts, flat rate cuts, Buy-One-Get-One (BOGO), Tshechu Offer and happy-hour pricing etc.",
       "features": [
         "Automated POS scheme detection on qualifying items or total bill value",
         "BOGO (Buy X Get Y Free) and happy-hour time window promotions",
@@ -430,5 +429,5 @@
       "detailBoxTheme": "purple"
     }
   ],
-  "lastUpdated": 1790851649608
+  "lastUpdated": 1790875000000
 }

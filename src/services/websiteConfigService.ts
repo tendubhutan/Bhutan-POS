@@ -15,15 +15,19 @@ export interface WebsiteHeaderConfig {
   bgColor: string;
   textColor: string;
   textHoverColor: string;
+  navPillBgColor?: string;
+  navPillBorderColor?: string;
   showNav: boolean;
   navItems: WebsiteNavMenuItem[];
   signInBtnText: string;
   signInBtnColor: string;
+  signInBtnBgColor?: string;
   launchBtnText: string;
   launchBtnBgColor: string;
   launchBtnTextColor: string;
   showLaunchBtn: boolean;
   showSignInBtn: boolean;
+  showWhatsAppBtn?: boolean;
 }
 
 export interface WebsiteAppItem {
@@ -84,10 +88,12 @@ export interface WebsiteHeroConfig {
   dividerColor: string;
   dividerWidth: 'small' | 'medium' | 'large';
   paragraphText: string;
-  paragraphFontSize: 'sm' | 'md' | 'lg';
+  paragraphFontSize: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   paragraphColor: string;
   paragraphMaxWidth: 'narrow' | 'medium' | 'wide';
   paragraphLineHeight: 'normal' | 'relaxed' | 'loose';
+  paragraphStyle?: 'normal' | 'badge' | 'bold-title';
+  showButton?: boolean;
   buttonText: string;
   buttonBgColor: string;
   buttonTextColor: string;

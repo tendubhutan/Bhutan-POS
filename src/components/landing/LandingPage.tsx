@@ -239,7 +239,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
 
           {/* Editable Navigation Menu */}
           {siteConfig.header.showNav && (
-            <nav className="hidden md:flex items-center gap-7 text-sm font-semibold">
+            <nav className="hidden md:flex items-center gap-2.5 text-xs sm:text-sm font-bold">
               {siteConfig.header.navItems
                 .filter(item => item.isVisible)
                 .map((item) => (
@@ -247,8 +247,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
                     key={item.id}
                     type="button"
                     onClick={() => handleNavAction(item.action, item.targetAppId, item.url)}
-                    style={{ color: siteConfig.header.textColor }}
-                    className="hover:opacity-80 transition cursor-pointer"
+                    style={{
+                      color: siteConfig.header.textColor || '#1e293b',
+                      backgroundColor: siteConfig.header.navPillBgColor || '#ffffff',
+                      borderColor: siteConfig.header.navPillBorderColor || '#e2e8f0'
+                    }}
+                    className="px-4 py-2 rounded-full font-bold transition-all shadow-xs border hover:shadow-sm hover:scale-[1.03] active:scale-95 cursor-pointer hover:border-sky-400 hover:bg-sky-50/80 hover:text-sky-700"
                   >
                     {item.label}
                   </button>
@@ -257,15 +261,40 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
           )}
 
           {/* Editable Header Action Buttons */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* Round WhatsApp Contact Pill in Header */}
+            {(siteConfig.header.showWhatsAppBtn !== false && siteConfig.contact.whatsappNumber) && (
+              <a
+                href={`https://wa.me/${siteConfig.contact.whatsappNumber.replace(/[^0-9]/g, '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full border border-emerald-200 bg-emerald-50/90 hover:bg-emerald-100/90 text-slate-800 transition-all shadow-xs hover:shadow-sm hover:scale-[1.03] active:scale-95 cursor-pointer group"
+                title={`Chat with us on WhatsApp (${siteConfig.contact.whatsappNumber})`}
+              >
+                {/* Round WhatsApp Icon */}
+                <span className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#25D366] text-white flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform">
+                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white" viewBox="0 0 24 24">
+                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+                  </svg>
+                </span>
+                <span className="font-extrabold text-xs sm:text-sm text-slate-800 tracking-tight group-hover:text-emerald-950 whitespace-nowrap">
+                  {siteConfig.contact.whatsappNumber}
+                </span>
+              </a>
+            )}
+
             {siteConfig.header.showSignInBtn && (
               <button
                 type="button"
                 onClick={onOpenLogin}
-                style={{ color: siteConfig.header.signInBtnColor || '#334155' }}
-                className="text-xs sm:text-sm font-bold hover:opacity-80 px-3 py-2 transition cursor-pointer"
+                style={{
+                  backgroundColor: siteConfig.header.signInBtnBgColor || '#0a1e44',
+                  color: siteConfig.header.signInBtnColor || '#ffffff'
+                }}
+                className="inline-flex items-center gap-2 px-5 py-2 rounded-full font-black text-xs sm:text-sm shadow-sm hover:shadow-md transition-all cursor-pointer hover:scale-[1.03] active:scale-95 hover:opacity-95"
               >
-                {siteConfig.header.signInBtnText || 'Sign In'}
+                <LogIn className="w-4 h-4" />
+                <span>{siteConfig.header.signInBtnText || 'Sign In'}</span>
               </button>
             )}
 
@@ -277,7 +306,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
                   backgroundColor: siteConfig.header.launchBtnBgColor || '#2563eb',
                   color: siteConfig.header.launchBtnTextColor || '#ffffff'
                 }}
-                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer hover:opacity-90"
+                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer hover:opacity-90"
               >
                 <LogIn className="w-4 h-4" />
                 <span>{siteConfig.header.launchBtnText || 'Launch ERP'}</span>
@@ -292,27 +321,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
       {/* ======================================================== */}
       <section 
         style={siteConfig.hero.bgAtmosphere === 'custom' && siteConfig.hero.customHeroBgColor ? { backgroundColor: siteConfig.hero.customHeroBgColor } : undefined}
-        className={`relative pt-12 pb-16 sm:pt-18 sm:pb-24 text-center overflow-hidden transition-all duration-200 ${getAtmosphereClasses()}`}
+        className={`relative pt-6 pb-8 sm:pt-10 sm:pb-12 text-center overflow-hidden transition-all duration-200 ${getAtmosphereClasses()}`}
       >
         {/* Soft Ambient Corner Glows */}
         <div className="absolute -bottom-16 -left-16 w-80 h-80 rounded-full bg-amber-100/60 blur-3xl pointer-events-none" />
         <div className="absolute -top-16 -right-16 w-96 h-96 rounded-full bg-sky-100/60 blur-3xl pointer-events-none" />
 
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           
           {/* Main Headline */}
           <h1 
             style={{ color: siteConfig.hero.headlineColor }}
             className={`${headlineSizeClasses} ${headlineFontClasses} font-extrabold tracking-tight leading-[1.12]`}
           >
-            {siteConfig.hero.headlineLine1}<br />
-            {siteConfig.hero.headlineLine2}<br />
+            <span className="inline-block whitespace-normal lg:whitespace-nowrap">
+              {siteConfig.hero.headlineLine1}
+              {siteConfig.hero.headlineLine2 ? ` ${siteConfig.hero.headlineLine2}` : ''}
+            </span>
+            <br />
             <span 
               style={{
                 backgroundColor: siteConfig.hero.capsuleBgColor,
                 color: siteConfig.hero.capsuleTextColor
               }}
-              className="inline-block px-8 sm:px-12 py-1.5 sm:py-2 rounded-full font-black mt-2 sm:mt-3 shadow-xs"
+              className="inline-block px-8 sm:px-12 py-1.5 sm:py-2 rounded-full font-black mt-2.5 sm:mt-3 shadow-xs"
             >
               {siteConfig.hero.capsuleText}
             </span>
@@ -322,7 +354,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
           {siteConfig.hero.showSubheadline && (
             <p 
               style={{ color: siteConfig.hero.subheadlineColor }}
-              className={`font-serif ${siteConfig.hero.subheadlineItalic ? 'italic' : ''} font-bold text-2xl sm:text-3xl lg:text-4xl mt-5 sm:mt-6`}
+              className={`font-serif ${siteConfig.hero.subheadlineItalic ? 'italic' : ''} font-bold text-2xl sm:text-3xl lg:text-4xl mt-4 sm:mt-5`}
             >
               {siteConfig.hero.subheadlineText}
             </p>
@@ -332,33 +364,45 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
           {siteConfig.hero.showDivider && (
             <div 
               style={{ backgroundColor: siteConfig.hero.dividerColor || siteConfig.hero.capsuleBgColor }}
-              className={`h-1 rounded-full mx-auto my-4 sm:my-5 ${siteConfig.hero.dividerWidth === 'small' ? 'w-10' : siteConfig.hero.dividerWidth === 'large' ? 'w-24' : 'w-16'}`} 
+              className={`h-1 rounded-full mx-auto my-3 sm:my-4 ${siteConfig.hero.dividerWidth === 'small' ? 'w-10' : siteConfig.hero.dividerWidth === 'large' ? 'w-24' : 'w-16'}`} 
             />
           )}
 
-          {/* Explanatory Paragraph */}
-          <p 
-            style={{ color: siteConfig.hero.paragraphColor }}
-            className={`${paragraphSizeClasses} ${paragraphWidthClasses} mx-auto font-normal leading-relaxed`}
-          >
-            {siteConfig.hero.paragraphText}
-          </p>
+          {/* Big Bold "Built for Bhutan" highlight matching the headline font */}
+          {siteConfig.hero.paragraphText && (
+            <div className="mt-4 sm:mt-5 flex justify-center">
+              <div 
+                style={{
+                  color: siteConfig.hero.paragraphColor || '#059669',
+                  borderColor: siteConfig.hero.paragraphColor ? `${siteConfig.hero.paragraphColor}50` : '#10b98150'
+                }}
+                className="inline-flex items-center gap-2.5 px-6 py-2 sm:px-8 sm:py-2.5 rounded-full bg-emerald-50/90 border-2 border-emerald-500/80 shadow-xs transition-all hover:scale-[1.02]"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className={`${headlineFontClasses} font-black text-lg sm:text-2xl lg:text-3xl tracking-tight`}>
+                  {siteConfig.hero.paragraphText.trim()}
+                </span>
+              </div>
+            </div>
+          )}
 
-          {/* Primary CTA Button */}
-          <div className="mt-8 flex justify-center">
-            <button
-              type="button"
-              onClick={onOpenLogin}
-              style={{
-                backgroundColor: siteConfig.hero.buttonBgColor,
-                color: siteConfig.hero.buttonTextColor
-              }}
-              className={`px-9 py-3.5 sm:py-4 ${buttonRadiusClass} font-bold text-sm sm:text-base shadow-xl hover:shadow-2xl transition-all duration-200 inline-flex items-center gap-2.5 cursor-pointer group hover:opacity-95`}
-            >
-              <span>{siteConfig.hero.buttonText}</span>
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </button>
-          </div>
+          {/* Primary CTA Button (if enabled) */}
+          {siteConfig.hero.showButton && (
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={onOpenLogin}
+                style={{
+                  backgroundColor: siteConfig.hero.buttonBgColor,
+                  color: siteConfig.hero.buttonTextColor
+                }}
+                className={`px-9 py-3.5 sm:py-4 ${buttonRadiusClass} font-bold text-sm sm:text-base shadow-xl hover:shadow-2xl transition-all duration-200 inline-flex items-center gap-2.5 cursor-pointer group hover:opacity-95`}
+              >
+                <span>{siteConfig.hero.buttonText}</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
@@ -368,11 +412,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
       <section 
         id="apps" 
         style={{ backgroundColor: siteConfig.appsStyle.sectionBgColor }}
-        className="py-12 border-t border-slate-200/60 transition-colors duration-200"
+        className="py-8 sm:py-10 border-t border-slate-200/60 transition-colors duration-200"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           
-          <div className="text-center mb-10">
+          <div className="text-center mb-6 sm:mb-8">
             <span 
               style={{ color: siteConfig.appsStyle.sectionTitleColor }}
               className="text-xs font-black uppercase tracking-wider block"
@@ -431,26 +475,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
                 </button>
               );
             })}
-          </div>
-
-          {/* Bottom Compliance & Client bar */}
-          <div className="mt-14 pt-8 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="font-semibold text-slate-800">100% DRC BURS Tax &amp; GST Compliant</span>
-              <span>· Built for Bhutan 🇧🇹</span>
-            </div>
-
-            <div className="flex items-center gap-4 font-bold text-slate-800">
-              <button 
-                type="button" 
-                onClick={onOpenLogin}
-                className="hover:text-blue-600 flex items-center gap-1 cursor-pointer"
-              >
-                <span>Client Sign In</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
           </div>
         </div>
       </section>
@@ -693,14 +717,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
           color: siteConfig.contact.footerTextColor || '#64748b',
           borderColor: siteConfig.contact.footerBorderColor || '#e2e8f0'
         }}
-        className="border-t py-10 transition-colors duration-200"
+        className="border-t py-6 sm:py-8 transition-colors duration-200"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
           <div className="flex items-center gap-2">
             <DrukErpLogo size="sm" variant="full" />
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-5">
             {siteConfig.contact.showWhatsApp && (
               <a 
                 href={`https://wa.me/${siteConfig.contact.whatsappNumber.replace(/[^0-9]/g, '')}`} 
@@ -724,6 +748,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
                 Client Sign In
               </button>
             )}
+
+            <span>&copy; {new Date().getFullYear()} {siteConfig.contact.copyrightText}</span>
             
             {/* Discreet Admin Customizer Entry */}
             <button
@@ -740,10 +766,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
             >
               <span>⚙️ Admin Edit</span>
             </button>
-          </div>
-
-          <div>
-            &copy; {new Date().getFullYear()} {siteConfig.contact.copyrightText}
           </div>
         </div>
       </footer>

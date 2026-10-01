@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 
@@ -9,7 +10,7 @@ import { GoogleGenAI } from '@google/genai';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
   app.use(express.json({ limit: "50mb" }));
 
   // AI Chat Route
@@ -256,20 +257,15 @@ Format your response using Markdown.
     });
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    
+  // Vite middleware for development or fallback if dist is missing
+  const distPath = path.join(process.cwd(), "dist");
+  const hasDist = fs.existsSync(path.join(distPath, "index.html"));
+
+  if (process.env.NODE_ENV === "production" && hasDist) {
     // Serve static files with standard caching
     app.use(express.static(distPath, {
-      setHeaders: (res, path) => {
-        if (path.endsWith('.html')) {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
           res.setHeader('Pragma', 'no-cache');
           res.setHeader('Expires', '0');
@@ -282,6 +278,12 @@ Format your response using Markdown.
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.sendFile(path.join(distPath, "index.html"));
     });
+  } else {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
   }
 
   app.listen(PORT, "0.0.0.0", () => {
