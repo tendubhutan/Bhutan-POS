@@ -249,7 +249,8 @@ Format your response using Markdown.
       }
     }));
     
-    app.get("*", (req, res) => {
+    // Fallback for SPA client-side routing (compatible with Express 5)
+    app.use((req, res) => {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.sendFile(path.join(distPath, "index.html"));
     });
