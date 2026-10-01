@@ -1,7 +1,5 @@
 import { SupabaseCompany, fetchUserCompanies } from './supabaseTenantService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { db } from '../lib/firebase';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 
 const VERIFIED_COMPANY_KEY = 'drukerp_verified_company_cache';
 
@@ -82,16 +80,6 @@ export async function verifyCompanyByEmailAndCode(
         const { data } = await supabase.from('companies').select('*');
         if (data && data.length > 0) {
           companies = data;
-        }
-      } catch {}
-    }
-
-    // Try live fetch from Firestore
-    if (companies.length === 0) {
-      try {
-        const snap = await getDocs(collection(db, 'companies'));
-        if (!snap.empty) {
-          companies = snap.docs.map(d => ({ id: d.id, ...d.data() } as SupabaseCompany));
         }
       } catch {}
     }

@@ -19,8 +19,8 @@ interface HeaderProps {
   canNavigateBack?: boolean;
   onNavigateBack?: () => void;
   isPosMode?: boolean;
-  firebaseStatus?: 'connected' | 'syncing' | 'offline' | 'error';
-  firebaseMessage?: string;
+  cloudStatus?: 'connected' | 'syncing' | 'offline' | 'error';
+  cloudMessage?: string;
   onOpenCompanyManager?: () => void;
   activeCompanyName?: string;
   activeFYName?: string;
@@ -37,8 +37,8 @@ export const Header: React.FC<HeaderProps> = ({
   canNavigateBack,
   onNavigateBack,
   isPosMode = false,
-  firebaseStatus = 'connected',
-  firebaseMessage,
+  cloudStatus = 'connected',
+  cloudMessage,
   onOpenCompanyManager,
   activeCompanyName,
   activeFYName,
@@ -47,6 +47,8 @@ export const Header: React.FC<HeaderProps> = ({
   onLockTerminal,
   onNavigate
 }) => {
+  const effectiveStatus = cloudStatus;
+  const effectiveMessage = cloudMessage;
   const session = getCurrentTenantSession();
   const rawRole = (
     session?.role || 
@@ -354,10 +356,10 @@ export const Header: React.FC<HeaderProps> = ({
         <div 
           className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 bg-blue-900/70 border border-blue-400/30 rounded-xl text-xs font-mono shadow-2xs cursor-default"
           title={`Terminal ST-01 (Shift OPEN) • Cloud Database: ${
-            firebaseStatus === 'syncing' 
+            effectiveStatus === 'syncing' 
               ? 'Syncing with Supabase...' 
-              : firebaseStatus === 'error' 
-              ? (firebaseMessage || 'Supabase Sync Error') 
+              : effectiveStatus === 'error' 
+              ? (effectiveMessage || 'Supabase Sync Error') 
               : 'Supabase Real-Time Connected (Online)'
           }`}
         >
@@ -366,12 +368,12 @@ export const Header: React.FC<HeaderProps> = ({
             ST-01
           </span>
           <span className="h-3 w-[1px] bg-blue-600" />
-          {firebaseStatus === 'syncing' ? (
+          {effectiveStatus === 'syncing' ? (
             <span className="flex items-center gap-1 text-amber-300 text-[11px] font-sans font-bold">
               <RefreshCw className="h-3 w-3 animate-spin text-amber-300" />
               <span>Syncing</span>
             </span>
-          ) : firebaseStatus === 'error' ? (
+          ) : effectiveStatus === 'error' ? (
             <span className="flex items-center gap-1 text-rose-300 text-[11px] font-sans font-bold">
               <span className="h-2 w-2 rounded-full bg-rose-400" />
               <span>Offline</span>
@@ -388,15 +390,15 @@ export const Header: React.FC<HeaderProps> = ({
         <div 
           className="xl:hidden flex items-center justify-center h-8 w-8 rounded-xl bg-blue-900/70 border border-blue-400/30 shadow-2xs cursor-default"
           title={`Terminal ST-01 (Shift OPEN) • Cloud Database: ${
-            firebaseStatus === 'syncing' 
+            effectiveStatus === 'syncing' 
               ? 'Syncing with Supabase...' 
-              : firebaseStatus === 'error' 
-              ? (firebaseMessage || 'Supabase Sync Error') 
+              : effectiveStatus === 'error' 
+              ? (effectiveMessage || 'Supabase Sync Error') 
               : 'Supabase Real-Time Connected (Online)'
           }`}
         >
           <span className={`h-2.5 w-2.5 rounded-full ${
-            firebaseStatus === 'syncing' ? 'bg-amber-400 animate-spin' : firebaseStatus === 'error' ? 'bg-rose-400' : 'bg-emerald-400 animate-pulse'
+            effectiveStatus === 'syncing' ? 'bg-amber-400 animate-spin' : effectiveStatus === 'error' ? 'bg-rose-400' : 'bg-emerald-400 animate-pulse'
           }`} />
         </div>
 

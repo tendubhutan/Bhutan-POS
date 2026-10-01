@@ -40,8 +40,6 @@ import { getActiveUser } from '../services/storageService';
 import { EzeeErpLogo, DrukErpLogo } from './common/EzeeErpLogo';
 import { SapEnterpriseLogon } from './auth/SapEnterpriseLogon';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { db } from '../lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
 
 const ALL_ADMIN_PERMISSIONS: UserPermission[] = [
   { module: 'pos', display: true, create: true, edit: true, delete: true, print: true },
@@ -164,15 +162,6 @@ export const LoginGate: React.FC<LoginGateProps> = ({
             } catch {}
           })());
         }
-
-        promises.push((async () => {
-          try {
-            const snap = await getDoc(doc(db, 'companies', dedicatedId));
-            if (snap.exists() && isMounted) {
-              setDedicatedCompany(snap.data() as SupabaseCompany);
-            }
-          } catch {}
-        })());
 
         await Promise.race([
           Promise.allSettled(promises),

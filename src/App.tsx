@@ -46,7 +46,7 @@ import {
   SupabaseCompany, 
   SupabaseFinancialYear 
 } from './services/supabaseTenantService';
-import { db } from './lib/firebase';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { isFeatureAllowed } from './services/tenantFeatureService';
 import { isModulePermitted } from './utils/permissionUtils';
 import { Lock } from 'lucide-react';
@@ -79,9 +79,9 @@ export default function App() {
   const [drillReturnContext, setDrillReturnContext] = useState<DrillReturnContext | null>(null);
   const [showGlobalLedgerSearch, setShowGlobalLedgerSearch] = useState(false);
 
-  // Firebase status
-  const [firebaseStatus, setFirebaseStatus] = useState<'connected' | 'syncing' | 'offline' | 'error'>('syncing');
-  const [firebaseMessage, setFirebaseMessage] = useState<string>('');
+  // Cloud sync status (Supabase)
+  const [cloudStatus, setCloudStatus] = useState<'connected' | 'syncing' | 'offline' | 'error'>('syncing');
+  const [cloudMessage, setCloudMessage] = useState<string>('');
 
   // Pre-POS Voucher Type Selection State
   const [selectedSaleVoucherType, setSelectedSaleVoucherType] = useState<VoucherType | null>(null);
@@ -398,13 +398,12 @@ export default function App() {
             currency_symbol: 'Nu.'
           };
         }
-        // Asynchronously enrich company details from Firestore/Supabase if needed
-        if (currentC.company_name === 'Client Workspace') {
+        // Asynchronously enrich company details from Supabase if needed
+        if (currentC.company_name === 'Client Workspace' && isSupabaseConfigured) {
           try {
-            const { getDoc, doc } = await import('firebase/firestore');
-            const snap = await getDoc(doc(db, 'companies', dedicatedId));
-            if (snap.exists()) {
-              currentC = { ...currentC, ...(snap.data() as SupabaseCompany) };
+            const { data } = await supabase.from('companies').select('*').eq('id', dedicatedId).maybeSingle();
+            if (data) {
+              currentC = { ...currentC, ...(data as SupabaseCompany) };
             }
           } catch {}
         }
@@ -636,8 +635,8 @@ export default function App() {
     
     // Subscribe to Supabase sync status updates
     const unsubStatus = subscribeSupabaseStatus((status, msg) => {
-      setFirebaseStatus(status);
-      if (msg) setFirebaseMessage(msg);
+      setCloudStatus(status);
+      if (msg) setCloudMessage(msg);
     });
 
     // Initialize real-time Supabase synchronization
@@ -955,8 +954,8 @@ export default function App() {
           canNavigateBack={currentView !== 'dashboard' || viewHistory.length > 1 || !!drillModal.type}
           onNavigateBack={() => navigateBack(false)}
           isPosMode={true}
-          firebaseStatus={firebaseStatus}
-          firebaseMessage={firebaseMessage}
+          cloudStatus={cloudStatus}
+          cloudMessage={cloudMessage}
           onOpenCompanyManager={() => setShowCompanyModal(true)}
           activeCompanyName={activeCompany?.company_name}
           activeFYName={activeFY?.fy_name}

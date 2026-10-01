@@ -1,6 +1,4 @@
 import { supabase, isSupabaseConfigured, SupabaseCompany, SupabaseFinancialYear, SupabaseAppUser } from '../lib/supabase';
-import { db } from '../lib/firebase';
-import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
 import { Config, AppUser } from '../types';
 import { saveCompanyFeatures } from './tenantFeatureService';
 import { DEFAULT_LEDGERS, healAndSanitizeNonDemoTenant } from './storageService';
@@ -93,7 +91,6 @@ export function getDedicatedCompanyIdFromUrl(): string | null {
 }
 
 export const PRODUCTION_BASE_URL = 'https://drukerp.com';
-export const STAGING_BASE_URL = 'https://test.drukerp.com';
 
 /**
  * Generates the full dedicated client portal URL for a specific company.
@@ -263,26 +260,6 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
       })());
     }
 
-    // 1.2 Firestore
-    fetchPromises.push((async () => {
-      try {
-        const fsSnap = await getDocs(collection(db, 'companies'));
-        fsSnap.forEach(docSnap => {
-          const c = docSnap.data() as SupabaseCompany;
-          if (c && c.id) {
-            const existing = mergedMap.get(c.id);
-            if (existing) {
-              mergedMap.set(c.id, { ...c, ...existing });
-            } else {
-              mergedMap.set(c.id, c);
-            }
-          }
-        });
-      } catch (fsErr) {
-        console.warn('Firestore companies fetch notice:', fsErr);
-      }
-    })());
-
     // Strict fast timeout - never block login for more than 1200ms!
     try {
       await Promise.race([
@@ -321,27 +298,6 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
             console.warn('Dedicated company Supabase lookup warning:', e);
           }
         }
-      }
-      // If not yet in mergedMap, try direct Firestore single-doc lookup and collection lookup
-      if (!mergedMap.has(dedicatedId)) {
-        try {
-          const { getDoc } = await import('firebase/firestore');
-          const snap = await getDoc(doc(db, 'companies', dedicatedId));
-          if (snap.exists()) {
-            mergedMap.set(dedicatedId, snap.data() as SupabaseCompany);
-          } else {
-            const fsAllSnap = await getDocs(collection(db, 'companies'));
-            fsAllSnap.forEach(d => {
-              const data = d.data() as SupabaseCompany;
-              if (data && (data.id === dedicatedId || (data.company_name && (
-                data.company_name.toLowerCase() === dedicatedId.toLowerCase() ||
-                data.company_name.toLowerCase().replace(/[^a-z0-9]/g, '') === dedicatedId.toLowerCase().replace(/[^a-z0-9]/g, '')
-              )))) {
-                mergedMap.set(data.id, data);
-              }
-            });
-          }
-        } catch {}
       }
     }
 
@@ -591,29 +547,6 @@ export async function createCompany(
       } catch (sbSignUpErr) {
         console.warn('Supabase auth signUp background notice:', sbSignUpErr);
       }
-    }
-
-    // 1.8 Persist to Firestore cloud database (guarantees other PCs discover it immediately)
-    try {
-      await setDoc(doc(db, 'companies', newId), {
-        ...newComp,
-        updatedAt: new Date().toISOString()
-      });
-      await setDoc(doc(db, 'tenant_settings', `${newId}_admin_credentials`), {
-        company_id: newId,
-        record_id: 'admin_credentials',
-        data: {
-          admin_username: adminUsername,
-          admin_name: adminFullName,
-          admin_pin: adminPin,
-          admin_password: adminPassword,
-          company_name: newComp.company_name,
-          email: newComp.email || ''
-        },
-        updatedAt: new Date().toISOString()
-      });
-    } catch (fsErr) {
-      console.warn('Firestore company save notice:', fsErr);
     }
 
     // 2. Save in local cache

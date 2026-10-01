@@ -17,10 +17,8 @@ import {
 } from '../types/staffPortal';
 import { Employee } from '../types';
 import { loadJson, saveJson, STORAGE_KEYS, getEmployees, saveEmployees } from './storageService';
-import { DEFAULT_TENANT_COMPANY, getActiveCompanyId, getAppBaseDomain } from './supabaseTenantService';
+import { DEFAULT_TENANT_COMPANY, getActiveCompanyId } from './supabaseTenantService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { db } from '../lib/firebase';
-import { doc, setDoc, getDoc, onSnapshot } from 'firebase/firestore';
 import { broadcastEntityMutation } from './supabaseSyncService';
 
 // ---------------------------------------------------------------------------
@@ -139,79 +137,17 @@ export function subscribeToRealtimeTasks(companyId?: string): () => void {
 
   activeSubscribedCompanyId = cId;
 
-  try {
-    const taskDocRef = doc(db, 'tenant_tasks', cId);
-    activeTaskUnsub = onSnapshot(taskDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data && Array.isArray(data.tasks)) {
-          const localTasks = getTaskAssignments(cId);
-          if (JSON.stringify(localTasks) !== JSON.stringify(data.tasks)) {
-            saveJson(STORAGE_KEYS.TASK_ASSIGNMENTS, data.tasks, cId);
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('deep_pos_tasks_updated', { detail: { tasks: data.tasks, companyId: cId } }));
-            }
-          }
-        }
-      }
-    }, (err) => console.warn('[Firestore Realtime Tasks notice]:', err));
-
-    const notifDocRef = doc(db, 'tenant_notifications', cId);
-    activeNotifUnsub = onSnapshot(notifDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data && Array.isArray(data.notifications)) {
-          const localNotifs = getStaffNotifications(undefined, cId);
-          if (JSON.stringify(localNotifs) !== JSON.stringify(data.notifications)) {
-            saveJson(STORAGE_KEYS.STAFF_NOTIFICATIONS, data.notifications, cId);
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('deep_pos_staff_notifications_updated', { detail: { notifications: data.notifications, companyId: cId } }));
-            }
-          }
-        }
-      }
-    }, (err) => console.warn('[Firestore Realtime Notifications notice]:', err));
-
-    const netDocRef = doc(db, 'tenant_office_network', cId);
-    activeNetworkUnsub = onSnapshot(netDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data && data.config) {
-          if (typeof localStorage !== 'undefined') {
-            try {
-              localStorage.setItem(`deep_pos_office_network_config_${cId}`, JSON.stringify(data.config));
-              localStorage.setItem('deep_pos_current_office_network_config', JSON.stringify({ companyId: cId, ...data.config }));
-            } catch {}
-          }
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('deep_pos_network_security_updated', { detail: { config: data.config, companyId: cId } }));
-          }
-        }
-      }
-    }, (err) => console.warn('[Firestore Realtime Network Security notice]:', err));
-  } catch (err) {
-    console.warn('[subscribeToRealtimeTasks setup error]:', err);
-  }
-
+  initTaskBroadcastChannel();
   return () => {
-    if (activeTaskUnsub) {
-      activeTaskUnsub();
-      activeTaskUnsub = null;
-    }
-    if (activeNotifUnsub) {
-      activeNotifUnsub();
-      activeNotifUnsub = null;
-    }
-    if (activeNetworkUnsub) {
-      activeNetworkUnsub();
-      activeNetworkUnsub = null;
-    }
     activeSubscribedCompanyId = null;
   };
 }
 
 export const getBaseAppUrl = (): string => {
-  return getAppBaseDomain();
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}${window.location.pathname}`;
+  }
+  return '';
 };
 
 // ---------------------------------------------------------------------------
@@ -303,37 +239,7 @@ export async function fetchRemoteOfficeNetworkConfig(companyId?: string): Promis
   if (!cId) return null;
 
   try {
-    // 1. Try Firestore first (<30ms instant cloud sync across devices)
-    try {
-      // Try tenant doc first
-      let netDocRef = doc(db, 'tenant_office_network', cId);
-      let snap = await getDoc(netDocRef);
-      
-      // Fallback to default doc if tenant doc does not exist
-      if (!snap.exists() && cId !== 'default') {
-        netDocRef = doc(db, 'tenant_office_network', 'default');
-        snap = await getDoc(netDocRef);
-      }
-
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data && data.config) {
-          const cleanConfig = { ...DEFAULT_OFFICE_NETWORK_CONFIG, ...data.config, requireOfficeNetwork: Boolean(data.config.requireOfficeNetwork) };
-          if (typeof localStorage !== 'undefined') {
-            try {
-              localStorage.setItem(`deep_pos_office_network_config_${cId}`, JSON.stringify(cleanConfig));
-              localStorage.setItem('deep_pos_office_network_config_default', JSON.stringify(cleanConfig));
-              localStorage.setItem('deep_pos_current_office_network_config', JSON.stringify({ companyId: cId, ...cleanConfig }));
-            } catch {}
-          }
-          return cleanConfig;
-        }
-      }
-    } catch (fsErr) {
-      console.warn('[Firestore fetchRemoteOfficeNetworkConfig notice]:', fsErr);
-    }
-
-    // 2. Try Supabase tenant_settings
+// 2. Try Supabase tenant_settings
     if (isSupabaseConfigured) {
       let { data: row } = await supabase
         .from('tenant_settings')
@@ -411,28 +317,7 @@ export function saveOfficeNetworkConfig(config: OfficeNetworkSecurityConfig, com
     window.dispatchEvent(new CustomEvent('deep_pos_network_security_updated', { detail: { config: cleanConfig, companyId: cId } }));
   }
 
-  // 4. Firestore real-time sync across PC, mobile phones, and remote tablets
-  try {
-    const netDocRef = doc(db, 'tenant_office_network', cId);
-    setDoc(netDocRef, {
-      config: cleanConfig,
-      companyId: cId,
-      updatedAt: new Date().toISOString()
-    }, { merge: true }).catch(err => console.warn('[Firestore saveOfficeNetworkConfig error]:', err));
-
-    if (cId !== 'default') {
-      const defaultDocRef = doc(db, 'tenant_office_network', 'default');
-      setDoc(defaultDocRef, {
-        config: cleanConfig,
-        companyId: 'default',
-        updatedAt: new Date().toISOString()
-      }, { merge: true }).catch(err => console.warn('[Firestore default saveOfficeNetworkConfig error]:', err));
-    }
-  } catch (err) {
-    console.warn('[Firestore saveOfficeNetworkConfig exception]:', err);
-  }
-
-  // 5. Cross-PC sync via Supabase
+// 5. Cross-PC sync via Supabase
   if (isSupabaseConfigured) {
     if (cId) {
       Promise.resolve(
@@ -767,19 +652,7 @@ export function saveCompanyHolidayPolicy(policy: CompanyHolidayPolicy, companyId
     window.dispatchEvent(new CustomEvent('deep_pos_holiday_policy_updated', { detail: { policy } }));
   }
 
-  // Multi-Terminal Cloud sync
-  if (cId) {
-    try {
-      setDoc(doc(db, 'tenant_holiday_policy', cId), {
-        policy,
-        updatedAt: new Date().toISOString()
-      }, { merge: true }).catch(err => console.warn('[Firestore saveCompanyHolidayPolicy error]:', err));
-    } catch (err) {
-      console.warn('[Firestore saveCompanyHolidayPolicy error]:', err);
-    }
-  }
-
-  if (isSupabaseConfigured && cId) {
+if (isSupabaseConfigured && cId) {
     Promise.resolve(
       supabase.from('tenant_settings').upsert({
         company_id: cId,
@@ -1457,19 +1330,7 @@ export function saveStaffNotifications(notifications: StaffInAppNotification[], 
     companyId: cId
   });
 
-  // 3. Guaranteed instant Firestore cloud sync
-  if (cId) {
-    try {
-      setDoc(doc(db, 'tenant_notifications', cId), {
-        notifications,
-        updatedAt: new Date().toISOString()
-      }, { merge: true }).catch(err => console.warn('[Firestore saveStaffNotifications error]:', err));
-    } catch (err) {
-      console.warn('[Firestore saveStaffNotifications sync error]:', err);
-    }
-  }
-
-  // 4. Supabase DB persistence
+// 4. Supabase DB persistence
   if (isSupabaseConfigured && cId) {
     Promise.resolve(
       supabase.from('tenant_settings').upsert({
@@ -1552,7 +1413,7 @@ export function generateTaskWhatsAppUrl(
     // Bhutan 8-digit mobile number prefix with 975
     cleanPhone = `975${cleanPhone}`;
   }
-  const portalUrl = `${getAppBaseDomain()}/employee-portal`;
+  const portalUrl = typeof window !== 'undefined' ? `${window.location.origin}/employee-portal` : '';
   const text = `📋 *NEW TASK ASSIGNMENT*\n\n` +
     `🏢 *Company:* ${companyName || 'Business Operations'}\n` +
     `📌 *Task:* ${task.title} (${task.taskNo})\n` +
@@ -1595,19 +1456,7 @@ export function saveTaskAssignments(tasks: TaskAssignment[], companyId?: string)
     companyId: cId
   });
 
-  // 3. Guaranteed instant Firestore cloud sync
-  if (cId) {
-    try {
-      setDoc(doc(db, 'tenant_tasks', cId), {
-        tasks,
-        updatedAt: new Date().toISOString()
-      }, { merge: true }).catch(err => console.warn('[Firestore saveTaskAssignments error]:', err));
-    } catch (err) {
-      console.warn('[Firestore saveTaskAssignments sync error]:', err);
-    }
-  }
-
-  // 4. Supabase DB persistence
+// 4. Supabase DB persistence
   if (isSupabaseConfigured && cId) {
     Promise.resolve(
       supabase.from('tenant_settings').upsert({

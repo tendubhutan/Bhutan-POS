@@ -471,56 +471,26 @@ async function getStaffUsersForCompany(companyId: string, fastLocalOnly: boolean
     return staffList;
   }
 
-  // 2. In parallel, check Firestore & Supabase with a fast timeout
-  const promises: Promise<void>[] = [];
-
-  promises.push((async () => {
+  // 2. Fetch staff settings from Supabase
+  if (isSupabaseConfigured) {
     try {
-      const { db } = await import('../lib/firebase');
-      if (db) {
-        const { doc, getDoc } = await import('firebase/firestore');
-        const snap = await getDoc(doc(db, 'tenant_settings', `${companyId}_company_staff_users`));
-        if (snap.exists() && snap.data()?.users && Array.isArray(snap.data().users)) {
-          for (const u of snap.data().users) {
-            const uid = u.id || u.username;
-            if (uid && !seenIds.has(uid)) {
-              seenIds.add(uid);
-              staffList.push(u);
-            }
-          }
+      const { data: staffSettings } = await supabase
+        .from('tenant_settings')
+        .select('data')
+        .eq('company_id', companyId)
+        .eq('record_id', 'company_staff_users')
+        .maybeSingle();
+
+      const sbUsers: any[] = staffSettings?.data?.users || [];
+      for (const u of sbUsers) {
+        const uid = u.id || u.username;
+        if (uid && !seenIds.has(uid)) {
+          seenIds.add(uid);
+          staffList.push(u);
         }
       }
     } catch {}
-  })());
-
-  if (isSupabaseConfigured) {
-    promises.push((async () => {
-      try {
-        const { data: staffSettings } = await supabase
-          .from('tenant_settings')
-          .select('data')
-          .eq('company_id', companyId)
-          .eq('record_id', 'company_staff_users')
-          .maybeSingle();
-
-        const sbUsers: any[] = staffSettings?.data?.users || [];
-        for (const u of sbUsers) {
-          const uid = u.id || u.username;
-          if (uid && !seenIds.has(uid)) {
-            seenIds.add(uid);
-            staffList.push(u);
-          }
-        }
-      } catch {}
-    })());
   }
-
-  try {
-    await Promise.race([
-      Promise.allSettled(promises),
-      new Promise(resolve => setTimeout(resolve, 2000))
-    ]);
-  } catch {}
 
   return staffList;
 }

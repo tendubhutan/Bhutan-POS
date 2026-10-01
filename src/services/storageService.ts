@@ -10339,22 +10339,6 @@ export function saveUsers(users: AppUser[], targetCompanyId?: string): void {
   const cId = targetCompanyId || getActiveCompanyId();
   saveJson(STORAGE_KEYS.USERS, users, cId);
 
-  // Cross-PC sync: Save to Firestore tenant_settings
-  if (cId) {
-    try {
-      import('../lib/firebase').then(({ db }) => {
-        if (db) {
-          import('firebase/firestore').then(({ doc, setDoc }) => {
-            setDoc(doc(db, 'tenant_settings', `${cId}_company_staff_users`), {
-              users,
-              updated_at: new Date().toISOString()
-            }, { merge: true }).catch(() => {});
-          }).catch(() => {});
-        }
-      }).catch(() => {});
-    } catch {}
-  }
-
   // Cross-PC sync: Save to Supabase tenant_settings so staff accounts appear on all computers
   if (isSupabaseConfigured && cId) {
     Promise.resolve(
@@ -10393,19 +10377,6 @@ export async function syncUsersFromSupabase(targetCompanyId?: string): Promise<A
       console.warn('[Supabase syncUsersFromSupabase notice]:', err);
     }
   }
-
-  // Check Firestore
-  try {
-    const { db } = await import('../lib/firebase');
-    if (db) {
-      const { doc, getDoc } = await import('firebase/firestore');
-      const snap = await getDoc(doc(db, 'tenant_settings', `${cId}_company_staff_users`));
-      if (snap.exists() && snap.data()?.users && Array.isArray(snap.data()?.users) && snap.data().users.length > 0) {
-        saveJson(STORAGE_KEYS.USERS, snap.data().users, cId);
-        return snap.data().users;
-      }
-    }
-  } catch {}
 
   return getUsers(cId);
 }

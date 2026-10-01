@@ -1,4 +1,4 @@
-name: Deploy to Firebase Hosting
+name: CI Build & Verify
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build_and_deploy:
+  build:
     runs-on: ubuntu-latest
     env:
       PUPPETEER_SKIP_DOWNLOAD: 'true'
@@ -18,20 +18,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: 22
 
       - name: Install dependencies
-        run: npm install
+        run: npm install --include=dev
 
       - name: Build production bundle
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
         run: npm run build
-
-      - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT_BHUTAN_POS }}'
-          projectId: bhutan-pos
-          channelId: live
 

@@ -45,8 +45,6 @@ import {
 } from '../../types/staffPortal';
 import { SupabaseCompany } from '../../lib/supabase';
 import { StaffPWAInstallModal } from './StaffPWAInstallModal';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 
 interface EmployeePortalAppProps {
   activeCompany?: SupabaseCompany | null;
@@ -276,58 +274,7 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
       }
     });
 
-    // 2. Real-time Firestore snapshot listener for instant cross-device updates
-    let unsubFsTenant: (() => void) | null = null;
-    let unsubFsDefault: (() => void) | null = null;
-
-    try {
-      const cId = companyId || 'default';
-      const tenantDocRef = doc(db, 'tenant_office_network', cId);
-      unsubFsTenant = onSnapshot(tenantDocRef, (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data?.config) {
-            const clean = { ...data.config, requireOfficeNetwork: Boolean(data.config.requireOfficeNetwork) };
-            setOfficeSecurityConfig(clean);
-            if (!clean.requireOfficeNetwork) {
-              setNetworkStatus({
-                allowed: true,
-                isOfficeNetwork: true,
-                networkType: 'external',
-                reason: 'Office network restriction is disabled by management. Clock-in from home & any network is allowed.'
-              });
-              setIsCheckingNetwork(false);
-            }
-          }
-        }
-      }, (err) => console.warn('[EmployeePortalApp Firestore net listener notice]:', err));
-
-      if (cId !== 'default') {
-        const defaultDocRef = doc(db, 'tenant_office_network', 'default');
-        unsubFsDefault = onSnapshot(defaultDocRef, (snap) => {
-          if (snap.exists()) {
-            const data = snap.data();
-            if (data?.config) {
-              const clean = { ...data.config, requireOfficeNetwork: Boolean(data.config.requireOfficeNetwork) };
-              setOfficeSecurityConfig(clean);
-              if (!clean.requireOfficeNetwork) {
-                setNetworkStatus({
-                  allowed: true,
-                  isOfficeNetwork: true,
-                  networkType: 'external',
-                  reason: 'Office network restriction is disabled by management. Clock-in from home & any network is allowed.'
-                });
-                setIsCheckingNetwork(false);
-              }
-            }
-          }
-        }, (err) => console.warn('[EmployeePortalApp Firestore default net listener notice]:', err));
-      }
-    } catch (e) {
-      console.warn('[EmployeePortalApp Firestore listener setup notice]:', e);
-    }
-
-    // 3. Real-time event listener for instant updates across tabs/devices
+    // 2. Real-time event listener for instant updates across tabs/devices
     const handleNetUpdate = (e: any) => {
       const cfg = e.detail?.config || getOfficeNetworkConfig(companyId);
       setOfficeSecurityConfig(cfg);
@@ -346,8 +293,6 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
 
     window.addEventListener('deep_pos_network_security_updated', handleNetUpdate);
     return () => {
-      if (unsubFsTenant) unsubFsTenant();
-      if (unsubFsDefault) unsubFsDefault();
       window.removeEventListener('deep_pos_network_security_updated', handleNetUpdate);
     };
   }, [companyId]);
