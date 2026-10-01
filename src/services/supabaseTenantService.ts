@@ -91,6 +91,32 @@ export function getDedicatedCompanyIdFromUrl(): string | null {
 }
 
 export const PRODUCTION_BASE_URL = 'https://drukerp.com';
+export const DEFAULT_PRODUCTION_DOMAIN = 'drukerp.com';
+
+const CUSTOM_DOMAIN_STORAGE_KEY = 'drukerp_custom_base_domain';
+
+export function getAppBaseDomain(useCurrentOrigin: boolean = false): string {
+  if (useCurrentOrigin && typeof window !== 'undefined' && window.location.host) {
+    return window.location.host;
+  }
+  if (typeof localStorage !== 'undefined') {
+    const custom = localStorage.getItem(CUSTOM_DOMAIN_STORAGE_KEY);
+    if (custom && custom.trim()) {
+      return custom.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    }
+  }
+  return DEFAULT_PRODUCTION_DOMAIN;
+}
+
+export function setAppCustomDomain(domain: string): void {
+  if (typeof localStorage === 'undefined') return;
+  const clean = (domain || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  if (!clean || clean === DEFAULT_PRODUCTION_DOMAIN) {
+    localStorage.removeItem(CUSTOM_DOMAIN_STORAGE_KEY);
+  } else {
+    localStorage.setItem(CUSTOM_DOMAIN_STORAGE_KEY, clean);
+  }
+}
 
 /**
  * Generates the full dedicated client portal URL for a specific company.
@@ -98,11 +124,13 @@ export const PRODUCTION_BASE_URL = 'https://drukerp.com';
  * or defaults to production URL.
  */
 export function getCompanyDedicatedUrl(companyId: string, forceCurrentOrigin: boolean = false): string {
-  if (typeof window !== 'undefined' && window.location.origin) {
+  if (forceCurrentOrigin && typeof window !== 'undefined' && window.location.origin) {
     const cleanPath = window.location.pathname.replace(/\/+$/, '');
     return `${window.location.origin}${cleanPath}/?company=${companyId}`;
   }
-  return `${PRODUCTION_BASE_URL}/?company=${companyId}`;
+  const domain = getAppBaseDomain(false);
+  const protocol = domain.includes('localhost') || domain.includes('127.0.0.1') ? 'http' : 'https';
+  return `${protocol}://${domain}/?company=${companyId}`;
 }
 
 // Fallback / Initial Demo Company (Actual UUID from Supabase)
