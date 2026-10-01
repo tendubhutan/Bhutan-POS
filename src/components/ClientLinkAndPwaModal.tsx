@@ -50,8 +50,7 @@ import {
   saveOfficeNetworkConfig 
 } from '../services/employeeStaffService';
 import { 
-  getActiveCompanyId, 
-  getAppBaseDomain, 
+  getActiveCompanyId,
   getCompanyDedicatedUrl 
 } from '../services/supabaseTenantService';
 import { EzeeErpLogo } from './common/EzeeErpLogo';
