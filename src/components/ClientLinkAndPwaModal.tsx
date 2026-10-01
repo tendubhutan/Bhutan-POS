@@ -51,6 +51,7 @@ import {
 } from '../services/employeeStaffService';
 import { 
   getActiveCompanyId,
+  getAppBaseDomain,
   getCompanyDedicatedUrl 
 } from '../services/supabaseTenantService';
 import { EzeeErpLogo } from './common/EzeeErpLogo';
