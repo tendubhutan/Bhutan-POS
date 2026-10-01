@@ -97,6 +97,34 @@ Format your response using Markdown.
   });
 
   // ==========================================
+  // WEBSITE CONFIG FILE PERSISTENCE
+  // ==========================================
+  app.post("/api/save-website-config", async (req, res) => {
+    try {
+      const config = req.body;
+      const fs = await import("fs/promises");
+      const configPath = path.resolve("./src/config/websiteConfig.json");
+      await fs.writeFile(configPath, JSON.stringify(config, null, 2), "utf8");
+      console.log("Successfully saved website config to src/config/websiteConfig.json");
+      return res.json({ success: true, message: "Saved to src/config/websiteConfig.json" });
+    } catch (err: any) {
+      console.error("Error saving website config to file:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/get-website-config", async (_req, res) => {
+    try {
+      const fs = await import("fs/promises");
+      const configPath = path.resolve("./src/config/websiteConfig.json");
+      const data = await fs.readFile(configPath, "utf8");
+      return res.json(JSON.parse(data));
+    } catch {
+      return res.json(null);
+    }
+  });
+
+  // ==========================================
   // LOCAL WIFI HUB (SHOP LAN MODE) DISPATCHER
   // ==========================================
   const hubCounters: Record<string, number> = {

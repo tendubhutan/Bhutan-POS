@@ -85,6 +85,7 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
   const [activeTab, setActiveTab] = useState<'header' | 'hero' | 'appsStyle' | 'appsList' | 'footer' | 'backup'>('header');
   const [formData, setFormData] = useState<WebsiteConfig>(() => JSON.parse(JSON.stringify(config)));
   const [editingApp, setEditingApp] = useState<WebsiteAppItem | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessToast, setSaveSuccessToast] = useState(false);
   const [appsSearch, setAppsSearch] = useState('');
   const [jsonExportText, setJsonExportText] = useState('');
@@ -92,20 +93,30 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSave = () => {
-    saveWebsiteConfig(formData);
-    onConfigUpdated(formData);
-    setSaveSuccessToast(true);
-    setTimeout(() => setSaveSuccessToast(false), 2500);
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await saveWebsiteConfig(formData);
+      onConfigUpdated(formData);
+      setSaveSuccessToast(true);
+      setTimeout(() => setSaveSuccessToast(false), 3500);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleResetDefaults = () => {
+  const handleResetDefaults = async () => {
     if (confirm('Are you sure you want to reset all website text, header, colors, and apps to the default original layout?')) {
-      const reset = resetWebsiteConfig();
-      setFormData(JSON.parse(JSON.stringify(reset)));
-      onConfigUpdated(reset);
-      setSaveSuccessToast(true);
-      setTimeout(() => setSaveSuccessToast(false), 2500);
+      setIsSaving(true);
+      try {
+        const reset = await resetWebsiteConfig();
+        setFormData(JSON.parse(JSON.stringify(reset)));
+        onConfigUpdated(reset);
+        setSaveSuccessToast(true);
+        setTimeout(() => setSaveSuccessToast(false), 3500);
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -226,10 +237,11 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
             <button
               type="button"
               onClick={handleSave}
-              className="inline-flex items-center gap-1.5 px-4 sm:px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-md transition cursor-pointer"
+              disabled={isSaving}
+              className="inline-flex items-center gap-1.5 px-4 sm:px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-extrabold text-xs shadow-md transition cursor-pointer"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>Save &amp; Apply Changes</span>
+              <span>{isSaving ? 'Syncing to Cloud...' : 'Save & Sync to Live Website'}</span>
             </button>
             <button
               type="button"
@@ -295,9 +307,9 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
 
         {/* Success Toast */}
         {saveSuccessToast && (
-          <div className="bg-emerald-500 text-white text-xs font-bold py-2.5 px-4 text-center animate-in fade-in shrink-0 flex items-center justify-center gap-2">
+          <div className="bg-emerald-600 text-white text-xs font-bold py-2.5 px-4 text-center animate-in fade-in shrink-0 flex items-center justify-center gap-2 shadow-inner">
             <Check className="w-4 h-4" />
-            <span>Changes applied live to the website!</span>
+            <span>Saved &amp; Synced to Cloud! Changes are live on drukerp.com and in preview.</span>
           </div>
         )}
 
@@ -1286,16 +1298,33 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
                 </button>
               </div>
 
-              {/* JSON Export */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                <h5 className="text-xs font-extrabold text-slate-800">Export Configuration Backup (JSON)</h5>
-                <p className="text-xs text-slate-600">Copy your configuration to save a local backup or transfer to another site.</p>
+              {/* JSON Export & GitHub Deployment */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h5 className="text-xs font-extrabold text-slate-800">Export Configuration &amp; GitHub Sync</h5>
+                    <p className="text-[11px] text-slate-500">Saved to <code className="font-mono bg-slate-200 px-1 py-0.5 rounded text-[10px]">src/config/websiteConfig.json</code> for GitHub commits and Cloudflare deployment.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(JSON.stringify(formData, null, 2));
+                      alert('Website configuration JSON copied to clipboard!');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                  >
+                    <span>Copy JSON</span>
+                  </button>
+                </div>
                 <textarea
                   readOnly
                   rows={4}
                   value={JSON.stringify(formData, null, 2)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-[10px] bg-white"
                 />
+                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-[11px] leading-relaxed">
+                  <strong>🚀 Updating www.drukerp.com:</strong> Clicking <em>&quot;Save &amp; Sync to Live Website&quot;</em> automatically updates <code className="font-mono text-blue-800">src/config/websiteConfig.json</code>. After saving, push your git commits to GitHub to trigger Cloudflare Pages to build and publish your new website!
+                </div>
               </div>
             </div>
           )}
@@ -1314,10 +1343,11 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
           <button
             type="button"
             onClick={handleSave}
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition cursor-pointer"
+            disabled={isSaving}
+            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-black text-xs shadow-md transition cursor-pointer"
           >
             <Save className="w-4 h-4" />
-            <span>Save &amp; Apply Changes</span>
+            <span>{isSaving ? 'Syncing to Cloud...' : 'Save & Sync to Live Website'}</span>
           </button>
         </div>
       </div>

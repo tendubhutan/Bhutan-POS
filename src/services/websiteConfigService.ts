@@ -1,4 +1,6 @@
 import { isSuperAdmin } from './authTenantContext';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import defaultWebsiteConfigData from '../config/websiteConfig.json';
 
 export interface WebsiteNavMenuItem {
   id: string;
@@ -117,435 +119,7 @@ export interface WebsiteConfig {
   lastUpdated?: number;
 }
 
-export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
-  header: {
-    bgColor: '#ffffff',
-    textColor: '#475569',
-    textHoverColor: '#2563eb',
-    showNav: true,
-    navItems: [
-      { id: 'all-apps', label: 'All Apps', action: 'scroll-apps', isVisible: true },
-      { id: 'drc-tax', label: 'DRC Tax', action: 'open-app', targetAppId: 'drc-tax', isVisible: true },
-      { id: 'restaurant', label: 'Restaurant', action: 'open-app', targetAppId: 'restaurant', isVisible: true },
-      { id: 'book-demo', label: 'Book Demo', action: 'open-demo', isVisible: true }
-    ],
-    signInBtnText: 'Sign In',
-    signInBtnColor: '#334155',
-    launchBtnText: 'Launch ERP',
-    launchBtnBgColor: '#2563eb',
-    launchBtnTextColor: '#ffffff',
-    showLaunchBtn: true,
-    showSignInBtn: true
-  },
-  hero: {
-    headlineLine1: 'Everything Your',
-    headlineLine2: 'Business Needs,',
-    headlineFontSize: 'lg',
-    headlineFontFamily: 'sans',
-    headlineColor: '#0a1e44',
-    headlineAlign: 'center',
-    capsuleText: 'in One Place',
-    capsuleBgColor: '#fec84b',
-    capsuleTextColor: '#0a1e44',
-    capsuleFontSize: 'md',
-    subheadlineText: 'Simple, efficient, yet affordable!',
-    subheadlineFontSize: 'md',
-    subheadlineColor: '#0a1e44',
-    subheadlineFontFamily: 'serif',
-    subheadlineItalic: true,
-    showSubheadline: true,
-    showDivider: true,
-    dividerColor: '#fec84b',
-    dividerWidth: 'medium',
-    paragraphText: 'Built specifically for businesses in Bhutan — from DRC GST filings to restaurant QR ordering and mobile staff attendance.',
-    paragraphFontSize: 'md',
-    paragraphColor: '#475569',
-    paragraphMaxWidth: 'medium',
-    paragraphLineHeight: 'relaxed',
-    buttonText: 'Get Started',
-    buttonBgColor: '#0a1e44',
-    buttonTextColor: '#ffffff',
-    buttonRadius: 'pill',
-    bgAtmosphere: 'sky-amber',
-    customHeroBgColor: '#ffffff'
-  },
-  appsStyle: {
-    sectionTitle: 'Integrated Applications',
-    sectionTitleColor: '#d97706',
-    sectionHeading: 'Click any app to see its complete capabilities',
-    sectionHeadingColor: '#0f172a',
-    sectionSubheading: 'Every app is interconnected. One single database, zero duplicate entries.',
-    sectionSubheadingColor: '#64748b',
-    sectionBgColor: '#f8fafc',
-    cardBgColor: '#ffffff',
-    cardBorderColor: '#e2e8f0',
-    cardRadius: '2xl',
-    cardShadow: 'xs',
-    cardTextColor: '#1e293b',
-    cardCategoryColor: '#94a3b8',
-    modalBgColor: '#ffffff',
-    modalTextColor: '#334155',
-    modalHighlightBg: '#fef3c7',
-    modalHighlightText: '#78350f'
-  },
-  contact: {
-    whatsappNumber: '+975 17000000',
-    whatsappLabel: 'WhatsApp Support (+975)',
-    copyrightText: 'DrukERP · All rights reserved.',
-    demoModalTitle: 'Meet an Advisor / Free Demo',
-    demoModalSub: 'We will help you set up thermal printers, DRC tax exports, and migrate stock from Excel.',
-    footerBgColor: '#ffffff',
-    footerTextColor: '#64748b',
-    footerBorderColor: '#e2e8f0',
-    showWhatsApp: true,
-    showDemoBtn: true,
-    showSignInBtn: true
-  },
-  apps: [
-    {
-      id: 'drc-tax',
-      name: 'DRC Tax & GST',
-      category: 'Finance & Compliance',
-      color: 'from-emerald-500 to-teal-600',
-      iconName: 'ShieldCheck',
-      tagline: 'Upload-ready GST & TDS files matching DRC portal formats',
-      description: 'Eliminate manual tax reconciliation and spreadsheets. DrukERP exports standardized schedules verified against Bhutan Revenue & Customs (DRC / BURS) specifications.',
-      features: [
-        'GST Output Tax Return Schedule with customer TPN/GSTIN, taxable values, and rate breakdown',
-        'GST Input Tax Credit Reconciliation with purchase verification and Bill of Entry matching',
-        'TDS Withholding Tax Schedule (2%, 3%, 5%) with automated deduction & certificate generation',
-        'Monthly Salary Schedule for PIT filing with department-wise payroll export'
-      ],
-      bhutanBenefit: 'Files export in 1-click to Excel (.xlsx) ready for direct submission to the DRC online portal without reformatting.',
-      isVisible: true,
-      detailBoxTheme: 'emerald'
-    },
-    {
-      id: 'pos',
-      name: 'Point of Sale',
-      category: 'Sales & Retail',
-      color: 'from-amber-500 to-orange-600',
-      iconName: 'ShoppingCart',
-      tagline: 'High-speed barcode checkout with offline-first reliability',
-      description: 'Built for checkout counters requiring 60+ customer bills per hour. Operates seamlessly offline during internet blackouts and syncs automatically when reconnected.',
-      features: [
-        'Dual customer mode: Walk-in Cash or Credit customers with TPN, phone, and address',
-        'Instant barcode scanner recognition and keyboard shortcut speed (Alt+P, Alt+S, F2)',
-        'Multiple payment modes: Cash, mBoB / B-Mobile QR, Credit, and split tenders',
-        'Thermal receipt printing (58mm / 80mm) with customizable Bhutanese greetings and tax summaries'
-      ],
-      bhutanBenefit: 'Store cashiers never get blocked when local internet drops in Thimphu or outstations.',
-      isVisible: true,
-      detailBoxTheme: 'amber'
-    },
-    {
-      id: 'accounting',
-      name: 'Accounting',
-      category: 'Finance & Compliance',
-      color: 'from-blue-600 to-indigo-600',
-      iconName: 'Calculator',
-      tagline: 'Double-entry ledgers with intelligent auto-narration',
-      description: 'Complete double-entry accounting engine with continuous-loop voucher entry. Features intelligent narration that writes transaction descriptions automatically.',
-      features: [
-        'Intelligent Voucher Narration Engine: synthesizes accurate narration from transaction context',
-        'Context-Aware Ledger Filter: prevents cashiers from selecting incorrect expense or asset accounts',
-        'Real-time Balance Sheet, Profit & Loss, Trial Balance, and Cash/Bank Daybooks',
-        'Bank Reconciliation with transaction reference ID tracking'
-      ],
-      bhutanBenefit: 'Accountants get Tally-style rapid data entry with modern cloud security and live reports.',
-      isVisible: true,
-      detailBoxTheme: 'blue'
-    },
-    {
-      id: 'restaurant',
-      name: 'Restaurant & QR',
-      category: 'Hospitality',
-      color: 'from-rose-500 to-orange-500',
-      iconName: 'Utensils',
-      tagline: 'Table dine-in, mobile waiter captain app, and QR self-ordering',
-      description: 'Transform your restaurant, cafe, or bar operations. Waiters take orders tableside on their smartphones, while guests can scan table QR codes to browse and order directly.',
-      features: [
-        'Visual Table Floor Plan with live status: Vacant, Occupied, Billed, and Table Transfer',
-        'Smartphone Captain App: Waiters punch orders at tables with instant Kitchen Order Ticket (KOT) printing',
-        'Contactless QR Ordering: Diners scan table QR codes on their phones to place orders directly',
-        'Split billing, service charge configuration, and multi-counter bar/kitchen routing'
-      ],
-      bhutanBenefit: 'Speeds up food service and eliminates wrong orders during busy dinner rushes.',
-      isVisible: true,
-      detailBoxTheme: 'amber'
-    },
-    {
-      id: 'inventory',
-      name: 'Inventory & Stock',
-      category: 'Supply Chain',
-      color: 'from-violet-600 to-purple-600',
-      iconName: 'Boxes',
-      tagline: 'Multi-unit conversions and automatic stock valuation',
-      description: 'Full visibility across warehouse stock. Handles multi-unit conversions like Carton to Box to Piece with automated cost and selling price adjustments during billing.',
-      features: [
-        'Multi-unit conversions: Master Unit to Sub-units (e.g. 1 Carton = 12 Boxes = 144 Pieces)',
-        'Real-time stock valuation using Moving Weighted Average / FIFO',
-        'Low stock warning alerts and automated reorder purchase requisitions',
-        'Physical stock verification and variance reconciliation ledger'
-      ],
-      bhutanBenefit: 'Never oversell or lose track of stock when breaking wholesale bulk cartons into retail pieces.',
-      isVisible: true,
-      detailBoxTheme: 'purple'
-    },
-    {
-      id: 'electronics',
-      name: 'Electronics & IMEI',
-      category: 'Specialized Verticals',
-      color: 'from-sky-500 to-blue-600',
-      iconName: 'Smartphone',
-      tagline: 'Serial number and IMEI tracking for phones and appliances',
-      description: 'Designed specifically for mobile showrooms, computer shops, and electronics dealers. Tracks every individual unit by its unique Serial / IMEI number from purchase to sale.',
-      features: [
-        'Mandatory or optional IMEI/Serial tracking at Goods Receipt and POS billing',
-        'Customer warranty tracking and repair/replacement service history ledger',
-        'Barcode scanner IMEI capture to prevent typing mistakes on 15-digit numbers',
-        'Bulk import of device serial numbers directly from distributor Excel invoices'
-      ],
-      bhutanBenefit: 'Instant warranty verification when customers bring devices back for service.',
-      isVisible: true,
-      detailBoxTheme: 'blue'
-    },
-    {
-      id: 'pharmacy',
-      name: 'Pharmacy & Batch',
-      category: 'Specialized Verticals',
-      color: 'from-emerald-600 to-green-700',
-      iconName: 'Pill',
-      tagline: 'Batch numbers, expiry date tracking, and FEFO automated dispatch',
-      description: 'Strict pharmaceutical inventory compliance. Ensures medicines are tracked by batch number and dispatched using First Expiry, First Out (FEFO) logic to prevent expired stock losses.',
-      features: [
-        'Batch Number & Expiry Date tracking on all pharmaceutical products',
-        'FEFO Automated Dispatch: cashier is automatically prompted to dispense the earliest expiring batch',
-        'Near-Expiry Warning Dashboard showing stock expiring within 30, 60, or 90 days',
-        'Detailed batch-wise sales and purchase audit trails for health regulatory inspections'
-      ],
-      bhutanBenefit: 'Protects patient health and eliminates financial losses from expired medicine write-offs.',
-      isVisible: true,
-      detailBoxTheme: 'emerald'
-    },
-    {
-      id: 'spares',
-      name: 'Auto Spares & Parts',
-      category: 'Specialized Verticals',
-      color: 'from-amber-600 to-orange-700',
-      iconName: 'Wrench',
-      tagline: 'Part numbers, rack/bin locations, and vehicle compatibility',
-      description: 'Engineered for auto spare parts stores, workshops, and hardware distributors. Quickly locate parts in sprawling warehouses by Part Number and Rack/Bin locations.',
-      features: [
-        'OEM Part Number & Alternative Part Number cross-referencing for rapid search',
-        'Warehouse Rack, Shelf, and Bin Location tracking printed directly on pick slips',
-        'Vehicle Make, Model, and Year compatibility search during counter inquiries',
-        'Dead stock analysis to identify slow-moving vehicle parts'
-      ],
-      bhutanBenefit: 'Warehouse staff find the exact spare part in seconds instead of searching shelves manually.',
-      isVisible: true,
-      detailBoxTheme: 'amber'
-    },
-    {
-      id: 'garments',
-      name: 'Garments & Footwear',
-      category: 'Specialized Verticals',
-      color: 'from-pink-500 to-rose-600',
-      iconName: 'Shirt',
-      tagline: 'Color, Size, and Style matrix with variant barcode tags',
-      description: 'Matrix-based inventory for fashion retail, apparel, and shoe stores. Enter 50 size/color variations on a single screen and print custom price tags with barcodes.',
-      features: [
-        'Variant Matrix: track products across Color, Size, Style, and Brand attributes',
-        'Matrix Bulk Stock Entry: enter quantities for all sizes and colors in a single grid',
-        'Custom Barcode Sticker Printing with Brand, Size, Color, and MRP',
-        'Size-wise sales breakdown to identify fast-selling sizes for reordering'
-      ],
-      bhutanBenefit: 'Simplifies apparel inventory without having to create dozens of separate product items.',
-      isVisible: true,
-      detailBoxTheme: 'amber'
-    },
-    {
-      id: 'hr-payroll',
-      name: 'HR & Payroll',
-      category: 'Human Resources',
-      color: 'from-indigo-500 to-purple-600',
-      iconName: 'Users',
-      tagline: 'Automated salary calculations, PF, and PIT deductions',
-      description: 'Complete employee management and payroll processing. Automatically computes Basic Salary, Allowances, Provident Fund (PF), and PIT tax deductions.',
-      features: [
-        'One-click monthly payroll processing with employee master profiles',
-        'Automated deduction of Employee PF (5-10%), Employer Contribution, and PIT tax brackets',
-        'Printable and WhatsApp-shareable monthly employee payslips',
-        'Monthly Salary Schedule export formatted for direct DRC tax upload'
-      ],
-      bhutanBenefit: 'Disburse staff salaries and generate DRC monthly salary tax schedules in minutes.',
-      isVisible: true,
-      detailBoxTheme: 'purple'
-    },
-    {
-      id: 'attendance',
-      name: 'GPS Attendance',
-      category: 'Human Resources',
-      color: 'from-teal-500 to-emerald-600',
-      iconName: 'Clock',
-      tagline: 'Smartphone clock-in/out with GPS location geofencing',
-      description: 'Empower staff to clock in and out from their own smartphones. Geo-fencing coordinates ensure employees are physically present on store premises before clocking in.',
-      features: [
-        'Staff Mobile Clock-In / Clock-Out from any smartphone browser without installing apps',
-        'GPS Location Geofencing: verifies staff are inside the store perimeter',
-        'Shift tracking, late arrivals, overtime, and leave management',
-        'Direct integration with the payroll engine for automated attendance salary deductions'
-      ],
-      bhutanBenefit: 'Eliminates expensive biometric hardware and prevents proxy buddy-punching.',
-      isVisible: true,
-      detailBoxTheme: 'emerald'
-    },
-    {
-      id: 'barcode',
-      name: 'Barcode Studio',
-      category: 'Retail & Warehouse',
-      color: 'from-cyan-500 to-blue-600',
-      iconName: 'ScanLine',
-      tagline: 'Custom barcode generator for thermal rolls and A4 sticker sheets',
-      description: 'Generate and print custom product barcode stickers. Supports standard thermal barcode printers (roll format) as well as regular office laser printers using multi-column A4 sticker sheets.',
-      features: [
-        'Supports Code128, EAN-13, and custom internal store barcode formats',
-        'Flexible label designer: include Item Name, Price, Size, Expiry, and Company Logo',
-        'Thermal printer presets (e.g. 50x25mm, 38x25mm) and multi-column A4 sticker sheets (24/30/40 up)',
-        'Batch printing directly from Purchase bills or inventory master'
-      ],
-      bhutanBenefit: 'Tag unbarcoded goods instantly without buying third-party labeling software.',
-      isVisible: true,
-      detailBoxTheme: 'blue'
-    },
-    {
-      id: 'pricing',
-      name: 'Wholesale & Retail',
-      category: 'Sales & Retail',
-      color: 'from-yellow-500 to-amber-600',
-      iconName: 'BadgeDollarSign',
-      tagline: 'Dual price tiers for wholesale distributors and retail customers',
-      description: 'Operate wholesale distribution and retail walk-in sales from the same system. Configure dual pricing tiers with minimum quantity triggers and customer-specific price lists.',
-      features: [
-        'Dual pricing per product: Wholesale Rate vs Retail Walk-in Rate',
-        'Automatic Wholesale Rate trigger when quantity exceeds minimum wholesale threshold',
-        'Customer-specific credit limits, discounts, and payment terms (e.g. Net 15, Net 30)',
-        'Price change history audit to monitor margin changes over time'
-      ],
-      bhutanBenefit: 'Serve both retail walk-in shoppers and wholesale bulk re-sellers from one system.',
-      isVisible: true,
-      detailBoxTheme: 'amber'
-    },
-    {
-      id: 'multi-branch',
-      name: 'Multi-Branch Sync',
-      category: 'Enterprise Scaling',
-      color: 'from-blue-700 to-indigo-800',
-      iconName: 'Building2',
-      tagline: 'Connect Head Office with Phuntsholing, Paro & Outstations',
-      description: 'Scale from a single shop to a nationwide chain. Maintain centralized inventory and consolidated accounts while providing each branch with dedicated voucher numbering.',
-      features: [
-        'Dedicated branch prefixes: HQ-POS-1 (Thimphu), PHU-POS-1 (Phuntsholing), PAR-POS-1 (Paro)',
-        'Branch-to-branch Stock Transfer with in-transit tracking and receipt confirmation',
-        'Branch-isolated inventory and sales reporting with consolidated HQ financial statements',
-        'Staff branch assignment: locks cashier access to their authorized branch only'
-      ],
-      bhutanBenefit: 'Complete multi-location control across Bhutan with zero invoice number collisions.',
-      isVisible: true,
-      detailBoxTheme: 'blue'
-    },
-    {
-      id: 'whatsapp-share',
-      name: 'WhatsApp & Email',
-      category: 'Communication',
-      color: 'from-green-500 to-emerald-600',
-      iconName: 'MessageCircle',
-      tagline: '1-click direct sharing of invoices, receipts, and ledger statements',
-      description: 'Go completely paperless. Send professional PDF tax invoices, thermal receipts, and customer account statements directly to your client’s WhatsApp or Email with a single click.',
-      features: [
-        '1-Click WhatsApp share: opens WhatsApp with pre-composed professional message and invoice link',
-        'Direct Email dispatch with attached PDF tax invoices and receipts',
-        'Send outstanding balance payment reminders directly to customer phones',
-        'Thermal receipt digital link sharing for paperless eco-friendly checkout'
-      ],
-      bhutanBenefit: 'Customers in Bhutan love receiving bills directly on WhatsApp on their phones.',
-      isVisible: true,
-      detailBoxTheme: 'emerald'
-    },
-    {
-      id: 'excel-import',
-      name: 'Excel Import / Export',
-      category: 'Productivity',
-      color: 'from-teal-600 to-green-700',
-      iconName: 'FileSpreadsheet',
-      tagline: '1-click bulk import of products, serials, and opening balances',
-      description: 'Migrate your entire business in minutes. Import thousands of items with barcodes, serial numbers, rack numbers, wholesale rates, and opening balances in 1 second from Excel.',
-      features: [
-        'Bulk Excel item import with template download and validation check',
-        'Imports barcodes, categories, cost prices, selling rates, and serial numbers in bulk',
-        '1-Click Export of all financial reports, stock statements, and registers to Excel (.xlsx)',
-        'Zero downtime migration when switching from legacy software or paper registers'
-      ],
-      bhutanBenefit: 'Onboard your entire store catalog in minutes without manual typing.',
-      isVisible: true,
-      detailBoxTheme: 'emerald'
-    },
-    {
-      id: 'assets',
-      name: 'Fixed Assets',
-      category: 'Finance & Compliance',
-      color: 'from-rose-600 to-red-700',
-      iconName: 'Layers',
-      tagline: 'Asset registry, depreciation schedules, and custodian tracking',
-      description: 'Track your organization’s physical capital investments. Manage furniture, computers, vehicles, and machinery with automated Straight Line (SLM) and Written Down (WDV) depreciation.',
-      features: [
-        'Comprehensive Fixed Asset Register with serial numbers, warranty, and purchase bills',
-        'Automated Depreciation Schedule calculation (SLM / WDV) feeding balance sheet',
-        'Asset custodian assignment: track which employee or department holds each asset',
-        'Asset disposal, scrap, and write-off ledger tracking'
-      ],
-      bhutanBenefit: 'Clean, auditable asset records required by company auditors and tax authorities.',
-      isVisible: true,
-      detailBoxTheme: 'amber'
-    },
-    {
-      id: 'tasks',
-      name: 'Notes & Tasks',
-      category: 'Productivity',
-      color: 'from-amber-600 to-yellow-600',
-      iconName: 'FileText',
-      tagline: 'Internal team assignments, reminders, and payment follow-ups',
-      description: 'Keep your team coordinated and accountable. Assign customer payment collection follow-ups, physical stock audit tasks, and internal reminders with due dates and priority tags.',
-      features: [
-        'Create and assign tasks to specific employees with deadlines and priority levels',
-        'Link tasks directly to customer ledgers or unpaid invoices for collection follow-ups',
-        'Internal team notes and communication trail per transaction',
-        'Activity status tracking: Pending, In-Progress, Completed, and Overdue'
-      ],
-      bhutanBenefit: 'Ensure critical store duties and customer credit follow-ups never slip through the cracks.',
-      isVisible: true,
-      detailBoxTheme: 'amber'
-    },
-    {
-      id: 'schemes',
-      name: 'Promotions & Schemes',
-      category: 'Sales & Retail',
-      color: 'from-purple-600 to-indigo-700',
-      iconName: 'BadgeDollarSign',
-      tagline: 'Discounts, BOGO offers, and promotional pricing schemes',
-      description: 'Boost retail sales with automated promotional schemes. Configure percentage discounts, flat rate cuts, Buy-One-Get-One (BOGO), and happy-hour pricing.',
-      features: [
-        'Automated POS scheme detection on qualifying items or total bill value',
-        'BOGO (Buy X Get Y Free) and happy-hour time window promotions',
-        'Customer group specific discounts (e.g. VIP, Staff, Wholesale)',
-        'Detailed promotion sales performance and margin impact analytics'
-      ],
-      bhutanBenefit: 'Run Losar or Festival sales promotions automatically at checkout without manual cashier entries.',
-      isVisible: true,
-      detailBoxTheme: 'purple'
-    }
-  ]
-};
+export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = defaultWebsiteConfigData as unknown as WebsiteConfig;
 
 const STORAGE_KEY = 'drukerp_website_custom_config_v2';
 const ADMIN_PIN = '1234';
@@ -578,26 +152,119 @@ export function loadWebsiteConfig(): WebsiteConfig {
   }
 }
 
-export function saveWebsiteConfig(config: WebsiteConfig): void {
-  if (typeof localStorage === 'undefined') return;
+export async function saveWebsiteConfig(config: WebsiteConfig): Promise<void> {
+  const toSave: WebsiteConfig = {
+    ...config,
+    lastUpdated: Date.now()
+  };
+
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+      window.dispatchEvent(new CustomEvent('drukerp_website_config_changed', { detail: toSave }));
+    } catch (err) {
+      console.error('Failed to save website config locally:', err);
+    }
+  }
+
+  // Save directly to project codebase (src/config/websiteConfig.json) so Git commits & Cloudflare builds include the exact changes
   try {
-    const toSave: WebsiteConfig = {
-      ...config,
-      lastUpdated: Date.now()
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-    window.dispatchEvent(new CustomEvent('drukerp_website_config_changed', { detail: toSave }));
-  } catch (err) {
-    console.error('Failed to save website config:', err);
+    if (typeof fetch !== 'undefined') {
+      await fetch('/api/save-website-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(toSave)
+      });
+    }
+  } catch (apiErr) {
+    // In production static bundle, API endpoint may not be active; ignore
+  }
+
+  // Cross-domain sync: Also try Supabase if configured
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('tenant_settings').upsert({
+        company_id: 'global',
+        record_id: 'website_config',
+        data: toSave,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'company_id,record_id' });
+    } catch (sbErr) {
+      // Ignored if RLS or foreign key prevents
+    }
   }
 }
 
-export function resetWebsiteConfig(): WebsiteConfig {
+export async function fetchRemoteWebsiteConfig(): Promise<WebsiteConfig | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const { data, error } = await supabase
+      .from('tenant_settings')
+      .select('data')
+      .eq('company_id', 'global')
+      .eq('record_id', 'website_config')
+      .maybeSingle();
+
+    if (error || !data || !data.data) return null;
+
+    const parsed = data.data as WebsiteConfig;
+    const loadedApps = Array.isArray(parsed.apps) && parsed.apps.length > 0 ? parsed.apps : DEFAULT_WEBSITE_CONFIG.apps;
+    const loadedIds = new Set(loadedApps.map((a: any) => a.id));
+    const mergedApps = [...loadedApps];
+    for (const defaultApp of DEFAULT_WEBSITE_CONFIG.apps) {
+      if (!loadedIds.has(defaultApp.id)) {
+        mergedApps.push(defaultApp);
+      }
+    }
+
+    const mergedConfig: WebsiteConfig = {
+      header: { ...DEFAULT_WEBSITE_CONFIG.header, ...(parsed.header || {}) },
+      hero: { ...DEFAULT_WEBSITE_CONFIG.hero, ...(parsed.hero || {}) },
+      appsStyle: { ...DEFAULT_WEBSITE_CONFIG.appsStyle, ...(parsed.appsStyle || {}) },
+      contact: { ...DEFAULT_WEBSITE_CONFIG.contact, ...(parsed.contact || {}) },
+      apps: mergedApps,
+      lastUpdated: parsed.lastUpdated
+    };
+
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedConfig));
+      window.dispatchEvent(new CustomEvent('drukerp_website_config_changed', { detail: mergedConfig }));
+    }
+
+    return mergedConfig;
+  } catch (err) {
+    console.warn('Failed to fetch remote website config from Supabase:', err);
+    return null;
+  }
+}
+
+export async function resetWebsiteConfig(): Promise<WebsiteConfig> {
   if (typeof localStorage !== 'undefined') {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem('drukerp_website_custom_config');
     window.dispatchEvent(new CustomEvent('drukerp_website_config_changed', { detail: DEFAULT_WEBSITE_CONFIG }));
   }
+
+  try {
+    if (typeof fetch !== 'undefined') {
+      await fetch('/api/save-website-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(DEFAULT_WEBSITE_CONFIG)
+      });
+    }
+  } catch {}
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('tenant_settings').delete()
+        .eq('company_id', 'global')
+        .eq('record_id', 'website_config');
+    } catch (err) {
+      console.warn('Could not reset website config in Supabase:', err);
+    }
+  }
+
   return DEFAULT_WEBSITE_CONFIG;
 }
 

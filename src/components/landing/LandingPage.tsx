@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import {
   loadWebsiteConfig,
+  fetchRemoteWebsiteConfig,
   WebsiteConfig,
   WebsiteAppItem,
   isWebsiteEditorAuthorized,
@@ -93,8 +94,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
   });
   const [demoSubmitted, setDemoSubmitted] = useState(false);
 
-  // Sync with live customizer changes
+  // Sync with live customizer changes and fetch latest remote config from Supabase
   useEffect(() => {
+    // 1. Fetch latest website config from Supabase cloud so live visitors see updates instantly
+    fetchRemoteWebsiteConfig().then(remoteCfg => {
+      if (remoteCfg) {
+        setSiteConfig(remoteCfg);
+      }
+    }).catch(() => {});
+
+    // 2. Listen to local changes
     const handleConfigChange = (e: any) => {
       if (e.detail) {
         setSiteConfig(e.detail);
