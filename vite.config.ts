@@ -16,7 +16,10 @@ export default defineConfig(() => {
         manifest: false, // We supply our own static public/manifest.json
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-          maximumFileSizeToCacheInBytes: 20 * 1024 * 1024 // 20 MB precache limit
+          maximumFileSizeToCacheInBytes: 20 * 1024 * 1024, // 20 MB precache limit
+          cleanupOutdatedCaches: true,
+          clientsClaim: true,
+          skipWaiting: true
         }
       })
     ],

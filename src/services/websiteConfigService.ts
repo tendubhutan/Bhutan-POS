@@ -130,6 +130,19 @@ export function loadWebsiteConfig(): WebsiteConfig {
     const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('drukerp_website_custom_config');
     if (!raw) return DEFAULT_WEBSITE_CONFIG;
     const parsed = JSON.parse(raw);
+
+    // If the deployed code bundle has a newer timestamp than what is stored in this browser's localStorage,
+    // immediately adopt the updated deployed configuration so live site visitors see fresh changes!
+    const defaultTime = DEFAULT_WEBSITE_CONFIG.lastUpdated || 0;
+    const localTime = parsed.lastUpdated || 0;
+    if (defaultTime > localTime) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_WEBSITE_CONFIG));
+        localStorage.removeItem('drukerp_website_custom_config');
+      } catch {}
+      return DEFAULT_WEBSITE_CONFIG;
+    }
+
     const loadedApps = Array.isArray(parsed.apps) && parsed.apps.length > 0 ? parsed.apps : DEFAULT_WEBSITE_CONFIG.apps;
     const loadedIds = new Set(loadedApps.map((a: any) => a.id));
     const mergedApps = [...loadedApps];

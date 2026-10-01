@@ -5,10 +5,32 @@
     "textHoverColor": "#2563eb",
     "showNav": true,
     "navItems": [
-      { "id": "all-apps", "label": "All Apps", "action": "scroll-apps", "isVisible": true },
-      { "id": "drc-tax", "label": "DRC Tax", "action": "open-app", "targetAppId": "drc-tax", "isVisible": true },
-      { "id": "restaurant", "label": "Restaurant", "action": "open-app", "targetAppId": "restaurant", "isVisible": true },
-      { "id": "book-demo", "label": "Book Demo", "action": "open-demo", "isVisible": true }
+      {
+        "id": "all-apps",
+        "label": "All Apps",
+        "action": "scroll-apps",
+        "isVisible": true
+      },
+      {
+        "id": "drc-tax",
+        "label": "DRC Tax",
+        "action": "open-app",
+        "targetAppId": "drc-tax",
+        "isVisible": true
+      },
+      {
+        "id": "restaurant",
+        "label": "Restaurant",
+        "action": "open-app",
+        "targetAppId": "restaurant",
+        "isVisible": true
+      },
+      {
+        "id": "book-demo",
+        "label": "Book Demo",
+        "action": "open-demo",
+        "isVisible": true
+      }
     ],
     "signInBtnText": "Sign In",
     "signInBtnColor": "#334155",
@@ -26,7 +48,7 @@
     "headlineColor": "#0a1e44",
     "headlineAlign": "center",
     "capsuleText": "in One Place",
-    "capsuleBgColor": "#fec84b",
+    "capsuleBgColor": "#f59e0b",
     "capsuleTextColor": "#0a1e44",
     "capsuleFontSize": "md",
     "subheadlineText": "Simple, efficient, yet affordable!",
@@ -38,7 +60,7 @@
     "showDivider": true,
     "dividerColor": "#fec84b",
     "dividerWidth": "medium",
-    "paragraphText": "Built specifically for businesses in Bhutan — from DRC GST filings to restaurant QR ordering and mobile staff attendance.",
+    "paragraphText": "Built specifically for businesses in Bhutan ",
     "paragraphFontSize": "md",
     "paragraphColor": "#475569",
     "paragraphMaxWidth": "medium",
@@ -51,11 +73,11 @@
     "customHeroBgColor": "#ffffff"
   },
   "appsStyle": {
-    "sectionTitle": "Integrated Applications",
+    "sectionTitle": "Integrated Features",
     "sectionTitleColor": "#d97706",
-    "sectionHeading": "Click any app to see its complete capabilities",
+    "sectionHeading": "Click any feature to see its complete capabilities",
     "sectionHeadingColor": "#0f172a",
-    "sectionSubheading": "Every app is interconnected. One single database, zero duplicate entries.",
+    "sectionSubheading": "Every feature is interconnected. One single database, zero Error",
     "sectionSubheadingColor": "#64748b",
     "sectionBgColor": "#f8fafc",
     "cardBgColor": "#ffffff",
@@ -98,8 +120,7 @@
         "Monthly Salary Schedule for PIT filing with department-wise payroll export"
       ],
       "bhutanBenefit": "Files export in 1-click to Excel (.xlsx) ready for direct submission to the DRC online portal without reformatting.",
-      "isVisible": true,
-      "detailBoxTheme": "emerald"
+      "isVisible": true
     },
     {
       "id": "pos",
@@ -116,8 +137,7 @@
         "Thermal receipt printing (58mm / 80mm) with customizable Bhutanese greetings and tax summaries"
       ],
       "bhutanBenefit": "Store cashiers never get blocked when local internet drops in Thimphu or outstations.",
-      "isVisible": true,
-      "detailBoxTheme": "amber"
+      "isVisible": true
     },
     {
       "id": "accounting",
@@ -134,8 +154,7 @@
         "Bank Reconciliation with transaction reference ID tracking"
       ],
       "bhutanBenefit": "Accountants get Tally-style rapid data entry with modern cloud security and live reports.",
-      "isVisible": true,
-      "detailBoxTheme": "blue"
+      "isVisible": true
     },
     {
       "id": "restaurant",
@@ -152,8 +171,7 @@
         "Split billing, service charge configuration, and multi-counter bar/kitchen routing"
       ],
       "bhutanBenefit": "Speeds up food service and eliminates wrong orders during busy dinner rushes.",
-      "isVisible": true,
-      "detailBoxTheme": "amber"
+      "isVisible": true
     },
     {
       "id": "inventory",
@@ -170,8 +188,7 @@
         "Physical stock verification and variance reconciliation ledger"
       ],
       "bhutanBenefit": "Never oversell or lose track of stock when breaking wholesale bulk cartons into retail pieces.",
-      "isVisible": true,
-      "detailBoxTheme": "purple"
+      "isVisible": true
     },
     {
       "id": "electronics",
@@ -188,8 +205,7 @@
         "Bulk import of device serial numbers directly from distributor Excel invoices"
       ],
       "bhutanBenefit": "Instant warranty verification when customers bring devices back for service.",
-      "isVisible": true,
-      "detailBoxTheme": "blue"
+      "isVisible": true
     },
     {
       "id": "pharmacy",
@@ -206,8 +222,7 @@
         "Detailed batch-wise sales and purchase audit trails for health regulatory inspections"
       ],
       "bhutanBenefit": "Protects patient health and eliminates financial losses from expired medicine write-offs.",
-      "isVisible": true,
-      "detailBoxTheme": "emerald"
+      "isVisible": true
     },
     {
       "id": "spares",
@@ -224,8 +239,7 @@
         "Dead stock analysis to identify slow-moving vehicle parts"
       ],
       "bhutanBenefit": "Warehouse staff find the exact spare part in seconds instead of searching shelves manually.",
-      "isVisible": true,
-      "detailBoxTheme": "amber"
+      "isVisible": true
     },
     {
       "id": "garments",
@@ -242,8 +256,7 @@
         "Size-wise sales breakdown to identify fast-selling sizes for reordering"
       ],
       "bhutanBenefit": "Simplifies apparel inventory without having to create dozens of separate product items.",
-      "isVisible": true,
-      "detailBoxTheme": "amber"
+      "isVisible": true
     },
     {
       "id": "hr-payroll",
@@ -260,8 +273,7 @@
         "Monthly Salary Schedule export formatted for direct DRC tax upload"
       ],
       "bhutanBenefit": "Disburse staff salaries and generate DRC monthly salary tax schedules in minutes.",
-      "isVisible": true,
-      "detailBoxTheme": "purple"
+      "isVisible": true
     },
     {
       "id": "attendance",
@@ -278,8 +290,7 @@
         "Direct integration with the payroll engine for automated attendance salary deductions"
       ],
       "bhutanBenefit": "Eliminates expensive biometric hardware and prevents proxy buddy-punching.",
-      "isVisible": true,
-      "detailBoxTheme": "emerald"
+      "isVisible": true
     },
     {
       "id": "barcode",
@@ -296,8 +307,7 @@
         "Batch printing directly from Purchase bills or inventory master"
       ],
       "bhutanBenefit": "Tag unbarcoded goods instantly without buying third-party labeling software.",
-      "isVisible": true,
-      "detailBoxTheme": "blue"
+      "isVisible": true
     },
     {
       "id": "pricing",
@@ -314,8 +324,7 @@
         "Price change history audit to monitor margin changes over time"
       ],
       "bhutanBenefit": "Serve both retail walk-in shoppers and wholesale bulk re-sellers from one system.",
-      "isVisible": true,
-      "detailBoxTheme": "amber"
+      "isVisible": true
     },
     {
       "id": "multi-branch",
@@ -332,8 +341,7 @@
         "Staff branch assignment: locks cashier access to their authorized branch only"
       ],
       "bhutanBenefit": "Complete multi-location control across Bhutan with zero invoice number collisions.",
-      "isVisible": true,
-      "detailBoxTheme": "blue"
+      "isVisible": true
     },
     {
       "id": "whatsapp-share",
@@ -350,8 +358,7 @@
         "Thermal receipt digital link sharing for paperless eco-friendly checkout"
       ],
       "bhutanBenefit": "Customers in Bhutan love receiving bills directly on WhatsApp on their phones.",
-      "isVisible": true,
-      "detailBoxTheme": "emerald"
+      "isVisible": true
     },
     {
       "id": "excel-import",
@@ -368,8 +375,7 @@
         "Zero downtime migration when switching from legacy software or paper registers"
       ],
       "bhutanBenefit": "Onboard your entire store catalog in minutes without manual typing.",
-      "isVisible": true,
-      "detailBoxTheme": "emerald"
+      "isVisible": true
     },
     {
       "id": "assets",
@@ -386,8 +392,7 @@
         "Asset disposal, scrap, and write-off ledger tracking"
       ],
       "bhutanBenefit": "Clean, auditable asset records required by company auditors and tax authorities.",
-      "isVisible": true,
-      "detailBoxTheme": "amber"
+      "isVisible": true
     },
     {
       "id": "tasks",
@@ -404,12 +409,11 @@
         "Activity status tracking: Pending, In-Progress, Completed, and Overdue"
       ],
       "bhutanBenefit": "Ensure critical store duties and customer credit follow-ups never slip through the cracks.",
-      "isVisible": true,
-      "detailBoxTheme": "amber"
+      "isVisible": true
     },
     {
       "id": "schemes",
-      "name": "Promotions & Schemes",
+      "name": "Discount & Offer",
       "category": "Sales & Retail",
       "color": "from-purple-600 to-indigo-700",
       "iconName": "BadgeDollarSign",
@@ -425,5 +429,6 @@
       "isVisible": true,
       "detailBoxTheme": "purple"
     }
-  ]
+  ],
+  "lastUpdated": 1790851649608
 }

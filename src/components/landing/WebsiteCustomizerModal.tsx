@@ -309,7 +309,7 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
         {saveSuccessToast && (
           <div className="bg-emerald-600 text-white text-xs font-bold py-2.5 px-4 text-center animate-in fade-in shrink-0 flex items-center justify-center gap-2 shadow-inner">
             <Check className="w-4 h-4" />
-            <span>Saved &amp; Synced to Cloud! Changes are live on drukerp.com and in preview.</span>
+            <span>Saved to websiteConfig.json! Push to GitHub to trigger Cloudflare Pages deployment to drukerp.com.</span>
           </div>
         )}
 
