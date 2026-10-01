@@ -354,14 +354,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
       </section>
 
       {/* ======================================================== */}
-      {/* EDITABLE 18 APPS GRID SECTION                            */}
+      {/* EDITABLE APPS GRID SECTION                              */}
       {/* ======================================================== */}
       <section 
         id="apps" 
         style={{ backgroundColor: siteConfig.appsStyle.sectionBgColor }}
         className="py-12 border-t border-slate-200/60 transition-colors duration-200"
       >
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           
           <div className="text-center mb-10">
             <span 
@@ -384,8 +384,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
             </p>
           </div>
 
-          {/* Grid of Visible Apps */}
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-4 sm:gap-6">
+          {/* Grid of Visible Apps (Wider cards with 5 columns on desktop and 2 on mobile) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 sm:gap-6">
             {visibleApps.map((app) => {
               const Icon = ICON_MAP[app.iconName] || Boxes;
               return (
@@ -397,25 +397,25 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
                     backgroundColor: app.cardBgColor || siteConfig.appsStyle.cardBgColor,
                     borderColor: siteConfig.appsStyle.cardBorderColor
                   }}
-                  className={`group flex flex-col items-center text-center p-3 sm:p-4 ${cardRadiusClass} border ${cardShadowClass} transition-all duration-200 hover:-translate-y-1 cursor-pointer`}
+                  className={`group flex flex-col items-center text-center p-4 sm:p-5 ${cardRadiusClass} border ${cardShadowClass} transition-all duration-200 hover:-translate-y-1 cursor-pointer w-full min-w-0`}
                 >
                   {/* App Icon Tile with Gradient */}
-                  <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr ${app.color} p-0.5 shadow-md group-hover:scale-105 transition-transform duration-200 flex items-center justify-center text-white`}>
+                  <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr ${app.color} p-0.5 shadow-md group-hover:scale-105 transition-transform duration-200 flex items-center justify-center text-white shrink-0`}>
                     <div className="w-full h-full rounded-[14px] bg-white/10 backdrop-blur-xs flex items-center justify-center">
                       <Icon className="w-7 h-7 sm:w-8 sm:h-8 drop-shadow-xs" />
                     </div>
                   </div>
 
-                  {/* App Name */}
+                  {/* App Name - Centered, bold, multi-line wrapping so names are clearly visible */}
                   <span 
                     style={{ color: app.textColor || siteConfig.appsStyle.cardTextColor }}
-                    className="mt-3 text-xs sm:text-sm font-bold group-hover:text-blue-600 transition-colors leading-tight line-clamp-1"
+                    className="mt-3 text-xs sm:text-sm font-extrabold group-hover:text-blue-600 transition-colors leading-tight text-center break-words text-wrap max-w-full min-h-[2.5rem] flex items-center justify-center"
                   >
                     {app.name}
                   </span>
                   <span 
                     style={{ color: siteConfig.appsStyle.cardCategoryColor }}
-                    className="text-[10px] transition-colors line-clamp-1 mt-0.5"
+                    className="text-[10px] sm:text-[11px] transition-colors text-center truncate max-w-full mt-0.5"
                   >
                     {app.category}
                   </span>

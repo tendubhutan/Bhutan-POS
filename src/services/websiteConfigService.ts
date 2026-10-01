@@ -525,6 +525,24 @@ export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = {
       bhutanBenefit: 'Ensure critical store duties and customer credit follow-ups never slip through the cracks.',
       isVisible: true,
       detailBoxTheme: 'amber'
+    },
+    {
+      id: 'schemes',
+      name: 'Promotions & Schemes',
+      category: 'Sales & Retail',
+      color: 'from-purple-600 to-indigo-700',
+      iconName: 'BadgeDollarSign',
+      tagline: 'Discounts, BOGO offers, and promotional pricing schemes',
+      description: 'Boost retail sales with automated promotional schemes. Configure percentage discounts, flat rate cuts, Buy-One-Get-One (BOGO), and happy-hour pricing.',
+      features: [
+        'Automated POS scheme detection on qualifying items or total bill value',
+        'BOGO (Buy X Get Y Free) and happy-hour time window promotions',
+        'Customer group specific discounts (e.g. VIP, Staff, Wholesale)',
+        'Detailed promotion sales performance and margin impact analytics'
+      ],
+      bhutanBenefit: 'Run Losar or Festival sales promotions automatically at checkout without manual cashier entries.',
+      isVisible: true,
+      detailBoxTheme: 'purple'
     }
   ]
 };
@@ -538,12 +556,20 @@ export function loadWebsiteConfig(): WebsiteConfig {
     const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('drukerp_website_custom_config');
     if (!raw) return DEFAULT_WEBSITE_CONFIG;
     const parsed = JSON.parse(raw);
+    const loadedApps = Array.isArray(parsed.apps) && parsed.apps.length > 0 ? parsed.apps : DEFAULT_WEBSITE_CONFIG.apps;
+    const loadedIds = new Set(loadedApps.map((a: any) => a.id));
+    const mergedApps = [...loadedApps];
+    for (const defaultApp of DEFAULT_WEBSITE_CONFIG.apps) {
+      if (!loadedIds.has(defaultApp.id)) {
+        mergedApps.push(defaultApp);
+      }
+    }
     return {
       header: { ...DEFAULT_WEBSITE_CONFIG.header, ...(parsed.header || {}) },
       hero: { ...DEFAULT_WEBSITE_CONFIG.hero, ...(parsed.hero || {}) },
       appsStyle: { ...DEFAULT_WEBSITE_CONFIG.appsStyle, ...(parsed.appsStyle || {}) },
       contact: { ...DEFAULT_WEBSITE_CONFIG.contact, ...(parsed.contact || {}) },
-      apps: Array.isArray(parsed.apps) && parsed.apps.length > 0 ? parsed.apps : DEFAULT_WEBSITE_CONFIG.apps,
+      apps: mergedApps,
       lastUpdated: parsed.lastUpdated
     };
   } catch (err) {
