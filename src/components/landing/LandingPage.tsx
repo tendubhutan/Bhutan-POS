@@ -154,12 +154,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
 
   // Typography scale maps
   const headlineSizeClasses = {
-    sm: 'text-3xl sm:text-5xl lg:text-6xl',
-    md: 'text-4xl sm:text-6xl lg:text-7xl',
-    lg: 'text-4xl sm:text-6xl lg:text-7xl',
-    xl: 'text-5xl sm:text-7xl lg:text-8xl',
-    '2xl': 'text-5xl sm:text-7xl lg:text-9xl'
-  }[siteConfig.hero.headlineFontSize || 'lg'];
+    sm: 'text-2xl sm:text-4xl md:text-5xl lg:text-[3.25rem]',
+    md: 'text-3xl sm:text-4xl md:text-5xl lg:text-[3.5rem] xl:text-[4.15rem]',
+    lg: 'text-3xl sm:text-5xl md:text-6xl lg:text-[4rem] xl:text-[4.6rem]',
+    xl: 'text-4xl sm:text-6xl md:text-7xl lg:text-[4.5rem] xl:text-[5.2rem]',
+    '2xl': 'text-5xl sm:text-7xl md:text-8xl lg:text-[5.5rem] xl:text-[6.5rem]'
+  }[siteConfig.hero.headlineFontSize || 'md'];
 
   const headlineFontClasses = {
     sans: 'font-sans tracking-tight',
@@ -327,24 +327,29 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
         <div className="absolute -bottom-16 -left-16 w-80 h-80 rounded-full bg-amber-100/60 blur-3xl pointer-events-none" />
         <div className="absolute -top-16 -right-16 w-96 h-96 rounded-full bg-sky-100/60 blur-3xl pointer-events-none" />
 
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 relative z-10 flex flex-col items-center justify-center text-center">
           
           {/* Main Headline */}
           <h1 
             style={{ color: siteConfig.hero.headlineColor }}
-            className={`${headlineSizeClasses} ${headlineFontClasses} font-extrabold tracking-tight leading-[1.12]`}
+            className={`w-full max-w-full mx-auto text-center ${headlineSizeClasses} ${headlineFontClasses} font-extrabold tracking-tight leading-[1.14]`}
           >
-            <span className="inline-block whitespace-normal lg:whitespace-nowrap">
+            <span className={`block w-full text-center whitespace-normal md:whitespace-nowrap relative ${
+              siteConfig.hero.headlineOffset === 'center' 
+                ? '' 
+                : siteConfig.hero.headlineOffset === 'left-more'
+                ? '-translate-x-3 sm:-translate-x-5 md:-translate-x-7'
+                : '-translate-x-1.5 sm:-translate-x-2.5 md:-translate-x-4'
+            }`}>
               {siteConfig.hero.headlineLine1}
               {siteConfig.hero.headlineLine2 ? ` ${siteConfig.hero.headlineLine2}` : ''}
             </span>
-            <br />
             <span 
               style={{
                 backgroundColor: siteConfig.hero.capsuleBgColor,
                 color: siteConfig.hero.capsuleTextColor
               }}
-              className="inline-block px-8 sm:px-12 py-1.5 sm:py-2 rounded-full font-black mt-2.5 sm:mt-3 shadow-xs"
+              className="inline-block px-8 sm:px-12 py-1.5 sm:py-2 rounded-full font-black mt-2.5 sm:mt-3.5 shadow-xs"
             >
               {siteConfig.hero.capsuleText}
             </span>
@@ -725,18 +730,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
           </div>
 
           <div className="flex flex-wrap items-center justify-center sm:justify-end gap-5">
-            {siteConfig.contact.showWhatsApp && (
-              <a 
-                href={`https://wa.me/${siteConfig.contact.whatsappNumber.replace(/[^0-9]/g, '')}`} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="hover:text-green-600 flex items-center gap-1 transition"
-              >
-                <MessageCircle className="w-3.5 h-3.5 text-green-600" />
-                <span>{siteConfig.contact.whatsappLabel}</span>
-              </a>
-            )}
-            
             {siteConfig.contact.showDemoBtn && (
               <button type="button" onClick={() => setShowDemoModal(true)} className="hover:text-blue-600 cursor-pointer">
                 Book Demo

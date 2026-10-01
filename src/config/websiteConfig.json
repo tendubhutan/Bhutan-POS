@@ -34,17 +34,18 @@
     "launchBtnText": "Launch ERP",
     "launchBtnBgColor": "#2563eb",
     "launchBtnTextColor": "#ffffff",
-    "showLaunchBtn": false,
-    "showSignInBtn": true,
+    "showLaunchBtn": true,
+    "showSignInBtn": false,
     "showWhatsAppBtn": true
   },
   "hero": {
-    "headlineLine1": "Everything Your Business Needs,",
+    "headlineLine1": "Everything Your Business Needs",
     "headlineLine2": "",
     "headlineFontSize": "md",
     "headlineFontFamily": "serif",
     "headlineColor": "#0d0d0d",
     "headlineAlign": "center",
+    "headlineOffset": "left-nudge",
     "capsuleText": "in One Place",
     "capsuleBgColor": "#3cc1e2",
     "capsuleTextColor": "#ffffff",
@@ -58,7 +59,7 @@
     "showDivider": false,
     "dividerColor": "#fec84b",
     "dividerWidth": "medium",
-    "paragraphText": "Built for Bhutan",
+    "paragraphText": "Build for Bhutan",
     "paragraphFontSize": "xl",
     "paragraphColor": "#047857",
     "paragraphMaxWidth": "medium",
@@ -91,7 +92,7 @@
     "modalHighlightText": "#78350f"
   },
   "contact": {
-    "whatsappNumber": "+975 17000000",
+    "whatsappNumber": "+975 17963087",
     "whatsappLabel": "WhatsApp Support (+975)",
     "copyrightText": "DrukERP · All rights reserved.",
     "demoModalTitle": "Meet an Advisor / Free Demo",
@@ -429,5 +430,5 @@
       "detailBoxTheme": "purple"
     }
   ],
-  "lastUpdated": 1790875000000
+  "lastUpdated": 1790900000000
 }

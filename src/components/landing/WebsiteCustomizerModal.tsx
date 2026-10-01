@@ -292,8 +292,8 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
             onClick={() => setActiveTab('footer')}
             className={`py-3 px-3.5 border-b-2 flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap ${activeTab === 'footer' ? 'border-blue-600 text-blue-600' : 'border-transparent hover:text-slate-900'}`}
           >
-            <Phone className="w-4 h-4" />
-            <span>Footer &amp; Contact</span>
+            <Building2 className="w-4 h-4" />
+            <span>Footer &amp; Copyright</span>
           </button>
           <button
             type="button"
@@ -544,22 +544,46 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
                   </div>
 
                   {/* Header WhatsApp Pill */}
-                  <div className="space-y-2 p-3 rounded-xl bg-white border border-slate-200">
+                  <div className="space-y-3 p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-300 shadow-xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700">Header WhatsApp Button</span>
-                      <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-6 h-6 rounded-full bg-[#25D366] text-white flex items-center justify-center text-xs font-black shadow-xs">
+                          W
+                        </span>
+                        <div>
+                          <span className="text-xs font-black text-emerald-950 block">Header WhatsApp Contact Pill (Marked Green in Header)</span>
+                          <span className="text-[11px] text-emerald-800">Directly edit the WhatsApp number displayed in the top header.</span>
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 text-xs text-emerald-900 font-extrabold cursor-pointer bg-white px-3 py-1.5 rounded-xl border border-emerald-300 shadow-xs">
                         <input
                           type="checkbox"
                           checked={formData.header.showWhatsAppBtn !== false}
                           onChange={(e) => setFormData(p => ({ ...p, header: { ...p.header, showWhatsAppBtn: e.target.checked } }))}
-                          className="rounded text-emerald-600"
+                          className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
                         />
-                        <span>Visible</span>
+                        <span>Visible in Header</span>
                       </label>
                     </div>
-                    <p className="text-[11px] text-slate-500">
-                      Shows round WhatsApp icon and phone number in top header for instant client chat.
-                    </p>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-800 mb-1">
+                        WhatsApp Number (with Country Code)
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.contact.whatsappNumber}
+                        onChange={(e) => setFormData(p => ({
+                          ...p,
+                          contact: { ...p.contact, whatsappNumber: e.target.value }
+                        }))}
+                        className="w-full px-3.5 py-2 rounded-xl border-2 border-emerald-400 text-sm font-black text-slate-900 bg-white focus:border-emerald-600 focus:ring-2 focus:ring-emerald-200 focus:outline-none shadow-inner"
+                        placeholder="e.g. +975 17963087"
+                      />
+                      <p className="text-[11px] text-emerald-900 mt-1 font-medium">
+                        ✨ Updates live immediately on the website header. Visitors clicking this pill start a WhatsApp chat with this number.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -579,7 +603,7 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
               {/* Typography Options (Font Family & Alignment) */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
                 <h5 className="text-xs font-extrabold text-slate-800">Global Typography &amp; Alignment</h5>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 mb-1">Headline Font Family</label>
                     <select
@@ -606,6 +630,19 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
                       <option value="lg">Large (Default Impact)</option>
                       <option value="xl">Extra Large (High Energy)</option>
                       <option value="2xl">Massive (Hero Impact)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">Headline Left/Center Nudge</label>
+                    <select
+                      value={formData.hero.headlineOffset || 'left-nudge'}
+                      onChange={(e) => setFormData(p => ({ ...p, hero: { ...p.hero, headlineOffset: e.target.value as any } }))}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-bold"
+                    >
+                      <option value="left-nudge">Shifted Left (Default - Centered)</option>
+                      <option value="left-more">Shift Left More</option>
+                      <option value="center">Absolute Center</option>
                     </select>
                   </div>
 
@@ -1196,13 +1233,13 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
           )}
 
           {/* ======================================================== */}
-          {/* TAB 5: FOOTER & CONTACT                                  */}
+          {/* TAB 5: FOOTER & COPYRIGHT                                */}
           {/* ======================================================== */}
           {activeTab === 'footer' && (
             <div className="space-y-6 max-w-3xl">
               <div>
-                <h4 className="text-sm font-black text-slate-900">Footer Bar &amp; Contact Information</h4>
-                <p className="text-xs text-slate-500">Edit footer background, text colors, and WhatsApp contact link.</p>
+                <h4 className="text-sm font-black text-slate-900">Footer Bar &amp; Copyright Settings</h4>
+                <p className="text-xs text-slate-500">Edit footer background, text colors, optional footer buttons, and copyright text.</p>
               </div>
 
               {/* Footer Background & Text Color */}
@@ -1264,20 +1301,11 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
                   </div>
                 </div>
 
-                {/* Footer Action Links & Redundant Items Toggles */}
+                {/* Footer Action Links */}
                 <div className="pt-3 border-t border-slate-200">
-                  <h6 className="text-[11px] font-bold text-slate-700 mb-2">Footer Navigation & Action Links</h6>
-                  <p className="text-[11px] text-slate-500 mb-2">Toggle optional links in the footer bar:</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <label className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-slate-200 text-xs font-medium cursor-pointer hover:bg-slate-50">
-                      <input
-                        type="checkbox"
-                        checked={formData.contact.showWhatsApp}
-                        onChange={(e) => setFormData(p => ({ ...p, contact: { ...p.contact, showWhatsApp: e.target.checked } }))}
-                        className="rounded text-emerald-600"
-                      />
-                      <span>WhatsApp Link</span>
-                    </label>
+                  <h6 className="text-[11px] font-bold text-slate-700 mb-2">Optional Footer Navigation Links</h6>
+                  <p className="text-[11px] text-slate-500 mb-2">Toggle optional action links in the footer bar:</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <label className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-slate-200 text-xs font-medium cursor-pointer hover:bg-slate-50">
                       <input
                         type="checkbox"
@@ -1300,41 +1328,20 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
                 </div>
               </div>
 
-              {/* WhatsApp Contact Details */}
+              {/* Copyright Line */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-                <h5 className="text-xs font-extrabold text-slate-800">WhatsApp Support Link</h5>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">WhatsApp Phone Number</label>
-                    <input
-                      type="text"
-                      value={formData.contact.whatsappNumber}
-                      onChange={(e) => setFormData(p => ({ ...p, contact: { ...p.contact, whatsappNumber: e.target.value } }))}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold"
-                      placeholder="e.g. +975 17123456"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">WhatsApp Label Text</label>
-                    <input
-                      type="text"
-                      value={formData.contact.whatsappLabel}
-                      onChange={(e) => setFormData(p => ({ ...p, contact: { ...p.contact, whatsappLabel: e.target.value } }))}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold"
-                      placeholder="WhatsApp Support (+975)"
-                    />
-                  </div>
-                </div>
-
+                <h5 className="text-xs font-extrabold text-slate-800">Copyright Line</h5>
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">Copyright Line</label>
                   <input
                     type="text"
                     value={formData.contact.copyrightText}
                     onChange={(e) => setFormData(p => ({ ...p, contact: { ...p.contact, copyrightText: e.target.value } }))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium bg-white"
                     placeholder="DrukERP · All rights reserved."
                   />
+                  <p className="text-[11px] text-slate-500 mt-2">
+                    Displays at the bottom right of the page alongside the copyright symbol and current year.
+                  </p>
                 </div>
               </div>
             </div>

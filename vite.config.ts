@@ -15,11 +15,24 @@ export default defineConfig(() => {
         includeAssets: ['favicon.svg', 'icon.svg', 'manifest.json'],
         manifest: false, // We supply our own static public/manifest.json
         workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+          globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
           maximumFileSizeToCacheInBytes: 20 * 1024 * 1024, // 20 MB precache limit
           cleanupOutdatedCaches: true,
           clientsClaim: true,
-          skipWaiting: true
+          skipWaiting: true,
+          runtimeCaching: [
+            {
+              urlPattern: ({ request }) => request.mode === 'navigate',
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'html-pages-cache',
+                networkTimeoutSeconds: 3,
+                cacheableResponse: {
+                  statuses: [0, 200]
+                }
+              }
+            }
+          ]
         }
       })
     ],

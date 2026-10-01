@@ -74,6 +74,7 @@ export interface WebsiteHeroConfig {
   headlineFontFamily: 'sans' | 'serif' | 'display' | 'mono';
   headlineColor: string;
   headlineAlign: 'center' | 'left' | 'right';
+  headlineOffset?: 'left-nudge' | 'center' | 'left-more';
   capsuleText: string;
   capsuleBgColor: string;
   capsuleTextColor: string;
@@ -127,24 +128,27 @@ export interface WebsiteConfig {
 
 export const DEFAULT_WEBSITE_CONFIG: WebsiteConfig = defaultWebsiteConfigData as unknown as WebsiteConfig;
 
-const STORAGE_KEY = 'drukerp_website_custom_config_v2';
+const STORAGE_KEY = 'drukerp_website_custom_config_v3';
 const ADMIN_PIN = '1234';
 
 export function loadWebsiteConfig(): WebsiteConfig {
   if (typeof localStorage === 'undefined') return DEFAULT_WEBSITE_CONFIG;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('drukerp_website_custom_config');
+    // Purge outdated cache keys
+    localStorage.removeItem('drukerp_website_custom_config');
+    localStorage.removeItem('drukerp_website_custom_config_v2');
+
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_WEBSITE_CONFIG;
     const parsed = JSON.parse(raw);
 
-    // If the deployed code bundle has a newer timestamp than what is stored in this browser's localStorage,
-    // immediately adopt the updated deployed configuration so live site visitors see fresh changes!
+    // If the deployed code bundle has a newer timestamp or equal to localStorage,
+    // immediately adopt the fresh deployed configuration from GitHub/Cloudflare build!
     const defaultTime = DEFAULT_WEBSITE_CONFIG.lastUpdated || 0;
     const localTime = parsed.lastUpdated || 0;
-    if (defaultTime > localTime) {
+    if (defaultTime >= localTime) {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_WEBSITE_CONFIG));
-        localStorage.removeItem('drukerp_website_custom_config');
+        localStorage.removeItem(STORAGE_KEY);
       } catch {}
       return DEFAULT_WEBSITE_CONFIG;
     }
@@ -169,6 +173,18 @@ export function loadWebsiteConfig(): WebsiteConfig {
     console.warn('Failed to load custom website config, using defaults:', err);
     return DEFAULT_WEBSITE_CONFIG;
   }
+}
+
+export function resetWebsiteConfigToDefault(): WebsiteConfig {
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem('drukerp_website_custom_config');
+      localStorage.removeItem('drukerp_website_custom_config_v2');
+      window.dispatchEvent(new CustomEvent('drukerp_website_config_changed', { detail: DEFAULT_WEBSITE_CONFIG }));
+    } catch {}
+  }
+  return DEFAULT_WEBSITE_CONFIG;
 }
 
 export async function saveWebsiteConfig(config: WebsiteConfig): Promise<void> {
