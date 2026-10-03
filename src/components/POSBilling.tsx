@@ -36,7 +36,7 @@ import {
   getRestaurantOrders,
   getTables
 } from '../services/restaurantService';
-import { getActiveCompanyId } from '../services/supabaseTenantService';
+import { getActiveCompanyId, DEFAULT_TENANT_COMPANY } from '../services/supabaseTenantService';
 import {
   holdBill,
   resumeBill,
@@ -1175,7 +1175,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
     broadcastCustomerDisplayState({
       companyId: getActiveCompanyId(),
-      companyName: config.CompanyName || 'Retail Store',
+      companyName: config.CompanyName || DEFAULT_TENANT_COMPANY.company_name,
       companyLogo: config.CompanyLogo || undefined,
       terminalId: deviceCounterId || 'C1',
       status: cart.length === 0 ? 'idle' : 'active',
@@ -2874,7 +2874,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
                         return (
                           <div
-                            key={item['Item Code']}
+                            key={`${item['Item Code']}_${idx}`}
                             onClick={() => selectItem(item, matchedSn)}
                             className={`px-2.5 py-1 text-xs cursor-pointer flex justify-between items-center transition ${
                               idx === selectedIndex ? 'bg-indigo-600 text-white font-bold' : 'hover:bg-slate-50 text-slate-800'
@@ -4965,8 +4965,8 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 <option value="">-- Choose Replacement Menu Item --</option>
                 {items
                   .filter(i => i['Item Code'] !== cart[replacingItemIdx]?.itemCode)
-                  .map(it => (
-                    <option key={it['Item Code']} value={it['Item Code']}>
+                  .map((it, idx) => (
+                    <option key={`${it['Item Code']}_${idx}`} value={it['Item Code']}>
                       {it['Item Name']} — {config.CurrencySymbol || 'Nu.'} {Number(it['Sale Rate'] || 0).toFixed(2)} ({it.Unit || 'Pcs'})
                     </option>
                   ))}

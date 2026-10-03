@@ -1077,11 +1077,11 @@ export const SchemeManagement: React.FC<{
                           return i['Item Name'].toLowerCase().includes(q) || i['Item Code'].toLowerCase().includes(q);
                         })
                         .slice(0, 50)
-                        .map(i => {
+                        .map((i, idx) => {
                           const sel = formTargetValues.includes(i['Item Code']);
                           return (
                             <div
-                              key={i['Item Code']}
+                              key={`${i['Item Code']}_${idx}`}
                               onClick={() => toggleTargetValue(i['Item Code'])}
                               className={`p-1.5 flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 ${
                                 sel ? 'bg-indigo-50/60 font-bold text-indigo-900' : 'text-slate-700'

@@ -347,7 +347,7 @@ export function exportMonthlyAttendanceToExcel({
 
   const monthName = new Date(selectedYear, selectedMonth - 1, 1).toLocaleString('default', { month: 'long' });
   const monthShort = new Date(selectedYear, selectedMonth - 1, 1).toLocaleString('default', { month: 'short' });
-  const companyName = config?.CompanyName || 'Panglung Enterprise';
+  const companyName = config?.CompanyName || 'Bhutan Retail Enterprise';
   const companyAddress = [
     config?.Address || config?.CompanyAddress || 'Bhutan',
     config?.CompanyPhone ? `Phone: ${config.CompanyPhone}` : '',
@@ -485,7 +485,7 @@ export function exportMonthlyAttendanceToPdf({
 
   const monthName = new Date(selectedYear, selectedMonth - 1, 1).toLocaleString('default', { month: 'long' });
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const companyName = config?.CompanyName || 'Panglung Enterprise';
+  const companyName = config?.CompanyName || 'Bhutan Retail Enterprise';
   const companyAddress = [
     config?.Address || config?.CompanyAddress || 'Bhutan',
     config?.CompanyPhone ? `Tel: ${config.CompanyPhone}` : '',
@@ -637,7 +637,7 @@ export function exportDailyAttendanceToExcel({
   statusFilter = 'ALL'
 }: DailyAttendanceExportParams) {
   const todayRecords = attendanceRecords.filter(r => r.date === selectedDate);
-  const companyName = config?.CompanyName || 'Panglung Enterprise';
+  const companyName = config?.CompanyName || 'Bhutan Retail Enterprise';
   const companyAddress = [
     config?.Address || config?.CompanyAddress || 'Bhutan',
     config?.CompanyPhone ? `Phone: ${config.CompanyPhone}` : '',
@@ -771,7 +771,7 @@ export function exportDailyAttendanceToPdf({
   statusFilter = 'ALL'
 }: DailyAttendanceExportParams) {
   const todayRecords = attendanceRecords.filter(r => r.date === selectedDate);
-  const companyName = config?.CompanyName || 'Panglung Enterprise';
+  const companyName = config?.CompanyName || 'Bhutan Retail Enterprise';
   const companyAddress = [
     config?.Address || config?.CompanyAddress || 'Bhutan',
     config?.CompanyPhone ? `Tel: ${config.CompanyPhone}` : '',
@@ -930,7 +930,7 @@ export function exportTaskAssignmentsToExcel({
   filterPriority = 'ALL',
   filterCategory = 'ALL'
 }: TaskAssignmentExportParams) {
-  const companyName = config?.CompanyName || 'Panglung Enterprise';
+  const companyName = config?.CompanyName || 'Bhutan Retail Enterprise';
   const companyAddress = [
     config?.Address || config?.CompanyAddress || 'Bhutan',
     config?.CompanyPhone ? `Phone: ${config.CompanyPhone}` : '',
@@ -1058,7 +1058,7 @@ export function exportTaskAssignmentsToPdf({
   filterPriority = 'ALL',
   filterCategory = 'ALL'
 }: TaskAssignmentExportParams) {
-  const companyName = config?.CompanyName || 'Panglung Enterprise';
+  const companyName = config?.CompanyName || 'Bhutan Retail Enterprise';
   const companyAddress = [
     config?.Address || config?.CompanyAddress || 'Bhutan',
     config?.CompanyPhone ? `Tel: ${config.CompanyPhone}` : '',
@@ -1196,7 +1196,7 @@ export function exportLeaveHistoryToExcel({
   config,
   leaveApplications
 }: LeaveHistoryExportParams) {
-  const companyName = config?.CompanyName || 'Panglung Enterprise';
+  const companyName = config?.CompanyName || 'Bhutan Retail Enterprise';
   const companyAddress = [
     config?.Address || config?.CompanyAddress || 'Bhutan',
     config?.CompanyPhone ? `Phone: ${config.CompanyPhone}` : '',
@@ -1287,7 +1287,7 @@ export function exportLeaveHistoryToPdf({
   config,
   leaveApplications
 }: LeaveHistoryExportParams) {
-  const companyName = config?.CompanyName || 'Panglung Enterprise';
+  const companyName = config?.CompanyName || 'Bhutan Retail Enterprise';
   const companyAddress = [
     config?.Address || config?.CompanyAddress || 'Bhutan',
     config?.CompanyPhone ? `Tel: ${config.CompanyPhone}` : '',

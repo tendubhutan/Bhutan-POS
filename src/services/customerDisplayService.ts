@@ -1,3 +1,5 @@
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+
 export interface CustomerDisplayItem {
   id: string;
   name: string;
@@ -50,10 +52,24 @@ try {
   defaultBc = null;
 }
 
+// In-memory channel cache to reuse channels for fast broadcasting
+const realtimeChannelMap = new Map<string, any>();
+
+function getRealtimeChannel(cId: string) {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const channelName = `customer_display_${cId}`;
+  if (!realtimeChannelMap.has(channelName)) {
+    const ch = supabase.channel(channelName);
+    ch.subscribe();
+    realtimeChannelMap.set(channelName, ch);
+  }
+  return realtimeChannelMap.get(channelName);
+}
+
 export function broadcastCustomerDisplayState(state: CustomerDisplayState, targetCompanyId?: string): void {
   try {
-    const cId = targetCompanyId || state.companyId;
-    const jsonStr = JSON.stringify({ ...state, companyId: cId || state.companyId });
+    const cId = targetCompanyId || state.companyId || 'default';
+    const jsonStr = JSON.stringify({ ...state, companyId: cId });
 
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, jsonStr);
@@ -64,15 +80,39 @@ export function broadcastCustomerDisplayState(state: CustomerDisplayState, targe
     }
 
     if (defaultBc) {
-      defaultBc.postMessage(state);
+      defaultBc.postMessage({ ...state, companyId: cId });
     }
 
     if (cId && typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       try {
         const companyBc = new BroadcastChannel(`${BROADCAST_CHANNEL_NAME}_${cId}`);
-        companyBc.postMessage(state);
+        companyBc.postMessage({ ...state, companyId: cId });
         setTimeout(() => companyBc.close(), 100);
       } catch {}
+    }
+
+    // Cross-device Wireless Sync via Supabase Broadcast
+    if (isSupabaseConfigured && supabase) {
+      const channel = getRealtimeChannel(cId);
+      if (channel) {
+        channel.send({
+          type: 'broadcast',
+          event: 'customer_display_state',
+          payload: { ...state, companyId: cId }
+        }).catch((e: any) => console.warn('[CustomerDisplay] Realtime broadcast notice:', e));
+      }
+
+      // Persist live state to cloud DB so new/reconnecting tablets get instant sync
+      Promise.resolve(
+        supabase
+          .from('tenant_settings')
+          .upsert({
+            company_id: cId,
+            record_id: 'customer_display_live',
+            data: { ...state, companyId: cId },
+            updated_at: new Date().toISOString()
+          })
+      ).catch(() => {});
     }
   } catch (err) {
     console.warn('[CustomerDisplay] Broadcast error:', err);
@@ -95,6 +135,35 @@ export function getCustomerDisplayState(targetCompanyId?: string): CustomerDispl
     }
   } catch {}
   return null;
+}
+
+export async function fetchRemoteCustomerDisplayState(companyId?: string): Promise<CustomerDisplayState | null> {
+  if (!isSupabaseConfigured || !supabase || !companyId) return getCustomerDisplayState(companyId);
+  try {
+    const { data: row, error } = await supabase
+      .from('tenant_settings')
+      .select('data')
+      .eq('company_id', companyId)
+      .eq('record_id', 'customer_display_live')
+      .maybeSingle();
+
+    if (!error && row?.data && typeof row.data === 'object') {
+      const remoteState = row.data as CustomerDisplayState;
+      const localState = getCustomerDisplayState(companyId);
+
+      if (!localState || (remoteState.timestamp || 0) >= (localState.timestamp || 0)) {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(`${STORAGE_KEY}_${companyId}`, JSON.stringify(remoteState));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteState));
+          window.dispatchEvent(new Event('customer_display_updated'));
+        }
+        return remoteState;
+      }
+    }
+  } catch (e) {
+    console.warn('[CustomerDisplay] fetchRemoteCustomerDisplayState error:', e);
+  }
+  return getCustomerDisplayState(companyId);
 }
 
 export function triggerCashDrawerKick(): void {

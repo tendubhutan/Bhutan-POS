@@ -577,7 +577,7 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
 
               return (
                 <div
-                  key={item['Item Code']}
+                  key={`${item['Item Code']}_${itemActualIndex}_${idx}`}
                   data-index={itemActualIndex}
                   onClick={() => handleSelect(item)}
                   onMouseEnter={() => setHighlightedIndex(itemActualIndex)}

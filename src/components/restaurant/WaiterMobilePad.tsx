@@ -369,12 +369,12 @@ export const WaiterMobilePad: React.FC<WaiterPadProps> = ({
 
             {/* Dishes Grid */}
             <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 gap-2.5 pr-1">
-              {filteredItems.map(item => {
+              {filteredItems.map((item, idx) => {
                 const inCart = cart.find(c => c.itemCode === item['Item Code']);
 
                 return (
                   <div
-                    key={item['Item Code']}
+                    key={`${item['Item Code']}_${idx}`}
                     onClick={() => handleAddToCart(item)}
                     className={`p-3 rounded-2xl border transition cursor-pointer flex flex-col justify-between select-none ${
                       inCart
@@ -426,8 +426,8 @@ export const WaiterMobilePad: React.FC<WaiterPadProps> = ({
                     Tap dishes from catalog to add to order
                   </div>
                 ) : (
-                  cart.map(line => (
-                    <div key={line.itemCode} className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5">
+                  cart.map((line, idx) => (
+                    <div key={`${line.itemCode}_${idx}`} className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5">
                       <div className="flex items-start justify-between gap-2">
                         <span className="font-bold text-xs text-white">{line.itemName}</span>
                         <span className="font-black text-xs text-amber-400 shrink-0">
@@ -710,9 +710,9 @@ export const WaiterMobilePad: React.FC<WaiterPadProps> = ({
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1">Select Replacement Dish</label>
               <div className="max-h-48 overflow-y-auto border border-slate-800 rounded-xl bg-slate-950 p-2 space-y-1">
-                {items.filter(i => i['Item Code'] !== itemToReplace.itemCode).map(dish => (
+                {items.filter(i => i['Item Code'] !== itemToReplace.itemCode).map((dish, idx) => (
                   <div
-                    key={dish['Item Code']}
+                    key={`${dish['Item Code']}_${idx}`}
                     onClick={() => setReplacementDish(dish)}
                     className={`p-2 rounded-lg text-xs flex items-center justify-between cursor-pointer transition ${
                       replacementDish?.['Item Code'] === dish['Item Code']

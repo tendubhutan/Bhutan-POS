@@ -294,12 +294,12 @@ export const PublicQRMenu: React.FC<PublicQRMenuProps> = ({
                   <p className="text-[11px] mt-1">Try selecting "Active Menu Now" or browsing all categories.</p>
                 </div>
               ) : (
-                filteredItems.map(({ item, schedule, isAvailable, reason, isOutOfStock, specialTag }) => {
+                filteredItems.map(({ item, schedule, isAvailable, reason, isOutOfStock, specialTag }, idx) => {
                   const inCart = cart.find(l => l.itemCode === item['Item Code']);
 
                   return (
                     <div
-                      key={item['Item Code']}
+                      key={`${item['Item Code']}_${idx}`}
                       className={`p-3 rounded-2xl bg-slate-950 border transition shadow-xs ${
                         !isAvailable ? 'opacity-60 border-slate-800/40' : 'border-slate-800 hover:border-amber-500/40'
                       }`}

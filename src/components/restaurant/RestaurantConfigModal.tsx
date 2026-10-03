@@ -526,13 +526,13 @@ export const RestaurantConfigModal: React.FC<RestaurantConfigModalProps> = ({
                         </td>
                       </tr>
                     ) : (
-                      filteredMenuItems.map(item => {
+                      filteredMenuItems.map((item, idx) => {
                         const schedule = schedules[item['Item Code']] || { itemCode: item['Item Code'] };
                         const isUnavailable = schedule.isUnavailable === true || schedule.isAvailableNow === false || schedule.isHiddenFromQR === true;
 
                         return (
                           <tr
-                            key={item['Item Code']}
+                            key={`${item['Item Code']}_${idx}`}
                             onClick={() => handleToggleItemUnavailable(item['Item Code'])}
                             className={`transition cursor-pointer select-none ${
                               isUnavailable

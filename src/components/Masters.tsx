@@ -1072,8 +1072,8 @@ export const Masters: React.FC<MastersProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {items
                   .filter(i => !itemSearch || i['Item Name'].toLowerCase().includes(itemSearch.toLowerCase()) || i.Barcode.includes(itemSearch) || (i.Category && i.Category.toLowerCase().includes(itemSearch.toLowerCase())))
-                  .map(item => (
-                    <tr key={item['Item Code']} className="hover:bg-slate-50 transition">
+                  .map((item, idx) => (
+                    <tr key={`${item['Item Code']}_${idx}`} className="hover:bg-slate-50 transition">
                       {visibleColumns.code !== false && <td className="py-2 px-3 font-mono text-slate-500 whitespace-nowrap">{item['Item Code']}</td>}
                       {visibleColumns.barcode !== false && <td className="py-2 px-3 font-mono text-slate-800 whitespace-nowrap">{item.Barcode}</td>}
                       {config.EnableSpareParts === 'true' && visibleColumns.partNumber !== false && (

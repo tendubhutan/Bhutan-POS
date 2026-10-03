@@ -932,7 +932,7 @@ export const Vouchers: React.FC<VouchersProps> = ({
       const isPurchase = isPhysicalItemOrConsumable(dr);
 
       if (cr && isParty(cr)) {
-        // e.g. Debit: Stationery, Credit: Panglung Enterprise -> "Being stationery purchased from Panglung Enterprise"
+        // e.g. Debit: Stationery, Credit: Bhutan Retail Enterprise -> "Being stationery purchased from Bhutan Retail Enterprise"
         if (isPurchase) {
           return `Being ${expName} purchased from ${cr}${billsText}`;
         }

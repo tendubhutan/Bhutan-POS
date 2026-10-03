@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Config } from '../types';
-import { getActiveCompanyId } from '../services/supabaseTenantService';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { getActiveCompanyId, DEFAULT_TENANT_COMPANY } from '../services/supabaseTenantService';
 import {
   getCustomerDisplayState,
+  fetchRemoteCustomerDisplayState,
   CustomerDisplayState,
   CustomerDisplayItem
 } from '../services/customerDisplayService';
@@ -36,7 +38,16 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTabletQrModal, setShowTabletQrModal] = useState(false);
 
-  // Sync state via BroadcastChannel, Storage Events, and Failsafe Interval
+  // Fetch remote display state on load for wireless tablets
+  useEffect(() => {
+    if (urlCompanyId) {
+      fetchRemoteCustomerDisplayState(urlCompanyId).then(st => {
+        if (st) setDisplayState(st);
+      }).catch(() => {});
+    }
+  }, [urlCompanyId]);
+
+  // Sync state via Supabase Realtime, BroadcastChannel, Storage Events, and Failsafe Interval
   useEffect(() => {
     const applyNewState = (incoming: CustomerDisplayState | null) => {
       if (!incoming) return;
@@ -56,6 +67,7 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
 
     handleSync();
 
+    // 1. Same-device BroadcastChannel
     let bcDefault: BroadcastChannel | null = null;
     let bcCompany: BroadcastChannel | null = null;
     try {
@@ -74,6 +86,24 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
       }
     } catch {}
 
+    // 2. Cross-device Wireless Real-time Sync via Supabase Realtime Channel
+    let sbChannel: any = null;
+    try {
+      if (isSupabaseConfigured && supabase) {
+        const cName = `customer_display_${urlCompanyId || 'default'}`;
+        sbChannel = supabase.channel(cName);
+        sbChannel
+          .on('broadcast', { event: 'customer_display_state' }, (payload: any) => {
+            if (payload && payload.payload) {
+              applyNewState(payload.payload);
+            }
+          })
+          .subscribe();
+      }
+    } catch (err) {
+      console.warn('[CustomerDisplayView] Realtime subscribe error:', err);
+    }
+
     const interval = setInterval(handleSync, 500);
 
     window.addEventListener('storage', handleSync);
@@ -82,6 +112,9 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
     return () => {
       if (bcDefault) bcDefault.close();
       if (bcCompany) bcCompany.close();
+      if (sbChannel && supabase) {
+        try { supabase.removeChannel(sbChannel); } catch {}
+      }
       clearInterval(interval);
       window.removeEventListener('storage', handleSync);
       window.removeEventListener('customer_display_updated', handleSync);
@@ -97,7 +130,7 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
   };
 
   const currSymbol = displayState?.summary?.currencySymbol || config.CurrencySymbol || 'Nu.';
-  const companyName = displayState?.companyName || config.CompanyName || 'Retail Store';
+  const companyName = displayState?.companyName || config.CompanyName || DEFAULT_TENANT_COMPANY.company_name;
 
   // Construct Dynamic Payment QR URL
   const grandTotal = displayState?.summary?.grandTotal || 0;

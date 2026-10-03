@@ -1188,7 +1188,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
             {/* PRINT-ONLY EXECUTIVE HEADER */}
             <div className="hidden print:block mb-6 border-b-2 border-slate-900 pb-3 text-slate-900 text-center">
               <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">
-                {config?.CompanyName || 'Panglung Enterprise'}
+                {config?.CompanyName || 'Bhutan Retail Enterprise'}
               </h1>
               <p className="text-xs text-slate-600 font-medium mt-0.5">
                 {[

@@ -490,9 +490,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </td>
                 </tr>
               ) : (
-                dashData.lowStockItems.map(item => (
+                dashData.lowStockItems.map((item, idx) => (
                   <tr
-                    key={item['Item Code']}
+                    key={`${item['Item Code']}_${idx}`}
                     onClick={() => onDrillStock(item['Item Code'], fromDate, toDate)}
                     className="bg-white hover:bg-indigo-50/50 cursor-pointer transition-colors group"
                     title="Click to drill down into Item Stock Ledger"

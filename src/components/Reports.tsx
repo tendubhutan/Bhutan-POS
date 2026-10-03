@@ -4280,9 +4280,9 @@ export const Reports: React.FC<ReportsProps> = ({
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {filteredItems.map((i: any) => (
+                            {filteredItems.map((i: any, idx: number) => (
                               <tr
-                                key={i.itemCode}
+                                key={`${i.itemCode}_${idx}`}
                                 onClick={() => onDrillStock(i.itemCode, fromDate, toDate)}
                                 className="hover:bg-indigo-50/40 cursor-pointer transition"
                               >
