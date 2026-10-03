@@ -135,11 +135,26 @@ Format your response using Markdown.
     try {
       const state = req.body;
       const companyId = state?.companyId || 'default';
-      customerDisplayStore.set(companyId, {
-        ...state,
-        serverTimestamp: Date.now()
-      });
-      res.json({ ok: true, companyId, timestamp: Date.now() });
+      
+      const currentState = customerDisplayStore.get(companyId);
+      let shouldOverwrite = true;
+      
+      if (currentState && currentState.status === 'completed') {
+        const timeElapsed = Date.now() - (currentState.serverTimestamp || 0);
+        // If the current screen is completed, hold it for 12 seconds instead of overwriting with idle
+        if (state?.status === 'idle' && timeElapsed < 12000) {
+          shouldOverwrite = false;
+        }
+      }
+      
+      if (shouldOverwrite) {
+        customerDisplayStore.set(companyId, {
+          ...state,
+          serverTimestamp: Date.now()
+        });
+      }
+      
+      res.json({ ok: true, companyId, timestamp: Date.now(), held: !shouldOverwrite });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err.message });
     }
