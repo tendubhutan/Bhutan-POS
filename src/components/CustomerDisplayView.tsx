@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Config } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { getActiveCompanyId, DEFAULT_TENANT_COMPANY } from '../services/supabaseTenantService';
@@ -38,28 +38,55 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTabletQrModal, setShowTabletQrModal] = useState(false);
 
+  // Keep a persistent hold on the "completed / thank you" screen so it is not instantly overridden by a cleared cart
+  const [completedHoldState, setCompletedHoldState] = useState<CustomerDisplayState | null>(null);
+  const completedTimerRef = useRef<any>(null);
+
+  const applyNewState = (incoming: CustomerDisplayState | null) => {
+    if (!incoming) return;
+
+    // 1. Check if transaction is completed and we should trigger a hold screen
+    if (incoming.status === 'completed' && incoming.lastCompletedInvoice) {
+      if (completedTimerRef.current) {
+        clearTimeout(completedTimerRef.current);
+      }
+      setCompletedHoldState(incoming);
+      
+      // Keep displaying the thank you screen for 15 seconds, or until a new transaction starts
+      completedTimerRef.current = setTimeout(() => {
+        setCompletedHoldState(null);
+      }, 15000);
+    } 
+    // 2. If cashier starts scanning a new active cart, immediately dismiss the completed screen
+    else if (incoming.status === 'active' && incoming.cartItems && incoming.cartItems.length > 0) {
+      if (completedTimerRef.current) {
+        clearTimeout(completedTimerRef.current);
+        completedTimerRef.current = null;
+      }
+      setCompletedHoldState(null);
+    }
+
+    // Always update displayState as the underlying model
+    setDisplayState(prev => {
+      if (!prev) return incoming;
+      if ((incoming.timestamp || 0) >= (prev.timestamp || 0)) {
+        return incoming;
+      }
+      return prev;
+    });
+  };
+
   // Fetch remote display state on load for wireless tablets
   useEffect(() => {
     if (urlCompanyId) {
       fetchRemoteCustomerDisplayState(urlCompanyId).then(st => {
-        if (st) setDisplayState(st);
+        if (st) applyNewState(st);
       }).catch(() => {});
     }
   }, [urlCompanyId]);
 
   // Sync state via Supabase Realtime, BroadcastChannel, Storage Events, and Failsafe Interval
   useEffect(() => {
-    const applyNewState = (incoming: CustomerDisplayState | null) => {
-      if (!incoming) return;
-      setDisplayState(prev => {
-        if (!prev) return incoming;
-        if ((incoming.timestamp || 0) >= (prev.timestamp || 0)) {
-          return incoming;
-        }
-        return prev;
-      });
-    };
-
     const handleSync = async () => {
       const latestLocal = getCustomerDisplayState(urlCompanyId) || getCustomerDisplayState();
       applyNewState(latestLocal);
@@ -133,12 +160,14 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
     }
   };
 
-  const currSymbol = displayState?.summary?.currencySymbol || config.CurrencySymbol || 'Nu.';
-  const companyName = displayState?.companyName || config.CompanyName || DEFAULT_TENANT_COMPANY.company_name;
+  const activeState = completedHoldState || displayState;
+
+  const currSymbol = activeState?.summary?.currencySymbol || config.CurrencySymbol || 'Nu.';
+  const companyName = activeState?.companyName || config.CompanyName || DEFAULT_TENANT_COMPANY.company_name;
 
   // Construct Dynamic Payment QR URL
-  const grandTotal = displayState?.summary?.grandTotal || 0;
-  const rawQrTemplate = displayState?.paymentQrData || (config as any).BankQrData || (config as any).MerchantQrCode || '';
+  const grandTotal = activeState?.summary?.grandTotal || 0;
+  const rawQrTemplate = activeState?.paymentQrData || (config as any).BankQrData || (config as any).MerchantQrCode || '';
   let paymentQrUrl = '';
 
   if (grandTotal > 0) {
@@ -160,9 +189,9 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
     }
   }
 
-  const items: CustomerDisplayItem[] = displayState?.cartItems || [];
-  const status = displayState?.status || 'idle';
-  const isCompleted = status === 'completed' && displayState?.lastCompletedInvoice;
+  const items: CustomerDisplayItem[] = activeState?.cartItems || [];
+  const status = activeState?.status || 'idle';
+  const isCompleted = status === 'completed' && activeState?.lastCompletedInvoice;
 
   // Tablet Share URL
   const currentUrl = typeof window !== 'undefined'
@@ -176,8 +205,8 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
       <header className="px-6 py-4 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between gap-4 backdrop-blur-md sticky top-0 z-20">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-black">
-            {displayState?.companyLogo ? (
-              <img src={displayState.companyLogo} alt={companyName} className="w-8 h-8 object-contain rounded-xl" />
+            {activeState?.companyLogo ? (
+              <img src={activeState.companyLogo} alt={companyName} className="w-8 h-8 object-contain rounded-xl" />
             ) : (
               <Building2 className="h-5 w-5" />
             )}
@@ -189,7 +218,7 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
             <p className="text-xs text-slate-400 flex items-center gap-1.5 font-mono">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>Customer Terminal Display</span>
-              {displayState?.terminalId && <span className="text-indigo-400 font-bold">({displayState.terminalId})</span>}
+              {activeState?.terminalId && <span className="text-indigo-400 font-bold">({activeState.terminalId})</span>}
             </p>
           </div>
         </div>
@@ -251,19 +280,19 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
             <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-5 grid grid-cols-2 gap-4 text-left font-mono">
               <div>
                 <span className="text-xs text-slate-400 block font-semibold">Invoice Number</span>
-                <span className="text-base font-extrabold text-white">{displayState.lastCompletedInvoice?.invoiceNo}</span>
+                <span className="text-base font-extrabold text-white">{activeState.lastCompletedInvoice?.invoiceNo}</span>
               </div>
               <div>
                 <span className="text-xs text-slate-400 block font-semibold">Total Amount Paid</span>
                 <span className="text-xl font-black text-emerald-400">
-                  {currSymbol} {displayState.lastCompletedInvoice?.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  {currSymbol} {activeState.lastCompletedInvoice?.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </span>
               </div>
-              {Number(displayState.lastCompletedInvoice?.changeAmount || 0) > 0 && (
+              {Number(activeState.lastCompletedInvoice?.changeAmount || 0) > 0 && (
                 <div className="col-span-2 pt-3 border-t border-slate-800 flex items-center justify-between">
                   <span className="text-sm text-amber-400 font-sans font-extrabold">Change Balance Returned:</span>
                   <span className="text-xl font-black text-amber-400">
-                    {currSymbol} {displayState.lastCompletedInvoice?.changeAmount.toFixed(2)}
+                    {currSymbol} {activeState.lastCompletedInvoice?.changeAmount.toFixed(2)}
                   </span>
                 </div>
               )}
@@ -355,20 +384,20 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
                 <div className="space-y-2.5 font-mono text-sm">
                   <div className="flex items-center justify-between text-slate-400">
                     <span>Items Subtotal</span>
-                    <span>{currSymbol} {(displayState?.summary?.subtotal || 0).toFixed(2)}</span>
+                    <span>{currSymbol} {(activeState?.summary?.subtotal || 0).toFixed(2)}</span>
                   </div>
 
-                  {(displayState?.summary?.discountTotal || 0) > 0 && (
+                  {(activeState?.summary?.discountTotal || 0) > 0 && (
                     <div className="flex items-center justify-between text-emerald-400">
                       <span>Total Savings / Discount</span>
-                      <span>-{currSymbol} {(displayState?.summary?.discountTotal || 0).toFixed(2)}</span>
+                      <span>-{currSymbol} {(activeState?.summary?.discountTotal || 0).toFixed(2)}</span>
                     </div>
                   )}
 
-                  {(displayState?.summary?.taxTotal || 0) > 0 && (
+                  {(activeState?.summary?.taxTotal || 0) > 0 && (
                     <div className="flex items-center justify-between text-slate-400">
                       <span>GST / Taxes</span>
-                      <span>+{currSymbol} {(displayState?.summary?.taxTotal || 0).toFixed(2)}</span>
+                      <span>+{currSymbol} {(activeState?.summary?.taxTotal || 0).toFixed(2)}</span>
                     </div>
                   )}
 
@@ -383,7 +412,7 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
 
               {/* Dynamic / Uploaded Payment QR Code Card */}
               {grandTotal > 0 && (() => {
-                const uploadedQrImage = (config as any).CompanyBankQrImage || (config as any).BankQrImage || (displayState?.paymentQrData?.startsWith('data:image') ? displayState.paymentQrData : '');
+                const uploadedQrImage = (config as any).CompanyBankQrImage || (config as any).BankQrImage || (activeState?.paymentQrData?.startsWith('data:image') ? activeState.paymentQrData : '');
 
                 return (
                   <div className="bg-gradient-to-br from-indigo-950/80 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-3xl p-5 shadow-2xl text-center space-y-3">
