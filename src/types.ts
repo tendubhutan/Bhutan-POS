@@ -109,6 +109,8 @@ export interface Config {
   EnableMultiGodown?: string; // "true" | "false"
   EnableQuotations?: string; // "true" | "false"
   EnableDeliveryNotes?: string; // "true" | "false"
+  EnableCustomerDisplay?: string; // "true" | "false"
+  EnableCashDrawer?: string; // "true" | "false"
   EnableRestaurantMode?: string; // "true" | "false"
   EnableTableBilling?: string; // "true" | "false"
   EnableDigitalMenuQR?: string; // "true" | "false"

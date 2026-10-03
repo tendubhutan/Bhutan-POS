@@ -18,6 +18,7 @@ import { Payroll } from './components/Payroll';
 import { StaffManagementView } from './components/employee/StaffManagementView';
 import { EmployeePortalApp } from './components/employee/EmployeePortalApp';
 import { PublicQRMenu } from './components/restaurant/PublicQRMenu';
+import { CustomerDisplayView } from './components/CustomerDisplayView';
 import { AssetManagementModule } from './components/assetManagement/AssetManagementModule';
 import { Reports, ReportTarget } from './components/Reports';
 import { SettingsView } from './components/SettingsView';
@@ -456,6 +457,21 @@ export default function App() {
     if (typeof window !== 'undefined') {
       const p = new URLSearchParams(window.location.search);
       return p.get('portal') === 'menu' || p.get('mode') === 'qr' || Boolean(p.get('table')) || Boolean(p.get('qr'));
+    }
+    return false;
+  });
+
+  const [isCustomerDisplayMode, setIsCustomerDisplayMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      const isDisplay = p.get('portal') === 'display' || p.get('portal') === 'customer' || p.get('mode') === 'display' || p.get('mode') === 'customer_display';
+      if (isDisplay) {
+        const compId = p.get('companyId') || p.get('company') || p.get('c');
+        if (compId) {
+          setActiveCompanyId(compId);
+        }
+      }
+      return isDisplay;
     }
     return false;
   });
@@ -914,6 +930,23 @@ export default function App() {
             url.searchParams.delete('portal');
             url.searchParams.delete('table');
             url.searchParams.delete('qr');
+            window.history.replaceState({}, '', url.toString());
+          }
+        }}
+      />
+    );
+  }
+
+  if (isCustomerDisplayMode) {
+    return (
+      <CustomerDisplayView
+        config={config}
+        onClose={() => {
+          setIsCustomerDisplayMode(false);
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('portal');
+            url.searchParams.delete('mode');
             window.history.replaceState({}, '', url.toString());
           }
         }}

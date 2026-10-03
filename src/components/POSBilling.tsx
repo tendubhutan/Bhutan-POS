@@ -36,6 +36,7 @@ import {
   getRestaurantOrders,
   getTables
 } from '../services/restaurantService';
+import { getActiveCompanyId } from '../services/supabaseTenantService';
 import {
   holdBill,
   resumeBill,
@@ -61,6 +62,11 @@ import {
   getAllActiveSchemes,
   getSchemes
 } from '../services/schemeService';
+import {
+  broadcastCustomerDisplayState,
+  triggerCashDrawerKick,
+  CustomerDisplayItem
+} from '../services/customerDisplayService';
 import {
   playScanBeep,
   playSuccessChime,
@@ -1143,6 +1149,50 @@ export const POSBilling: React.FC<POSBillingProps> = ({
   };
 
   const totals = calculateTotals();
+
+  // Broadcast Customer Display updates in real-time
+  useEffect(() => {
+    if (config.EnableCustomerDisplay === 'false') return;
+
+    const formattedCart: CustomerDisplayItem[] = cart.map((line, idx) => {
+      let lineDisc = 0;
+      if (showItemDiscount || line.appliedSchemeName || Number(line.discount) > 0) {
+        const rawDisc = Number(line.discount) || 0;
+        const isPct = line.discountType === 'percent' || config.ItemDiscountType === 'percent';
+        lineDisc = isPct ? ((line.qty * line.rate) * rawDisc / 100) : rawDisc;
+      }
+      return {
+        id: `${line.itemCode}-${idx}`,
+        name: line.itemName,
+        qty: Number(line.qty) || 0,
+        rate: Number(line.rate) || 0,
+        discount: lineDisc,
+        amount: Math.max(0, (Number(line.qty) || 0) * (Number(line.rate) || 0) - lineDisc),
+        unit: line.unit,
+        batchNo: line.selectedBatchNo
+      };
+    });
+
+    broadcastCustomerDisplayState({
+      companyId: getActiveCompanyId(),
+      companyName: config.CompanyName || 'Retail Store',
+      companyLogo: config.CompanyLogo || undefined,
+      terminalId: deviceCounterId || 'C1',
+      status: cart.length === 0 ? 'idle' : 'active',
+      cartItems: formattedCart,
+      summary: {
+        subtotal: totals.subtotal,
+        discountTotal: totals.discount,
+        taxTotal: totals.gstAmt,
+        grandTotal: totals.total,
+        itemCount: cart.length,
+        currencySymbol: config.CurrencySymbol || 'Nu.'
+      },
+      paymentQrData: (config as any).BankQrData || (config as any).MerchantQrCode || undefined,
+      timestamp: Date.now()
+    }, getActiveCompanyId());
+  }, [cart, totals.total, totals.subtotal, totals.discount, totals.gstAmt, config, deviceCounterId]);
+
   const prevTotalRef = useRef(totals.total);
   const prevInvoiceNoRef = useRef(editingInvoiceNo);
   const prevCustomerRef = useRef(customerName);
@@ -2212,6 +2262,41 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       const savedInv = result as unknown as SalesInvoice;
       setLastSavedInvoice(savedInv);
 
+      // Trigger Cash Drawer Kick pulse on receipt save/print
+      if (config.EnableCashDrawer !== 'false') {
+        triggerCashDrawerKick();
+      }
+
+      // Broadcast completed transaction status to Customer Display
+      if (config.EnableCustomerDisplay !== 'false') {
+        const totalPaid = Number(savedInv.cash || 0) + Number(savedInv.bank1 || 0) + Number(savedInv.bank2 || 0);
+        const changeAmt = Math.max(0, totalPaid - Number(savedInv.total || 0));
+        broadcastCustomerDisplayState({
+          companyId: getActiveCompanyId(),
+          companyName: config.CompanyName || 'Retail Store',
+          companyLogo: config.CompanyLogo || undefined,
+          terminalId: deviceCounterId || 'C1',
+          status: 'completed',
+          cartItems: [],
+          summary: {
+            subtotal: totals.subtotal,
+            discountTotal: totals.discount,
+            taxTotal: totals.gstAmt,
+            grandTotal: totals.total,
+            itemCount: 0,
+            currencySymbol: config.CurrencySymbol || 'Nu.'
+          },
+          lastCompletedInvoice: {
+            invoiceNo: savedInv.invoiceNo,
+            grandTotal: Number(savedInv.total || 0),
+            paidAmount: totalPaid,
+            changeAmount: changeAmt,
+            paymentMode: (savedInv.cash || 0) > 0 ? 'Cash' : 'Digital/Bank'
+          },
+          timestamp: Date.now()
+        }, getActiveCompanyId());
+      }
+
       // Handle Direct Actions (WhatsApp, Email, Save Only, Print)
       const showGst = String(config.EnableGST) !== 'false';
       const currency = config.CurrencySymbol || 'Nu.';
@@ -2473,7 +2558,71 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           </div>
         )}
 
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          {config.EnableCustomerDisplay !== 'false' && (
+            <button
+              type="button"
+              onClick={() => {
+                const cId = getActiveCompanyId();
+                const formattedCart: CustomerDisplayItem[] = cart.map((line, idx) => {
+                  let lineDisc = 0;
+                  if (showItemDiscount || line.appliedSchemeName || Number(line.discount) > 0) {
+                    const rawDisc = Number(line.discount) || 0;
+                    const isPct = line.discountType === 'percent' || config.ItemDiscountType === 'percent';
+                    lineDisc = isPct ? ((line.qty * line.rate) * rawDisc / 100) : rawDisc;
+                  }
+                  return {
+                    id: `${line.itemCode}-${idx}`,
+                    name: line.itemName || (line as any)['Item Name'] || 'Item',
+                    qty: Number(line.qty) || 0,
+                    rate: Number(line.rate) || 0,
+                    discount: lineDisc,
+                    amount: Math.max(0, (Number(line.qty) || 0) * (Number(line.rate) || 0) - lineDisc),
+                    unit: line.unit,
+                    batchNo: line.selectedBatchNo
+                  };
+                });
+
+                broadcastCustomerDisplayState({
+                  companyId: cId,
+                  companyName: config.CompanyName || 'Retail Store',
+                  companyLogo: config.CompanyLogo || undefined,
+                  terminalId: deviceCounterId || 'C1',
+                  status: cart.length === 0 ? 'idle' : 'active',
+                  cartItems: formattedCart,
+                  summary: {
+                    subtotal: totals.subtotal,
+                    discountTotal: totals.discount,
+                    taxTotal: totals.gstAmt,
+                    grandTotal: totals.total,
+                    itemCount: cart.length,
+                    currencySymbol: config.CurrencySymbol || 'Nu.'
+                  },
+                  paymentQrData: (config as any).BankQrData || (config as any).MerchantQrCode || undefined,
+                  timestamp: Date.now()
+                }, cId);
+
+                window.open(`?portal=display&companyId=${encodeURIComponent(cId)}`, 'CustomerDisplay', 'width=1100,height=800,menubar=no,toolbar=no');
+              }}
+              className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-100 font-bold text-xs rounded-xl border border-slate-700 transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title="Open Secondary / Dual Screen Customer Display Window or connect Tablet"
+            >
+              <span>💻 Customer Display</span>
+            </button>
+          )}
+
+          {config.EnableCashDrawer !== 'false' && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerCashDrawerKick();
+              }}
+              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl border border-slate-300 transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title="Trigger Physical Cash Drawer Open Signal"
+            >
+              <span>💵 Open Cash Box</span>
+            </button>
+          )}
           {/* Bill No & Date Indicator */}
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/90 rounded-xl px-2.5 py-1 text-xs shadow-2xs">
             <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
