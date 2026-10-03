@@ -231,42 +231,46 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
       <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto flex flex-col">
         {/* VIEW 1: PAYMENT COMPLETED STATE */}
         {isCompleted ? (
-          <div className="my-auto bg-slate-900/80 border border-emerald-500/40 rounded-3xl p-8 text-center max-w-2xl mx-auto space-y-6 shadow-2xl shadow-emerald-950/40 animate-in zoom-in-95 duration-300">
-            <div className="w-20 h-20 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400 mx-auto animate-bounce">
-              <CheckCircle2 className="h-10 w-10" />
+          <div className="my-auto bg-slate-900/90 border-2 border-emerald-500/50 rounded-3xl p-8 sm:p-10 text-center max-w-2xl mx-auto space-y-6 shadow-2xl shadow-emerald-950/60 animate-in zoom-in-95 duration-300">
+            <div className="w-24 h-24 rounded-full bg-emerald-500/20 border-2 border-emerald-400/60 flex items-center justify-center text-emerald-400 mx-auto animate-bounce shadow-xl">
+              <CheckCircle2 className="h-12 w-12" />
             </div>
 
-            <div>
-              <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-bold">
-                PAYMENT SUCCESSFUL
+            <div className="space-y-2">
+              <span className="px-4 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 font-mono text-xs font-black tracking-widest uppercase shadow-sm">
+                ✔ TRANSACTION COMPLETED
               </span>
-              <h2 className="text-3xl font-black text-white mt-2">Thank You for Shopping!</h2>
-              <p className="text-slate-400 text-sm mt-1">Your transaction has been completed successfully.</p>
+              <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight mt-2">
+                Thank You for Shopping with Us!
+              </h2>
+              <p className="text-indigo-300 font-extrabold text-xl sm:text-2xl mt-1 tracking-wide">
+                Please Visit Again! Have a Wonderful Day! 🌟
+              </p>
             </div>
 
-            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 grid grid-cols-2 gap-4 text-left font-mono">
+            <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-5 grid grid-cols-2 gap-4 text-left font-mono">
               <div>
-                <span className="text-[11px] text-slate-500 block">Invoice Reference</span>
-                <span className="text-sm font-bold text-white">{displayState.lastCompletedInvoice?.invoiceNo}</span>
+                <span className="text-xs text-slate-400 block font-semibold">Invoice Number</span>
+                <span className="text-base font-extrabold text-white">{displayState.lastCompletedInvoice?.invoiceNo}</span>
               </div>
               <div>
-                <span className="text-[11px] text-slate-500 block">Total Amount Paid</span>
-                <span className="text-base font-black text-emerald-400">
+                <span className="text-xs text-slate-400 block font-semibold">Total Amount Paid</span>
+                <span className="text-xl font-black text-emerald-400">
                   {currSymbol} {displayState.lastCompletedInvoice?.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </span>
               </div>
               {Number(displayState.lastCompletedInvoice?.changeAmount || 0) > 0 && (
-                <div className="col-span-2 pt-2 border-t border-slate-800 flex items-center justify-between">
-                  <span className="text-xs text-amber-400 font-sans font-bold">Change Balance Returned:</span>
-                  <span className="text-lg font-black text-amber-400">
+                <div className="col-span-2 pt-3 border-t border-slate-800 flex items-center justify-between">
+                  <span className="text-sm text-amber-400 font-sans font-extrabold">Change Balance Returned:</span>
+                  <span className="text-xl font-black text-amber-400">
                     {currSymbol} {displayState.lastCompletedInvoice?.changeAmount.toFixed(2)}
                   </span>
                 </div>
               )}
             </div>
 
-            <div className="pt-2 text-xs text-slate-500 flex items-center justify-center gap-2">
-              <Sparkles className="h-4 w-4 text-indigo-400" />
+            <div className="pt-2 text-xs text-slate-400 font-medium flex items-center justify-center gap-2">
+              <Sparkles className="h-4 w-4 text-indigo-400 animate-pulse" />
               <span>Display will reset automatically for the next customer</span>
             </div>
           </div>
@@ -377,25 +381,34 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
                 </div>
               </div>
 
-              {/* Dynamic Payment QR Code Card */}
-              {grandTotal > 0 && (
-                <div className="bg-gradient-to-br from-indigo-950/80 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-3xl p-5 shadow-2xl text-center space-y-3">
-                  <div className="flex items-center justify-center gap-2 text-indigo-300 font-bold text-xs uppercase tracking-wider">
-                    <QrCode className="h-4 w-4 text-indigo-400" />
-                    <span>Scan QR to Pay {currSymbol} {grandTotal.toFixed(2)}</span>
-                  </div>
+              {/* Dynamic / Uploaded Payment QR Code Card */}
+              {grandTotal > 0 && (() => {
+                const uploadedQrImage = (config as any).CompanyBankQrImage || (config as any).BankQrImage || (displayState?.paymentQrData?.startsWith('data:image') ? displayState.paymentQrData : '');
 
-                  {paymentQrUrl && (
-                    <div className="bg-white p-3 rounded-2xl inline-block shadow-xl border-2 border-indigo-400/50">
-                      <img src={paymentQrUrl} alt="Scan QR Code to Pay" className="w-48 h-48 object-contain mx-auto" />
+                return (
+                  <div className="bg-gradient-to-br from-indigo-950/80 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-3xl p-5 shadow-2xl text-center space-y-3">
+                    <div className="flex items-center justify-center gap-2 text-indigo-300 font-bold text-xs uppercase tracking-wider">
+                      <QrCode className="h-4 w-4 text-indigo-400" />
+                      <span>Scan QR to Pay {currSymbol} {grandTotal.toFixed(2)}</span>
                     </div>
-                  )}
 
-                  <div className="text-[11px] text-slate-400 leading-tight">
-                    <span>Scan with mobile banking app (mBoB, B-Wallet, mPAY, UPI, or Camera). Amount is pre-set.</span>
+                    {uploadedQrImage ? (
+                      <div className="bg-white p-3 rounded-2xl inline-block shadow-xl border-2 border-indigo-400/50 max-w-[240px]">
+                        <img src={uploadedQrImage} alt="Official Bank QR Code" className="w-48 h-48 object-contain mx-auto rounded-lg" />
+                        <span className="text-[10px] text-slate-700 font-extrabold block mt-1.5 uppercase">Official Bank QR Code</span>
+                      </div>
+                    ) : paymentQrUrl ? (
+                      <div className="bg-white p-3 rounded-2xl inline-block shadow-xl border-2 border-indigo-400/50">
+                        <img src={paymentQrUrl} alt="Scan QR Code to Pay" className="w-48 h-48 object-contain mx-auto" />
+                      </div>
+                    ) : null}
+
+                    <div className="text-[11px] text-slate-400 leading-tight">
+                      <span>Scan with mobile banking app (mBoB, B-Wallet, mPAY, UPI, or Camera). Pay {currSymbol} {grandTotal.toFixed(2)}.</span>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         )}

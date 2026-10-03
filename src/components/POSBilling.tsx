@@ -1188,7 +1188,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         itemCount: cart.length,
         currencySymbol: config.CurrencySymbol || 'Nu.'
       },
-      paymentQrData: (config as any).BankQrData || (config as any).MerchantQrCode || undefined,
+      paymentQrData: (config as any).CompanyBankQrImage || (config as any).BankQrImage || (config as any).BankQrData || (config as any).MerchantQrCode || undefined,
       timestamp: Date.now()
     }, getActiveCompanyId());
   }, [cart, totals.total, totals.subtotal, totals.discount, totals.gstAmt, config, deviceCounterId]);

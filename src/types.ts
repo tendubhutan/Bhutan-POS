@@ -29,6 +29,8 @@ export interface Config {
   Bank1Ledger: string;
   Bank2Ledger: string;
   CompanyBankDetails: string;
+  BankQrData?: string;
+  MerchantQrCode?: string;
   EnableGST: string; // "true" | "false"
   EnableGSTInputTax?: string; // "true" | "false"
   EnableTDS2Tracking?: string; // "true" | "false"
