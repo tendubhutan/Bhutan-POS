@@ -451,6 +451,11 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     nextMap.EnableWaiterMobilePad = isRest;
     nextMap.EnableKDSAndKitchenIssue = isRest;
 
+    // When Restaurant POS is enabled in preset, normal retail POS should be off
+    if (isRest) {
+      nextMap.EnablePOS = false;
+    }
+
     if (target === 'new') {
       setNewFeatures(nextMap);
       setNewSelectedPresetId(preset.id);
@@ -478,6 +483,23 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
       updatedMap.EnableQRDirectOrdering = nextVal;
       updatedMap.EnableWaiterMobilePad = nextVal;
       updatedMap.EnableKDSAndKitchenIssue = nextVal;
+
+      // When Restaurant POS is enabled, normal retail POS should be off
+      if (nextVal) {
+        updatedMap.EnablePOS = false;
+      }
+    }
+
+    if (featureId === 'EnablePOS') {
+      // When normal retail POS is enabled, Restaurant POS and its subfeatures should be off
+      if (nextVal) {
+        updatedMap.EnableRestaurantMode = false;
+        updatedMap.EnableTableBilling = false;
+        updatedMap.EnableDigitalMenuQR = false;
+        updatedMap.EnableQRDirectOrdering = false;
+        updatedMap.EnableWaiterMobilePad = false;
+        updatedMap.EnableKDSAndKitchenIssue = false;
+      }
     }
 
     if (isNew) {
@@ -500,6 +522,11 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     nextMap.EnableQRDirectOrdering = enable;
     nextMap.EnableWaiterMobilePad = enable;
     nextMap.EnableKDSAndKitchenIssue = enable;
+
+    // When Restaurant POS is enabled, normal retail POS should be off
+    if (enable) {
+      nextMap.EnablePOS = false;
+    }
 
     if (target === 'new') {
       setNewFeatures(nextMap);

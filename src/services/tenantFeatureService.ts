@@ -49,6 +49,13 @@ export const ALL_SYSTEM_FEATURES: FeatureDefinition[] = [
     defaultEnabled: false
   },
   {
+    id: 'EnableSchemes',
+    label: 'Schemes & Promotional Offers (Enterprise Only)',
+    shortDesc: 'Automated POS discount rules, BOGO deals, special promo prices, and happy-hour pricing.',
+    category: 'Billing & POS',
+    defaultEnabled: false
+  },
+  {
     id: 'EnableRestaurantMode',
     label: 'Restaurant POS & Dining Mode',
     shortDesc: 'Activates Restaurant POS interface, table management, KDS, and dining bill totals.',
@@ -94,28 +101,28 @@ export const ALL_SYSTEM_FEATURES: FeatureDefinition[] = [
   // Inventory & Variants
   {
     id: 'EnableSerials',
-    label: 'Serial Numbers & IMEI Tracking',
+    label: 'Serial Numbers & IMEI Tracking (Electronics Only)',
     shortDesc: 'Track individual stock items by unique IMEI or Serial numbers.',
     category: 'Inventory & Variants',
     defaultEnabled: true
   },
   {
     id: 'EnablePharmacyBatch',
-    label: 'Pharmacy Batch & Expiry Tracking',
+    label: 'Batch & Expiry Date Tracking (Pharmacy Only)',
     shortDesc: 'Track medicine batch numbers, expiry dates, and FEFO stock management.',
     category: 'Inventory & Variants',
     defaultEnabled: true
   },
   {
     id: 'EnableSpareParts',
-    label: 'Auto Spare Parts & Workshop',
+    label: 'Bin / Rack / Part Number (Spare Parts Only)',
     shortDesc: 'Manage Part No / OEM No., physical Rack & Bin, and vehicle compatibility.',
     category: 'Inventory & Variants',
     defaultEnabled: false
   },
   {
     id: 'EnableGarmentsAndFootwear',
-    label: 'Garments & Footwear (Sizes/Colors)',
+    label: 'Size & Colour Variants (Fashion Only)',
     shortDesc: 'Track apparel by size matrices, color codes, and fashion variant barcodes.',
     category: 'Inventory & Variants',
     defaultEnabled: false
@@ -272,6 +279,7 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableWholesalePrice: false,
       EnableItemDiscount: true,
       EnableBillDiscount: true,
+      EnableSchemes: false,
       EnableRestaurantMode: false,
       EnableTableBilling: false,
       EnableDigitalMenuQR: false,
@@ -312,6 +320,7 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableWholesalePrice: true,
       EnableItemDiscount: true,
       EnableBillDiscount: true,
+      EnableSchemes: false,
       EnableRestaurantMode: false,
       EnableTableBilling: false,
       EnableDigitalMenuQR: false,
@@ -347,11 +356,12 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
     badge: '🍽️ Restaurant',
     description: 'Restaurant POS & Dining mode with auto-enabled digital menu, KDS, tables & waiter pad.',
     features: {
-      EnablePOS: true,
+      EnablePOS: false,
       EnableNormalSale: true,
       EnableWholesalePrice: false,
       EnableItemDiscount: true,
       EnableBillDiscount: true,
+      EnableSchemes: false,
       EnableRestaurantMode: true,
       EnableTableBilling: true,
       EnableDigitalMenuQR: true,
@@ -392,6 +402,7 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableWholesalePrice: true,
       EnableItemDiscount: true,
       EnableBillDiscount: true,
+      EnableSchemes: false,
       EnableRestaurantMode: false,
       EnableTableBilling: false,
       EnableDigitalMenuQR: false,
@@ -432,6 +443,7 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableWholesalePrice: false,
       EnableItemDiscount: true,
       EnableBillDiscount: true,
+      EnableSchemes: false,
       EnableRestaurantMode: false,
       EnableTableBilling: false,
       EnableDigitalMenuQR: false,
@@ -472,6 +484,7 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableWholesalePrice: false,
       EnableItemDiscount: true,
       EnableBillDiscount: true,
+      EnableSchemes: false,
       EnableRestaurantMode: false,
       EnableTableBilling: false,
       EnableDigitalMenuQR: false,
@@ -507,11 +520,12 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
     badge: '⭐ Enterprise',
     description: 'Unlocks every module: POS, B2B, Serials, Pharmacy, Parts, Payroll, HR, Assets, Multi-Branch & Warehouses.',
     features: {
-      EnablePOS: true,
+      EnablePOS: false,
       EnableNormalSale: true,
       EnableWholesalePrice: true,
       EnableItemDiscount: true,
       EnableBillDiscount: true,
+      EnableSchemes: true,
       EnableRestaurantMode: true,
       EnableTableBilling: true,
       EnableDigitalMenuQR: true,
@@ -652,7 +666,8 @@ export function isFeatureAllowed(
     featureKey === 'EnableAdvancedAI' ||
     featureKey === 'EnableMultiBranch' ||
     featureKey === 'EnableMultiGodown' ||
-    featureKey === 'EnableGSTInputTax'
+    featureKey === 'EnableGSTInputTax' ||
+    featureKey === 'EnableSchemes'
   ) {
     return val === 'true';
   }
