@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import { 
   Users, Calendar, Clock, CheckCircle2, XCircle, AlertCircle, 
   Plus, Search, Filter, QrCode, Smartphone, Share2, Copy, Check,
@@ -59,12 +59,14 @@ interface StaffManagementViewProps {
   config: Config;
   onDataRefresh?: () => void;
   onNavigateToPayroll?: () => void;
+  topOffset?: number;
 }
 
 export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   config,
   onDataRefresh,
-  onNavigateToPayroll
+  onNavigateToPayroll,
+  topOffset = 0
 }) => {
   const isAttendanceAllowed = isFeatureAllowed(config, 'EnableStaffAttendanceAndLeave') && config.EnableStaffAttendanceAndLeave !== 'false';
   const isAssignmentsAllowed = isFeatureAllowed(config, 'EnableStaffAssignments') && config.EnableStaffAssignments !== 'false';
@@ -73,6 +75,31 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   const [activeTab, setActiveTab] = useState<StaffTab>(initialTab);
   const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Header measurement for sticky docking
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [headerHeight, setHeaderHeight] = useState<number>(54);
+
+  const updateHeaderHeight = useCallback(() => {
+    if (headerRef.current) {
+      const h = Math.round(headerRef.current.getBoundingClientRect().height);
+      if (h > 0) setHeaderHeight(h);
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    updateHeaderHeight();
+    const timer = setTimeout(updateHeaderHeight, 100);
+    if (!headerRef.current) return () => clearTimeout(timer);
+    const ro = new ResizeObserver(() => updateHeaderHeight());
+    ro.observe(headerRef.current);
+    window.addEventListener('resize', updateHeaderHeight);
+    return () => {
+      clearTimeout(timer);
+      ro.disconnect();
+      window.removeEventListener('resize', updateHeaderHeight);
+    };
+  }, [updateHeaderHeight, activeTab]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -115,23 +142,11 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   const [leaveSubTab, setLeaveSubTab] = useState<'balances' | 'history' | 'quotas' | 'all'>('balances');
   const [portalSubTab, setPortalSubTab] = useState<'directory' | 'qr_link' | 'security'>('directory');
 
-  // Header collapsing for full page report view
+  // Header collapsing for full page report view (manual toggle only)
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
 
-  useEffect(() => {
-    const handleScroll = (e: Event) => {
-      const target = e.target as HTMLElement;
-      if (target && target.scrollTop !== undefined) {
-        if (target.scrollTop > 50 && !isHeaderCollapsed) {
-          setIsHeaderCollapsed(true);
-        } else if (target.scrollTop < 10 && isHeaderCollapsed) {
-          setIsHeaderCollapsed(false);
-        }
-      }
-    };
-    window.addEventListener('scroll', handleScroll, true);
-    return () => window.removeEventListener('scroll', handleScroll, true);
-  }, [isHeaderCollapsed]);
+  // Total sticky offset for table headers below this header
+  const stickyTopPx = topOffset + (isHeaderCollapsed ? 0 : headerHeight);
 
   // Daily attendance quick stats
   const todayAttendanceRecords = attendanceRecords.filter(r => r.date === selectedDate);
@@ -645,7 +660,10 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   return (
     <div className="flex-1 bg-slate-50 flex flex-col min-h-full text-slate-800">
       {/* Top Banner / Executive Navigation Header */}
-      <div className={`bg-white border-slate-200/80 px-4 sm:px-6 transition-all duration-300 ease-in-out ${
+      <div 
+        ref={headerRef}
+        style={{ top: `${topOffset}px` }}
+        className={`sticky z-30 bg-white/95 backdrop-blur-xs border-slate-200/80 px-4 sm:px-6 transition-all duration-300 ease-in-out ${
         isHeaderCollapsed 
           ? 'max-h-0 py-0 opacity-0 overflow-hidden border-b-0 pointer-events-none' 
           : 'max-h-32 py-2.5 border-b shadow-2xs opacity-100'
@@ -1137,6 +1155,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
             hideHeaderToolbar={true}
             isHeaderCollapsed={isHeaderCollapsed}
             onToggleCollapse={() => setIsHeaderCollapsed(prev => !prev)}
+            stickyTopPx={stickyTopPx}
           />
         )}
 
@@ -1157,6 +1176,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
             hideHeaderToolbar={true}
             isHeaderCollapsed={isHeaderCollapsed}
             onToggleCollapse={() => setIsHeaderCollapsed(prev => !prev)}
+            stickyTopPx={stickyTopPx}
           />
         )}
 
@@ -1289,12 +1309,10 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
 
             {/* Leave Balances Ledger per Employee */}
             {(leaveSubTab === 'balances' || leaveSubTab === 'all') && (
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-                <div className={`overflow-auto transition-all duration-300 ${
-                  isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-210px)] min-h-[350px]'
-                }`}>
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs">
+                <div>
                   <table className="w-full text-left text-xs text-slate-700 border-separate border-spacing-0">
-                    <thead className="sticky top-0 z-20 shadow-xs">
+                    <thead className="sticky z-20 shadow-xs bg-white" style={{ top: `${stickyTopPx}px` }}>
                       <tr className="bg-white">
                         <th colSpan={leaveTypes.filter(t => t.enabled).length + 1} className="px-5 py-3 text-left bg-white border-b border-slate-100">
                           <div className="flex items-center justify-between">
@@ -1382,12 +1400,10 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
 
             {/* All Leave History Table */}
             {(leaveSubTab === 'history' || leaveSubTab === 'all') && (
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-                <div className={`overflow-auto transition-all duration-300 ${
-                  isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-210px)] min-h-[350px]'
-                }`}>
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs">
+                <div>
                   <table className="w-full text-left text-xs text-slate-700 border-separate border-spacing-0">
-                    <thead className="sticky top-0 z-20 shadow-xs">
+                    <thead className="sticky z-20 shadow-xs bg-white" style={{ top: `${stickyTopPx}px` }}>
                       <tr className="bg-white">
                         <th colSpan={8} className="px-5 py-3 text-left bg-white border-b border-slate-100">
                           <div className="flex items-center justify-between">
@@ -1567,6 +1583,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
             onRefreshData={loadData}
             isHeaderCollapsed={isHeaderCollapsed}
             onToggleCollapse={() => setIsHeaderCollapsed(prev => !prev)}
+            stickyTopPx={stickyTopPx}
           />
         )}
 
@@ -2104,12 +2121,10 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
 
             {/* View 3: PIN & Biometric Directory Table */}
             {(portalSubTab === 'directory') && (
-              <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
-                <div className={`overflow-auto transition-all duration-300 ${
-                  isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-210px)] min-h-[350px]'
-                }`}>
+              <div className="bg-white border border-slate-200 rounded-3xl shadow-xs">
+                <div>
                   <table className="w-full text-left text-xs border-separate border-spacing-0">
-                    <thead className="sticky top-0 z-20 shadow-xs">
+                    <thead className="sticky z-20 shadow-xs bg-white" style={{ top: `${stickyTopPx}px` }}>
                       <tr className="bg-white">
                         <th colSpan={5} className="px-5 py-3 text-left bg-white border-b border-slate-100">
                           <div className="flex items-center justify-between">

@@ -56,6 +56,7 @@ interface MonthlyAttendanceRegisterViewProps {
   hideHeaderToolbar?: boolean;
   isHeaderCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  stickyTopPx?: number;
 }
 
 export const MonthlyAttendanceRegisterView: React.FC<MonthlyAttendanceRegisterViewProps> = ({
@@ -70,29 +71,14 @@ export const MonthlyAttendanceRegisterView: React.FC<MonthlyAttendanceRegisterVi
   onSearchChange: externalOnSearchChange,
   hideHeaderToolbar = false,
   isHeaderCollapsed: propIsHeaderCollapsed,
-  onToggleCollapse
+  onToggleCollapse,
+  stickyTopPx
 }) => {
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
   const [internalIsHeaderCollapsed, setInternalIsHeaderCollapsed] = useState(false);
   const isHeaderCollapsed = propIsHeaderCollapsed !== undefined ? propIsHeaderCollapsed : internalIsHeaderCollapsed;
   const handleToggleCollapse = onToggleCollapse || (() => setInternalIsHeaderCollapsed(prev => !prev));
-
-  useEffect(() => {
-    const handleScroll = (e: Event) => {
-      const target = e.target as HTMLElement;
-      if (target && target.scrollTop !== undefined) {
-        if (target.scrollTop > 50 && !isHeaderCollapsed) {
-          if (onToggleCollapse) onToggleCollapse();
-          else setInternalIsHeaderCollapsed(true);
-        } else if (target.scrollTop < 10 && isHeaderCollapsed) {
-          if (onToggleCollapse) onToggleCollapse();
-          else setInternalIsHeaderCollapsed(false);
-        }
-      }
-    };
-    window.addEventListener('scroll', handleScroll, true);
-    return () => window.removeEventListener('scroll', handleScroll, true);
-  }, [isHeaderCollapsed, onToggleCollapse]);
+  const effectiveStickyTop = stickyTopPx !== undefined ? stickyTopPx : (isHeaderCollapsed ? 0 : 54);
 
   const searchQuery = externalSearchQuery !== undefined ? externalSearchQuery : internalSearchQuery;
   const setSearchQuery = externalOnSearchChange || setInternalSearchQuery;
@@ -301,12 +287,9 @@ export const MonthlyAttendanceRegisterView: React.FC<MonthlyAttendanceRegisterVi
       )}
 
       {/* Full-Width Register Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-        <div className={`overflow-auto transition-all duration-300 ${
-          isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-215px)] min-h-[350px]'
-        }`}>
-          <table className="w-full text-left text-xs text-slate-700 border-separate border-spacing-0">
-            <thead className="sticky top-0 z-20 shadow-xs">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs">
+        <table className="w-full text-left text-xs text-slate-700 border-separate border-spacing-0">
+          <thead className="sticky z-20 shadow-xs bg-white" style={{ top: `${effectiveStickyTop}px` }}>
               <tr className="bg-white">
                 <th colSpan={9} className="px-5 py-3.5 text-left bg-white border-b border-slate-100">
                   <div className="flex items-center justify-between">
@@ -448,7 +431,6 @@ export const MonthlyAttendanceRegisterView: React.FC<MonthlyAttendanceRegisterVi
               </tfoot>
             )}
           </table>
-        </div>
       </div>
     </div>
   );

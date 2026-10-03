@@ -31,6 +31,7 @@ interface AssignmentReportViewProps {
   showHeaderControls?: boolean;
   isHeaderCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  stickyTopPx?: number;
 }
 
 export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
@@ -40,7 +41,8 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
   onRefreshData,
   showHeaderControls = true,
   isHeaderCollapsed: propIsHeaderCollapsed,
-  onToggleCollapse
+  onToggleCollapse,
+  stickyTopPx
 }) => {
   const companyId = getActiveCompanyId();
   const activeUser = getActiveUser();
@@ -48,23 +50,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
   const [internalIsHeaderCollapsed, setInternalIsHeaderCollapsed] = useState(false);
   const isHeaderCollapsed = propIsHeaderCollapsed !== undefined ? propIsHeaderCollapsed : internalIsHeaderCollapsed;
   const handleToggleCollapse = onToggleCollapse || (() => setInternalIsHeaderCollapsed(prev => !prev));
-
-  useEffect(() => {
-    const handleScroll = (e: Event) => {
-      const target = e.target as HTMLElement;
-      if (target && target.scrollTop !== undefined) {
-        if (target.scrollTop > 50 && !isHeaderCollapsed) {
-          if (onToggleCollapse) onToggleCollapse();
-          else setInternalIsHeaderCollapsed(true);
-        } else if (target.scrollTop < 10 && isHeaderCollapsed) {
-          if (onToggleCollapse) onToggleCollapse();
-          else setInternalIsHeaderCollapsed(false);
-        }
-      }
-    };
-    window.addEventListener('scroll', handleScroll, true);
-    return () => window.removeEventListener('scroll', handleScroll, true);
-  }, [isHeaderCollapsed, onToggleCollapse]);
+  const effectiveStickyTop = stickyTopPx !== undefined ? stickyTopPx : (isHeaderCollapsed ? 0 : 54);
 
   // Local state for tasks if not passed from parent
   const [internalTasks, setInternalTasks] = useState<TaskAssignment[]>(() => getTaskAssignments(companyId));
@@ -922,12 +908,9 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
       {/* 4. VIEW MODE 1: DETAILED TABULAR REGISTER */}
       {/* ================================================================ */}
       {viewMode === 'table' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-          <div className={`overflow-auto transition-all duration-300 ${
-            isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-215px)] min-h-[350px]'
-          }`}>
-            <table className="w-full text-left text-xs border-separate border-spacing-0">
-              <thead className="sticky top-0 z-20 shadow-xs">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs">
+          <table className="w-full text-left text-xs border-separate border-spacing-0">
+            <thead className="sticky z-20 shadow-xs bg-white" style={{ top: `${effectiveStickyTop}px` }}>
                 <tr className="bg-white">
                   <th colSpan={10} className="px-5 py-3.5 text-left bg-white border-b border-slate-100">
                     <div className="flex items-center justify-between">
@@ -1221,7 +1204,6 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                 )}
               </tbody>
             </table>
-          </div>
         </div>
       )}
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import {
   Users,
@@ -58,23 +58,35 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
   const [activeTab, setActiveTab] = useState<'processing' | 'attendance' | 'employees' | 'payheads' | 'advances'>('processing');
   const [linkAttendanceToPayroll, setLinkAttendanceToPayroll] = useState<boolean>(true);
 
-  // Header collapsing for full page report view
+  // Header collapsing for full page report view (manual toggle only)
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
 
-  useEffect(() => {
-    const handleScroll = (e: Event) => {
-      const target = e.target as HTMLElement;
-      if (target && target.scrollTop !== undefined) {
-        if (target.scrollTop > 50 && !isHeaderCollapsed) {
-          setIsHeaderCollapsed(true);
-        } else if (target.scrollTop < 10 && isHeaderCollapsed) {
-          setIsHeaderCollapsed(false);
-        }
-      }
+  // Header measurement for sticky docking
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [headerHeight, setHeaderHeight] = useState<number>(56);
+
+  const updateHeaderHeight = useCallback(() => {
+    if (headerRef.current) {
+      const h = Math.round(headerRef.current.getBoundingClientRect().height);
+      if (h > 0) setHeaderHeight(h);
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    updateHeaderHeight();
+    const timer = setTimeout(updateHeaderHeight, 100);
+    if (!headerRef.current) return () => clearTimeout(timer);
+    const ro = new ResizeObserver(() => updateHeaderHeight());
+    ro.observe(headerRef.current);
+    window.addEventListener('resize', updateHeaderHeight);
+    return () => {
+      clearTimeout(timer);
+      ro.disconnect();
+      window.removeEventListener('resize', updateHeaderHeight);
     };
-    window.addEventListener('scroll', handleScroll, true);
-    return () => window.removeEventListener('scroll', handleScroll, true);
-  }, [isHeaderCollapsed]);
+  }, [updateHeaderHeight, activeTab]);
+
+  const stickyTopPx = isHeaderCollapsed ? 0 : headerHeight;
 
   const payrollTabs = [
     { id: 'processing', label: 'Salary Processing', icon: Calendar },
@@ -1185,7 +1197,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
   const departmentsList = Array.from(new Set(employees.map(e => e.department))).filter(Boolean);
 
   return (
-    <div className={`h-full flex flex-col min-h-0 ${activeTab === 'attendance' ? 'space-y-0 p-0' : 'space-y-3 p-3 sm:p-4 pb-2'}`}>
+    <div className={`min-h-full flex flex-col ${activeTab === 'attendance' ? 'space-y-0 p-0' : 'space-y-3 p-3 sm:p-4 pb-2'}`}>
       {/* Toast Notification */}
       {toastMsg && (
         <div
@@ -1200,10 +1212,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       )}
 
       {/* Top Compact Banner Header */}
-      <div className={`transition-all duration-300 ease-in-out ${
+      <div 
+        ref={headerRef}
+        className={`sticky top-0 z-30 transition-all duration-300 ease-in-out pt-1 pb-2 bg-slate-50/95 backdrop-blur-xs ${
         isHeaderCollapsed 
           ? 'max-h-0 py-0 opacity-0 overflow-hidden border-b-0 pointer-events-none mb-0' 
-          : 'max-h-28 opacity-100 mb-4'
+          : 'max-h-28 opacity-100 mb-2'
       }`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-900 text-white px-3.5 py-2 sm:px-4.5 sm:py-2.5 rounded-2xl shadow-md border border-slate-800">
           <div>
@@ -1441,11 +1455,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 </div>
               </div>
 
-              <div className={`overflow-auto transition-all duration-300 ${
-                isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-215px)] min-h-[350px]'
-              }`}>
+              <div className="rounded-2xl border border-slate-200 bg-white shadow-2xs">
                 <table className="w-full border-separate border-spacing-0 text-xs">
-                  <thead className="sticky top-0 z-20 shadow-xs">
+                  <thead className="sticky z-20 shadow-xs" style={{ top: `${stickyTopPx}px` }}>
                     <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider">
                       <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200">Emp Code</th>
                       <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200">Employee Name</th>
@@ -1545,11 +1557,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
       {/* TAB 2: ATTENDANCE & LEAVES */}
       {activeTab === 'attendance' && (
-        <div className="h-full flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex flex-col">
           <StaffManagementView
             config={config}
             onDataRefresh={onDataRefresh}
             onNavigateToPayroll={() => setActiveTab('processing')}
+            topOffset={stickyTopPx}
           />
         </div>
       )}
@@ -1600,8 +1613,8 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="px-4 py-2.5 bg-slate-900 text-white flex items-center justify-between">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs">
+            <div className="px-4 py-2.5 bg-slate-900 text-white flex items-center justify-between rounded-t-2xl">
               <div className="font-bold text-xs sm:text-sm flex items-center gap-2">
                 <Users className="h-4 w-4 text-indigo-400" />
                 <span>Employee Master Directory</span>
@@ -1636,11 +1649,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               </div>
             </div>
 
-            <div className={`overflow-auto transition-all duration-300 ${
-              isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-215px)] min-h-[350px]'
-            }`}>
+            <div>
               <table className="w-full border-separate border-spacing-0 text-xs">
-                <thead className="sticky top-0 z-20 shadow-xs">
+                <thead className="sticky z-20 shadow-xs bg-slate-800 text-white" style={{ top: `${stickyTopPx}px` }}>
                   <tr className="bg-slate-800 text-white font-bold uppercase text-[10px] tracking-wider">
                     <th className="py-2.5 px-3 text-left bg-slate-800 border-b border-slate-700">Code</th>
                     <th className="py-2.5 px-3 text-left bg-slate-800 border-b border-slate-700">Employee Name</th>
