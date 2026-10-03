@@ -208,7 +208,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const isPosPermitted = isFeatureAllowed(form, 'EnablePOS', isSuperadminUser);
 
   const tabs = [
-    { id: 'company', label: 'Company Profile', icon: Building2, desc: 'Identity & Tax' },
+    { id: 'company', label: 'Company & Bank Details', icon: Building2, desc: 'Identity, Banking & Bank QR' },
     { id: 'features', label: 'General Settings', icon: Sliders, desc: 'Banking, Modules & Resets' },
     { id: 'vouchers', label: 'Voucher Numbering', icon: Hash, desc: 'Prefixes & Numbers' },
     ...(isPosPermitted ? [{ id: 'pos', label: 'POS Settings', icon: ShoppingCart, desc: 'Billing & Shortcuts' } as const] : []),
@@ -667,14 +667,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Main Settings Body */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6 shadow-xs">
-        {/* TAB 1: Company Profile */}
+        {/* TAB 1: Company & Bank Details */}
         {activeTab === 'company' && (
           <div className="space-y-5 text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-blue-600" />
-                  <span>Business Identity & Banking Setup</span>
+                  <span>Company & Bank Details (Business Identity, Bank Accounts & Official Store Bank QR)</span>
                 </h2>
                 <p className="text-[11px] text-slate-500">
                   These details will appear on tax invoices, thermal slips, and official statements.
@@ -936,7 +936,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
             </div>
             
-            {renderSaveButton('company', 'Company Profile', true, 'lg')}
+            {renderSaveButton('company', 'Company & Bank Details', true, 'lg')}
           </div>
         )}
 
