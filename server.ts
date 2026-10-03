@@ -126,6 +126,37 @@ Format your response using Markdown.
   });
 
   // ==========================================
+  // WIRELESS CUSTOMER DISPLAY LIVE RELAY ENDPOINTS
+  // ==========================================
+  const customerDisplayStore = new Map<string, any>();
+
+  // 1. POS Cashier updates the live customer display state
+  app.post("/api/customer-display/update", (req, res) => {
+    try {
+      const state = req.body;
+      const companyId = state?.companyId || 'default';
+      customerDisplayStore.set(companyId, {
+        ...state,
+        serverTimestamp: Date.now()
+      });
+      res.json({ ok: true, companyId, timestamp: Date.now() });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // 2. Wireless Tablet / Phone fetches the live customer display state
+  app.get("/api/customer-display/state", (req, res) => {
+    try {
+      const companyId = (req.query.companyId as string) || (req.query.company as string) || 'default';
+      const liveState = customerDisplayStore.get(companyId) || customerDisplayStore.get('default') || null;
+      res.json(liveState);
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ==========================================
   // LOCAL WIFI HUB (SHOP LAN MODE) DISPATCHER
   // ==========================================
   const hubCounters: Record<string, number> = {

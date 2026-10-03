@@ -60,9 +60,13 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
       });
     };
 
-    const handleSync = () => {
-      const latest = getCustomerDisplayState(urlCompanyId) || getCustomerDisplayState();
-      applyNewState(latest);
+    const handleSync = async () => {
+      const latestLocal = getCustomerDisplayState(urlCompanyId) || getCustomerDisplayState();
+      applyNewState(latestLocal);
+      try {
+        const latestRemote = await fetchRemoteCustomerDisplayState(urlCompanyId);
+        if (latestRemote) applyNewState(latestRemote);
+      } catch {}
     };
 
     handleSync();

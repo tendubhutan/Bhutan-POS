@@ -91,6 +91,15 @@ export function broadcastCustomerDisplayState(state: CustomerDisplayState, targe
       } catch {}
     }
 
+    // Server-side Direct Relay Dispatch for Wireless Tablets
+    if (typeof fetch !== 'undefined') {
+      fetch('/api/customer-display/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: jsonStr
+      }).catch(() => {});
+    }
+
     // Cross-device Wireless Sync via Supabase Broadcast
     if (isSupabaseConfigured && supabase) {
       const channel = getRealtimeChannel(cId);
@@ -138,12 +147,33 @@ export function getCustomerDisplayState(targetCompanyId?: string): CustomerDispl
 }
 
 export async function fetchRemoteCustomerDisplayState(companyId?: string): Promise<CustomerDisplayState | null> {
-  if (!isSupabaseConfigured || !supabase || !companyId) return getCustomerDisplayState(companyId);
+  const cId = companyId || 'default';
+
+  // 1. First try direct server relay endpoint (highest speed & reliability)
+  if (typeof fetch !== 'undefined') {
+    try {
+      const res = await fetch(`/api/customer-display/state?companyId=${encodeURIComponent(cId)}`);
+      if (res.ok) {
+        const serverState = await res.json();
+        if (serverState && typeof serverState === 'object' && serverState.cartItems) {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(`${STORAGE_KEY}_${cId}`, JSON.stringify(serverState));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(serverState));
+            window.dispatchEvent(new Event('customer_display_updated'));
+          }
+          return serverState as CustomerDisplayState;
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Fall back to Supabase DB if server endpoint is offline
+  if (!isSupabaseConfigured || !supabase || !cId) return getCustomerDisplayState(cId);
   try {
     const { data: row, error } = await supabase
       .from('tenant_settings')
       .select('data')
-      .eq('company_id', companyId)
+      .eq('company_id', cId)
       .eq('record_id', 'customer_display_live')
       .maybeSingle();
 
