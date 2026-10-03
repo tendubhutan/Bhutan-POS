@@ -1750,17 +1750,21 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       {/* TAB 3: FLEXIBLE PAY HEADS */}
       {activeTab === 'payheads' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3 pt-1">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Bhutan Statutory & Custom Pay Heads Configurator
-            </span>
-            <button
-              onClick={handleOpenNewPayHead}
-              className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Create New Pay Head</span>
-            </button>
+          <div className={`transition-all duration-300 ease-in-out ${
+            isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-20 opacity-100 mb-2'
+          }`}>
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Bhutan Statutory & Custom Pay Heads Configurator
+              </span>
+              <button
+                onClick={handleOpenNewPayHead}
+                className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Create New Pay Head</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3080,7 +3084,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     
       {/* TAB 4: ADVANCES & LOANS */}
       {activeTab === "advances" && (
-        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} />
+        <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} isHeaderCollapsed={isHeaderCollapsed} />
       )}
     </div>
   );

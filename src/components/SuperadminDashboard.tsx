@@ -432,30 +432,59 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     }
   };
 
+  // Hidden restaurant sub-features automatically synced with EnableRestaurantMode in Superadmin
+  const HIDDEN_FROM_SUPERADMIN_CHECKLIST = [
+    'EnableTableBilling',
+    'EnableDigitalMenuQR',
+    'EnableQRDirectOrdering',
+    'EnableWaiterMobilePad',
+    'EnableKDSAndKitchenIssue'
+  ];
+
   // Preset apply helper
   const handleApplyPreset = (preset: FeaturePreset, target: 'new' | 'edit') => {
+    let nextMap = { ...preset.features };
+    const isRest = nextMap.EnableRestaurantMode === true;
+    nextMap.EnableTableBilling = isRest;
+    nextMap.EnableDigitalMenuQR = isRest;
+    nextMap.EnableQRDirectOrdering = isRest;
+    nextMap.EnableWaiterMobilePad = isRest;
+    nextMap.EnableKDSAndKitchenIssue = isRest;
+
     if (target === 'new') {
-      setNewFeatures({ ...preset.features });
+      setNewFeatures(nextMap);
       setNewSelectedPresetId(preset.id);
     } else {
-      setEditingFeatures({ ...preset.features });
+      setEditingFeatures(nextMap);
       setEditingPresetId(preset.id);
     }
   };
 
   // Toggle individual feature
   const handleToggleFeature = (featureId: string, target: 'new' | 'edit') => {
-    if (target === 'new') {
-      setNewFeatures(prev => ({
-        ...prev,
-        [featureId]: !prev[featureId]
-      }));
+    const isNew = target === 'new';
+    const currentMap = isNew ? newFeatures : editingFeatures;
+    const currentVal = currentMap[featureId] === true;
+    const nextVal = !currentVal;
+
+    let updatedMap: Record<string, boolean> = {
+      ...currentMap,
+      [featureId]: nextVal
+    };
+
+    if (featureId === 'EnableRestaurantMode') {
+      updatedMap.EnableTableBilling = nextVal;
+      updatedMap.EnableDigitalMenuQR = nextVal;
+      updatedMap.EnableQRDirectOrdering = nextVal;
+      updatedMap.EnableWaiterMobilePad = nextVal;
+      updatedMap.EnableKDSAndKitchenIssue = nextVal;
+    }
+
+    if (isNew) {
+      setNewFeatures(updatedMap);
       setNewSelectedPresetId(null);
     } else {
-      setEditingFeatures(prev => ({
-        ...prev,
-        [featureId]: !prev[featureId]
-      }));
+      setEditingFeatures(updatedMap);
       setEditingPresetId(null);
     }
   };
@@ -466,6 +495,12 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     ALL_SYSTEM_FEATURES.forEach(f => {
       nextMap[f.id] = enable;
     });
+    nextMap.EnableTableBilling = enable;
+    nextMap.EnableDigitalMenuQR = enable;
+    nextMap.EnableQRDirectOrdering = enable;
+    nextMap.EnableWaiterMobilePad = enable;
+    nextMap.EnableKDSAndKitchenIssue = enable;
+
     if (target === 'new') {
       setNewFeatures(nextMap);
       setNewSelectedPresetId(enable ? 'enterprise' : null);
@@ -737,7 +772,8 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     activePresetId: string | null,
     target: 'new' | 'edit'
   ) => {
-    const totalActive = ALL_SYSTEM_FEATURES.filter(f => features[f.id] === true).length;
+    const visibleSystemFeatures = ALL_SYSTEM_FEATURES.filter(f => !HIDDEN_FROM_SUPERADMIN_CHECKLIST.includes(f.id));
+    const totalActive = visibleSystemFeatures.filter(f => features[f.id] === true).length;
     const categories: Array<'Billing & POS' | 'Inventory & Variants' | 'Taxation & Accounts' | 'HR, Assets & Modules'> = [
       'Billing & POS',
       'Inventory & Variants',
@@ -755,16 +791,16 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                 <Bot className="h-4 w-4" />
               </div>
               <div>
-                <span className="font-bold text-white text-xs block">Industry Preset Bot (One-Click Auto Setup)</span>
+                <span className="font-bold text-white text-xs block">Industry Preset Bot (7 Dedicated Presets)</span>
                 <p className="text-[10px] text-slate-400">
-                  Select an industry template to auto-toggle features. You can still customize any feature on/off below.
+                  Select an industry template to auto-toggle features. Payroll, HR, Assets & Warehouses are restricted to Enterprise.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-1.5">
               <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold border border-emerald-500/30">
-                {totalActive} / {ALL_SYSTEM_FEATURES.length} Modules Active
+                {totalActive} / {visibleSystemFeatures.length} Modules Active
               </span>
               <button
                 type="button"
@@ -783,7 +819,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 pt-1">
             {FEATURE_PRESETS.map(preset => {
               const isSelected = activePresetId === preset.id;
               return (
@@ -800,7 +836,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="text-xs font-bold truncate">{preset.badge}</span>
                     {isSelected && (
-                      <span className="px-1 py-0.2 bg-indigo-500 text-[9px] font-mono text-white rounded font-bold">
+                      <span className="px-1 py-0.2 bg-indigo-500 text-[8px] font-mono text-white rounded font-bold">
                         ACTIVE
                       </span>
                     )}
@@ -815,7 +851,9 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
         {/* Categorized Feature Checklist */}
         <div className="space-y-3.5">
           {categories.map(category => {
-            const categoryFeatures = ALL_SYSTEM_FEATURES.filter(f => f.category === category);
+            const categoryFeatures = ALL_SYSTEM_FEATURES.filter(
+              f => f.category === category && !HIDDEN_FROM_SUPERADMIN_CHECKLIST.includes(f.id)
+            );
             const activeInCategory = categoryFeatures.filter(f => features[f.id] === true).length;
             return (
               <div key={category} className="p-3 bg-slate-950/40 border border-slate-800/80 rounded-2xl space-y-2">
@@ -832,6 +870,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {categoryFeatures.map(feat => {
                     const isEnabled = features[feat.id] === true;
+                    const isRestaurantMode = feat.id === 'EnableRestaurantMode';
                     return (
                       <div
                         key={feat.id}
@@ -849,6 +888,11 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                             </span>
                           </div>
                           <p className="text-[10px] text-slate-400 leading-tight mt-0.5">{feat.shortDesc}</p>
+                          {isRestaurantMode && (
+                            <div className="mt-1 text-[9px] font-bold text-amber-400/90 flex items-center gap-1">
+                              <span>⚡ Auto-enables Digital Menu, KDS, Table Grid & Waiter Pad for client</span>
+                            </div>
+                          )}
                         </div>
                         <div className="shrink-0 pt-0.5 flex flex-col items-end gap-1">
                           <div

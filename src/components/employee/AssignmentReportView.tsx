@@ -665,10 +665,13 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
       )}
 
       {/* ================================================================ */}
-      {/* 2. KPI SUMMARY METRICS CARDS */}
+      {/* 2. KPI SUMMARY METRICS CARDS & FILTER TOOLBAR (COLLAPSIBLE) */}
       {/* ================================================================ */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 print:grid-cols-6">
-        {/* Total */}
+      <div className={`transition-all duration-300 ease-in-out space-y-4 ${
+        isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-[800px] opacity-100 mb-4'
+      }`}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 print:grid-cols-6">
+          {/* Total */}
         <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-500">
             <span className="text-[11px] font-medium uppercase tracking-wider">Total Tasks</span>
@@ -901,6 +904,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
             )}
           </div>
         </div>
+      </div>
       </div>
       </div>
 

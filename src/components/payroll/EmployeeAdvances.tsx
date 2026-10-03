@@ -7,9 +7,10 @@ interface EmployeeAdvancesProps {
   config: Config;
   ledgers: Ledger[];
   employees: Employee[];
+  isHeaderCollapsed?: boolean;
 }
 
-export const EmployeeAdvances: React.FC<EmployeeAdvancesProps> = ({ config, ledgers, employees }) => {
+export const EmployeeAdvances: React.FC<EmployeeAdvancesProps> = ({ config, ledgers, employees, isHeaderCollapsed }) => {
   const [advances, setAdvances] = useState<EmployeeAdvance[]>(getEmployeeAdvances());
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -169,23 +170,27 @@ export const EmployeeAdvances: React.FC<EmployeeAdvancesProps> = ({ config, ledg
 
   return (
     <div className="space-y-4">
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search by name, CID, or advance no..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 h-10 border border-slate-300 rounded-xl text-sm focus:border-indigo-500 outline-none"
-          />
+      <div className={`transition-all duration-300 ease-in-out ${
+        isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-28 opacity-100 mb-4'
+      }`}>
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search by name, CID, or advance no..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 h-10 border border-slate-300 rounded-xl text-sm focus:border-indigo-500 outline-none"
+            />
+          </div>
+          <button
+            onClick={() => setShowIssueModal(true)}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-4 h-10 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition"
+          >
+            <Plus className="h-4 w-4" /> Issue Advance
+          </button>
         </div>
-        <button
-          onClick={() => setShowIssueModal(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 h-10 rounded-xl text-sm font-semibold hover:bg-indigo-700 transition"
-        >
-          <Plus className="h-4 w-4" /> Issue Advance
-        </button>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">

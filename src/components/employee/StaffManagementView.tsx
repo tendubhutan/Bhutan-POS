@@ -2004,66 +2004,70 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
 
             {/* View 1: QR Code & Link Banner */}
             {(portalSubTab === 'qr_link') && (
-              <div className="bg-gradient-to-br from-indigo-900 via-blue-900 to-slate-900 text-white p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col md:flex-row items-center gap-6">
-                {/* QR Code Container */}
-                <div className="bg-white p-4 rounded-2xl shadow-md flex flex-col items-center justify-center shrink-0">
-                  <img
-                    src={qrCodeUrl}
-                    alt="Staff Portal QR Code"
-                    className="h-44 w-44 rounded-xl object-contain shadow-2xs"
-                  />
-                  <span className="text-[10px] font-bold text-slate-500 mt-2 flex items-center gap-1">
-                    <Smartphone className="h-3 w-3 text-indigo-600" />
-                    Scan with Phone Camera
-                  </span>
-                </div>
-
-                {/* Instructions & Link */}
-                <div className="space-y-4 flex-1 text-center md:text-left">
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 text-[10px] font-black uppercase tracking-wider">
-                    <Award className="h-3.5 w-3.5 text-blue-400" />
-                    <span>100% Mobile Phone Friendly • PWA Installable</span>
-                  </div>
-
-                  <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-snug">
-                    Dedicated Employee Mobile Portal
-                  </h2>
-
-                  <p className="text-xs text-blue-100/80 leading-relaxed">
-                    Employees can scan this QR code or open the link on Android or iPhone to clock in/out, view leave quotas, apply for leave, and manage tasks assigned by Managers/GMs. 
-                    Zero exposure to accounting, daybook, or billing records.
-                  </p>
-
-                  {/* Direct Link Copier */}
-                  <div className="bg-black/30 border border-white/10 rounded-xl p-2.5 flex items-center gap-2">
-                    <input
-                      type="text"
-                      readOnly
-                      value={portalUrl}
-                      className="bg-transparent text-xs font-mono text-white/90 flex-1 outline-none truncate px-1"
+              <div className={`transition-all duration-300 ease-in-out ${
+                isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-[600px] opacity-100 mb-4'
+              }`}>
+                <div className="bg-gradient-to-br from-indigo-900 via-blue-900 to-slate-900 text-white p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col md:flex-row items-center gap-6">
+                  {/* QR Code Container */}
+                  <div className="bg-white p-4 rounded-2xl shadow-md flex flex-col items-center justify-center shrink-0">
+                    <img
+                      src={qrCodeUrl}
+                      alt="Staff Portal QR Code"
+                      className="h-44 w-44 rounded-xl object-contain shadow-2xs"
                     />
-                    <button
-                      onClick={handleCopyLink}
-                      className="px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs transition flex items-center gap-1 shrink-0 cursor-pointer shadow-sm"
-                    >
-                      {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                      <span>{copiedLink ? 'Copied' : 'Copy Link'}</span>
-                    </button>
+                    <span className="text-[10px] font-bold text-slate-500 mt-2 flex items-center gap-1">
+                      <Smartphone className="h-3 w-3 text-indigo-600" />
+                      Scan with Phone Camera
+                    </span>
                   </div>
 
-                  {/* Mobile Features Highlights */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 text-[11px] text-blue-200">
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                      <span>1-Tap Clock In / Out</span>
+                  {/* Instructions & Link */}
+                  <div className="space-y-4 flex-1 text-center md:text-left">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 text-[10px] font-black uppercase tracking-wider">
+                      <Award className="h-3.5 w-3.5 text-blue-400" />
+                      <span>100% Mobile Phone Friendly • PWA Installable</span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                      <span>Real-time Leave Ledger</span>
+
+                    <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-snug">
+                      Dedicated Employee Mobile Portal
+                    </h2>
+
+                    <p className="text-xs text-blue-100/80 leading-relaxed">
+                      Employees can scan this QR code or open the link on Android or iPhone to clock in/out, view leave quotas, apply for leave, and manage tasks assigned by Managers/GMs. 
+                      Zero exposure to accounting, daybook, or billing records.
+                    </p>
+
+                    {/* Direct Link Copier */}
+                    <div className="bg-black/30 border border-white/10 rounded-xl p-2.5 flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={portalUrl}
+                        className="bg-transparent text-xs font-mono text-white/90 flex-1 outline-none truncate px-1"
+                      />
+                      <button
+                        onClick={handleCopyLink}
+                        className="px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs transition flex items-center gap-1 shrink-0 cursor-pointer shadow-sm"
+                      >
+                        {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                        <span>{copiedLink ? 'Copied' : 'Copy Link'}</span>
+                      </button>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                      <span>Manager Comments</span>
+
+                    {/* Mobile Features Highlights */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 text-[11px] text-blue-200">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                        <span>1-Tap Clock In / Out</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                        <span>Real-time Leave Ledger</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                        <span>Manager Comments</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2072,37 +2076,41 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
 
             {/* View 2: Security Guidelines */}
             {(portalSubTab === 'security') && (
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
-                <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-                  <div className="h-10 w-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                    <Phone className="h-5 w-5" />
+              <div className={`transition-all duration-300 ease-in-out ${
+                isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-[600px] opacity-100 mb-4'
+              }`}>
+                <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+                  <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+                    <div className="h-10 w-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                      <Phone className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-base text-slate-900">How Staff Sign In & Mobile Credentials Guide</h3>
+                      <p className="text-xs text-slate-500">Fast mobile-number based sign-in with default PIN or Fingerprint</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-base text-slate-900">How Staff Sign In & Mobile Credentials Guide</h3>
-                    <p className="text-xs text-slate-500">Fast mobile-number based sign-in with default PIN or Fingerprint</p>
-                  </div>
-                </div>
 
-                <div className="space-y-3 text-xs text-slate-600">
-                  <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
-                    <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">1</span>
-                    <p><strong className="text-slate-800">Scan QR Code</strong> or open the portal URL on any Android or iPhone browser.</p>
-                  </div>
-                  <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
-                    <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">2</span>
-                    <p><strong className="text-slate-800">Enter Registered Mobile Number:</strong> Staff enter their registered mobile number (no employee code needed).</p>
-                  </div>
-                  <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
-                    <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">3</span>
-                    <p><strong className="text-slate-800">Default PIN (1234):</strong> First-time login uses standard default PIN <code className="bg-slate-200 px-1.5 py-0.5 rounded text-blue-800 font-mono font-bold">1234</code>.</p>
-                  </div>
-                  <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
-                    <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">4</span>
-                    <p><strong className="text-slate-800">Reset PIN via Admin or OTP:</strong> Admins can reset forgotten PINs back to 1234 in 1 tap from the Directory tab.</p>
-                  </div>
-                  <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-indigo-900">
-                    <span className="h-6 w-6 rounded-full bg-indigo-200 text-indigo-800 font-bold text-xs flex items-center justify-center shrink-0">5</span>
-                    <p><strong className="text-indigo-950">Biometric Login (WebAuthn):</strong> Staff can register their Fingerprint / Face ID for instant 1-tap sign-in without typing a PIN.</p>
+                  <div className="space-y-3 text-xs text-slate-600">
+                    <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+                      <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">1</span>
+                      <p><strong className="text-slate-800">Scan QR Code</strong> or open the portal URL on any Android or iPhone browser.</p>
+                    </div>
+                    <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+                      <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">2</span>
+                      <p><strong className="text-slate-800">Enter Registered Mobile Number:</strong> Staff enter their registered mobile number (no employee code needed).</p>
+                    </div>
+                    <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+                      <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">3</span>
+                      <p><strong className="text-slate-800">Default PIN (1234):</strong> First-time login uses standard default PIN <code className="bg-slate-200 px-1.5 py-0.5 rounded text-blue-800 font-mono font-bold">1234</code>.</p>
+                    </div>
+                    <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+                      <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">4</span>
+                      <p><strong className="text-slate-800">Reset PIN via Admin or OTP:</strong> Admins can reset forgotten PINs back to 1234 in 1 tap from the Directory tab.</p>
+                    </div>
+                    <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-indigo-900">
+                      <span className="h-6 w-6 rounded-full bg-indigo-200 text-indigo-800 font-bold text-xs flex items-center justify-center shrink-0">5</span>
+                      <p><strong className="text-indigo-950">Biometric Login (WebAuthn):</strong> Staff can register their Fingerprint / Face ID for instant 1-tap sign-in without typing a PIN.</p>
+                    </div>
                   </div>
                 </div>
               </div>
