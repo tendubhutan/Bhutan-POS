@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Users, Calendar, Clock, CheckCircle2, XCircle, AlertCircle, 
   Plus, Search, Filter, QrCode, Smartphone, Share2, Copy, Check,
   MessageSquare, Send, Tag, ArrowRight, UserCheck, ShieldAlert,
-  ChevronRight, RefreshCw, Eye, Edit3, Trash2, Sliders, Briefcase,
+  ChevronRight, ChevronDown, ChevronUp, RefreshCw, Eye, Edit3, Trash2, Sliders, Briefcase,
   FileSpreadsheet, Award, CalendarCheck, CheckSquare, Bell,
-  Wifi, WifiOff, ShieldCheck, MapPin, Globe, Lock, Phone, KeyRound, Fingerprint, Layers, Loader2
+  Wifi, WifiOff, ShieldCheck, MapPin, Globe, Lock, Phone, KeyRound, Fingerprint, Layers, Loader2,
+  Download, ExternalLink, Printer, FileText
 } from 'lucide-react';
 import { 
   getLeaveTypes, saveLeaveTypes, updateLeaveType,
@@ -21,6 +22,14 @@ import {
   getCompanyHolidayPolicy, saveCompanyHolidayPolicy, calculateLeaveDeductionBreakdown
 } from '../../services/employeeStaffService';
 import { 
+  exportMonthlyAttendanceToExcel,
+  exportMonthlyAttendanceToPdf,
+  exportDailyAttendanceToExcel,
+  exportDailyAttendanceToPdf,
+  exportLeaveHistoryToExcel,
+  exportLeaveHistoryToPdf
+} from '../../services/staffReportExportService';
+import { 
   LeaveTypeConfig, LeaveApplication, AttendanceRecord, 
   TaskAssignment, TaskPriority, TaskStatus,
   OfficeNetworkSecurityConfig, NetworkVerificationResult,
@@ -33,6 +42,18 @@ import { isFeatureAllowed } from '../../services/tenantFeatureService';
 import { GlowButton } from '../common/GlowButton';
 import { AssignmentReportView } from './AssignmentReportView';
 import { HolidayPolicyModal } from './HolidayPolicyModal';
+import { formatDateDMY } from '../../utils/dateUtils';
+import { DailyAttendanceView, exportDailyAttendanceExcel } from './DailyAttendanceView';
+import { MonthlyAttendanceRegisterView, exportMonthlyAttendanceExcel } from './MonthlyAttendanceRegisterView';
+
+export type StaffTab = 
+  | 'daily_clock' 
+  | 'monthly_register' 
+  | 'leaves' 
+  | 'tasks' 
+  | 'assignment_report' 
+  | 'security' 
+  | 'portal_qr';
 
 interface StaffManagementViewProps {
   config: Config;
@@ -48,16 +69,32 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   const isAttendanceAllowed = isFeatureAllowed(config, 'EnableStaffAttendanceAndLeave') && config.EnableStaffAttendanceAndLeave !== 'false';
   const isAssignmentsAllowed = isFeatureAllowed(config, 'EnableStaffAssignments') && config.EnableStaffAssignments !== 'false';
 
-  const initialTab = isAttendanceAllowed ? 'attendance' : (isAssignmentsAllowed ? 'tasks' : 'portal_qr');
-  const [activeTab, setActiveTab] = useState<'attendance' | 'leaves' | 'tasks' | 'assignment_report' | 'security' | 'portal_qr'>(initialTab);
-  const [taskBoardView, setTaskBoardView] = useState<'report' | 'board'>('report');
+  const initialTab: StaffTab = isAttendanceAllowed ? 'daily_clock' : (isAssignmentsAllowed ? 'tasks' : 'portal_qr');
+  const [activeTab, setActiveTab] = useState<StaffTab>(initialTab);
+  const [isViewDropdownOpen, setIsViewDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsViewDropdownOpen(false);
+      }
+    };
+    if (isViewDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isViewDropdownOpen]);
 
   // Auto-correct active tab if current tab is disabled by superadmin
   useEffect(() => {
-    if (!isAttendanceAllowed && (activeTab === 'attendance' || activeTab === 'leaves' || activeTab === 'security')) {
+    if (!isAttendanceAllowed && (activeTab === 'daily_clock' || activeTab === 'monthly_register' || activeTab === 'leaves' || activeTab === 'security')) {
       setActiveTab(isAssignmentsAllowed ? 'tasks' : 'portal_qr');
     } else if (!isAssignmentsAllowed && (activeTab === 'tasks' || activeTab === 'assignment_report')) {
-      setActiveTab(isAttendanceAllowed ? 'attendance' : 'portal_qr');
+      setActiveTab(isAttendanceAllowed ? 'daily_clock' : 'portal_qr');
     }
   }, [isAttendanceAllowed, isAssignmentsAllowed, activeTab]);
 
@@ -72,6 +109,105 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [selectedDate, setSelectedDate] = useState<string>(getTodayDateString());
+  const [dailyStatusFilter, setDailyStatusFilter] = useState<'ALL' | 'PRESENT' | 'LATE' | 'LEAVE' | 'ABSENT'>('ALL');
+
+  // Sub-Pills selection states for multi-report pages
+  const [leaveSubTab, setLeaveSubTab] = useState<'balances' | 'history' | 'quotas' | 'all'>('balances');
+  const [portalSubTab, setPortalSubTab] = useState<'directory' | 'qr_link' | 'security'>('directory');
+
+  // Header collapsing for full page report view
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target && target.scrollTop !== undefined) {
+        if (target.scrollTop > 50 && !isHeaderCollapsed) {
+          setIsHeaderCollapsed(true);
+        } else if (target.scrollTop < 10 && isHeaderCollapsed) {
+          setIsHeaderCollapsed(false);
+        }
+      }
+    };
+    window.addEventListener('scroll', handleScroll, true);
+    return () => window.removeEventListener('scroll', handleScroll, true);
+  }, [isHeaderCollapsed]);
+
+  // Daily attendance quick stats
+  const todayAttendanceRecords = attendanceRecords.filter(r => r.date === selectedDate);
+  const dailyPresentCount = todayAttendanceRecords.filter(r => r.status === 'Present' || r.status === 'Late').length;
+  const dailyLateCount = todayAttendanceRecords.filter(r => r.status === 'Late').length;
+  const dailyLeaveCount = todayAttendanceRecords.filter(r => r.status === 'On-Leave' || r.status === 'Half-Day').length;
+  const dailyAbsentCount = Math.max(0, employees.length - dailyPresentCount - dailyLeaveCount);
+
+  // Quick date jump
+  const handleQuickDate = (offset: number) => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + offset);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    setSelectedDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+  };
+
+  // Pro-Grade Excel & PDF Exports
+  const handleExportDailyExcel = () => {
+    exportDailyAttendanceToExcel({
+      config,
+      employees,
+      attendanceRecords,
+      selectedDate,
+      searchQuery,
+      statusFilter: dailyStatusFilter
+    });
+  };
+
+  const handleExportDailyPdf = () => {
+    exportDailyAttendanceToPdf({
+      config,
+      employees,
+      attendanceRecords,
+      selectedDate,
+      searchQuery,
+      statusFilter: dailyStatusFilter
+    });
+  };
+
+  const handleExportMonthlyExcel = () => {
+    exportMonthlyAttendanceToExcel({
+      config,
+      employees,
+      selectedYear,
+      selectedMonth,
+      searchQuery
+    });
+  };
+
+  const handleExportMonthlyPdf = () => {
+    exportMonthlyAttendanceToPdf({
+      config,
+      employees,
+      selectedYear,
+      selectedMonth,
+      searchQuery
+    });
+  };
+
+  const handleExportLeaveExcel = () => {
+    exportLeaveHistoryToExcel({
+      config,
+      leaveApplications
+    });
+  };
+
+  const handleExportLeavePdf = () => {
+    exportLeaveHistoryToPdf({
+      config,
+      leaveApplications
+    });
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   // Modal states
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
@@ -425,376 +561,202 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
     }
   };
 
-  return (
-    <div className="flex-1 bg-slate-50 flex flex-col min-h-screen text-slate-800">
-      {/* Top Banner / Metrics Overview */}
-      <div className="bg-white border-b border-slate-200 px-4 sm:px-6 py-4 shadow-2xs">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black tracking-wide uppercase border border-blue-200">
-                Staff Operations Hub
-              </span>
-              <span className="text-xs text-slate-400 font-mono">Live Sync</span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-1 flex items-center gap-2.5">
-              <span>Attendance, Leaves & Assignments</span>
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Real-time employee check-in/out, standard leave balances, manager task tracking & mobile portal.
-            </p>
-          </div>
+  const navigationItems = [
+    ...(isAttendanceAllowed ? [
+      {
+        id: 'daily_clock' as const,
+        tab: 'daily_clock' as const,
+        title: 'Daily Clock In / Out Log',
+        shortTitle: 'Daily Clock In/Out',
+        subtitle: 'Live shifts, check-in timestamps, working hours & device security',
+        icon: Clock,
+        category: 'Attendance & Shifts',
+      },
+      {
+        id: 'monthly_register' as const,
+        tab: 'monthly_register' as const,
+        title: 'Monthly Attendance Register',
+        shortTitle: 'Monthly Register',
+        subtitle: 'Working days, paid leaves, LOP & salary calculation for payroll',
+        icon: CalendarCheck,
+        category: 'Attendance & Shifts',
+      },
+      {
+        id: 'leaves' as const,
+        tab: 'leaves' as const,
+        title: 'Leave Management & Quotas',
+        shortTitle: 'Leave Management',
+        subtitle: 'Approve staff leaves, manage annual quotas & holiday calendar',
+        icon: Calendar,
+        badgeCount: pendingLeaves.length,
+        category: 'Time Off & Policy',
+      }
+    ] : []),
+    ...(isAssignmentsAllowed ? [
+      {
+        id: 'tasks' as const,
+        tab: 'tasks' as const,
+        title: 'Tasks & Assignments',
+        shortTitle: 'Tasks & Assignments',
+        subtitle: 'Manager Kanban board, assignments & follow-up tracking',
+        icon: CheckSquare,
+        badgeCount: openTasks.length,
+        category: 'Tasks & Operations',
+      },
+      {
+        id: 'assignment_report' as const,
+        tab: 'assignment_report' as const,
+        title: 'Assignment Report & Analytics',
+        shortTitle: 'Assignment Analytics',
+        subtitle: 'Detailed employee performance matrix & workload analytics',
+        icon: FileSpreadsheet,
+        category: 'Tasks & Operations',
+      }
+    ] : []),
+    ...(isAttendanceAllowed ? [
+      {
+        id: 'security' as const,
+        tab: 'security' as const,
+        title: 'Office WiFi & Anti-Misuse Security',
+        shortTitle: 'Network Security',
+        subtitle: 'Restrict mobile check-in to authorized store WiFi IPs & GPS',
+        icon: ShieldCheck,
+        isActive: networkConfig.requireOfficeNetwork,
+        category: 'System & Security',
+      }
+    ] : []),
+    {
+      id: 'portal_qr' as const,
+      tab: 'portal_qr' as const,
+      title: 'Mobile Staff Link & QR Portal',
+      shortTitle: 'Mobile Staff Portal',
+      subtitle: 'Employee self-service PWA link, QR scan & PIN resets',
+      icon: QrCode,
+      category: 'System & Security',
+    }
+  ];
 
-          <div className="flex items-center gap-2 flex-wrap">
+  const currentNav = navigationItems.find(item => item.tab === activeTab) || navigationItems[0];
+  const CurrentNavIcon = currentNav?.icon || Clock;
+
+  // Categories for dropdown
+  const categories = Array.from(new Set(navigationItems.map(item => item.category)));
+
+  return (
+    <div className="flex-1 bg-slate-50 flex flex-col min-h-full text-slate-800">
+      {/* Top Banner / Executive Navigation Header */}
+      <div className={`bg-white border-slate-200/80 px-4 sm:px-6 transition-all duration-300 ease-in-out ${
+        isHeaderCollapsed 
+          ? 'max-h-0 py-0 opacity-0 overflow-hidden border-b-0 pointer-events-none' 
+          : 'max-h-32 py-2.5 border-b shadow-2xs opacity-100'
+      }`}>
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          {/* Top Left: Executive Dropdown Selector (Marked in Green) */}
+          <div className="relative shrink-0" ref={dropdownRef}>
             <button
-              onClick={() => setActiveTab('portal_qr')}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-2 cursor-pointer"
+              type="button"
+              onClick={() => setIsViewDropdownOpen(prev => !prev)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm shadow-sm transition-all cursor-pointer group"
+              title="Switch Staff & Tasks Views"
             >
-              <Smartphone className="h-4 w-4" />
-              <span>Mobile Staff Link & QR</span>
+              <div className="h-6 w-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                <CurrentNavIcon className="h-3.5 w-3.5" />
+              </div>
+              <div className="flex flex-col text-left">
+                <span className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold leading-none">
+                  Staff & Tasks Menu
+                </span>
+                <span className="text-xs sm:text-sm font-black text-white leading-tight flex items-center gap-1.5">
+                  {currentNav?.shortTitle || 'Navigation'}
+                  {currentNav?.badgeCount !== undefined && currentNav.badgeCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-black">
+                      {currentNav.badgeCount}
+                    </span>
+                  )}
+                </span>
+              </div>
+              <ChevronDown className={`h-4 w-4 text-slate-400 group-hover:text-white transition-transform duration-200 ml-2 ${isViewDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {onNavigateToPayroll && (
-              <button
-                onClick={onNavigateToPayroll}
-                className="px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
-              >
-                <Briefcase className="h-3.5 w-3.5 text-blue-600" />
-                <span>Go to Payroll Register</span>
-              </button>
+            {/* Categorized Dropdown Menu */}
+            {isViewDropdownOpen && (
+              <div className="absolute left-0 mt-2 w-80 rounded-2xl bg-white border border-slate-200 shadow-2xl py-2 z-50 animate-in fade-in zoom-in-95">
+                <div className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
+                  <span>Staff & Tasks Navigation</span>
+                  <span className="font-mono text-slate-500">{navigationItems.length} Sections</span>
+                </div>
+
+                <div className="max-h-[420px] overflow-y-auto py-1">
+                  {categories.map(cat => {
+                    const catItems = navigationItems.filter(i => i.category === cat);
+                    return (
+                      <div key={cat} className="mb-2">
+                        <div className="px-3.5 py-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                          {cat}
+                        </div>
+                        {catItems.map(item => {
+                          const Icon = item.icon;
+                          const isSelected = activeTab === item.tab;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                setActiveTab(item.tab);
+                                setIsViewDropdownOpen(false);
+                              }}
+                              className={`w-full px-3.5 py-2 text-left flex items-center justify-between text-xs transition cursor-pointer ${
+                                isSelected 
+                                  ? 'bg-blue-50/90 text-blue-900 font-bold border-l-3 border-blue-600' 
+                                  : 'text-slate-700 hover:bg-slate-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                  isSelected ? 'bg-blue-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-600'
+                                }`}>
+                                  <Icon className="h-3.5 w-3.5" />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="truncate font-bold leading-tight">{item.title}</div>
+                                  <div className="text-[10px] text-slate-400 truncate font-normal leading-tight mt-0.5">{item.subtitle}</div>
+                                </div>
+                              </div>
+                              {item.badgeCount !== undefined && item.badgeCount > 0 && (
+                                <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-black shrink-0 ml-2">
+                                  {item.badgeCount}
+                                </span>
+                              )}
+                              {item.isActive && (
+                                <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase shrink-0 ml-2">
+                                  Active
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
-        </div>
 
-        {/* Quick Stats Grid */}
-        <div className="max-w-7xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 font-bold">
-              <Users className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Active Staff</div>
-              <div className="text-lg font-black text-slate-900">{employees.length}</div>
-            </div>
-          </div>
-
-          {isAttendanceAllowed && (
-            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 font-bold">
-                <UserCheck className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Present Today</div>
-                <div className="text-lg font-black text-emerald-700">{presentCount} <span className="text-xs text-slate-400 font-normal">/ {employees.length}</span></div>
-              </div>
-            </div>
-          )}
-
-          {isAttendanceAllowed && (
-            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 font-bold">
-                <Calendar className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Pending Leaves</div>
-                <div className="text-lg font-black text-amber-700">{pendingLeaves.length}</div>
-              </div>
-            </div>
-          )}
-
-          {isAssignmentsAllowed && (
-            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0 font-bold">
-                <CheckSquare className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Open Tasks</div>
-                <div className="text-lg font-black text-indigo-700">{openTasks.length}</div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Main Tabs Navigation */}
-      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-4">
-        <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-px">
-          {isAttendanceAllowed && (
-            <button
-              onClick={() => setActiveTab('attendance')}
-              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                activeTab === 'attendance'
-                  ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Clock className="h-4 w-4" />
-              <span>Attendance Register</span>
-            </button>
-          )}
-
-          {isAttendanceAllowed && (
-            <button
-              onClick={() => setActiveTab('leaves')}
-              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer relative ${
-                activeTab === 'leaves'
-                  ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <CalendarCheck className="h-4 w-4" />
-              <span>Leave Management & Quotas</span>
-              {pendingLeaves.length > 0 && (
-                <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center">
-                  {pendingLeaves.length}
-                </span>
-              )}
-            </button>
-          )}
-
-          {isAssignmentsAllowed && (
-            <>
-              <button
-                onClick={() => setActiveTab('tasks')}
-                className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  activeTab === 'tasks'
-                    ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
-                    : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <CheckSquare className="h-4 w-4" />
-                <span>Tasks & Assignments</span>
-                {openTasks.length > 0 && (
-                  <span className="h-5 min-w-[20px] px-1.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center">
-                    {openTasks.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab('assignment_report')}
-                className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                  activeTab === 'assignment_report'
-                    ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50 rounded-t-xl'
-                    : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
-                <span>Assignment Report</span>
-              </button>
-            </>
-          )}
-
-          {isAttendanceAllowed && (
-            <button
-              onClick={() => {
-                setActiveTab('security');
-                detectCurrentIp();
-              }}
-              className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-                activeTab === 'security'
-                  ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <ShieldCheck className="h-4 w-4" />
-              <span>Office WiFi & Anti-Misuse Security</span>
-              {networkConfig.requireOfficeNetwork && (
-                <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider">
-                  Active
-                </span>
-              )}
-            </button>
-          )}
-
-          <button
-            onClick={() => setActiveTab('portal_qr')}
-            className={`px-4 py-2.5 font-bold text-xs sm:text-sm border-b-2 transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-              activeTab === 'portal_qr'
-                ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <QrCode className="h-4 w-4" />
-            <span>Mobile Staff Link & QR</span>
-          </button>
-        </div>
-      </div>
-
-      {/* TAB CONTENT AREA */}
-      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 flex-1">
-        {/* ============================================================== */}
-        {/* TAB 1: ATTENDANCE REGISTER */}
-        {/* ============================================================== */}
-        {activeTab === 'attendance' && isAttendanceAllowed && (
-          <div className="space-y-6">
-            {/* Filter Bar */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase">View Date</label>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={e => setSelectedDate(e.target.value)}
-                    className="mt-0.5 px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase">Quick Jump</label>
-                  <button
-                    onClick={() => setSelectedDate(getTodayDateString())}
-                    className="mt-0.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
-                  >
-                    Today
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                <div className="relative flex-1 sm:w-60">
-                  <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input
-                    type="text"
-                    placeholder="Search employee..."
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-300 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Attendance Table */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-                <div>
-                  <h3 className="font-black text-slate-900 text-sm">Daily Clock In / Out Log - {selectedDate}</h3>
-                  <p className="text-xs text-slate-500">Auto-recorded from Employee Mobile App & POS Terminals.</p>
-                </div>
-                <span className="text-xs font-bold text-slate-500">
-                  {employees.length} Staff Total
-                </span>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50/80 text-[11px] font-black uppercase text-slate-500 border-b border-slate-200">
-                    <tr>
-                      <th className="py-3 px-4">Employee</th>
-                      <th className="py-3 px-4">Designation</th>
-                      <th className="py-3 px-4">Check In</th>
-                      <th className="py-3 px-4">Check Out</th>
-                      <th className="py-3 px-4">Hours</th>
-                      <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4">Network / Security</th>
-                      <th className="py-3 px-4">Device / Terminal</th>
-                      <th className="py-3 px-4">Note</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {employees
-                      .filter(e => e.fullName.toLowerCase().includes(searchQuery.toLowerCase()) || e.empCode.toLowerCase().includes(searchQuery.toLowerCase()))
-                      .map(emp => {
-                        const rec = todayRecords.find(r => r.employeeId === emp.id);
-                        const isPresent = rec && (rec.status === 'Present' || rec.status === 'Late');
-                        const isLeave = rec && rec.status === 'On-Leave';
-                        const isHalf = rec && rec.status === 'Half-Day';
-
-                        return (
-                          <tr key={emp.id} className="hover:bg-slate-50/60 transition">
-                            <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-2">
-                              <div className="h-7 w-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-black shrink-0">
-                                {emp.fullName.charAt(0)}
-                              </div>
-                              <div>
-                                <div>{emp.fullName}</div>
-                                <div className="text-[10px] text-slate-400 font-mono">{emp.empCode}</div>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-slate-600">{emp.designation}</td>
-                            <td className="py-3 px-4">
-                              {rec?.checkInTime ? (
-                                <span className="font-mono font-bold text-slate-900">{rec.checkInTime}</span>
-                              ) : (
-                                <span className="text-slate-400 italic">Not clocked in</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4">
-                              {rec?.checkOutTime ? (
-                                <span className="font-mono font-bold text-slate-900">{rec.checkOutTime}</span>
-                              ) : (
-                                <span className="text-slate-400 italic">{rec?.checkInTime ? 'Active shift' : '-'}</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4 font-mono font-bold">
-                              {rec?.hoursWorked !== undefined ? `${rec.hoursWorked} hrs` : '-'}
-                            </td>
-                            <td className="py-3 px-4">
-                              {isPresent ? (
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-200">
-                                   {rec?.status}
-                                </span>
-                              ) : isLeave ? (
-                                <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10px] font-black border border-purple-200">
-                                  On Approved Leave
-                                </span>
-                              ) : isHalf ? (
-                                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black border border-amber-200">
-                                  Half Day
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-black border border-slate-200">
-                                  Absent / Off
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4">
-                              {rec?.networkVerified ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200 whitespace-nowrap">
-                                  <Wifi className="h-3 w-3 text-emerald-600" />
-                                  <span>{rec.networkDetails || 'Office WiFi'}</span>
-                                  {rec.networkIp && <span className="opacity-75 font-mono text-[9px]">[{rec.networkIp}]</span>}
-                                </span>
-                              ) : rec?.checkInTime ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-medium border border-slate-200 whitespace-nowrap">
-                                  <span>{rec.checkInTerminal || rec.source || 'Local Terminal'}</span>
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">-</span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4 text-[11px] text-slate-500 font-mono">
-                              {rec?.checkInTerminal || rec?.source || '-'}
-                            </td>
-                            <td className="py-3 px-4 text-[11px] text-slate-500 max-w-xs truncate">
-                              {rec?.checkInNote || rec?.checkOutNote || '-'}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Monthly Attendance Register Summary */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 space-y-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                <div>
-                  <h3 className="font-black text-slate-900 text-sm">Monthly Attendance Register for Payroll</h3>
-                  <p className="text-xs text-slate-500">Working days, leaves, and Loss of Pay (LOP) calculations for salary disbursal.</p>
-                </div>
-
-                <div className="flex items-center gap-2">
+          {/* Dynamic Top-Right Compact Controls (Replaces previously empty yellow space) */}
+          <div className="flex items-center gap-2 flex-wrap justify-start md:justify-end flex-1 min-w-0">
+            {/* Monthly Attendance Register Controls */}
+            {activeTab === 'monthly_register' && (
+              <>
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
                   <select
                     value={selectedMonth}
                     onChange={e => setSelectedMonth(Number(e.target.value))}
-                    className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 outline-none"
+                    className="px-2.5 py-1 bg-white rounded-lg text-xs font-bold text-slate-800 outline-none cursor-pointer border border-slate-200 focus:ring-2 focus:ring-blue-500"
                   >
                     {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
                       <option key={m} value={m}>
-                        {new Date(2026, m - 1, 1).toLocaleString('default', { month: 'long' })}
+                        {new Date(2026, m - 1, 1).toLocaleString('default', { month: 'short' })}
                       </option>
                     ))}
                   </select>
@@ -802,49 +764,400 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                   <select
                     value={selectedYear}
                     onChange={e => setSelectedYear(Number(e.target.value))}
-                    className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 outline-none"
+                    className="px-2.5 py-1 bg-white rounded-lg text-xs font-bold text-slate-800 outline-none cursor-pointer border border-slate-200 focus:ring-2 focus:ring-blue-500"
                   >
                     <option value={2026}>2026</option>
                     <option value={2027}>2027</option>
+                    <option value={2025}>2025</option>
                   </select>
                 </div>
-              </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 font-black uppercase text-[10px] text-slate-500 border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-3">Employee</th>
-                      <th className="py-2.5 px-3">Month Days</th>
-                      <th className="py-2.5 px-3">Standard Work Days</th>
-                      <th className="py-2.5 px-3 text-emerald-700">Present Days</th>
-                      <th className="py-2.5 px-3 text-purple-700">Paid Leave</th>
-                      <th className="py-2.5 px-3 text-rose-700">Loss of Pay (LOP)</th>
-                      <th className="py-2.5 px-3 text-blue-700">Net Payable Work Days</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {employees.map(emp => {
-                      const summary = calculateMonthlyAttendanceSummary(emp.id, selectedYear, selectedMonth);
-                      return (
-                        <tr key={emp.id} className="hover:bg-slate-50/50">
-                          <td className="py-2.5 px-3 font-bold text-slate-900">
-                            {emp.fullName} <span className="text-[10px] text-slate-400 font-mono">({emp.empCode})</span>
-                          </td>
-                          <td className="py-2.5 px-3 font-mono">{summary.monthTotalDays}</td>
-                          <td className="py-2.5 px-3 font-mono">{summary.totalWorkingDays}</td>
-                          <td className="py-2.5 px-3 font-mono font-bold text-emerald-700">{summary.presentDays}</td>
-                          <td className="py-2.5 px-3 font-mono font-bold text-purple-700">{summary.paidLeaveDays}</td>
-                          <td className="py-2.5 px-3 font-mono font-bold text-rose-700">{summary.lossOfPayDays}</td>
-                          <td className="py-2.5 px-3 font-mono font-black text-blue-700">{summary.effectiveWorkingDays}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                <div className="relative w-36 sm:w-48">
+                  <Search className="h-3.5 w-3.5 text-slate-400 absolute left-2.5 top-2" />
+                  <input
+                    type="text"
+                    placeholder="Search staff or code..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full pl-7.5 pr-2.5 py-1 bg-slate-100 focus:bg-white rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleExportMonthlyExcel}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Download Monthly Attendance Spreadsheet"
+                >
+                  <Download className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">Export Excel</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportMonthlyPdf}
+                  className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100/80 text-rose-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Download PDF Document"
+                >
+                  <FileText className="h-3.5 w-3.5 text-rose-600" />
+                  <span className="hidden sm:inline">PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Print Monthly Attendance Register"
+                >
+                  <Printer className="h-3.5 w-3.5 text-slate-600" />
+                  <span className="hidden sm:inline">Print</span>
+                </button>
+
+                {onNavigateToPayroll && (
+                  <button
+                    type="button"
+                    onClick={onNavigateToPayroll}
+                    className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Open Payroll Register to Process Salaries"
+                  >
+                    <Briefcase className="h-3.5 w-3.5" />
+                    <span>Process in Payroll</span>
+                  </button>
+                )}
+              </>
+            )}
+
+            {/* Daily Clock In / Out Log Controls */}
+            {activeTab === 'daily_clock' && (
+              <>
+                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickDate(-1)}
+                    className="px-2 py-1 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition"
+                    title="Previous Day"
+                  >
+                    ←
+                  </button>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={e => setSelectedDate(e.target.value)}
+                    className="px-2 py-0.5 bg-white rounded-lg border border-slate-200 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-[11px] font-mono font-bold text-slate-700 bg-white px-1.5 py-0.5 rounded border border-slate-200 shadow-2xs">
+                    {formatDateDMY(selectedDate)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickDate(1)}
+                    className="px-2 py-1 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-white rounded-lg transition"
+                    title="Next Day"
+                  >
+                    →
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(getTodayDateString())}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-xl transition cursor-pointer ${
+                    selectedDate === getTodayDateString()
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  Today
+                </button>
+
+                <button
+                  type="button"
+                  onClick={loadData}
+                  className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                  title="Refresh Attendance Log"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+
+                {/* Status Tabs */}
+                <div className="hidden lg:inline-flex p-0.5 bg-slate-100 rounded-xl border border-slate-200 text-xs font-semibold">
+                  {[
+                    { id: 'ALL' as const, label: 'All', count: employees.length },
+                    { id: 'PRESENT' as const, label: 'Present', count: dailyPresentCount },
+                    { id: 'LATE' as const, label: 'Late', count: dailyLateCount },
+                    { id: 'LEAVE' as const, label: 'Leave', count: dailyLeaveCount },
+                    { id: 'ABSENT' as const, label: 'Absent', count: dailyAbsentCount }
+                  ].map(tab => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setDailyStatusFilter(tab.id)}
+                      className={`px-2 py-1 rounded-lg transition cursor-pointer text-[11px] font-bold flex items-center gap-1 ${
+                        dailyStatusFilter === tab.id
+                          ? 'bg-white text-slate-900 shadow-2xs font-black'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <span>{tab.label}</span>
+                      <span className={`px-1 py-0.2 rounded text-[10px] font-mono ${
+                        dailyStatusFilter === tab.id 
+                          ? 'bg-slate-100 text-slate-800' 
+                          : 'bg-slate-200/70 text-slate-500'
+                      }`}>
+                        {tab.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative w-32 sm:w-40">
+                  <Search className="h-3.5 w-3.5 text-slate-400 absolute left-2.5 top-2" />
+                  <input
+                    type="text"
+                    placeholder="Search..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full pl-7.5 pr-2.5 py-1 bg-slate-100 focus:bg-white rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleExportDailyExcel}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Export Daily Attendance Log"
+                >
+                  <Download className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">Export</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportDailyPdf}
+                  className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100/80 text-rose-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Download Daily Attendance PDF"
+                >
+                  <FileText className="h-3.5 w-3.5 text-rose-600" />
+                  <span className="hidden sm:inline">PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Print Daily Attendance Log"
+                >
+                  <Printer className="h-3.5 w-3.5 text-slate-600" />
+                  <span className="hidden sm:inline">Print</span>
+                </button>
+              </>
+            )}
+
+            {/* Leave Management & Quotas Controls */}
+            {activeTab === 'leaves' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowHolidayPolicyModal(true)}
+                  className="px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100 text-indigo-900 font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Calendar className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Holidays & Offs</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowLeavePolicyModal(true)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Sliders className="h-3.5 w-3.5 text-blue-600" />
+                  <span>Leave Quotas</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowNewLeaveModal(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Record Leave</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportLeaveExcel}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Download Formatted Leave Register"
+                >
+                  <Download className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">Excel</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportLeavePdf}
+                  className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100/80 text-rose-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Download Leave Register PDF"
+                >
+                  <FileText className="h-3.5 w-3.5 text-rose-600" />
+                  <span className="hidden sm:inline">PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Print Leave Register"
+                >
+                  <Printer className="h-3.5 w-3.5 text-slate-600" />
+                  <span className="hidden sm:inline">Print</span>
+                </button>
+              </>
+            )}
+
+            {/* Tasks & Assignments Controls */}
+            {activeTab === 'tasks' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('assignment_report')}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                  title="Switch to detailed performance analytics report"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Performance Report</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowNewTaskModal(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Assign New Task</span>
+                </button>
+              </>
+            )}
+
+            {/* Assignment Report Controls */}
+            {activeTab === 'assignment_report' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('tasks')}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <CheckSquare className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Kanban Board</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={loadData}
+                  className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                  title="Refresh Data"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
+
+            {/* Office WiFi & Network Security Controls */}
+            {activeTab === 'security' && (
+              <>
+                <div className="flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-bold text-slate-700">Office Network Only:</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                    networkConfig.requireOfficeNetwork 
+                      ? 'bg-blue-100 text-blue-800' 
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}>
+                    {networkConfig.requireOfficeNetwork ? 'Enforced' : 'Off'}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isSavingSecurity}
+                  onClick={() => handleSaveNetworkConfig(networkConfig)}
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  <span>Save Settings</span>
+                </button>
+              </>
+            )}
+
+            {/* Mobile Staff Link & QR Portal Controls */}
+            {activeTab === 'portal_qr' && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  {copiedLink ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5 text-blue-600" />}
+                  <span>{copiedLink ? 'Copied' : 'Copy Link'}</span>
+                </button>
+
+                <a
+                  href={portalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  <span>Open Portal</span>
+                </a>
+              </>
+            )}
           </div>
+        </div>
+      </div>
+
+      {/* VIEW CONTENT AREA */}
+      <div className={`max-w-7xl mx-auto w-full flex-1 transition-all duration-300 ${
+        isHeaderCollapsed ? 'px-2 sm:px-4 py-1.5' : 'px-4 sm:px-6 py-6'
+      }`}>
+        {/* ============================================================== */}
+        {/* VIEW 1: DAILY CLOCK IN / OUT LOG */}
+        {/* ============================================================== */}
+        {activeTab === 'daily_clock' && isAttendanceAllowed && (
+          <DailyAttendanceView
+            config={config}
+            employees={employees}
+            attendanceRecords={attendanceRecords}
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
+            onRefresh={loadData}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            statusFilter={dailyStatusFilter}
+            onStatusFilterChange={setDailyStatusFilter}
+            hideHeaderToolbar={true}
+            isHeaderCollapsed={isHeaderCollapsed}
+            onToggleCollapse={() => setIsHeaderCollapsed(prev => !prev)}
+          />
+        )}
+
+        {/* ============================================================== */}
+        {/* VIEW 2: MONTHLY ATTENDANCE REGISTER FOR PAYROLL */}
+        {/* ============================================================== */}
+        {activeTab === 'monthly_register' && isAttendanceAllowed && (
+          <MonthlyAttendanceRegisterView
+            config={config}
+            employees={employees}
+            selectedMonth={selectedMonth}
+            selectedYear={selectedYear}
+            onMonthChange={setSelectedMonth}
+            onYearChange={setSelectedYear}
+            onNavigateToPayroll={onNavigateToPayroll}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            hideHeaderToolbar={true}
+            isHeaderCollapsed={isHeaderCollapsed}
+            onToggleCollapse={() => setIsHeaderCollapsed(prev => !prev)}
+          />
         )}
 
         {/* ============================================================== */}
@@ -852,202 +1165,308 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         {/* ============================================================== */}
         {activeTab === 'leaves' && isAttendanceAllowed && (
           <div className="space-y-6">
-            {/* Top Action Bar */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
-              <div>
-                <h3 className="font-black text-slate-900 text-sm">Leave Applications & Approvals</h3>
-                <p className="text-xs text-slate-500">Review staff leave requests and customize standard company leave quotas.</p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => setShowHolidayPolicyModal(true)}
-                  className="px-3.5 py-2 rounded-xl border border-indigo-200 bg-indigo-50/60 hover:bg-indigo-100/60 text-indigo-900 font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Calendar className="h-3.5 w-3.5 text-indigo-600" />
-                  <span>Define Holidays & Weekly-Offs</span>
-                </button>
-
-                <button
-                  onClick={() => setShowLeavePolicyModal(true)}
-                  className="px-3.5 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Sliders className="h-3.5 w-3.5 text-blue-600" />
-                  <span>Configure Leave Types & Days</span>
-                </button>
-
-                <button
-                  onClick={() => setShowNewLeaveModal(true)}
-                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Record Staff Leave</span>
-                </button>
-              </div>
+            {/* PRINT-ONLY EXECUTIVE HEADER */}
+            <div className="hidden print:block mb-6 border-b-2 border-slate-900 pb-3 text-slate-900 text-center">
+              <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">
+                {config?.CompanyName || 'Panglung Enterprise'}
+              </h1>
+              <p className="text-xs text-slate-600 font-medium mt-0.5">
+                {[
+                  config?.Address || config?.CompanyAddress || 'Bhutan',
+                  config?.CompanyPhone ? `Tel: ${config.CompanyPhone}` : '',
+                  config?.CompanyEmail ? `Email: ${config.CompanyEmail}` : ''
+                ].filter(Boolean).join('  |  ')}
+              </p>
+              <h2 className="text-base font-bold text-emerald-800 uppercase tracking-tight mt-2">
+                STAFF LEAVE APPLICATIONS & HISTORY REGISTER
+              </h2>
             </div>
 
             {/* Pending Requests Alert Box */}
             {pendingLeaves.length > 0 && (
-              <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-3">
-                <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
-                  <AlertCircle className="h-4 w-4 text-amber-600" />
-                  <span>{pendingLeaves.length} Leave Application(s) Awaiting Review</span>
-                </div>
+              <div className={`transition-all duration-300 ease-in-out ${
+                isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-96 opacity-100 mb-6'
+              }`}>
+                <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-3">
+                  <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    <span>{pendingLeaves.length} Leave Application(s) Awaiting Review</span>
+                  </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {pendingLeaves.map(app => (
-                    <div key={app.id} className="bg-white p-3.5 rounded-xl border border-amber-200 shadow-2xs flex flex-col justify-between space-y-2">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="font-bold text-slate-900 text-xs">{app.employeeName}</div>
-                          <div className="text-[11px] text-slate-500 font-semibold">{app.leaveTypeName} • <span className="font-bold text-blue-600">{app.daysCount} Day(s)</span></div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {pendingLeaves.map(app => (
+                      <div key={app.id} className="bg-white p-3.5 rounded-xl border border-amber-200 shadow-2xs flex flex-col justify-between space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="font-bold text-slate-900 text-xs">{app.employeeName}</div>
+                            <div className="text-[11px] text-slate-500 font-semibold">{app.leaveTypeName} • <span className="font-bold text-blue-600">{app.daysCount} Day(s)</span></div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black border border-amber-200">
+                            Pending
+                          </span>
                         </div>
-                        <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black border border-amber-200">
-                          Pending
-                        </span>
-                      </div>
 
-                      <div className="text-xs text-slate-600 italic bg-slate-50 p-2 rounded-lg border border-slate-100">
-                        "{app.reason}"
-                      </div>
+                        <div className="text-xs text-slate-600 italic bg-slate-50 p-2 rounded-lg border border-slate-100">
+                          "{app.reason}"
+                        </div>
 
-                      <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100">
-                        <span>Period: {app.startDate} to {app.endDate}</span>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => handleReviewLeave(app.id, 'Approved')}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1"
-                          >
-                            <Check className="h-3 w-3" />
-                            <span>Approve</span>
-                          </button>
-                          <button
-                            onClick={() => handleReviewLeave(app.id, 'Rejected')}
-                            className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1"
-                          >
-                            <XCircle className="h-3 w-3" />
-                            <span>Reject</span>
-                          </button>
+                        <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-100">
+                          <span>Period: {formatDateDMY(app.startDate)} to {formatDateDMY(app.endDate)}</span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleReviewLeave(app.id, 'Approved')}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1"
+                            >
+                              <Check className="h-3 w-3" />
+                              <span>Approve</span>
+                            </button>
+                            <button
+                              onClick={() => handleReviewLeave(app.id, 'Rejected')}
+                              className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] transition cursor-pointer flex items-center gap-1"
+                            >
+                              <XCircle className="h-3 w-3" />
+                              <span>Reject</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
 
+            {/* Sub-Pills Bar for Leave Management Reports */}
+            <div className={`transition-all duration-300 ease-in-out ${
+              isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-16 opacity-100 mb-4'
+            }`}>
+              <div className="flex items-center gap-1.5 p-1 bg-slate-200/80 rounded-2xl border border-slate-300/80 w-full sm:w-fit overflow-x-auto print:hidden">
+                <button
+                  type="button"
+                  onClick={() => setLeaveSubTab('balances')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    leaveSubTab === 'balances'
+                      ? 'bg-white text-emerald-800 shadow-xs font-black'
+                      : 'text-slate-700 hover:text-slate-900'
+                  }`}
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>Leave Balances Summary</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLeaveSubTab('history')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    leaveSubTab === 'history'
+                      ? 'bg-white text-emerald-800 shadow-xs font-black'
+                      : 'text-slate-700 hover:text-slate-900'
+                  }`}
+                >
+                  <Clock className="h-3.5 w-3.5 text-blue-600" />
+                  <span>Leave Applications History</span>
+                  {leaveApplications.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-800 text-[10px] font-mono font-bold">
+                      {leaveApplications.length}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLeaveSubTab('all')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    leaveSubTab === 'all'
+                      ? 'bg-white text-emerald-800 shadow-xs font-black'
+                      : 'text-slate-700 hover:text-slate-900'
+                  }`}
+                >
+                  <Layers className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Full Consolidated View</span>
+                </button>
+              </div>
+            </div>
+
             {/* Leave Balances Ledger per Employee */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-5 space-y-3">
-              <h3 className="font-black text-slate-900 text-sm">Staff Leave Balance Summary ({selectedYear})</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-3">Employee</th>
-                      {leaveTypes.filter(t => t.enabled).map(t => (
-                        <th key={t.id} className="py-2.5 px-3">
-                          <div className="flex items-center gap-1">
-                            <span>{t.name}</span>
-                            {t.allocationMode === 'daily_accrual' ? (
-                              <span className="px-1 py-0.2 rounded bg-indigo-100 text-indigo-800 text-[8px] font-bold font-sans">
-                                Daily Accrual ({t.monthlyAccrualRate || 2.5}d/mo)
-                              </span>
-                            ) : (
-                              <span className="text-slate-400 font-normal font-sans text-[9px]">(Annual)</span>
-                            )}
+            {(leaveSubTab === 'balances' || leaveSubTab === 'all') && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                <div className={`overflow-auto transition-all duration-300 ${
+                  isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-210px)] min-h-[350px]'
+                }`}>
+                  <table className="w-full text-left text-xs text-slate-700 border-separate border-spacing-0">
+                    <thead className="sticky top-0 z-20 shadow-xs">
+                      <tr className="bg-white">
+                        <th colSpan={leaveTypes.filter(t => t.enabled).length + 1} className="px-5 py-3 text-left bg-white border-b border-slate-100">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-black text-slate-900 text-sm">Staff Leave Balance Summary ({selectedYear})</h3>
+                              {isHeaderCollapsed && (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                                  Full Page View
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsHeaderCollapsed(prev => !prev)}
+                              className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                              title={isHeaderCollapsed ? "Expand page header & controls" : "Collapse page header for full page report view"}
+                            >
+                              {isHeaderCollapsed ? (
+                                <>
+                                  <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
+                                  <span>Expand Controls</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronUp className="h-3.5 w-3.5 text-slate-500" />
+                                  <span>Full Page View</span>
+                                </>
+                              )}
+                            </button>
                           </div>
                         </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {employees.map(emp => {
-                      const balance = calculateEmployeeLeaveBalance(emp.id, selectedYear);
-                      return (
-                        <tr key={emp.id} className="hover:bg-slate-50/50">
-                          <td className="py-2.5 px-3 font-bold text-slate-900">
-                            {emp.fullName} <span className="text-[10px] text-slate-400 font-mono">({emp.empCode})</span>
-                          </td>
-                          {leaveTypes.filter(t => t.enabled).map(t => {
-                            const b = balance.balances[t.id];
-                            const rem = b ? b.remaining : t.defaultDays;
-                            const alloc = b ? b.allocated : t.defaultDays;
-                            const isAccrual = t.allocationMode === 'daily_accrual';
+                      </tr>
+                      <tr className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 border-b border-slate-200">
+                        <th className="py-2.5 px-3 bg-slate-50 border-b border-slate-200">Employee</th>
+                        {leaveTypes.filter(t => t.enabled).map(t => (
+                          <th key={t.id} className="py-2.5 px-3">
+                            <div className="flex items-center gap-1">
+                              <span>{t.name}</span>
+                              {t.allocationMode === 'daily_accrual' ? (
+                                <span className="px-1 py-0.2 rounded bg-indigo-100 text-indigo-800 text-[8px] font-bold font-sans">
+                                  Daily Accrual ({t.monthlyAccrualRate || 2.5}d/mo)
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-normal font-sans text-[9px]">(Annual)</span>
+                              )}
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {employees.map(emp => {
+                        const balance = calculateEmployeeLeaveBalance(emp.id, selectedYear);
+                        return (
+                          <tr key={emp.id} className="hover:bg-slate-50/50">
+                            <td className="py-2.5 px-3 font-bold text-slate-900">
+                              {emp.fullName} <span className="text-[10px] text-slate-400 font-mono">({emp.empCode})</span>
+                            </td>
+                            {leaveTypes.filter(t => t.enabled).map(t => {
+                              const b = balance.balances[t.id];
+                              const rem = b ? b.remaining : t.defaultDays;
+                              const alloc = b ? b.allocated : t.defaultDays;
+                              const isAccrual = t.allocationMode === 'daily_accrual';
 
-                            return (
-                              <td key={t.id} className="py-2.5 px-3 font-mono">
-                                <span className="font-bold text-emerald-700">{rem}</span>
-                                <span className="text-slate-400"> / {alloc}d</span>
-                                {isAccrual && (
-                                  <span className="ml-1 text-[9px] text-indigo-600 font-sans font-bold">
-                                    (Accrued)
-                                  </span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                              return (
+                                <td key={t.id} className="py-2.5 px-3 font-mono">
+                                  <span className="font-bold text-emerald-700">{rem}</span>
+                                  <span className="text-slate-400"> / {alloc}d</span>
+                                  {isAccrual && (
+                                    <span className="ml-1 text-[9px] text-indigo-600 font-sans font-bold">
+                                      (Accrued)
+                                    </span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* All Leave History Table */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="font-black text-slate-900 text-sm">Leave History Register</h3>
-                <span className="text-xs text-slate-400 font-mono">{leaveApplications.length} Records</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-4">Employee</th>
-                      <th className="py-2.5 px-4">Leave Type</th>
-                      <th className="py-2.5 px-4">Start Date</th>
-                      <th className="py-2.5 px-4">End Date</th>
-                      <th className="py-2.5 px-4">Days</th>
-                      <th className="py-2.5 px-4">Status</th>
-                      <th className="py-2.5 px-4">Reason</th>
-                      <th className="py-2.5 px-4">Reviewed By</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {leaveApplications.map(app => (
-                      <tr key={app.id} className="hover:bg-slate-50/50">
-                        <td className="py-2.5 px-4 font-bold text-slate-900">{app.employeeName}</td>
-                        <td className="py-2.5 px-4">{app.leaveTypeName}</td>
-                        <td className="py-2.5 px-4 font-mono">{app.startDate}</td>
-                        <td className="py-2.5 px-4 font-mono">{app.endDate}</td>
-                        <td className="py-2.5 px-4 font-bold font-mono">{app.daysCount} d</td>
-                        <td className="py-2.5 px-4">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
-                            app.status === 'Approved'
-                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                              : app.status === 'Rejected'
-                              ? 'bg-rose-100 text-rose-800 border-rose-200'
-                              : 'bg-amber-100 text-amber-800 border-amber-200'
-                          }`}>
-                            {app.status}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-4 text-slate-500 max-w-xs truncate">{app.reason}</td>
-                        <td className="py-2.5 px-4 text-[11px] text-slate-400">{app.reviewedBy || '-'}</td>
+            {(leaveSubTab === 'history' || leaveSubTab === 'all') && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                <div className={`overflow-auto transition-all duration-300 ${
+                  isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-210px)] min-h-[350px]'
+                }`}>
+                  <table className="w-full text-left text-xs text-slate-700 border-separate border-spacing-0">
+                    <thead className="sticky top-0 z-20 shadow-xs">
+                      <tr className="bg-white">
+                        <th colSpan={8} className="px-5 py-3 text-left bg-white border-b border-slate-100">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-black text-slate-900 text-sm">Leave History Register</h3>
+                              <span className="text-xs text-slate-400 font-mono">{leaveApplications.length} Records</span>
+                              {isHeaderCollapsed && (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                                  Full Page View
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsHeaderCollapsed(prev => !prev)}
+                              className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                              title={isHeaderCollapsed ? "Expand page header & controls" : "Collapse page header for full page report view"}
+                            >
+                              {isHeaderCollapsed ? (
+                                <>
+                                  <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
+                                  <span>Expand Controls</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronUp className="h-3.5 w-3.5 text-slate-500" />
+                                  <span>Full Page View</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </th>
                       </tr>
-                    ))}
-                    {leaveApplications.length === 0 && (
-                      <tr>
-                        <td colSpan={8} className="py-8 text-center text-slate-400 italic">
-                          No leave applications recorded yet.
-                        </td>
+                      <tr className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 border-b border-slate-200">
+                        <th className="py-2.5 px-4 bg-slate-50 border-b border-slate-200">Employee</th>
+                        <th className="py-2.5 px-4 bg-slate-50 border-b border-slate-200">Leave Type</th>
+                        <th className="py-2.5 px-4 bg-slate-50 border-b border-slate-200">Start Date</th>
+                        <th className="py-2.5 px-4 bg-slate-50 border-b border-slate-200">End Date</th>
+                        <th className="py-2.5 px-4 bg-slate-50 border-b border-slate-200">Days</th>
+                        <th className="py-2.5 px-4 bg-slate-50 border-b border-slate-200">Status</th>
+                        <th className="py-2.5 px-4 bg-slate-50 border-b border-slate-200">Reason</th>
+                        <th className="py-2.5 px-4 bg-slate-50 border-b border-slate-200">Reviewed By</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {leaveApplications.map(app => (
+                        <tr key={app.id} className="hover:bg-slate-50/50">
+                          <td className="py-2.5 px-4 font-bold text-slate-900">{app.employeeName}</td>
+                          <td className="py-2.5 px-4">{app.leaveTypeName}</td>
+                          <td className="py-2.5 px-4 font-mono">{formatDateDMY(app.startDate)}</td>
+                          <td className="py-2.5 px-4 font-mono">{formatDateDMY(app.endDate)}</td>
+                          <td className="py-2.5 px-4 font-bold font-mono">{app.daysCount} d</td>
+                          <td className="py-2.5 px-4">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
+                              app.status === 'Approved'
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                : app.status === 'Rejected'
+                                ? 'bg-rose-100 text-rose-800 border-rose-200'
+                                : 'bg-amber-100 text-amber-800 border-amber-200'
+                            }`}>
+                              {app.status}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4 text-slate-500 max-w-xs truncate">{app.reason}</td>
+                          <td className="py-2.5 px-4 text-[11px] text-slate-400">{app.reviewedBy || '-'}</td>
+                        </tr>
+                      ))}
+                      {leaveApplications.length === 0 && (
+                        <tr>
+                          <td colSpan={8} className="py-8 text-center text-slate-400 italic">
+                            No leave applications recorded yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -1056,63 +1475,8 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         {/* ============================================================== */}
         {activeTab === 'tasks' && isAssignmentsAllowed && (
           <div className="space-y-6">
-            {/* Header / Sub-View Switcher / New Task Button */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
-              <div>
-                <h3 className="font-black text-slate-900 text-sm">Manager & GM Task/Assignment Board</h3>
-                <p className="text-xs text-slate-500">Assign operations, stock audits, and POS follow-ups to employees with 2-way comments.</p>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap self-end sm:self-auto">
-                {/* View Switcher: Board vs Report */}
-                <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setTaskBoardView('report')}
-                    className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      taskBoardView === 'report'
-                        ? 'bg-white text-indigo-700 shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <FileSpreadsheet className="h-3.5 w-3.5 text-indigo-600" />
-                    <span>Report View</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTaskBoardView('board')}
-                    className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      taskBoardView === 'board'
-                        ? 'bg-white text-indigo-700 shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <Layers className="h-3.5 w-3.5 text-indigo-600" />
-                    <span>Kanban Board</span>
-                  </button>
-                </div>
-
-                <button
-                  onClick={() => setShowNewTaskModal(true)}
-                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Assign New Task</span>
-                </button>
-              </div>
-            </div>
-
-            {taskBoardView === 'report' ? (
-              <AssignmentReportView
-                config={config}
-                employees={employees}
-                tasks={tasks}
-                onRefreshData={loadData}
-                showHeaderControls={false}
-              />
-            ) : (
-              /* Tasks Grid by Status (Kanban Board) */
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Tasks Grid by Status (Kanban Board) */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {(['Assigned', 'In Progress', 'Under Review', 'Completed'] as TaskStatus[]).map(statusCol => {
                   const colTasks = tasks.filter(t => t.status === statusCol);
                   const colBadgeColor = 
@@ -1165,7 +1529,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
 
                                 <div className="flex items-center gap-1.5">
                                   <span className={`text-[10px] font-mono font-bold ${isOverdue ? 'text-rose-600' : 'text-slate-400'}`}>
-                                    {task.dueDate}
+                                    {formatDateDMY(task.dueDate)}
                                   </span>
                                   {task.comments.length > 0 && (
                                     <span className="flex items-center text-[10px] text-slate-400 gap-0.5">
@@ -1189,7 +1553,6 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                   );
                 })}
               </div>
-            )}
           </div>
         )}
 
@@ -1202,6 +1565,8 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
             employees={employees}
             tasks={tasks}
             onRefreshData={loadData}
+            isHeaderCollapsed={isHeaderCollapsed}
+            onToggleCollapse={() => setIsHeaderCollapsed(prev => !prev)}
           />
         )}
 
@@ -1573,71 +1938,158 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         {/* TAB 5: MOBILE STAFF LINK & QR CODE */}
         {/* ============================================================== */}
         {activeTab === 'portal_qr' && (
-          <div className="max-w-4xl mx-auto space-y-6">
-            <div className="bg-gradient-to-br from-indigo-900 via-blue-900 to-slate-900 text-white p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col md:flex-row items-center gap-6">
-              {/* QR Code Container */}
-              <div className="bg-white p-4 rounded-2xl shadow-md flex flex-col items-center justify-center shrink-0">
-                <img
-                  src={qrCodeUrl}
-                  alt="Staff Portal QR Code"
-                  className="h-44 w-44 rounded-xl object-contain shadow-2xs"
-                />
-                <span className="text-[10px] font-bold text-slate-500 mt-2 flex items-center gap-1">
-                  <Smartphone className="h-3 w-3 text-indigo-600" />
-                  Scan with Phone Camera
-                </span>
-              </div>
+          <div className="max-w-5xl mx-auto space-y-6">
+            {/* Sub-Pills Bar for Mobile Staff Portal */}
+            <div className={`transition-all duration-300 ease-in-out ${
+              isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-16 opacity-100 mb-4'
+            }`}>
+              <div className="flex items-center gap-1.5 p-1 bg-slate-200/80 rounded-2xl border border-slate-300/80 w-full sm:w-fit overflow-x-auto print:hidden">
+                <button
+                  type="button"
+                  onClick={() => setPortalSubTab('directory')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    portalSubTab === 'directory'
+                      ? 'bg-white text-indigo-900 shadow-xs font-black'
+                      : 'text-slate-700 hover:text-slate-900'
+                  }`}
+                >
+                  <KeyRound className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>PIN & Biometric Directory</span>
+                </button>
 
-              {/* Instructions & Link */}
-              <div className="space-y-4 flex-1 text-center md:text-left">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 text-[10px] font-black uppercase tracking-wider">
-                  <Award className="h-3.5 w-3.5 text-blue-400" />
-                  <span>100% Mobile Phone Friendly • PWA Installable</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setPortalSubTab('qr_link')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    portalSubTab === 'qr_link'
+                      ? 'bg-white text-indigo-900 shadow-xs font-black'
+                      : 'text-slate-700 hover:text-slate-900'
+                  }`}
+                >
+                  <Smartphone className="h-3.5 w-3.5 text-blue-600" />
+                  <span>Portal Link & QR Code</span>
+                </button>
 
-                <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-snug">
-                  Dedicated Employee Mobile Portal
-                </h2>
-
-                <p className="text-xs text-blue-100/80 leading-relaxed">
-                  Employees can scan this QR code or open the link on Android or iPhone to clock in/out, view leave quotas, apply for leave, and manage tasks assigned by Managers/GMs. 
-                  Zero exposure to accounting, daybook, or billing records.
-                </p>
-
-                {/* Direct Link Copier */}
-                <div className="bg-black/30 border border-white/10 rounded-xl p-2.5 flex items-center gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={portalUrl}
-                    className="bg-transparent text-xs font-mono text-white/90 flex-1 outline-none truncate px-1"
-                  />
-                  <button
-                    onClick={handleCopyLink}
-                    className="px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs transition flex items-center gap-1 shrink-0 cursor-pointer shadow-sm"
-                  >
-                    {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                    <span>{copiedLink ? 'Copied' : 'Copy Link'}</span>
-                  </button>
-                </div>
-
-                {/* Mobile Features Highlights */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 text-[11px] text-blue-200">
-                  <div className="flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                    <span>1-Tap Clock In / Out</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                    <span>Real-time Leave Ledger</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                    <span>Manager Comments</span>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setPortalSubTab('security')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    portalSubTab === 'security'
+                      ? 'bg-white text-indigo-900 shadow-xs font-black'
+                      : 'text-slate-700 hover:text-slate-900'
+                  }`}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>Security Guidelines</span>
+                </button>
               </div>
             </div>
+
+            {/* View 1: QR Code & Link Banner */}
+            {(portalSubTab === 'qr_link') && (
+              <div className="bg-gradient-to-br from-indigo-900 via-blue-900 to-slate-900 text-white p-6 sm:p-8 rounded-3xl shadow-xl flex flex-col md:flex-row items-center gap-6">
+                {/* QR Code Container */}
+                <div className="bg-white p-4 rounded-2xl shadow-md flex flex-col items-center justify-center shrink-0">
+                  <img
+                    src={qrCodeUrl}
+                    alt="Staff Portal QR Code"
+                    className="h-44 w-44 rounded-xl object-contain shadow-2xs"
+                  />
+                  <span className="text-[10px] font-bold text-slate-500 mt-2 flex items-center gap-1">
+                    <Smartphone className="h-3 w-3 text-indigo-600" />
+                    Scan with Phone Camera
+                  </span>
+                </div>
+
+                {/* Instructions & Link */}
+                <div className="space-y-4 flex-1 text-center md:text-left">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-400/30 text-[10px] font-black uppercase tracking-wider">
+                    <Award className="h-3.5 w-3.5 text-blue-400" />
+                    <span>100% Mobile Phone Friendly • PWA Installable</span>
+                  </div>
+
+                  <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-snug">
+                    Dedicated Employee Mobile Portal
+                  </h2>
+
+                  <p className="text-xs text-blue-100/80 leading-relaxed">
+                    Employees can scan this QR code or open the link on Android or iPhone to clock in/out, view leave quotas, apply for leave, and manage tasks assigned by Managers/GMs. 
+                    Zero exposure to accounting, daybook, or billing records.
+                  </p>
+
+                  {/* Direct Link Copier */}
+                  <div className="bg-black/30 border border-white/10 rounded-xl p-2.5 flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={portalUrl}
+                      className="bg-transparent text-xs font-mono text-white/90 flex-1 outline-none truncate px-1"
+                    />
+                    <button
+                      onClick={handleCopyLink}
+                      className="px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-bold text-xs transition flex items-center gap-1 shrink-0 cursor-pointer shadow-sm"
+                    >
+                      {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                      <span>{copiedLink ? 'Copied' : 'Copy Link'}</span>
+                    </button>
+                  </div>
+
+                  {/* Mobile Features Highlights */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 text-[11px] text-blue-200">
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>1-Tap Clock In / Out</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Real-time Leave Ledger</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Manager Comments</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* View 2: Security Guidelines */}
+            {(portalSubTab === 'security') && (
+              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+                  <div className="h-10 w-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                    <Phone className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-slate-900">How Staff Sign In & Mobile Credentials Guide</h3>
+                    <p className="text-xs text-slate-500">Fast mobile-number based sign-in with default PIN or Fingerprint</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 text-xs text-slate-600">
+                  <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+                    <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">1</span>
+                    <p><strong className="text-slate-800">Scan QR Code</strong> or open the portal URL on any Android or iPhone browser.</p>
+                  </div>
+                  <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+                    <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">2</span>
+                    <p><strong className="text-slate-800">Enter Registered Mobile Number:</strong> Staff enter their registered mobile number (no employee code needed).</p>
+                  </div>
+                  <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+                    <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">3</span>
+                    <p><strong className="text-slate-800">Default PIN (1234):</strong> First-time login uses standard default PIN <code className="bg-slate-200 px-1.5 py-0.5 rounded text-blue-800 font-mono font-bold">1234</code>.</p>
+                  </div>
+                  <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+                    <span className="h-6 w-6 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">4</span>
+                    <p><strong className="text-slate-800">Reset PIN via Admin or OTP:</strong> Admins can reset forgotten PINs back to 1234 in 1 tap from the Directory tab.</p>
+                  </div>
+                  <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-indigo-50 border border-indigo-200/80 text-indigo-900">
+                    <span className="h-6 w-6 rounded-full bg-indigo-200 text-indigo-800 font-bold text-xs flex items-center justify-center shrink-0">5</span>
+                    <p><strong className="text-indigo-950">Biometric Login (WebAuthn):</strong> Staff can register their Fingerprint / Face ID for instant 1-tap sign-in without typing a PIN.</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Notification message for PIN Reset */}
             {pinResetMsg && (
@@ -1646,74 +2098,69 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                   <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                   <span>{pinResetMsg.msg}</span>
                 </div>
-                <button onClick={() => setPinResetMsg(null)} className="text-emerald-500 hover:text-emerald-700">✕</button>
+                <button onClick={() => setPinResetMsg(null)} className="text-emerald-500 hover:text-emerald-700 font-bold">✕</button>
               </div>
             )}
 
-            {/* How Staff Sign In Guide & Credentials Management */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Sign-in Guide */}
-              <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                    <Phone className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-slate-900">How Staff Sign In</h3>
-                    <p className="text-[10px] text-slate-500">Fast mobile-number based sign-in</p>
-                  </div>
-                </div>
-
-                <div className="space-y-2.5 text-xs text-slate-600 pt-1">
-                  <div className="flex items-start gap-2">
-                    <span className="h-5 w-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">1</span>
-                    <p><strong className="text-slate-800">Scan QR Code</strong> or open the link on Android/iPhone browser.</p>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="h-5 w-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">2</span>
-                    <p><strong className="text-slate-800">Enter Mobile Number:</strong> Staff can enter their phone number directly (no employee code required).</p>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="h-5 w-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">3</span>
-                    <p><strong className="text-slate-800">Enter Default PIN (1234):</strong> First-time login uses standard default PIN <code className="bg-slate-100 px-1.5 py-0.5 rounded text-blue-600 font-mono font-bold">1234</code>.</p>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="h-5 w-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">4</span>
-                    <p><strong className="text-slate-800">Change / Reset PIN via Mobile OTP:</strong> Staff can self-reset forgotten PINs anytime via SMS OTP sent to their mobile number or change it in their Profile tab.</p>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="h-5 w-5 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">5</span>
-                    <p><strong className="text-slate-800">Biometric Login (WebAuthn):</strong> Staff can register their Fingerprint / Face ID for instant 1-tap sign-in without typing a PIN.</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Staff PIN & Directory List */}
-              <div className="lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
-                      <KeyRound className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-sm text-slate-900">Staff Mobile Credentials & PIN Directory</h3>
-                      <p className="text-[10px] text-slate-500">Reset forgotten PINs back to 1234 in one tap • View Biometric status</p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono font-bold text-slate-400">
-                    {employees.filter(e => e.status === 'Active').length} Active Staff
-                  </span>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-100 text-[10px] uppercase font-bold text-slate-400">
-                        <th className="pb-2">Employee</th>
-                        <th className="pb-2">Registered Mobile</th>
-                        <th className="pb-2">PIN Status</th>
-                        <th className="pb-2">Biometrics</th>
-                        <th className="pb-2 text-right">Admin Action</th>
+            {/* View 3: PIN & Biometric Directory Table */}
+            {(portalSubTab === 'directory') && (
+              <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-xs">
+                <div className={`overflow-auto transition-all duration-300 ${
+                  isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-210px)] min-h-[350px]'
+                }`}>
+                  <table className="w-full text-left text-xs border-separate border-spacing-0">
+                    <thead className="sticky top-0 z-20 shadow-xs">
+                      <tr className="bg-white">
+                        <th colSpan={5} className="px-5 py-3 text-left bg-white border-b border-slate-100">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="h-8 w-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-bold">
+                                <KeyRound className="h-4 w-4" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <h3 className="font-bold text-sm text-slate-900">Staff Mobile Credentials & PIN Directory</h3>
+                                  {isHeaderCollapsed && (
+                                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                                      Full Page View
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-500">Reset forgotten PINs back to 1234 in one tap • View Biometric status</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-mono font-bold text-slate-400">
+                                {employees.filter(e => e.status === 'Active').length} Active Staff
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setIsHeaderCollapsed(prev => !prev)}
+                                className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                                title={isHeaderCollapsed ? "Expand page header & controls" : "Collapse page header for full page report view"}
+                              >
+                                {isHeaderCollapsed ? (
+                                  <>
+                                    <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
+                                    <span>Expand Controls</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronUp className="h-3.5 w-3.5 text-slate-500" />
+                                    <span>Full Page View</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </th>
+                      </tr>
+                      <tr className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
+                        <th className="py-2.5 px-4 bg-slate-50 border-b border-slate-200">Employee</th>
+                        <th className="py-2.5 px-4 bg-slate-50 border-b border-slate-200">Registered Mobile</th>
+                        <th className="py-2.5 px-4 bg-slate-50 border-b border-slate-200">PIN Status</th>
+                        <th className="py-2.5 px-4 bg-slate-50 border-b border-slate-200">Biometrics</th>
+                        <th className="py-2.5 px-4 text-right bg-slate-50 border-b border-slate-200">Admin Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -1779,7 +2226,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                   </table>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>
@@ -2056,7 +2503,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                 </span>
                 <h3 className="font-black text-slate-900 text-base mt-1">{showTaskDetailModal.title}</h3>
                 <p className="text-xs text-slate-500">
-                  Assigned to <strong className="text-slate-800">{showTaskDetailModal.assignedToEmpName}</strong> • Due <span className="font-mono text-rose-600 font-bold">{showTaskDetailModal.dueDate}</span>
+                  Assigned to <strong className="text-slate-800">{showTaskDetailModal.assignedToEmpName}</strong> • Due <span className="font-mono text-rose-600 font-bold">{formatDateDMY(showTaskDetailModal.dueDate)}</span>
                 </p>
               </div>
               <button

@@ -1,11 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   CheckSquare, Plus, Search, Filter, Calendar, Download, Printer, 
   Clock, CheckCircle2, AlertCircle, AlertTriangle, MessageSquare, 
-  User, Users, ArrowUpDown, ChevronRight, X, Sparkles, SlidersHorizontal,
+  User, Users, ArrowUpDown, ChevronRight, ChevronUp, X, Sparkles, SlidersHorizontal,
   ChevronDown, Send, Edit3, Trash2, Eye, FileSpreadsheet, Layers,
   BarChart2, PieChart, Check, Phone, ArrowUpRight, TrendingUp, RefreshCw,
-  Smartphone, Share2
+  Smartphone, Share2, FileText
 } from 'lucide-react';
 import { TaskAssignment, TaskStatus, TaskPriority, TaskAssignmentComment } from '../../types/staffPortal';
 import { Employee, Config } from '../../types';
@@ -17,7 +17,11 @@ import {
 } from '../../services/employeeStaffService';
 import { getActiveCompanyId } from '../../services/supabaseTenantService';
 import { getActiveUser } from '../../services/storageService';
-import XLSX from 'xlsx-js-style';
+import { 
+  exportTaskAssignmentsToExcel, 
+  exportTaskAssignmentsToPdf 
+} from '../../services/staffReportExportService';
+import { formatDateDMY } from '../../utils/dateUtils';
 
 interface AssignmentReportViewProps {
   config: Config;
@@ -25,6 +29,8 @@ interface AssignmentReportViewProps {
   tasks?: TaskAssignment[];
   onRefreshData?: () => void;
   showHeaderControls?: boolean;
+  isHeaderCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
@@ -32,10 +38,33 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
   employees,
   tasks: propTasks,
   onRefreshData,
-  showHeaderControls = true
+  showHeaderControls = true,
+  isHeaderCollapsed: propIsHeaderCollapsed,
+  onToggleCollapse
 }) => {
   const companyId = getActiveCompanyId();
   const activeUser = getActiveUser();
+
+  const [internalIsHeaderCollapsed, setInternalIsHeaderCollapsed] = useState(false);
+  const isHeaderCollapsed = propIsHeaderCollapsed !== undefined ? propIsHeaderCollapsed : internalIsHeaderCollapsed;
+  const handleToggleCollapse = onToggleCollapse || (() => setInternalIsHeaderCollapsed(prev => !prev));
+
+  useEffect(() => {
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target && target.scrollTop !== undefined) {
+        if (target.scrollTop > 50 && !isHeaderCollapsed) {
+          if (onToggleCollapse) onToggleCollapse();
+          else setInternalIsHeaderCollapsed(true);
+        } else if (target.scrollTop < 10 && isHeaderCollapsed) {
+          if (onToggleCollapse) onToggleCollapse();
+          else setInternalIsHeaderCollapsed(false);
+        }
+      }
+    };
+    window.addEventListener('scroll', handleScroll, true);
+    return () => window.removeEventListener('scroll', handleScroll, true);
+  }, [isHeaderCollapsed, onToggleCollapse]);
 
   // Local state for tasks if not passed from parent
   const [internalTasks, setInternalTasks] = useState<TaskAssignment[]>(() => getTaskAssignments(companyId));
@@ -324,57 +353,39 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
     }));
   }, [tasks]);
 
-  // Export to XLSX
+  // Export to XLSX (Styled pro-grade spreadsheet)
   const handleExportExcel = () => {
     try {
-      const rows = filteredTasks.map((t, idx) => {
-        const isOverdue = new Date(t.dueDate).getTime() < new Date().setHours(0, 0, 0, 0) && t.status !== 'Completed';
-        return {
-          'Sl No': idx + 1,
-          'Task ID': t.taskNo,
-          'Created Date': t.createdAt ? t.createdAt.split('T')[0] : '',
-          'Category': t.category || 'General',
-          'Assignment Title': t.title,
-          'Description': t.description || '',
-          'Assigned To': t.assignedToEmpName,
-          'Assigned By': `${t.assignedByName} (${t.assignedByRole})`,
-          'Priority': t.priority,
-          'Due Date': t.dueDate,
-          'Status': t.status,
-          'Overdue': isOverdue ? 'YES' : 'NO',
-          'Completed At': t.completedAt ? t.completedAt.split('T')[0] : '-',
-          'Comments Count': t.comments ? t.comments.length : 0
-        };
+      exportTaskAssignmentsToExcel({
+        config,
+        tasks: filteredTasks,
+        searchQuery,
+        filterStatus: statusFilter,
+        filterPriority: priorityFilter,
+        filterCategory: categoryFilter
       });
-
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(rows);
-
-      // Set column widths
-      ws['!cols'] = [
-        { wch: 6 },  // Sl No
-        { wch: 12 }, // Task ID
-        { wch: 14 }, // Created Date
-        { wch: 18 }, // Category
-        { wch: 30 }, // Title
-        { wch: 35 }, // Description
-        { wch: 22 }, // Assigned To
-        { wch: 22 }, // Assigned By
-        { wch: 12 }, // Priority
-        { wch: 14 }, // Due Date
-        { wch: 16 }, // Status
-        { wch: 10 }, // Overdue
-        { wch: 16 }, // Completed At
-        { wch: 15 }  // Comments Count
-      ];
-
-      XLSX.utils.book_append_sheet(wb, ws, 'Staff_Assignments');
-      const filename = `Staff_Assignment_Report_${getTodayDateString()}.xlsx`;
-      XLSX.writeFile(wb, filename);
       showToast('Assignment Report exported to Excel successfully!');
     } catch (err) {
       console.error('Failed to export assignments to Excel', err);
       alert('Failed to export to Excel.');
+    }
+  };
+
+  // Export to PDF
+  const handleExportPdf = () => {
+    try {
+      exportTaskAssignmentsToPdf({
+        config,
+        tasks: filteredTasks,
+        searchQuery,
+        filterStatus: statusFilter,
+        filterPriority: priorityFilter,
+        filterCategory: categoryFilter
+      });
+      showToast('Assignment Report PDF generated successfully!');
+    } catch (err) {
+      console.error('Failed to export assignments to PDF', err);
+      alert('Failed to export to PDF.');
     }
   };
 
@@ -537,24 +548,28 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
       {/* ================================================================ */}
       {/* PRINT-ONLY EXECUTIVE HEADER */}
       {/* ================================================================ */}
-      <div className="hidden print:block mb-6 border-b pb-4 text-slate-900">
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-xl font-bold uppercase tracking-tight">{config?.CompanyName || 'Enterprise POS'}</h1>
-            <p className="text-xs text-slate-600 font-medium">{config?.CompanyAddress || 'Bhutan'}</p>
-            <p className="text-xs text-slate-600">Contact: {config?.CompanyPhone || '-'}</p>
-          </div>
-          <div className="text-right">
-            <h2 className="text-base font-bold text-slate-800 uppercase tracking-wider">STAFF ASSIGNMENT & TASK REPORT</h2>
-            <p className="text-xs font-mono text-slate-600">Generated: {new Date().toLocaleDateString()} {new Date().toLocaleTimeString()}</p>
-            <p className="text-xs text-slate-600">Total Tasks: {filteredTasks.length} | Completed: {kpis.completed} ({kpis.completionRate}%)</p>
-          </div>
-        </div>
+      <div className="hidden print:block mb-6 border-b-2 border-slate-900 pb-3 text-slate-900 text-center">
+        <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">
+          {config?.CompanyName || 'Panglung Enterprise'}
+        </h1>
+        <p className="text-xs text-slate-600 font-medium mt-0.5">
+          {[
+            config?.Address || config?.CompanyAddress || 'Bhutan',
+            config?.CompanyPhone ? `Tel: ${config.CompanyPhone}` : '',
+            config?.CompanyEmail ? `Email: ${config.CompanyEmail}` : ''
+          ].filter(Boolean).join('  |  ')}
+        </p>
+        <h2 className="text-base font-bold text-indigo-700 uppercase tracking-tight mt-2">
+          STAFF ASSIGNMENT & OPERATIONS TASK REPORT
+        </h2>
       </div>
 
       {/* ================================================================ */}
-      {/* 1. TOP CONTROL BAR & SEGMENTED VIEW SWITCHER */}
+      {/* 1. TOP CONTROL BAR, KPI METRICS & FILTER TOOLBAR (COLLAPSIBLE) */}
       {/* ================================================================ */}
+      <div className={`transition-all duration-300 ease-in-out space-y-4 ${
+        isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-[1400px] opacity-100 mb-4'
+      }`}>
       {showHeaderControls && (
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4 print:hidden">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -627,6 +642,16 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
               >
                 <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
                 <span className="hidden sm:inline">Excel</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 text-rose-800 font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                title="Download PDF Document"
+              >
+                <FileText className="h-3.5 w-3.5 text-rose-600" />
+                <span className="hidden sm:inline">PDF</span>
               </button>
 
               <button
@@ -891,17 +916,62 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
           </div>
         </div>
       </div>
+      </div>
 
       {/* ================================================================ */}
       {/* 4. VIEW MODE 1: DETAILED TABULAR REGISTER */}
       {/* ================================================================ */}
       {viewMode === 'table' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 uppercase tracking-wider text-[10px] font-bold select-none">
-                  <th className="py-3 px-3.5 w-12 text-center">Sl</th>
+          <div className={`overflow-auto transition-all duration-300 ${
+            isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-215px)] min-h-[350px]'
+          }`}>
+            <table className="w-full text-left text-xs border-separate border-spacing-0">
+              <thead className="sticky top-0 z-20 shadow-xs">
+                <tr className="bg-white">
+                  <th colSpan={10} className="px-5 py-3.5 text-left bg-white border-b border-slate-100">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="h-7 w-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                          <CheckSquare className="h-3.5 w-3.5" />
+                        </div>
+                        <h3 className="font-black text-slate-900 text-xs sm:text-sm">
+                          Staff Assignment & Task Detailed Register
+                        </h3>
+                        {isHeaderCollapsed && (
+                          <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-bold">
+                            Full Page View
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] font-bold text-slate-400 font-mono">
+                          Showing {filteredTasks.length} Tasks
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleToggleCollapse}
+                          className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                          title={isHeaderCollapsed ? "Expand page header & controls" : "Collapse page header for full page report view"}
+                        >
+                          {isHeaderCollapsed ? (
+                            <>
+                              <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
+                              <span>Expand Controls</span>
+                            </>
+                          ) : (
+                            <>
+                              <ChevronUp className="h-3.5 w-3.5 text-slate-500" />
+                              <span>Full Page View</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </th>
+                </tr>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wider text-[10px] font-bold select-none">
+                  <th className="py-3 px-3.5 w-12 text-center bg-slate-50 border-b border-slate-200">Sl</th>
                   <th 
                     className="py-3 px-3 cursor-pointer hover:text-slate-900"
                     onClick={() => {
@@ -984,7 +1054,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                           {task.taskNo}
                         </button>
                         <span className="text-[10px] text-slate-400 font-mono">
-                          {task.createdAt ? task.createdAt.split('T')[0] : ''}
+                          {task.createdAt ? formatDateDMY(task.createdAt) : ''}
                         </span>
                       </td>
 
@@ -1050,7 +1120,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                         <span className={`font-mono text-xs font-medium tabular-nums ${
                           isOverdue ? 'text-rose-600 font-bold' : 'text-slate-700'
                         }`}>
-                          {task.dueDate}
+                          {formatDateDMY(task.dueDate)}
                         </span>
                         {isOverdue && (
                           <span className="block text-[10px] text-rose-600 font-bold uppercase tracking-wider">
@@ -1236,7 +1306,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                             <span className="font-mono text-[10px] text-indigo-600 font-bold mr-1">{t.taskNo}</span>
                             <span className="text-slate-800 font-medium">{t.title}</span>
                           </div>
-                          <span className="text-[10px] font-mono text-slate-400 shrink-0">{t.dueDate}</span>
+                          <span className="text-[10px] font-mono text-slate-400 shrink-0">{formatDateDMY(t.dueDate)}</span>
                         </div>
                       ))}
                       {w.tasks.filter(t => t.status !== 'Completed').length === 0 && (
@@ -1515,7 +1585,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 block uppercase font-semibold">Due Date</span>
-                <span className="font-bold font-mono text-slate-800">{selectedTaskDetail.dueDate}</span>
+                <span className="font-bold font-mono text-slate-800">{formatDateDMY(selectedTaskDetail.dueDate)}</span>
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 block uppercase font-semibold">Current Status</span>

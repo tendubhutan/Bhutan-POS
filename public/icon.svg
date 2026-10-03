@@ -1,39 +1,55 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
   <defs>
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <!-- Clean background gradient -->
+    <linearGradient id="pwaBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#ffffff" />
       <stop offset="100%" stop-color="#f0f7ff" />
     </linearGradient>
-    <linearGradient id="ezeeOuterGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0066FF" />
-      <stop offset="50%" stop-color="#00A3FF" />
-      <stop offset="100%" stop-color="#00D5FF" />
+
+    <!-- Vibrant Royal & Electric Blue Gradient for 'D' -->
+    <linearGradient id="pwaDGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1d4ed8" />
+      <stop offset="35%" stop-color="#2563eb" />
+      <stop offset="75%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#60a5fa" />
     </linearGradient>
-    <linearGradient id="ezeeInnerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#00D5FF" />
-      <stop offset="100%" stop-color="#0099FF" />
+
+    <!-- Mountain Slope Gradient -->
+    <linearGradient id="pwaSlopeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0c234a" />
+      <stop offset="100%" stop-color="#162d66" />
     </linearGradient>
-    <linearGradient id="ezeeArrowGrad" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#0055FF" />
-      <stop offset="100%" stop-color="#00A8FF" />
+
+    <!-- Upward Growth Swoosh Gradient -->
+    <linearGradient id="pwaSwooshGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1e40af" />
+      <stop offset="40%" stop-color="#0284c7" />
+      <stop offset="85%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#7dd3fc" />
     </linearGradient>
   </defs>
 
   <!-- Clean rounded background badge -->
-  <rect width="512" height="512" rx="128" fill="url(#bgGrad)" />
-  <rect width="496" height="496" x="8" y="8" rx="120" fill="none" stroke="#0066FF" stroke-opacity="0.25" stroke-width="12" />
+  <rect width="512" height="512" rx="128" fill="url(#pwaBgGrad)" />
+  <rect width="496" height="496" x="8" y="8" rx="120" fill="none" stroke="#2563eb" stroke-opacity="0.2" stroke-width="10" />
 
-  <!-- Official Ezee ERP 'E' Curved Logo Emblem -->
-  <g transform="translate(68, 68) scale(2.1)">
-    <path
-      d="M 125 15 C 65 15 15 50 15 95 C 15 135 50 148 90 148 C 122 148 152 130 165 102 L 132 102 C 122 115 104 124 86 124 C 60 124 42 108 42 88 C 42 62 65 40 118 40 L 142 40 L 142 20 L 125 15 Z"
-      fill="url(#ezeeOuterGrad)"
-    />
-    <rect x="52" y="58" width="72" height="18" rx="4" fill="url(#ezeeInnerGrad)" />
-    <rect x="52" y="88" width="58" height="18" rx="4" fill="url(#ezeeInnerGrad)" />
-    <path
-      d="M 125 102 L 172 72 L 168 128 L 152 110 L 125 102 Z"
-      fill="url(#ezeeArrowGrad)"
-    />
+  <!-- Official Druk ERP Himalayan Mountain & Swoosh Emblem -->
+  <g transform="translate(68, 56) scale(2.2)">
+    <!-- 1. Main Vibrant Blue 'D' Silhouette -->
+    <path d="M 38 12 L 88 12 C 122 12, 146 34, 146 72 C 146 106, 120 128, 88 128 L 38 128 Z" fill="url(#pwaDGrad)" />
+    
+    <!-- 2. Dark Blue Mountain Inner Slopes -->
+    <path d="M 76 44 L 105 106 L 76 106 Z" fill="url(#pwaSlopeGrad)" />
+    <path d="M 105 106 L 120 124 L 92 124 Z" fill="#162d66" />
+    
+    <!-- 3. Snow-capped Summit & Ridge (Brilliant White) -->
+    <path d="M 76 44 L 46 112 L 66 112 L 76 74 L 88 106 L 76 106 Z" fill="#ffffff" />
+    <polygon points="76,44 68,64 84,60" fill="#ffffff" />
+    <polygon points="76,44 84,60 92,72 86,74" fill="#cbd5e1" />
+    <path d="M 52 30 L 86 30 C 108 30, 126 46, 126 72 C 126 88, 116 104, 98 110 L 98 98 C 110 92, 114 82, 114 72 C 114 54, 102 42, 82 42 L 52 42 Z" fill="#ffffff" />
+    
+    <!-- 4. Upward Dynamic Cyan/Sky Swoosh -->
+    <path d="M 16 110 C 10 132, 34 146, 74 146 C 110 146, 140 130, 150 102 L 138 98 C 128 120, 102 134, 74 134 C 44 134, 26 122, 28 106 C 30 96, 40 86, 58 76 L 52 66 C 32 78, 18 92, 16 110 Z" fill="url(#pwaSwooshGrad)" />
+    <path d="M 134 90 L 162 84 L 152 118 L 144 100 L 134 90 Z" fill="url(#pwaSwooshGrad)" />
   </g>
 </svg>

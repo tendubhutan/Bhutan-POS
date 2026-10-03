@@ -118,7 +118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const menuItems = useMemo(() => [
     ...(isDashboardPermitted ? [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, shortcut: 'Alt+H' }] : []),
     ...(((isFeatureAllowed(config, 'EnablePOS', isSuperadminUser) && config.EnablePOS !== 'false') || config.EnableRestaurantMode === 'true') && isModulePermitted(currentUser, 'pos', 'display', isSuperadminUser) ? [{ id: 'pos', label: config.EnableRestaurantMode === 'true' ? 'Restaurant POS' : 'POS Billing', icon: ShoppingCart, shortcut: 'Alt+P' }] : []),
-    ...(isFeatureAllowed(config, 'EnableNormalSale', isSuperadminUser) && config.EnableNormalSale !== 'false' && isModulePermitted(currentUser, 'normalsale', 'display', isSuperadminUser) ? [{ id: 'normalsale', label: 'Sales Invoice', icon: ShoppingBag, shortcut: 'Alt+N' }] : []),
+    ...((isFeatureAllowed(config, 'EnableNormalSale', isSuperadminUser) || isFeatureAllowed(config, 'EnableB2BSale', isSuperadminUser) || config.EnableNormalSale === 'true') && config.EnableNormalSale !== 'false' && (config as any).EnableB2BSale !== 'false' && isModulePermitted(currentUser, 'normalsale', 'display', isSuperadminUser) ? [{ id: 'normalsale', label: 'Sale Invoice', icon: ShoppingBag, shortcut: 'Alt+N' }] : []),
     ...(isFeatureAllowed(config, 'EnablePurchase', isSuperadminUser) && config.EnablePurchase !== 'false' && isModulePermitted(currentUser, 'purchase', 'display', isSuperadminUser) ? [{ id: 'purchase', label: 'Purchase Entry', icon: ShoppingBag, shortcut: 'Alt+U' }] : []),
     ...(isFeatureAllowed(config, 'EnableVouchers', isSuperadminUser) && config.EnableVouchers !== 'false' && isModulePermitted(currentUser, 'vouchers', 'display', isSuperadminUser) ? [{ id: 'vouchers', label: 'Vouchers', icon: BookOpen, shortcut: 'Alt+V' }] : []),
     ...(isModulePermitted(currentUser, 'masters', 'display', isSuperadminUser) ? [{ id: 'masters', label: 'Masters', icon: FolderKanban, shortcut: 'Alt+M' }] : []),
@@ -302,7 +302,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               id="sidebar-install-desktop-app"
               onClick={handleInstallDesktopApp}
               className="w-full group relative flex items-center justify-between px-3 py-2.5 rounded-xl bg-gradient-to-r from-blue-600/90 via-indigo-600/90 to-blue-700/90 hover:from-blue-600 hover:to-indigo-600 border border-blue-400/40 hover:border-blue-300 text-white font-bold text-xs shadow-md transition-all active:scale-98 cursor-pointer"
-              title="Install Ezee ERP to Windows Desktop (Offline Ready)"
+              title="Install Druk ERP to Windows Desktop (Offline Ready)"
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="p-1 rounded-lg bg-white/20 text-white group-hover:bg-white/30 transition">

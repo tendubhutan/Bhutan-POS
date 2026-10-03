@@ -11,7 +11,7 @@ import {
   getEmployees, saveEmployees, syncEmployeesFromSupabase 
 } from '../../services/storageService';
 import { getActiveCompanyId } from '../../services/supabaseTenantService';
-import { EzeeErpLogo } from '../common/EzeeErpLogo';
+import { DrukErpLogo } from '../common/DrukErpLogo';
 import { getCompanyConfig, isFeatureAllowed } from '../../services/tenantFeatureService';
 import { 
   getLeaveTypes, getLeaveApplications, applyForLeave, 
@@ -1289,7 +1289,7 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
         {/* Top Header */}
         <div className="relative z-10 flex items-center justify-between pt-2 max-w-md w-full mx-auto">
           <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-3.5 py-1.5 rounded-2xl border border-blue-200/90 shadow-md">
-            <EzeeErpLogo size="sm" />
+            <DrukErpLogo size="sm" />
           </div>
 
           {onExitPortal && (
@@ -1307,10 +1307,10 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
           <div className="bg-white/95 border border-slate-200/90 rounded-3xl p-6 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)] backdrop-blur-2xl space-y-5">
             <div className="text-center space-y-2">
               
-              {/* Ezee ERP Logo Banner inside Login Card */}
+              {/* Druk ERP Logo Banner inside Login Card */}
               <div className="flex justify-center pb-1">
                 <div className="p-2.5 rounded-2xl bg-slate-50 border border-blue-100 shadow-2xs inline-block">
-                  <EzeeErpLogo size="md" />
+                  <DrukErpLogo size="md" />
                 </div>
               </div>
 
@@ -1526,10 +1526,10 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
           )}
         </div>
 
-        {/* Footer with Ezee ERP Logo & Branding */}
+        {/* Footer with Druk ERP Logo & Branding */}
         <div className="relative z-10 text-center text-[11px] font-semibold text-slate-300 pb-2 space-y-1">
           <div className="flex items-center justify-center gap-2 bg-slate-900/80 backdrop-blur-md py-1.5 px-3 rounded-full border border-slate-700/80 max-w-fit mx-auto shadow-sm">
-            <EzeeErpLogo size="sm" variant="compact" />
+            <DrukErpLogo size="sm" variant="compact" />
             <span className="text-slate-400">•</span>
             <span className="text-slate-200">Encrypted Mobile Portal</span>
           </div>
@@ -1559,7 +1559,7 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
       <header className="sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-2.5 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
           <div className="hidden xs:block bg-white/10 p-1.5 rounded-xl border border-white/10 shrink-0">
-            <EzeeErpLogo size="sm" variant="compact" />
+            <DrukErpLogo size="sm" variant="compact" />
           </div>
           <div className="h-9 w-9 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black flex items-center justify-center text-sm shadow-md shrink-0">
             {currentEmployee.fullName.charAt(0)}

@@ -37,7 +37,7 @@ import {
   isDevOrPreviewEnvironment
 } from '../services/authTenantContext';
 import { getActiveUser } from '../services/storageService';
-import { EzeeErpLogo, DrukErpLogo } from './common/EzeeErpLogo';
+import { DrukErpLogo } from './common/DrukErpLogo';
 import { SapEnterpriseLogon } from './auth/SapEnterpriseLogon';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
@@ -818,7 +818,7 @@ export const LoginGate: React.FC<LoginGateProps> = ({
           
           <div className="flex items-center gap-2 font-semibold text-blue-100">
             <ShieldCheck className="h-4 w-4 text-cyan-400 shrink-0" />
-            <span><strong>Ezee ERP</strong> &nbsp;|&nbsp; Everything Your Business Needs, in One Place.</span>
+            <span><strong>Druk ERP</strong> &nbsp;|&nbsp; Everything Your Business Needs, in One Place.</span>
           </div>
 
           {/* Single Taktshang Monastery Badge (Marked in Blue) */}

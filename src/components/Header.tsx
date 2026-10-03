@@ -183,7 +183,7 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-1">
                   <span className="font-extrabold text-xs text-white tracking-wide leading-tight truncate max-w-[100px] sm:max-w-[130px] lg:max-w-[160px] xl:max-w-[200px]">
-                    {activeCompanyName || config.CompanyName || 'Ezee ERP'}
+                    {activeCompanyName || config.CompanyName || 'Druk ERP'}
                   </span>
                   <ChevronDown className="h-3 w-3 text-purple-300 group-hover:text-white transition shrink-0" />
                 </div>
@@ -202,7 +202,7 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="font-extrabold text-xs text-white tracking-wide block leading-tight truncate max-w-[100px] sm:max-w-[130px] lg:max-w-[160px] xl:max-w-[200px]">
-                  {activeCompanyName || config.CompanyName || 'Ezee ERP'}
+                  {activeCompanyName || config.CompanyName || 'Druk ERP'}
                 </span>
                 <span className="text-[10px] text-emerald-300 font-medium font-mono leading-tight flex items-center gap-1 truncate">
                   <span>{activeFYName || 'FY 2026'}</span>

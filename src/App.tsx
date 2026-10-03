@@ -969,7 +969,15 @@ export default function App() {
           }}
         />
 
-        <main className={`flex-1 min-w-0 max-w-full ${currentView === 'reports' ? 'overflow-auto' : isHighDensityView ? 'p-1.5 sm:p-2 pb-1.5 overflow-hidden flex flex-col min-h-0' : 'p-3 sm:p-6 pb-6 lg:pb-8 overflow-y-auto overflow-x-hidden'} relative`}>
+        <main className={`flex-1 min-w-0 max-w-full ${
+          currentView === 'reports' 
+            ? 'overflow-auto' 
+            : isHighDensityView 
+              ? 'p-1.5 sm:p-2 pb-1.5 overflow-hidden flex flex-col min-h-0' 
+              : (currentView === 'staff' || currentView === 'attendance' || currentView === 'payroll')
+                ? 'p-0 overflow-hidden flex flex-col min-h-0'
+                : 'p-3 sm:p-6 pb-6 lg:pb-8 overflow-y-auto overflow-x-hidden'
+        } relative`}>
           {currentView === 'dashboard' && (
             <Dashboard
               key={activeCompany?.id || 'default_dash'}
@@ -1015,7 +1023,7 @@ export default function App() {
             />
           </div>
 
-          {config.EnableNormalSale !== 'false' && isModulePermitted(currentUser, 'normalsale', 'display') && (
+          {config.EnableNormalSale !== 'false' && (config as any).EnableB2BSale !== 'false' && isModulePermitted(currentUser, 'normalsale', 'display') && (
             <div className={currentView === 'normalsale' ? 'flex-1 min-h-0 flex flex-col h-full w-full' : 'hidden'}>
               <SalesInvoiceEntry
                 key={activeCompany?.id || 'default_sales'}

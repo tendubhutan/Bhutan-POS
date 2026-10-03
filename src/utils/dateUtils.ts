@@ -1,6 +1,6 @@
 /**
  * Universal Date Formatting Utility for entire application
- * Standard format: dd-mm-yy (e.g., 07-09-26)
+ * Standard strict format: DD-MM-YY (e.g., 03-10-26)
  */
 
 export function formatDateDMY(d: any): string {
@@ -13,17 +13,23 @@ export function formatDateDMY(d: any): string {
       const yy = y.length === 4 ? y.slice(2) : y;
       return `${parts[2].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${yy}`;
     }
-    if (/^\d{2}-\d{2}-\d{2,4}/.test(s)) {
+    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+      const parts = s.split('-');
+      return `${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[2].slice(-2)}`;
+    }
+    if (/^\d{2}-\d{2}-\d{2}$/.test(s)) {
       return s;
     }
   }
   const dt = new Date(d);
-  if (isNaN(dt.getTime())) return '-';
+  if (isNaN(dt.getTime())) return String(d);
   const day = String(dt.getDate()).padStart(2, '0');
   const month = String(dt.getMonth() + 1).padStart(2, '0');
   const yy = String(dt.getFullYear()).slice(-2);
   return `${day}-${month}-${yy}`;
 }
+
+export const formatDate = formatDateDMY;
 
 export function formatDateTimeDMY(d: any): string {
   if (!d) return '-';
@@ -36,3 +42,4 @@ export function formatDateTimeDMY(d: any): string {
   const minutes = String(dt.getMinutes()).padStart(2, '0');
   return `${day}-${month}-${yy} ${hours}:${minutes}`;
 }
+

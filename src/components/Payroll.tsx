@@ -19,12 +19,15 @@ import {
   Calendar,
   Lock,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   TrendingUp,
   Percent,
   FileSpreadsheet,
   WalletCards,
   Banknote,
-  Clock
+  Clock,
+  Save
 } from 'lucide-react';
 import { EmployeeAdvances } from './payroll/EmployeeAdvances';
 import { StaffManagementView } from './employee/StaffManagementView';
@@ -54,6 +57,24 @@ interface PayrollProps {
 export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh }) => {
   const [activeTab, setActiveTab] = useState<'processing' | 'attendance' | 'employees' | 'payheads' | 'advances'>('processing');
   const [linkAttendanceToPayroll, setLinkAttendanceToPayroll] = useState<boolean>(true);
+
+  // Header collapsing for full page report view
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target && target.scrollTop !== undefined) {
+        if (target.scrollTop > 50 && !isHeaderCollapsed) {
+          setIsHeaderCollapsed(true);
+        } else if (target.scrollTop < 10 && isHeaderCollapsed) {
+          setIsHeaderCollapsed(false);
+        }
+      }
+    };
+    window.addEventListener('scroll', handleScroll, true);
+    return () => window.removeEventListener('scroll', handleScroll, true);
+  }, [isHeaderCollapsed]);
 
   const payrollTabs = [
     { id: 'processing', label: 'Salary Processing', icon: Calendar },
@@ -1164,7 +1185,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
   const departmentsList = Array.from(new Set(employees.map(e => e.department))).filter(Boolean);
 
   return (
-    <div className="space-y-5 pb-10">
+    <div className={`h-full flex flex-col min-h-0 ${activeTab === 'attendance' ? 'space-y-0 p-0' : 'space-y-3 p-3 sm:p-4 pb-2'}`}>
       {/* Toast Notification */}
       {toastMsg && (
         <div
@@ -1178,234 +1199,209 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
         </div>
       )}
 
-      {/* Top Banner Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 text-white p-4 sm:p-5 rounded-2xl shadow-lg border border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-black text-white shadow-md">
-            <DollarSign className="h-6 w-6 text-white" />
-      
-          </div>
+      {/* Top Compact Banner Header */}
+      <div className={`transition-all duration-300 ease-in-out ${
+        isHeaderCollapsed 
+          ? 'max-h-0 py-0 opacity-0 overflow-hidden border-b-0 pointer-events-none mb-0' 
+          : 'max-h-28 opacity-100 mb-4'
+      }`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-900 text-white px-3.5 py-2 sm:px-4.5 sm:py-2.5 rounded-2xl shadow-md border border-slate-800">
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-black tracking-tight text-white">Payroll & HR Management</h1>
-              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                🇧🇹 Bhutan DRC Compliant
-              </span>
-      
-            </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Flexible private company salary processing with customizable pay heads (NPPF, GIS, PIT) & bank transfer advice.
-            </p>
-      
+            <h1 className="text-sm sm:text-base font-black tracking-tight text-white leading-tight">Payroll & HR Management</h1>
           </div>
-      
-        </div>
 
-        {/* Tab Selector Buttons */}
-        <div 
-          role="tablist"
-          aria-label="Payroll Navigation Tabs"
-          className="flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700/80 self-start md:self-auto"
-        >
-          {payrollTabs.map((tab, idx) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                ref={el => (tabButtonRefs.current[idx] = el)}
-                role="tab"
-                aria-selected={isActive}
-                tabIndex={isActive ? 0 : -1}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`px-3 py-1.5 rounded-lg font-bold text-xs transition flex items-center gap-1.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
-                  isActive
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-700/60'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                <span>
-                  {tab.label}
-                  {tab.id === 'employees' ? ` (${employees.length})` : ''}
-                </span>
-              </button>
-            );
-          })}
-      
+          {/* Tab Selector Buttons (Single-Line Pills Style) */}
+          <div 
+            role="tablist"
+            aria-label="Payroll Navigation Tabs"
+            className="flex items-center gap-1 sm:gap-1.5 bg-slate-950/90 p-1 rounded-2xl border border-slate-800/90 shadow-inner self-start sm:self-auto flex-nowrap overflow-x-auto max-w-full"
+          >
+            {payrollTabs.map((tab, idx) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  ref={el => (tabButtonRefs.current[idx] = el)}
+                  role="tab"
+                  aria-selected={isActive}
+                  tabIndex={isActive ? 0 : -1}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+                    isActive
+                      ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-black shadow-md shadow-indigo-500/20 border border-indigo-400/30'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 font-bold'
+                  }`}
+                >
+                  <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  <span>
+                    {tab.label}
+                    {tab.id === 'employees' ? ` (${employees.length})` : ''}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      
       </div>
 
       {/* TAB 1: SALARY PROCESSING */}
       {activeTab === 'processing' && (
         <div className="space-y-4">
-          {/* Month / Year Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                <Calendar className="h-4 w-4 text-indigo-600" />
-                Payroll Period:
-              </span>
-              <select
-                value={selectedMonth}
-                onChange={e => setSelectedMonth(Number(e.target.value))}
-                className="h-9 rounded-xl border border-slate-300 px-3 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
-              >
-                {monthsList.map(m => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={selectedYear}
-                onChange={e => setSelectedYear(Number(e.target.value))}
-                className="h-9 rounded-xl border border-slate-300 px-3 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
-              >
-                {[2024, 2025, 2026, 2027, 2028].map(y => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-      
-            </div>
+          {/* Collapsible Period Bar & Summary Cards */}
+          <div className={`transition-all duration-300 ease-in-out space-y-4 ${
+            isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-[600px] opacity-100 mb-4'
+          }`}>
+            {/* Month / Year Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                  <Calendar className="h-4 w-4 text-indigo-600" />
+                  Payroll Period:
+                </span>
+                <select
+                  value={selectedMonth}
+                  onChange={e => setSelectedMonth(Number(e.target.value))}
+                  className="h-9 rounded-xl border border-slate-300 px-3 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
+                >
+                  {monthsList.map(m => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={selectedYear}
+                  onChange={e => setSelectedYear(Number(e.target.value))}
+                  className="h-9 rounded-xl border border-slate-300 px-3 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
+                >
+                  {[2024, 2025, 2026, 2027, 2028].map(y => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-300 text-xs font-bold text-slate-700 cursor-pointer select-none transition">
-                <input
-                  type="checkbox"
-                  checked={linkAttendanceToPayroll}
-                  onChange={e => setLinkAttendanceToPayroll(e.target.checked)}
-                  className="rounded text-indigo-600 w-3.5 h-3.5 cursor-pointer"
-                />
-                <Clock className="h-3.5 w-3.5 text-indigo-600" />
-                <span>Auto-deduct LOP from Attendance</span>
-              </label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-300 text-xs font-bold text-slate-700 cursor-pointer select-none transition">
+                  <input
+                    type="checkbox"
+                    checked={linkAttendanceToPayroll}
+                    onChange={e => setLinkAttendanceToPayroll(e.target.checked)}
+                    className="rounded text-indigo-600 w-3.5 h-3.5 cursor-pointer"
+                  />
+                  <Clock className="h-3.5 w-3.5 text-indigo-600" />
+                  <span>Auto-deduct LOP from Attendance</span>
+                </label>
 
-              <button
-                onClick={handleProcessPayroll}
-                className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
-              >
-                <DollarSign className="h-4 w-4" />
-                <span>{currentPayroll ? 'Recalculate / Reprocess Payroll' : 'Process Monthly Payroll'}</span>
-              </button>
+                <button
+                  onClick={handleProcessPayroll}
+                  className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+                >
+                  <DollarSign className="h-4 w-4" />
+                  <span>{currentPayroll ? 'Recalculate / Reprocess Payroll' : 'Process Monthly Payroll'}</span>
+                </button>
 
-              {currentPayroll && (
-                <>
-                  <button
-                    onClick={() => setShowBankSheetModal(true)}
-                    className="h-9 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition flex items-center gap-1.5"
-                    title="Export Bank Salary Advice Letter"
-                  >
-                    <CreditCard className="h-4 w-4 text-indigo-600" />
-                    <span className="hidden sm:inline">Bank Advice Sheet</span>
-                  </button>
-
-                  <button
-                    onClick={() => setShowDrcFormModal(true)}
-                    className="h-9 px-3 rounded-xl border border-blue-600 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
-                    title="Export DRC Form IT-1(a) Monthly Tax & Health Schedule"
-                  >
-                    <FileSpreadsheet className="h-4 w-4" />
-                    <span>DRC Form IT-1(a)</span>
-                  </button>
-
-                  {currentPayroll.isPostedToAccounting ? (
-                    <span className="h-9 px-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-xs flex items-center gap-1.5">
-                      <Lock className="h-3.5 w-3.5 text-emerald-600" />
-                      <span>Posted ({currentPayroll.voucherRefNo})</span>
-                    </span>
-                  ) : (
+                {currentPayroll && (
+                  <>
                     <button
-                      onClick={handlePostToAccounting}
-                      className="h-9 px-3 rounded-xl border border-emerald-600 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+                      onClick={() => setShowBankSheetModal(true)}
+                      className="h-9 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition flex items-center gap-1.5"
+                      title="Export Bank Salary Advice Letter"
                     >
-                      <CheckCircle className="h-4 w-4" />
-                      <span>Post JV to Accounting</span>
+                      <CreditCard className="h-4 w-4 text-indigo-600" />
+                      <span className="hidden sm:inline">Bank Advice Sheet</span>
                     </button>
-                  )}
-                </>
-              )}
-      
+
+                    <button
+                      onClick={() => setShowDrcFormModal(true)}
+                      className="h-9 px-3 rounded-xl border border-blue-600 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+                      title="Export DRC Form IT-1(a) Monthly Tax & Health Schedule"
+                    >
+                      <FileSpreadsheet className="h-4 w-4" />
+                      <span>DRC Form IT-1(a)</span>
+                    </button>
+
+                    {currentPayroll.isPostedToAccounting ? (
+                      <span className="h-9 px-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-xs flex items-center gap-1.5">
+                        <Lock className="h-3.5 w-3.5 text-emerald-600" />
+                        <span>Posted ({currentPayroll.voucherRefNo})</span>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={handlePostToAccounting}
+                        className="h-9 px-3 rounded-xl border border-emerald-600 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+                      >
+                        <CheckCircle className="h-4 w-4" />
+                        <span>Post JV to Accounting</span>
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-      
+
+            {/* Current Payroll Statistics Cards */}
+            {currentPayroll ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Active Staff Count
+                  </div>
+                  <div className="text-xl font-black text-slate-900">{currentPayroll.entries.length} Staff</div>
+                  <div className="text-[11px] text-slate-400 mt-1">Processed for {currentPayroll.monthYear}</div>
+                </div>
+
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Total Gross Earnings
+                  </div>
+                  <div className="text-xl font-black text-indigo-600">
+                    {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalGrossPay.toLocaleString('en-IN')}
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">Basic + Allowances</div>
+                </div>
+
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                    Total Statutory Deductions
+                  </div>
+                  <div className="text-xl font-black text-rose-600">
+                    {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalDeductions.toLocaleString('en-IN')}
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">NPPF (11%) + GIS + PIT</div>
+                </div>
+
+                <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-2xl shadow-xs">
+                  <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider mb-1">
+                    Net Salary Payable
+                  </div>
+                  <div className="text-xl font-black text-emerald-700">
+                    {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalNetPay.toLocaleString('en-IN')}
+                  </div>
+                  <div className="text-[11px] text-emerald-600 font-medium mt-1">Net Direct Bank Transfer</div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">
+                <Calendar className="h-10 w-10 mx-auto mb-2 text-slate-400 stroke-1" />
+                <div className="font-bold text-slate-800 text-sm">
+                  No processed payroll found for {monthsList.find(m => m.value === selectedMonth)?.label} {selectedYear}
+                </div>
+                <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-4">
+                  Click "Process Monthly Payroll" above to automatically calculate Basic Pay, Allowances, NPPF (11%), GIS, and PIT for all active employees.
+                </p>
+                <button
+                  onClick={handleProcessPayroll}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition inline-flex items-center gap-1.5"
+                >
+                  <DollarSign className="h-4 w-4" />
+                  <span>Process Payroll Now</span>
+                </button>
+              </div>
+            )}
           </div>
-
-          {/* Current Payroll Statistics Cards */}
-          {currentPayroll ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  Active Staff Count
-      
-                </div>
-                <div className="text-xl font-black text-slate-900">{currentPayroll.entries.length} Staff</div>
-                <div className="text-[11px] text-slate-400 mt-1">Processed for {currentPayroll.monthYear}</div>
-      
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  Total Gross Earnings
-      
-                </div>
-                <div className="text-xl font-black text-indigo-600">
-                  {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalGrossPay.toLocaleString('en-IN')}
-      
-                </div>
-                <div className="text-[11px] text-slate-400 mt-1">Basic + Allowances</div>
-      
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  Total Statutory Deductions
-      
-                </div>
-                <div className="text-xl font-black text-rose-600">
-                  {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalDeductions.toLocaleString('en-IN')}
-      
-                </div>
-                <div className="text-[11px] text-slate-400 mt-1">NPPF (11%) + GIS + PIT</div>
-      
-              </div>
-
-              <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-2xl shadow-xs">
-                <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider mb-1">
-                  Net Salary Payable
-      
-                </div>
-                <div className="text-xl font-black text-emerald-700">
-                  {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalNetPay.toLocaleString('en-IN')}
-      
-                </div>
-                <div className="text-[11px] text-emerald-600 font-medium mt-1">Net Direct Bank Transfer</div>
-      
-              </div>
-      
-            </div>
-          ) : (
-            <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">
-              <Calendar className="h-10 w-10 mx-auto mb-2 text-slate-400 stroke-1" />
-              <div className="font-bold text-slate-800 text-sm">
-                No processed payroll found for {monthsList.find(m => m.value === selectedMonth)?.label} {selectedYear}
-      
-              </div>
-              <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-4">
-                Click "Process Monthly Payroll" above to automatically calculate Basic Pay, Allowances, NPPF (11%), GIS, and PIT for all active employees.
-              </p>
-              <button
-                onClick={handleProcessPayroll}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition inline-flex items-center gap-1.5"
-              >
-                <DollarSign className="h-4 w-4" />
-                <span>Process Payroll Now</span>
-              </button>
-      
-            </div>
-          )}
 
           {/* Payroll Sheet Table */}
           {currentPayroll && (
@@ -1414,28 +1410,53 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 <div className="font-bold text-xs sm:text-sm flex items-center gap-2">
                   <FileText className="h-4 w-4 text-indigo-400" />
                   <span>Salary Register - {currentPayroll.monthYear}</span>
-      
+                  {isHeaderCollapsed && (
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 text-[10px] font-bold border border-indigo-400/30">
+                      Full Page View
+                    </span>
+                  )}
                 </div>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  {currentPayroll.entries.length} Records
-                </span>
-      
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    {currentPayroll.entries.length} Records
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsHeaderCollapsed(prev => !prev)}
+                    className="px-2.5 py-1 rounded-lg border border-slate-700 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                    title={isHeaderCollapsed ? "Expand page header & controls" : "Collapse page header for full page report view"}
+                  >
+                    {isHeaderCollapsed ? (
+                      <>
+                        <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                        <span>Expand Controls</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                        <span>Full Page View</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-xs">
-                  <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10px] tracking-wider">
-                    <tr>
-                      <th className="py-2.5 px-3 text-left">Emp Code</th>
-                      <th className="py-2.5 px-3 text-left">Employee Name</th>
-                      <th className="py-2.5 px-3 text-left">Designation</th>
-                      <th className="py-2.5 px-3 text-center">Days Worked</th>
-                      <th className="py-2.5 px-3 text-right">Basic Pay</th>
-                      <th className="py-2.5 px-3 text-right">Gross Pay</th>
-                      <th className="py-2.5 px-3 text-right">Deductions</th>
-                      <th className="py-2.5 px-3 text-right">Net Payable</th>
-                      <th className="py-2.5 px-3 text-left">Bank / A/C No</th>
-                      <th className="py-2.5 px-3 text-center">Actions</th>
+              <div className={`overflow-auto transition-all duration-300 ${
+                isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-215px)] min-h-[350px]'
+              }`}>
+                <table className="w-full border-separate border-spacing-0 text-xs">
+                  <thead className="sticky top-0 z-20 shadow-xs">
+                    <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider">
+                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200">Emp Code</th>
+                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200">Employee Name</th>
+                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200">Designation</th>
+                      <th className="py-2.5 px-3 text-center bg-slate-100 border-b border-slate-200">Days Worked</th>
+                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200">Basic Pay</th>
+                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200">Gross Pay</th>
+                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200">Deductions</th>
+                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200">Net Payable</th>
+                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200">Bank / A/C No</th>
+                      <th className="py-2.5 px-3 text-center bg-slate-100 border-b border-slate-200">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
@@ -1524,7 +1545,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
       {/* TAB 2: ATTENDANCE & LEAVES */}
       {activeTab === 'attendance' && (
-        <div className="space-y-4">
+        <div className="h-full flex-1 flex flex-col min-h-0">
           <StaffManagementView
             config={config}
             onDataRefresh={onDataRefresh}
@@ -1536,70 +1557,99 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       {/* TAB 3: EMPLOYEE MASTER */}
       {activeTab === 'employees' && (
         <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2 flex-1 max-w-2xl">
-              <button
-                onClick={() => setActiveTab('processing')}
-                className="h-9 px-3.5 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center gap-1.5 shrink-0"
-                title="Return to Salary Processing tab (Esc)"
-              >
-                <ChevronRight className="h-4 w-4 rotate-180" />
-                <span>Back to Processing</span>
-                <kbd className="px-1.5 py-0.5 text-[10px] bg-white rounded border border-slate-300 text-slate-500 font-mono shadow-2xs">Esc</kbd>
-              </button>
+          {/* Action & Search Bar (Collapsible) */}
+          <div className={`transition-all duration-300 ease-in-out ${
+            isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-28 opacity-100 mb-4'
+          }`}>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 flex-1 max-w-2xl">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="h-4 w-4 absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search Employee Name, CID, Code..."
+                    value={empSearch}
+                    onChange={e => setEmpSearch(e.target.value)}
+                    className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none"
+                  />
+                </div>
 
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="h-4 w-4 absolute left-3 top-2.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search Employee Name, CID, Code..."
-                  value={empSearch}
-                  onChange={e => setEmpSearch(e.target.value)}
-                  className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none"
-                />
-      
+                {departmentsList.length > 0 && (
+                  <select
+                    value={departmentFilter}
+                    onChange={e => setDepartmentFilter(e.target.value)}
+                    className="h-9 px-3 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 bg-slate-50 outline-none"
+                  >
+                    <option value="">All Departments</option>
+                    {departmentsList.map(d => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
-              {departmentsList.length > 0 && (
-                <select
-                  value={departmentFilter}
-                  onChange={e => setDepartmentFilter(e.target.value)}
-                  className="h-9 px-3 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 bg-slate-50 outline-none"
-                >
-                  <option value="">All Departments</option>
-                  {departmentsList.map(d => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-              )}
-      
+              <button
+                onClick={handleOpenNewEmployee}
+                className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Add New Employee</span>
+              </button>
             </div>
-
-            <button
-              onClick={handleOpenNewEmployee}
-              className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Add New Employee</span>
-            </button>
-      
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-xs">
-                <thead className="bg-slate-800 text-white font-bold uppercase text-[10px] tracking-wider">
-                  <tr>
-                    <th className="py-2.5 px-3 text-left">Code</th>
-                    <th className="py-2.5 px-3 text-left">Employee Name</th>
-                    <th className="py-2.5 px-3 text-left">CID Number</th>
-                    <th className="py-2.5 px-3 text-left">Designation / Dept</th>
-                    <th className="py-2.5 px-3 text-right">Basic Salary</th>
-                    <th className="py-2.5 px-3 text-left">Bank & Account No</th>
-                    <th className="py-2.5 px-3 text-center">Status</th>
-                    <th className="py-2.5 px-3 text-center">Actions</th>
+            <div className="px-4 py-2.5 bg-slate-900 text-white flex items-center justify-between">
+              <div className="font-bold text-xs sm:text-sm flex items-center gap-2">
+                <Users className="h-4 w-4 text-indigo-400" />
+                <span>Employee Master Directory</span>
+                {isHeaderCollapsed && (
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 text-[10px] font-bold border border-indigo-400/30">
+                    Full Page View
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] text-slate-400 font-mono">
+                  {filteredEmployees.length} Employees
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsHeaderCollapsed(prev => !prev)}
+                  className="px-2.5 py-1 rounded-lg border border-slate-700 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                  title={isHeaderCollapsed ? "Expand page header & controls" : "Collapse page header for full page report view"}
+                >
+                  {isHeaderCollapsed ? (
+                    <>
+                      <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                      <span>Expand Controls</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                      <span>Full Page View</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className={`overflow-auto transition-all duration-300 ${
+              isHeaderCollapsed ? 'max-h-[calc(100vh-80px)] min-h-[450px]' : 'max-h-[calc(100vh-215px)] min-h-[350px]'
+            }`}>
+              <table className="w-full border-separate border-spacing-0 text-xs">
+                <thead className="sticky top-0 z-20 shadow-xs">
+                  <tr className="bg-slate-800 text-white font-bold uppercase text-[10px] tracking-wider">
+                    <th className="py-2.5 px-3 text-left bg-slate-800 border-b border-slate-700">Code</th>
+                    <th className="py-2.5 px-3 text-left bg-slate-800 border-b border-slate-700">Employee Name</th>
+                    <th className="py-2.5 px-3 text-left bg-slate-800 border-b border-slate-700">CID Number</th>
+                    <th className="py-2.5 px-3 text-left bg-slate-800 border-b border-slate-700">Designation / Dept</th>
+                    <th className="py-2.5 px-3 text-right bg-slate-800 border-b border-slate-700">Basic Salary</th>
+                    <th className="py-2.5 px-3 text-left bg-slate-800 border-b border-slate-700">Bank & Account No</th>
+                    <th className="py-2.5 px-3 text-center bg-slate-800 border-b border-slate-700">Status</th>
+                    <th className="py-2.5 px-3 text-center bg-slate-800 border-b border-slate-700">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -1689,36 +1739,17 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       {/* TAB 3: FLEXIBLE PAY HEADS */}
       {activeTab === 'payheads' && (
         <div className="space-y-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setActiveTab('processing')}
-                className="h-9 px-3.5 rounded-xl border border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center gap-1.5 shrink-0"
-                title="Return to Salary Processing tab (Esc)"
-              >
-                <ChevronRight className="h-4 w-4 rotate-180" />
-                <span>Back to Processing</span>
-                <kbd className="px-1.5 py-0.5 text-[10px] bg-white rounded border border-slate-300 text-slate-500 font-mono shadow-2xs">Esc</kbd>
-              </button>
-
-              <div>
-                <h3 className="font-bold text-slate-900 text-sm">Flexible Pay Heads Configurator</h3>
-                <p className="text-xs text-slate-500">
-                  Add, remove, or modify Earnings & Deductions. Statutory Bhutan Heads (NPPF, GIS, PIT) are protected defaults.
-                </p>
-      
-              </div>
-      
-            </div>
-
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Bhutan Statutory & Custom Pay Heads Configurator
+            </span>
             <button
               onClick={handleOpenNewPayHead}
-              className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+              className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="h-4 w-4" />
               <span>Create New Pay Head</span>
             </button>
-      
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1864,229 +1895,214 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
       {/* MODAL 1: ADD / EDIT EMPLOYEE & SALARY STRUCTURE */}
       {showEmployeeModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-5 border border-slate-200 space-y-4 my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <div>
-                <h3 className="font-bold text-slate-900 text-base">
-                  {editingEmployee ? `Edit Employee: ${editingEmployee.fullName}` : 'Add New Employee'}
-                </h3>
-                <p className="text-[11px] text-slate-500">Configure personal details, bank account, and custom salary package/allowances.</p>
-      
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className={`bg-white rounded-3xl shadow-2xl ${empModalTab === 'salary' ? 'max-w-4xl lg:max-w-5xl' : 'max-w-2xl'} w-full ${empModalTab === 'salary' ? 'p-3.5 sm:p-4 space-y-2.5' : 'p-4 sm:p-5 space-y-3.5'} border border-slate-200 my-auto transition-all duration-200`}>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-7 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                  <Users className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-sm sm:text-base leading-tight">
+                    {editingEmployee ? `Employee Salary Allocation: ${editingEmployee.fullName}` : 'Add Employee Salary Detail'}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    {editingEmployee ? `${editingEmployee.empCode} • ${editingEmployee.designation || 'Staff'} • ${editingEmployee.department || 'Operations'}` : 'Configure base pay, allowances, and statutory deductions'}
+                  </p>
+                </div>
               </div>
               <button
+                type="button"
                 onClick={() => setShowEmployeeModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 transition"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 transition cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
-      
             </div>
 
             {/* Modal Tabs Navigation */}
-            <div className="flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-bold">
+            <div className="flex rounded-xl bg-slate-100 p-0.5 border border-slate-200 text-xs font-bold">
               <button
                 type="button"
                 onClick={() => setEmpModalTab('profile')}
-                className={`flex-1 py-2 rounded-lg transition flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   empModalTab === 'profile'
-                    ? 'bg-white text-indigo-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white text-indigo-900 font-black shadow-2xs border border-slate-200/80'
+                    : 'text-slate-600 hover:text-slate-900 font-semibold'
                 }`}
               >
-                <Users className="h-4 w-4 text-indigo-600" />
+                <Users className="h-3.5 w-3.5 text-indigo-600" />
                 <span>1. Personal & Bank Details</span>
               </button>
               <button
                 type="button"
                 onClick={() => setEmpModalTab('salary')}
-                className={`flex-1 py-2 rounded-lg transition flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-1.5 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   empModalTab === 'salary'
-                    ? 'bg-white text-indigo-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-white text-indigo-900 font-black shadow-2xs border border-slate-200/80'
+                    : 'text-slate-600 hover:text-slate-900 font-semibold'
                 }`}
               >
-                <DollarSign className="h-4 w-4 text-emerald-600" />
-                <span>2. Salary Structure (Allowances & Deductions)</span>
+                <Banknote className="h-3.5 w-3.5 text-emerald-600" />
+                <span>2. Salary Detail Allocation</span>
               </button>
-      
             </div>
 
-            <form onSubmit={handleSaveEmployee} className="space-y-4 text-xs">
+            <form onSubmit={handleSaveEmployee} className={`${empModalTab === 'salary' ? 'space-y-2.5' : 'space-y-3.5'} text-xs`}>
               {empModalTab === 'profile' && (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Emp Code *</label>
-                      <input
-                        type="text"
-                        required
-                        value={employeeForm.empCode || ''}
-                        onChange={e => setEmployeeForm({ ...employeeForm, empCode: e.target.value })}
-                        className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono font-bold focus:border-indigo-500 outline-none"
-                      />
-      
+                  {/* Card Section 1: Basic Identity & Position */}
+                  <div className="bg-indigo-50/40 border border-indigo-100/80 p-3.5 rounded-2xl space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 mb-1">Emp Code *</label>
+                        <input
+                          type="text"
+                          required
+                          value={employeeForm.empCode || ''}
+                          onChange={e => setEmployeeForm({ ...employeeForm, empCode: e.target.value })}
+                          className="w-full h-9 rounded-xl border border-slate-300/80 bg-white px-3 font-mono font-bold text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 mb-1">Full Name *</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. Sonam Tobgay"
+                          value={employeeForm.fullName || ''}
+                          onChange={e => setEmployeeForm({ ...employeeForm, fullName: e.target.value })}
+                          className="w-full h-9 rounded-xl border border-slate-300/80 bg-white px-3 font-bold text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Status</label>
-                      <select
-                        value={employeeForm.status || 'Active'}
-                        onChange={e => setEmployeeForm({ ...employeeForm, status: e.target.value as any })}
-                        className="w-full h-9 rounded-xl border border-slate-300 px-3 font-bold focus:border-indigo-500 outline-none"
-                      >
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
-                      </select>
-      
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 mb-1">Department</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Operations"
+                          value={employeeForm.department || ''}
+                          onChange={e => setEmployeeForm({ ...employeeForm, department: e.target.value })}
+                          className="w-full h-9 rounded-xl border border-slate-300/80 bg-white px-3 font-bold text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 mb-1">Designation</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Senior Accountant"
+                          value={employeeForm.designation || ''}
+                          onChange={e => setEmployeeForm({ ...employeeForm, designation: e.target.value })}
+                          className="w-full h-9 rounded-xl border border-slate-300/80 bg-white px-3 font-bold text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 mb-1">Status</label>
+                        <select
+                          value={employeeForm.status || 'Active'}
+                          onChange={e => setEmployeeForm({ ...employeeForm, status: e.target.value as any })}
+                          className="w-full h-9 rounded-xl border border-slate-300/80 bg-white px-3 font-bold text-slate-900 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition"
+                        >
+                          <option value="Active">Active</option>
+                          <option value="Inactive">Inactive</option>
+                        </select>
+                      </div>
                     </div>
-      
                   </div>
 
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Full Name *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Sonam Tobgay"
-                      value={employeeForm.fullName || ''}
-                      onChange={e => setEmployeeForm({ ...employeeForm, fullName: e.target.value })}
-                      className="w-full h-9 rounded-xl border border-slate-300 px-3 font-bold focus:border-indigo-500 outline-none"
-                    />
-      
+                  {/* Card Section 2: Statutory & Tax Identification */}
+                  <div className="bg-blue-50/40 border border-blue-100/80 p-3.5 rounded-2xl space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 mb-1">CID Number</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 11502001832"
+                          value={employeeForm.cidNo || ''}
+                          onChange={e => setEmployeeForm({ ...employeeForm, cidNo: e.target.value })}
+                          className="w-full h-9 rounded-xl border border-slate-300/80 bg-white px-3 font-mono font-bold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 mb-1">DRC TPN No</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. TPN-982341"
+                          value={employeeForm.tpnNo || ''}
+                          onChange={e => setEmployeeForm({ ...employeeForm, tpnNo: e.target.value })}
+                          className="w-full h-9 rounded-xl border border-slate-300/80 bg-white px-3 font-mono font-bold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 mb-1">NPPF Account No</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 1234567"
+                          value={employeeForm.nppfNo || ''}
+                          onChange={e => setEmployeeForm({ ...employeeForm, nppfNo: e.target.value })}
+                          className="w-full h-9 rounded-xl border border-slate-300/80 bg-white px-3 font-mono font-bold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition"
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">CID Number</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 11502001832"
-                        value={employeeForm.cidNo || ''}
-                        onChange={e => setEmployeeForm({ ...employeeForm, cidNo: e.target.value })}
-                        className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
-                      />
-      
+                  {/* Card Section 3: Bank Disbursement Details */}
+                  <div className="bg-emerald-50/40 border border-emerald-100/80 p-3.5 rounded-2xl space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 mb-1">Bank Name</label>
+                        <select
+                          value={employeeForm.bankName || 'Bank of Bhutan (BOB)'}
+                          onChange={e => setEmployeeForm({ ...employeeForm, bankName: e.target.value })}
+                          className="w-full h-9 rounded-xl border border-slate-300/80 bg-white px-3 font-bold text-slate-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none transition"
+                        >
+                          <option value="Bank of Bhutan (BOB)">Bank of Bhutan (BOB)</option>
+                          <option value="Bhutan National Bank (BNBL)">Bhutan National Bank (BNBL)</option>
+                          <option value="T-Bank">T-Bank</option>
+                          <option value="Druk PNB">Druk PNB</option>
+                          <option value="BDBL">BDBL</option>
+                          <option value="Cash / Hand">Cash Payment</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 mb-1">Bank Account Number</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 102938475"
+                          value={employeeForm.accountNo || ''}
+                          onChange={e => setEmployeeForm({ ...employeeForm, accountNo: e.target.value })}
+                          className="w-full h-9 rounded-xl border border-slate-300/80 bg-white px-3 font-mono font-bold text-slate-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none transition"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">DRC TPN No</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. TPN-982341"
-                        value={employeeForm.tpnNo || ''}
-                        onChange={e => setEmployeeForm({ ...employeeForm, tpnNo: e.target.value })}
-                        className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
-                      />
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">NPPF Account No</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 1234567"
-                        value={employeeForm.nppfNo || ''}
-                        onChange={e => setEmployeeForm({ ...employeeForm, nppfNo: e.target.value })}
-                        className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
-                      />
-      
-                    </div>
-      
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Department</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Operations"
-                        value={employeeForm.department || ''}
-                        onChange={e => setEmployeeForm({ ...employeeForm, department: e.target.value })}
-                        className="w-full h-9 rounded-xl border border-slate-300 px-3 font-bold focus:border-indigo-500 outline-none"
-                      />
-      
-                    </div>
-      
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Designation</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Senior Accountant"
-                        value={employeeForm.designation || ''}
-                        onChange={e => setEmployeeForm({ ...employeeForm, designation: e.target.value })}
-                        className="w-full h-9 rounded-xl border border-slate-300 px-3 focus:border-indigo-500 outline-none"
-                      />
-      
+                  {/* Card Section 4: Employment Tenure */}
+                  <div className="bg-purple-50/30 border border-purple-100/80 p-3.5 rounded-2xl space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 mb-1">Date of Joining</label>
+                        <input
+                          type="date"
+                          value={employeeForm.joiningDate || ''}
+                          onChange={e => setEmployeeForm({ ...employeeForm, joiningDate: e.target.value })}
+                          className="w-full h-9 rounded-xl border border-slate-300/80 bg-white px-3 font-mono font-bold text-slate-900 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none transition"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 mb-1">Date of Leaving / Exit (If Resigned)</label>
+                        <input
+                          type="date"
+                          value={employeeForm.exitDate || ''}
+                          onChange={e => setEmployeeForm({ ...employeeForm, exitDate: e.target.value })}
+                          className="w-full h-9 rounded-xl border border-slate-300/80 bg-white px-3 font-mono font-bold text-slate-900 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none transition"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Basic Salary ({config.CurrencySymbol || 'Nu.'}) *</label>
-                      <input
-                        type="number"
-                        required
-                        value={employeeForm.basicSalary || ''}
-                        onChange={e => setEmployeeForm({ ...employeeForm, basicSalary: Number(e.target.value) })}
-                        className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono font-bold text-indigo-700 focus:border-indigo-500 outline-none"
-                      />
-      
-                    </div>
-      
                   </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Bank Name</label>
-                      <select
-                        value={employeeForm.bankName || 'Bank of Bhutan (BOB)'}
-                        onChange={e => setEmployeeForm({ ...employeeForm, bankName: e.target.value })}
-                        className="w-full h-9 rounded-xl border border-slate-300 px-3 focus:border-indigo-500 outline-none"
-                      >
-                        <option value="Bank of Bhutan (BOB)">Bank of Bhutan (BOB)</option>
-                        <option value="Bhutan National Bank (BNBL)">Bhutan National Bank (BNBL)</option>
-                        <option value="T-Bank">T-Bank</option>
-                        <option value="Druk PNB">Druk PNB</option>
-                        <option value="BDBL">BDBL</option>
-                        <option value="Cash / Hand">Cash Payment</option>
-                      </select>
-      
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Bank Account Number</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 102938475"
-                        value={employeeForm.accountNo || ''}
-                        onChange={e => setEmployeeForm({ ...employeeForm, accountNo: e.target.value })}
-                        className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
-                      />
-      
-                    </div>
-      
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Date of Joining</label>
-                      <input
-                        type="date"
-                        value={employeeForm.joiningDate || ''}
-                        onChange={e => setEmployeeForm({ ...employeeForm, joiningDate: e.target.value })}
-                        className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
-                      />
-      
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-1">
-                        Date of Leaving / Exit (If Resigned)
-                      </label>
-                      <input
-                        type="date"
-                        value={employeeForm.exitDate || ''}
-                        onChange={e => setEmployeeForm({ ...employeeForm, exitDate: e.target.value })}
-                        className="w-full h-9 rounded-xl border border-slate-300 px-3 font-mono focus:border-indigo-500 outline-none"
-                      />
-                      <p className="text-[10px] text-slate-400 mt-0.5">Leave blank if currently active.</p>
-      
-                    </div>
-      
-                  </div>
-      
                 </div>
               )}
 
@@ -2094,224 +2110,251 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 const summary = computeEmpSalarySummary(employeeForm, payHeads);
 
                 return (
-                  <div className="space-y-4">
-                    {/* Live Salary Estimation Header */}
-                    <div className="bg-slate-900 text-white p-3.5 rounded-2xl grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                      <div className="p-2 bg-slate-800/80 rounded-xl">
-                        <span className="text-[10px] text-slate-400 block font-bold uppercase">Basic Pay</span>
-                        <span className="font-mono font-extrabold text-sm text-white">
-                          {config.CurrencySymbol || 'Nu.'} {summary.basic.toLocaleString('en-IN')}
-                        </span>
-      
-                      </div>
+                  <div className="space-y-2.5">
+                    {/* Compact Side-by-Side 2-Column Allocation: Earnings on Left, Deductions on Right */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 items-start">
+                      {/* Left Column: Earnings & Allowances */}
+                      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs flex flex-col">
+                        <div className="bg-emerald-700 text-white font-bold px-3 py-1.5 text-xs flex justify-between items-center shrink-0">
+                          <span className="flex items-center gap-1.5">
+                            <Banknote className="h-3.5 w-3.5" />
+                            <span>Earnings & Allowances</span>
+                          </span>
+                          <span className="text-[10px] font-mono bg-emerald-800/80 px-2 py-0.5 rounded-full">
+                            {summary.earningsList.filter(e => e.enabled).length + 1} Included
+                          </span>
+                        </div>
 
-                      <div className="p-2 bg-emerald-950/60 border border-emerald-800/50 rounded-xl">
-                        <span className="text-[10px] text-emerald-400 block font-bold uppercase">Total Gross Pay</span>
-                        <span className="font-mono font-extrabold text-sm text-emerald-300">
-                          {config.CurrencySymbol || 'Nu.'} {summary.totalEarnings.toLocaleString('en-IN')}
-                        </span>
-      
-                      </div>
+                        <div className="divide-y divide-slate-100">
+                          {/* Basic Salary row - pulled under Earnings & Allowances */}
+                          <div className="px-3 py-1.5 bg-emerald-50/70 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked
+                                disabled
+                                className="h-3.5 w-3.5 rounded border-emerald-400 text-emerald-600 cursor-not-allowed shrink-0"
+                                title="Basic Salary is mandatory base wage"
+                              />
+                              <div className="min-w-0 flex items-center gap-1.5">
+                                <span className="font-bold text-slate-900 text-xs">Basic Salary</span>
+                                <span className="bg-emerald-200/80 text-emerald-900 text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                  Base Wage *
+                                </span>
+                              </div>
+                            </div>
 
-                      <div className="p-2 bg-rose-950/60 border border-rose-800/50 rounded-xl">
-                        <span className="text-[10px] text-rose-400 block font-bold uppercase">Total Deductions</span>
-                        <span className="font-mono font-extrabold text-sm text-rose-300">
-                          {config.CurrencySymbol || 'Nu.'} {summary.totalDeductions.toLocaleString('en-IN')}
-                        </span>
-      
-                      </div>
-
-                      <div className="p-2 bg-indigo-950/80 border border-indigo-700/60 rounded-xl">
-                        <span className="text-[10px] text-indigo-300 block font-bold uppercase">Net Take-Home</span>
-                        <span className="font-mono font-black text-sm text-amber-300">
-                          {config.CurrencySymbol || 'Nu.'} {summary.netSalary.toLocaleString('en-IN')}
-                        </span>
-      
-                      </div>
-      
-                    </div>
-
-                    <p className="text-[11px] text-slate-500 italic">
-                      Tick or untick pay heads to enable/disable them for this employee. You can also specify custom override amounts or percentage rates for specific allowances or deductions.
-                    </p>
-
-                    {/* Earnings Section */}
-                    <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
-                      <div className="bg-emerald-700 text-white font-bold px-3.5 py-2 text-xs flex justify-between items-center">
-                        <span>Earnings & Allowances</span>
-                        <span>{summary.earningsList.filter(e => e.enabled).length} Enabled</span>
-      
-                      </div>
-
-                      <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
-                        {summary.earningsList.map(({ head, amount, enabled }) => {
-                          const custom = employeeForm.customPayHeads?.[head.id];
-
-                          return (
-                            <div key={head.id} className={`p-3 flex items-center justify-between gap-3 ${enabled ? 'bg-white' : 'bg-slate-50 opacity-60'}`}>
-                              <div className="flex items-center gap-2.5">
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="relative w-28">
+                                <span className="absolute left-2.5 top-1 font-bold text-emerald-700 text-xs pointer-events-none">
+                                  {config.CurrencySymbol || 'Nu.'}
+                                </span>
                                 <input
-                                  type="checkbox"
-                                  checked={enabled}
-                                  onChange={e => handleToggleEmpPayHead(head.id, e.target.checked)}
-                                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                  type="number"
+                                  required
+                                  placeholder="20000"
+                                  value={employeeForm.basicSalary || ''}
+                                  onChange={e => setEmployeeForm({ ...employeeForm, basicSalary: Number(e.target.value) })}
+                                  className="w-full h-6.5 pl-8 pr-1.5 text-right font-mono font-bold text-slate-900 text-xs rounded-lg border border-emerald-400 bg-white focus:border-emerald-600 focus:ring-1 focus:ring-emerald-200 outline-none"
                                 />
-                                <div>
-                                  <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                                    <span>{head.name}</span>
+                              </div>
+                              <div className="w-20 text-right">
+                                <span className="font-mono font-bold text-xs text-emerald-700">
+                                  +{config.CurrencySymbol || 'Nu.'} {(employeeForm.basicSalary || 0).toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Allowances */}
+                          {summary.earningsList.map(({ head, amount, enabled }) => {
+                            const custom = employeeForm.customPayHeads?.[head.id];
+
+                            return (
+                              <div
+                                key={head.id}
+                                className={`px-3 py-1.5 flex items-center justify-between gap-2 transition ${
+                                  enabled ? 'bg-white' : 'bg-slate-50/70 opacity-60'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={enabled}
+                                    onChange={e => handleToggleEmpPayHead(head.id, e.target.checked)}
+                                    className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer shrink-0"
+                                  />
+                                  <div className="min-w-0 flex items-center gap-1.5">
+                                    <span
+                                      className="font-medium text-slate-800 text-xs truncate"
+                                      title={`${head.name} - Rule: ${getPayHeadRuleLabel(head)}`}
+                                    >
+                                      {head.name}
+                                    </span>
                                     {custom?.overrideValue !== undefined && (
-                                      <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[9px] font-bold px-1 rounded">
+                                      <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[8px] font-bold px-1 rounded">
                                         Custom
                                       </span>
                                     )}
-      
                                   </div>
-                                  <div className="text-[10px] text-slate-500">
-                                    Rule: {getPayHeadRuleLabel(head)}
-      
-                                  </div>
-      
                                 </div>
-      
+
+                                {enabled ? (
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <div className="w-28">
+                                      <input
+                                        type="number"
+                                        placeholder={`Std: ${head.defaultValue}`}
+                                        value={custom?.overrideValue !== undefined ? custom.overrideValue : ''}
+                                        onChange={e => handleSetEmpPayHeadOverride(head.id, e.target.value)}
+                                        className="w-full h-6.5 rounded-lg border border-slate-300 px-1.5 text-right font-mono text-xs outline-none focus:border-emerald-500 bg-white"
+                                        title={`Standard: ${head.defaultValue} (${getPayHeadRuleLabel(head)})`}
+                                      />
+                                    </div>
+                                    <div className="w-20 text-right">
+                                      <span className="font-mono font-bold text-xs text-emerald-700">
+                                        +{config.CurrencySymbol || 'Nu.'} {amount.toLocaleString('en-IN')}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <div className="w-28"></div>
+                                    <div className="w-20 text-right">
+                                      <span className="font-mono text-xs text-slate-400">—</span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
+                            );
+                          })}
+                        </div>
+                      </div>
 
-                              {enabled ? (
-                                <div className="flex items-center gap-2">
-                                  <div>
-                                    <span className="text-[9px] text-slate-400 block font-bold text-right">Custom Rate/Amt</span>
-                                    <input
-                                      type="number"
-                                      placeholder={`Std: ${head.defaultValue}`}
-                                      value={custom?.overrideValue !== undefined ? custom.overrideValue : ''}
-                                      onChange={e => handleSetEmpPayHeadOverride(head.id, e.target.value)}
-                                      className="w-24 h-7 rounded-lg border border-slate-300 px-2 text-right font-mono text-xs outline-none focus:border-indigo-500"
-                                    />
-      
-                                  </div>
-                                  <div className="w-24 text-right">
-                                    <span className="text-[9px] text-slate-400 block font-bold">Monthly Calc</span>
-                                    <span className="font-mono font-bold text-xs text-emerald-700">
-                                      +{config.CurrencySymbol || 'Nu.'} {amount.toLocaleString('en-IN')}
+                      {/* Right Column: Deductions & Recoveries */}
+                      <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs flex flex-col">
+                        <div className="bg-rose-700 text-white font-bold px-3 py-1.5 text-xs flex justify-between items-center shrink-0">
+                          <span className="flex items-center gap-1.5">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            <span>Deductions & Recoveries</span>
+                          </span>
+                          <span className="text-[10px] font-mono bg-rose-800/80 px-2 py-0.5 rounded-full">
+                            {summary.deductionsList.filter(d => d.enabled).length} Enabled
+                          </span>
+                        </div>
+
+                        <div className="divide-y divide-slate-100">
+                          {summary.deductionsList.map(({ head, amount, enabled }) => {
+                            const custom = employeeForm.customPayHeads?.[head.id];
+
+                            return (
+                              <div
+                                key={head.id}
+                                className={`px-3 py-1.5 flex items-center justify-between gap-2 transition ${
+                                  enabled ? 'bg-white' : 'bg-slate-50/70 opacity-60'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={enabled}
+                                    onChange={e => handleToggleEmpPayHead(head.id, e.target.checked)}
+                                    className="h-3.5 w-3.5 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer shrink-0"
+                                  />
+                                  <div className="min-w-0 flex items-center gap-1.5">
+                                    <span
+                                      className="font-medium text-slate-800 text-xs truncate"
+                                      title={`${head.name} - Rule: ${getPayHeadRuleLabel(head)}`}
+                                    >
+                                      {head.name}
                                     </span>
-      
-                                  </div>
-      
-                                </div>
-                              ) : (
-                                <span className="text-[10px] text-slate-400 font-bold italic">Not Applicable</span>
-                              )}
-      
-                            </div>
-                          );
-                        })}
-      
-                      </div>
-      
-                    </div>
-
-                    {/* Deductions Section */}
-                    <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
-                      <div className="bg-rose-700 text-white font-bold px-3.5 py-2 text-xs flex justify-between items-center">
-                        <span>Deductions & Recoveries</span>
-                        <span>{summary.deductionsList.filter(d => d.enabled).length} Enabled</span>
-      
-                      </div>
-
-                      <div className="divide-y divide-slate-100 max-h-52 overflow-y-auto">
-                        {summary.deductionsList.map(({ head, amount, enabled }) => {
-                          const custom = employeeForm.customPayHeads?.[head.id];
-
-                          return (
-                            <div key={head.id} className={`p-3 flex items-center justify-between gap-3 ${enabled ? 'bg-white' : 'bg-slate-50 opacity-60'}`}>
-                              <div className="flex items-center gap-2.5">
-                                <input
-                                  type="checkbox"
-                                  checked={enabled}
-                                  onChange={e => handleToggleEmpPayHead(head.id, e.target.checked)}
-                                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                />
-                                <div>
-                                  <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-                                    <span>{head.name}</span>
                                     {head.isStatutory && (
-                                      <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[9px] font-bold px-1 rounded">
+                                      <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[8px] font-bold px-1 rounded shrink-0">
                                         Statutory
                                       </span>
                                     )}
                                     {custom?.overrideValue !== undefined && (
-                                      <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[9px] font-bold px-1 rounded">
+                                      <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[8px] font-bold px-1 rounded shrink-0">
                                         Custom
                                       </span>
                                     )}
-      
                                   </div>
-                                  <div className="text-[10px] text-slate-500">
-                                    Rule: {getPayHeadRuleLabel(head)}
-      
-                                  </div>
-      
                                 </div>
-      
+
+                                {enabled ? (
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <div className="w-28">
+                                      <input
+                                        type="number"
+                                        placeholder={`Std: ${head.defaultValue}`}
+                                        value={custom?.overrideValue !== undefined ? custom.overrideValue : ''}
+                                        onChange={e => handleSetEmpPayHeadOverride(head.id, e.target.value)}
+                                        className="w-full h-6.5 rounded-lg border border-slate-300 px-1.5 text-right font-mono text-xs outline-none focus:border-rose-500 bg-white"
+                                        title={`Standard: ${head.defaultValue} (${getPayHeadRuleLabel(head)})`}
+                                      />
+                                    </div>
+                                    <div className="w-20 text-right">
+                                      <span className="font-mono font-bold text-xs text-rose-700">
+                                        -{config.CurrencySymbol || 'Nu.'} {amount.toLocaleString('en-IN')}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <div className="w-28"></div>
+                                    <div className="w-20 text-right">
+                                      <span className="font-mono text-xs text-slate-400">—</span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-
-                              {enabled ? (
-                                <div className="flex items-center gap-2">
-                                  <div>
-                                    <span className="text-[9px] text-slate-400 block font-bold text-right">Deduction Amt</span>
-                                    <input
-                                      type="number"
-                                      placeholder={`Std: ${head.defaultValue}`}
-                                      value={custom?.overrideValue !== undefined ? custom.overrideValue : ''}
-                                      onChange={e => handleSetEmpPayHeadOverride(head.id, e.target.value)}
-                                      className="w-24 h-7 rounded-lg border border-slate-300 px-2 text-right font-mono text-xs outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                    />
-      
-                                  </div>
-
-                                  <div>
-                                    <span className="text-[9px] text-slate-400 block font-bold text-right">Stop After Month</span>
-                                    <input
-                                      type="month"
-                                      value={custom?.endMonth || ''}
-                                      onChange={e => handleSetEmpPayHeadEndMonth(head.id, e.target.value)}
-                                      className="h-7 rounded-lg border border-slate-300 px-1 font-mono text-[11px] outline-none focus:border-indigo-500"
-                                      title="Auto-stops deduction after specified month (e.g., 2026-12)"
-                                    />
-      
-                                  </div>
-
-                                  <div className="w-20 text-right">
-                                    <span className="text-[9px] text-slate-400 block font-bold">Monthly Calc</span>
-                                    <span className="font-mono font-bold text-xs text-rose-700">
-                                      -{config.CurrencySymbol || 'Nu.'} {amount.toLocaleString('en-IN')}
-                                    </span>
-      
-                                  </div>
-      
-                                </div>
-                              ) : (
-                                <span className="text-[10px] text-slate-400 font-bold italic">Not Applicable</span>
-                              )}
-      
-                            </div>
-                          );
-                        })}
-      
+                            );
+                          })}
+                        </div>
                       </div>
-      
                     </div>
-      
+
+                    {/* Sticky Live Salary Totals Bar placed at bottom */}
+                    <div className="sticky bottom-0 z-10 bg-slate-900 text-white p-2 rounded-xl border border-slate-800 shadow-lg grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                      <div className="py-1 px-1.5 bg-slate-800/80 rounded-lg border border-slate-700/60">
+                        <span className="text-[9px] text-slate-400 block font-bold uppercase tracking-wider">Basic Pay</span>
+                        <span className="font-mono font-extrabold text-xs sm:text-sm text-white">
+                          {config.CurrencySymbol || 'Nu.'} {summary.basic.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+
+                      <div className="py-1 px-1.5 bg-emerald-950/80 border border-emerald-800/60 rounded-lg">
+                        <span className="text-[9px] text-emerald-400 block font-bold uppercase tracking-wider">Total Gross Pay</span>
+                        <span className="font-mono font-extrabold text-xs sm:text-sm text-emerald-300">
+                          {config.CurrencySymbol || 'Nu.'} {summary.totalEarnings.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+
+                      <div className="py-1 px-1.5 bg-rose-950/80 border border-rose-800/60 rounded-lg">
+                        <span className="text-[9px] text-rose-400 block font-bold uppercase tracking-wider">Total Deductions</span>
+                        <span className="font-mono font-extrabold text-xs sm:text-sm text-rose-300">
+                          {config.CurrencySymbol || 'Nu.'} {summary.totalDeductions.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+
+                      <div className="py-1 px-1.5 bg-indigo-950/90 border border-indigo-700/70 rounded-lg">
+                        <span className="text-[9px] text-indigo-300 block font-bold uppercase tracking-wider">Net Take-Home</span>
+                        <span className="font-mono font-black text-xs sm:text-sm text-amber-300">
+                          {config.CurrencySymbol || 'Nu.'} {summary.netSalary.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 );
               })()}
 
-              <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
+              <div className="pt-2.5 border-t border-slate-200 flex items-center justify-between gap-2">
                 <div>
                   {empModalTab === 'profile' ? (
                     <button
                       type="button"
                       onClick={() => setEmpModalTab('salary')}
-                      className="px-3 h-9 rounded-xl bg-slate-100 text-indigo-700 font-bold hover:bg-slate-200 transition flex items-center gap-1"
+                      className="px-3 h-8.5 rounded-xl bg-slate-100 text-indigo-700 font-bold hover:bg-slate-200 transition flex items-center gap-1 cursor-pointer"
                     >
                       <span>Configure Salary Package &rarr;</span>
                     </button>
@@ -2319,31 +2362,29 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     <button
                       type="button"
                       onClick={() => setEmpModalTab('profile')}
-                      className="px-3 h-9 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition flex items-center gap-1"
+                      className="px-3 h-8.5 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200 transition flex items-center gap-1 cursor-pointer"
                     >
                       <span>&larr; Back to Details</span>
                     </button>
                   )}
-      
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setShowEmployeeModal(false)}
-                    className="px-4 h-9 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 transition"
+                    className="px-3.5 h-8.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-50 transition cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-5 h-9 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-xs transition"
+                    className="px-4.5 h-8.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                   >
-                    Save Employee
+                    <Save className="h-3.5 w-3.5" />
+                    <span>Save Employee Structure</span>
                   </button>
-      
                 </div>
-      
               </div>
             </form>
       
@@ -2806,17 +2847,18 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       
               </div>
 
-              <table className="w-full border-collapse text-xs border border-slate-300">
-                <thead className="bg-slate-100 border-b border-slate-300 font-bold uppercase text-[10px]">
-                  <tr>
-                    <th className="p-2 border-r border-slate-300 text-left">#</th>
-                    <th className="p-2 border-r border-slate-300 text-left">Emp Code</th>
-                    <th className="p-2 border-r border-slate-300 text-left">Employee Name</th>
-                    <th className="p-2 border-r border-slate-300 text-left">Bank Name</th>
-                    <th className="p-2 border-r border-slate-300 text-left">Account Number</th>
-                    <th className="p-2 text-right">Net Amount (Nu.)</th>
-                  </tr>
-                </thead>
+              <div className="overflow-auto max-h-[calc(100vh-280px)] min-h-[300px]">
+                <table className="w-full border-separate border-spacing-0 text-xs border border-slate-300">
+                  <thead className="sticky top-0 z-20 shadow-xs">
+                    <tr className="bg-slate-100 font-bold uppercase text-[10px]">
+                      <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">#</th>
+                      <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">Emp Code</th>
+                      <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">Employee Name</th>
+                      <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">Bank Name</th>
+                      <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">Account Number</th>
+                      <th className="p-2 border-b border-slate-300 text-right bg-slate-100">Net Amount (Nu.)</th>
+                    </tr>
+                  </thead>
                 <tbody className="divide-y divide-slate-200 font-medium">
                   {currentPayroll.entries.map((item, idx) => (
                     <tr key={item.id}>
@@ -2838,6 +2880,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   </tr>
                 </tbody>
               </table>
+              </div>
 
               <div className="pt-6 grid grid-cols-2 gap-8 text-center text-[10px] text-slate-500 font-bold">
                 <div>
@@ -2898,13 +2941,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
             </div>
 
             {/* Printable & Scrollable DRC Schedule Table */}
-            <div className="overflow-x-auto border border-slate-300 rounded-xl">
-              <div className="bg-yellow-300 text-slate-900 font-bold text-center py-2 text-sm uppercase tracking-wide border-b border-slate-300">
+            <div className="overflow-auto max-h-[calc(100vh-280px)] border border-slate-300 rounded-xl">
+              <div className="sticky top-0 z-30 bg-yellow-300 text-slate-900 font-bold text-center py-2 text-sm uppercase tracking-wide border-b border-slate-300 shadow-2xs">
                 FORM IT-1(a) MONTHLY SALARY SCHEDULE
-      
               </div>
               <table className="w-full text-xs border-collapse">
-                <thead>
+                <thead className="sticky top-[37px] z-20 shadow-xs">
                   <tr className="bg-blue-600 text-white font-bold text-center">
                     <th rowSpan={2} className="p-2 border border-slate-300 min-w-[140px]">Name of Employee</th>
                     <th rowSpan={2} className="p-2 border border-slate-300 min-w-[90px]">TPN</th>

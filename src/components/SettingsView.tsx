@@ -629,7 +629,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="text"
                   value={form.CompanyName || ''}
                   onChange={e => setForm({ ...form, CompanyName: e.target.value })}
-                  placeholder="e.g. Ezee ERP Superstore"
+                  placeholder="e.g. Druk ERP Superstore"
                   className="w-full h-9 rounded-xl border border-slate-300 px-3 font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition"
                 />
               </div>
@@ -1462,7 +1462,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     />
                   </div>
                   <div>
-                    <span className="font-extrabold text-slate-900 text-xs">Enable Normal Sale (B2B)</span>
+                    <span className="font-extrabold text-slate-900 text-xs">Enable Sale Invoice (B2B)</span>
                     <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Traditional sales entry with Order No, Delivery Note, and custom Terms.</p>
                   </div>
                 </label>

@@ -22,7 +22,7 @@ export const ALL_SYSTEM_FEATURES: FeatureDefinition[] = [
   },
   {
     id: 'EnableNormalSale',
-    label: 'Sales Invoice (B2B / Standard)',
+    label: 'Sale Invoice (B2B / Standard)',
     shortDesc: 'Traditional sales invoicing with Order No, Delivery Note, and custom Terms.',
     category: 'Billing & POS',
     defaultEnabled: true
@@ -627,12 +627,25 @@ export function isFeatureAllowed(
   if (!config) return true;
 
   // 1. Explicit check against superadminFeatures record if set
-  if (config.superadminFeatures && config.superadminFeatures[featureKey] !== undefined) {
-    return config.superadminFeatures[featureKey] === true;
+  if (config.superadminFeatures) {
+    if (config.superadminFeatures[featureKey] !== undefined) {
+      return config.superadminFeatures[featureKey] === true;
+    }
+    // Check aliases
+    if (featureKey === 'EnableNormalSale' && config.superadminFeatures['EnableB2BSale'] !== undefined) {
+      return config.superadminFeatures['EnableB2BSale'] === true;
+    }
+    if (featureKey === 'EnableB2BSale' && config.superadminFeatures['EnableNormalSale'] !== undefined) {
+      return config.superadminFeatures['EnableNormalSale'] === true;
+    }
   }
 
   // 2. Fallback check against top-level config string flags
-  const val = (config as any)[featureKey];
+  const val = (config as any)[featureKey] ?? (
+    featureKey === 'EnableNormalSale' ? (config as any)['EnableB2BSale'] : 
+    featureKey === 'EnableB2BSale' ? (config as any)['EnableNormalSale'] : 
+    undefined
+  );
   if (
     featureKey === 'EnableSpareParts' ||
     featureKey === 'EnableGarmentsAndFootwear' ||
@@ -644,7 +657,7 @@ export function isFeatureAllowed(
   ) {
     return val === 'true';
   }
-  return val !== 'false';
+  return val !== 'false' && val !== false;
 }
 
 /**

@@ -12,7 +12,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.svg', 'icon.svg', 'manifest.json'],
+        includeAssets: ['favicon.ico', 'favicon.png', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'druk_erp_logo.png', 'icon.svg', 'manifest.json'],
         manifest: false, // We supply our own static public/manifest.json
         workbox: {
           globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],

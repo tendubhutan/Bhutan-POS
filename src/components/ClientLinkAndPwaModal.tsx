@@ -54,7 +54,7 @@ import {
   getAppBaseDomain,
   getCompanyDedicatedUrl 
 } from '../services/supabaseTenantService';
-import { EzeeErpLogo } from './common/EzeeErpLogo';
+import { DrukErpLogo } from './common/DrukErpLogo';
 import { TerminalConfig, Branch } from '../types';
 import { OfficeNetworkSecurityConfig } from '../types/staffPortal';
 
@@ -68,7 +68,7 @@ interface ClientLinkAndPwaModalProps {
 export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
   isOpen,
   onClose,
-  activeCompanyName = 'Ezee ERP',
+  activeCompanyName = 'Druk ERP',
   initialTab = 'links'
 }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -904,7 +904,7 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
                       <Monitor className="h-7 w-7 text-indigo-200" />
                     </div>
                     <div>
-                      <h3 className="font-black text-base text-white">Ezee ERP Desktop App (PWA)</h3>
+                      <h3 className="font-black text-base text-white">Druk ERP Desktop App (PWA)</h3>
                       <p className="text-xs text-indigo-200">
                         Everything Your Business Needs, in One Place — High-speed cashier experience with offline caching and native performance.
                       </p>
@@ -963,7 +963,7 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
                       <span>Windows & Mac (Chrome / Edge / Brave)</span>
                     </div>
                     <p className="text-[11px] text-slate-600 leading-relaxed">
-                      Click the <span className="font-bold text-slate-800">Install icon (⊕)</span> in the top right of your browser address bar, or click Menu (⋮) ➔ <span className="font-bold text-slate-800">"Install Ezee ERP"</span> / <span className="font-bold text-slate-800">"Create Shortcut"</span>.
+                      Click the <span className="font-bold text-slate-800">Install icon (⊕)</span> in the top right of your browser address bar, or click Menu (⋮) ➔ <span className="font-bold text-slate-800">"Install Druk ERP"</span> / <span className="font-bold text-slate-800">"Create Shortcut"</span>.
                     </p>
                   </div>
 
@@ -993,7 +993,7 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="p-2.5 bg-white rounded-2xl border border-white/30 shadow-md">
-                        <EzeeErpLogo size="sm" variant="compact" />
+                        <DrukErpLogo size="sm" variant="compact" />
                       </div>
                       <div>
                         <h3 className="font-black text-base text-white flex items-center gap-2">
@@ -1001,7 +1001,7 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
                           <span className="text-[10px] bg-blue-500/30 text-blue-200 border border-blue-400/30 px-2 py-0.5 rounded-full uppercase font-mono font-bold">PWA</span>
                         </h3>
                         <p className="text-xs text-blue-200">
-                          Powered by Ezee ERP • Self-service attendance clock-in/out, leave applications & task assignments.
+                          Powered by Druk ERP • Self-service attendance clock-in/out, leave applications & task assignments.
                         </p>
                       </div>
                     </div>

@@ -1,15 +1,33 @@
 {
   "id": "/",
-  "name": "Ezee ERP & Staff Portal",
-  "short_name": "Ezee Staff",
-  "description": "Dedicated Mobile Staff Portal for attendance clock-in/out, live task assignments, leave applications, and instant notifications.",
-  "start_url": "./?portal=employee",
+  "name": "Druk ERP & Enterprise Portal",
+  "short_name": "Druk ERP",
+  "description": "DrukERP - Complete Enterprise Cloud ERP, Retail POS, and Staff Portal built for Bhutan.",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "background_color": "#0f172a",
-  "theme_color": "#2563eb",
+  "theme_color": "#1d4ed8",
   "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
     {
       "src": "./icon.svg",
       "sizes": "192x192 512x512",
@@ -21,20 +39,26 @@
       "sizes": "192x192 512x512",
       "type": "image/svg+xml",
       "purpose": "maskable"
+    },
+    {
+      "src": "./apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
     }
   ],
   "shortcuts": [
     {
-      "name": "Clock In / Clock Out",
-      "short_name": "Clock",
-      "description": "Log attendance shift clock in or clock out",
-      "url": "./?portal=employee#clock"
+      "name": "Launch POS & Cashier",
+      "short_name": "POS",
+      "description": "Open High-Speed Retail POS Billing Terminal",
+      "url": "./"
     },
     {
-      "name": "Task Assignments",
-      "short_name": "Tasks",
-      "description": "View and reply to assigned tasks",
-      "url": "./?portal=employee#tasks"
+      "name": "Staff Portal & Attendance",
+      "short_name": "Staff",
+      "description": "Log attendance shift clock in or clock out",
+      "url": "./?portal=employee"
     }
   ]
 }

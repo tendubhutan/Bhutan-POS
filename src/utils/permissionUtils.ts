@@ -17,7 +17,7 @@ export const ALL_MODULE_IDS: ModuleId[] = [
 
 export const MODULE_LABELS: Record<ModuleId, string> = {
   pos: 'POS Billing',
-  normalsale: 'Sales Invoice (Normal Sale)',
+  normalsale: 'Sale Invoice',
   purchase: 'Purchase Entry',
   vouchers: 'Accounting Vouchers',
   masters: 'Masters Directory',
@@ -133,27 +133,56 @@ export function isModulePermitted(
   if (!user) return false;
 
   const roleLower = (user.role || '').toLowerCase().trim();
-  const isAdministrator = roleLower === 'administrator' || roleLower === 'admin' || roleLower === 'superadmin';
+  const isAdministrator = roleLower === 'administrator' || roleLower === 'admin' || roleLower === 'superadmin' || roleLower === 'owner';
+  if (isAdministrator) return true;
 
   // Normalize moduleId
   let normMod = moduleId.toLowerCase().trim() as ModuleId;
-  if (normMod === 'sales' as any || normMod === 'sale' as any) normMod = 'normalsale';
+  if (
+    normMod === 'sales' as any || 
+    normMod === 'sale' as any || 
+    normMod === 'b2b' as any || 
+    normMod === 'b2bsale' as any || 
+    normMod === 'sale_b2b' as any ||
+    normMod === 'saleinvoice' as any ||
+    normMod === 'salesinvoice' as any
+  ) {
+    normMod = 'normalsale';
+  }
   if (normMod === 'attendance' as any) normMod = 'staff';
   if (normMod === 'bankrecon' as any) normMod = 'vouchers';
   if (normMod === 'assets' as any) normMod = 'masters';
 
-  // If user has permissions array, evaluate strict match
+  // If user has permissions array, evaluate match
   if (user.permissions && Array.isArray(user.permissions) && user.permissions.length > 0) {
-    const perm = user.permissions.find(p => p.module === normMod);
+    const perm = user.permissions.find(p => {
+      let pMod = (p.module || '').toLowerCase().trim();
+      if (
+        pMod === 'sales' || 
+        pMod === 'sale' || 
+        pMod === 'b2b' || 
+        pMod === 'b2bsale' || 
+        pMod === 'sale_b2b' ||
+        pMod === 'saleinvoice' ||
+        pMod === 'salesinvoice'
+      ) {
+        pMod = 'normalsale';
+      }
+      return pMod === normMod;
+    });
     if (perm !== undefined) {
       return Boolean(perm[action]);
     }
-    // If user has explicit permissions configured, any unlisted module is strictly disallowed
+    // If not explicitly defined in custom permissions array, check default permissions for user role
+    const defaultPerms = getDefaultPermissionsForRole(user.role);
+    const defMatch = defaultPerms.find(p => p.module === normMod);
+    if (defMatch) {
+      return Boolean(defMatch[action]);
+    }
     return false;
   }
 
   // Fallback based on user role when permissions array is not set
-  if (isAdministrator) return true;
   if (roleLower === 'waiter' || roleLower === 'kitchen' || roleLower === 'cashier' || roleLower === 'billingcounter') {
     return normMod === 'pos';
   }

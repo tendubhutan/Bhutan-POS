@@ -189,7 +189,7 @@ export const PublicQRMenu: React.FC<PublicQRMenuProps> = ({
                 {currentDay}
               </span>
             </div>
-            <h1 className="text-xl font-black tracking-tight mt-1">{config.CompanyName || 'Ezee Restaurant'}</h1>
+            <h1 className="text-xl font-black tracking-tight mt-1">{config.CompanyName || 'Druk Restaurant'}</h1>
             <p className="text-[11px] text-amber-100 font-medium">Scan, Select &amp; Order directly to Kitchen</p>
           </div>
 
