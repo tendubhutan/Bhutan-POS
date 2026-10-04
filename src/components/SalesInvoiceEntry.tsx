@@ -604,6 +604,54 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       setCart(updatedCart);
     }
   };
+
+  const [isInclusiveGst, setIsInclusiveGst] = useState<boolean>(false);
+  const [editingRate, setEditingRate] = useState<{ idx: number; value: string } | null>(null);
+
+  const handleToggleInclusiveGst = (newMode: boolean) => {
+    setIsInclusiveGst(newMode);
+    setEditingRate(null);
+    if (cart.length > 0) {
+      const updatedCart = cart.map(line => {
+        const gst = Number(line.gstPct) || 5;
+        const isZ = isCustomerGstExempted || String(line.zeroRated).toUpperCase() === 'Y';
+        if (newMode) {
+          // Entering Inclusive mode: current rate is treated as the inclusive quoted price
+          const quoted = line.inclusiveRate !== undefined ? line.inclusiveRate : line.rate;
+          const baseRate = isZ ? quoted : round2(quoted / (1 + (gst / 100)));
+          const tempLine = { ...line, rate: baseRate };
+          const lineDisc = getLineDiscountAmt(tempLine);
+          const gr = line.qty * baseRate - lineDisc;
+          const computedGstAmt = isZ
+            ? 0
+            : (lineDisc === 0
+                ? Math.max(0, round2(line.qty * quoted - gr))
+                : round2((Math.max(0, gr) * gst) / 100));
+          return {
+            ...line,
+            rate: baseRate,
+            inclusiveRate: quoted,
+            gstAmt: computedGstAmt
+          };
+        } else {
+          // Returning to Normal Exclusive mode: restore the quoted rate as the normal base rate
+          const normalRate = line.inclusiveRate !== undefined ? line.inclusiveRate : line.rate;
+          const tempLine = { ...line, rate: normalRate };
+          const lineDisc = getLineDiscountAmt(tempLine);
+          const gr = line.qty * normalRate - lineDisc;
+          const computedGstAmt = isZ ? 0 : round2((Math.max(0, gr) * gst) / 100);
+          return {
+            ...line,
+            rate: normalRate,
+            inclusiveRate: undefined,
+            gstAmt: computedGstAmt
+          };
+        }
+      });
+      setCart(updatedCart);
+    }
+    showToast(newMode ? "Rates set to Tax-Inclusive (Govt Quote: 5% GST included)" : "Rates set to Tax-Exclusive (Normal billing)", "success");
+  };
   const units = loadJson<Unit[]>(STORAGE_KEYS.UNITS, DEFAULT_UNITS);
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
   const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -821,6 +869,14 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         setShowFetchModal(true);
         return;
       }
+
+      // Alt+T: Toggle Tax-Inclusive (Govt Quote) / Tax-Exclusive Rates (when feature enabled in settings)
+      if (config.EnableInclusiveGstPricing === 'true' && e.altKey && (e.key === "t" || e.key === "T")) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleToggleInclusiveGst(!isInclusiveGst);
+        return;
+      }
       if (isCtrlA || isF2) {
         e.preventDefault();
         e.stopPropagation();
@@ -939,9 +995,19 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     const isZ =
       isCustomerGstExempted ||
       String(item["Zero Rated (Y/N)"]).toUpperCase() === "Y";
+    const gstPct = Number(item["GST %"]) || 5;
+
+    let inclusiveRate: number | undefined;
+    if (isInclusiveGst && !isZ && gstPct > 0) {
+      inclusiveRate = rate;
+      rate = round2(rate / (1 + (gstPct / 100)));
+    }
+
     const computedGstAmt = isZ
       ? 0
-      : round2((qty * rate * (Number(item["GST %"]) || 0)) / 100);
+      : (isInclusiveGst && inclusiveRate
+          ? Math.max(0, round2(qty * inclusiveRate - qty * rate))
+          : round2((qty * rate * gstPct) / 100));
 
     const existingIdx = cart.findIndex((l) => l.itemCode === item["Item Code"] && (l.selectedSize || '') === (item.size || '') && (l.selectedColor || '') === (item.color || ''));
     let updatedCart = [...cart];
@@ -997,7 +1063,8 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         appliedSchemeId,
         appliedSchemeName,
         originalRate,
-        gstPct: Number(item["GST %"]) || 0,
+        inclusiveRate,
+        gstPct: Number(item["GST %"]) || 5,
         zeroRated: item["Zero Rated (Y/N)"] || "N",
         purchaseRate: item["Purchase Rate"] || 0,
         isSerialized: item["Is Serialized"],
@@ -1041,7 +1108,25 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     val: any,
   ) => {
     const updated = [...cart];
-    (updated[index] as any)[field] = val;
+
+    if (field === "rate") {
+      const enteredNum = val !== "" && val !== undefined ? Number(val) : 0;
+      const gst = Number(updated[index].gstPct) || 5;
+      const isZ = isCustomerGstExempted || String(updated[index].zeroRated).toUpperCase() === "Y";
+
+      if (isInclusiveGst && !isZ && gst > 0 && enteredNum > 0) {
+        // Tax-inclusive pricing (Govt Quote): entered rate (e.g. 100) includes 5% GST
+        // Automatically back-calculate base rate (e.g. 95.24) and 5% GST (e.g. 4.76)
+        const baseRate = round2(enteredNum / (1 + (gst / 100)));
+        updated[index].rate = baseRate;
+        updated[index].inclusiveRate = enteredNum;
+      } else {
+        updated[index].rate = enteredNum;
+        updated[index].inclusiveRate = undefined;
+      }
+    } else {
+      (updated[index] as any)[field] = val;
+    }
 
     if (field === 'qty') {
       const q = Number(val) || 0;
@@ -1082,11 +1167,18 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         String(updated[index].zeroRated).toUpperCase() === "Y";
       const lineDisc = getLineDiscountAmt(updated[index]);
       const gr = updated[index].qty * updated[index].rate - lineDisc;
-      updated[index].gstAmt = isZ
-        ? 0
-        : round2(
-            (Math.max(0, gr) * (Number(updated[index].gstPct) || 0)) / 100,
-          );
+      const gst = Number(updated[index].gstPct) || 5;
+
+      if (isZ) {
+        updated[index].gstAmt = 0;
+      } else if (isInclusiveGst && updated[index].inclusiveRate && lineDisc === 0) {
+        const targetTotal = round2(updated[index].qty * (updated[index].inclusiveRate || 0));
+        updated[index].gstAmt = Math.max(0, round2(targetTotal - gr));
+      } else {
+        updated[index].gstAmt = round2(
+          (Math.max(0, gr) * gst) / 100,
+        );
+      }
     }
 
     setCart(updated);
@@ -1128,7 +1220,9 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
       const gross = (Number(l.qty) || 0) * (Number(l.rate) || 0) - lineDisc;
       const isZero =
         isCustomerGstExempted || String(l.zeroRated).toUpperCase() === "Y";
-      const lineGst = isZero ? 0 : (gross * (Number(l.gstPct) || 0)) / 100;
+      const lineGst = isZero
+        ? 0
+        : (l.gstAmt !== undefined ? Number(l.gstAmt) : (gross * (Number(l.gstPct) || 0)) / 100);
       if (isZero) zeroRated += gross;
       else taxable += gross;
       gstAmt += lineGst;
@@ -1211,6 +1305,12 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   };
 
   const handleSaveInvoice = () => {
+    if (editingRate) {
+      const { idx, value } = editingRate;
+      const entered = value.trim() !== "" ? Number(value) : 0;
+      updateCartLine(idx, "rate", entered);
+      setEditingRate(null);
+    }
     if (cart.length === 0) {
       playWarningTone();
       showToast("Cart is empty.", "error");
@@ -1417,6 +1517,38 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                 }`}
               >
                 Wholesale
+              </button>
+            </div>
+          )}
+
+          {config.EnableInclusiveGstPricing === 'true' && (
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => handleToggleInclusiveGst(false)}
+                className={`px-2.5 py-0.5 text-xs font-extrabold rounded-lg transition cursor-pointer ${
+                  !isInclusiveGst
+                    ? 'bg-white text-slate-800 shadow-xs border border-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Standard pricing: Rate excludes GST (5% GST added on top)"
+              >
+                Tax Excl.
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleInclusiveGst(true)}
+                className={`px-2.5 py-0.5 text-xs font-extrabold rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                  isInclusiveGst
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Tax-inclusive pricing for government quotes/tenders. Rate entered includes 5% GST (Alt+T)"
+              >
+                <span>Incl. 5% GST</span>
+                <span className={`text-[10px] px-1 py-0.2 rounded font-mono ${isInclusiveGst ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-200 text-slate-700'}`}>
+                  Govt
+                </span>
               </button>
             </div>
           )}
@@ -1664,7 +1796,9 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                 <th className="py-2 px-3 text-left">ITEM DESCRIPTION</th>
                 <th className="py-2 px-1 text-center w-20">QTY</th>
                 <th className="py-2 px-1 text-center w-16">UNIT</th>
-                <th className="py-2 px-1 text-right w-24">RATE</th>
+                <th className="py-2 px-1 text-right w-24">
+                  RATE {isInclusiveGst ? <span className="text-[9px] text-indigo-600 font-extrabold normal-case">(BASE)</span> : null}
+                </th>
                 {showItemDiscount && (
                   <th className="py-2 px-1 text-right w-24">
                     DISC {config.ItemDiscountType === "percent" ? "(%)" : "(#)"}
@@ -1711,22 +1845,32 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                             onEndOfList={(id) => id && focusNextOutsideGrid(id)}
                             onSelect={(item, scannedSerial) => {
                               const qty = line.qty || 1;
-                              const rate = Number(
+                              let rate = Number(
                                 (item as any)["Sale Rate"] ??
                                   (item as any)["Sales Rate"] ??
                                   item.MRP ??
                                   0,
                               );
+                              if (pricingMode === 'wholesale' && Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate'] || 0) > 0) {
+                                rate = Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate']);
+                              }
                               const isZero =
                                 isCustomerGstExempted ||
                                 String(item["Zero Rated (Y/N)"]).toUpperCase() ===
                                   "Y";
+                              const gstPct = Number(item["GST %"]) || 5;
+
+                              let inclusiveRate: number | undefined;
+                              if (isInclusiveGst && !isZero && gstPct > 0) {
+                                inclusiveRate = rate;
+                                rate = round2(rate / (1 + (gstPct / 100)));
+                              }
+
                               const computedGstAmt = isZero
                                 ? 0
-                                : round2(
-                                    (qty * rate * (Number(item["GST %"]) || 0)) /
-                                      100,
-                                  );
+                                : (isInclusiveGst && inclusiveRate
+                                    ? Math.max(0, round2(qty * inclusiveRate - qty * rate))
+                                    : round2((qty * rate * gstPct) / 100));
 
                               const updated = [...cart];
                               updated[idx] = {
@@ -1735,7 +1879,8 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                                 itemName: item["Item Name"],
                                 unit: item.Unit || "Pcs",
                                 rate,
-                                gstPct: Number(item["GST %"]) || 0,
+                                inclusiveRate,
+                                gstPct,
                                 zeroRated: item["Zero Rated (Y/N)"] || "N",
                                 purchaseRate: item["Purchase Rate"] || 0,
                                 isSerialized: item["Is Serialized"],
@@ -1880,23 +2025,52 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                         type="number"
                         step="any"
                         value={
-                          line.rate === 0 || line.rate === undefined
+                          isInclusiveGst && editingRate && editingRate.idx === idx
+                            ? editingRate.value
+                            : line.rate === 0 || line.rate === undefined
                             ? ""
                             : line.rate
                         }
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) =>
-                          handleGridKeyDown(e, getGridNavOpts(idx, "rate"))
-                        }
-                        onChange={(e) =>
-                          updateCartLine(
-                            idx,
-                            "rate",
-                            e.target.value !== "" ? Number(e.target.value) : "",
-                          )
-                        }
+                        onFocus={(e) => {
+                          e.target.select();
+                          if (isInclusiveGst) {
+                            const valToShow = line.inclusiveRate !== undefined ? String(line.inclusiveRate) : (line.rate ? String(line.rate) : "");
+                            setEditingRate({ idx, value: valToShow });
+                          }
+                        }}
+                        onBlur={() => {
+                          if (isInclusiveGst && editingRate && editingRate.idx === idx) {
+                            const entered = editingRate.value.trim() !== "" ? Number(editingRate.value) : 0;
+                            updateCartLine(idx, "rate", entered);
+                            setEditingRate(null);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (isInclusiveGst && editingRate && editingRate.idx === idx && (e.key === "Enter" || e.key === "Tab")) {
+                            const entered = editingRate.value.trim() !== "" ? Number(editingRate.value) : 0;
+                            updateCartLine(idx, "rate", entered);
+                            setEditingRate(null);
+                          }
+                          handleGridKeyDown(e, getGridNavOpts(idx, "rate"));
+                        }}
+                        onChange={(e) => {
+                          if (isInclusiveGst) {
+                            setEditingRate({ idx, value: e.target.value });
+                          } else {
+                            updateCartLine(
+                              idx,
+                              "rate",
+                              e.target.value !== "" ? Number(e.target.value) : "",
+                            );
+                          }
+                        }}
                         className="w-full text-right h-6 rounded border border-slate-300 px-1 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-white"
                       />
+                      {isInclusiveGst && line.inclusiveRate !== undefined && (
+                        <div className="text-[10px] text-indigo-600 font-mono text-right leading-none mt-0.5 font-bold" title="Quoted rate inclusive of 5% GST">
+                          Incl: {Number(line.inclusiveRate).toFixed(2)}
+                        </div>
+                      )}
                     </td>
                     {showItemDiscount && (
                       <td className="py-0.5 px-1 align-middle text-right">

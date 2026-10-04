@@ -319,6 +319,7 @@ export const DEFAULT_CONFIG: Config = {
   EnableAltUnitPrice: 'true',
   EnableBankTxnId: 'true',
   EnableWholesalePrice: 'true',
+  EnableInclusiveGstPricing: 'false',
   EnableBillWiseDetails: 'true',
   EnableSpareParts: 'false',
   EnableRackBin: 'true',

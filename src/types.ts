@@ -92,6 +92,7 @@ export interface Config {
   EnableAltUnitPrice?: string; // "true" | "false"
   EnableBankTxnId?: string; // "true" | "false"
   EnableWholesalePrice?: string; // "true" | "false"
+  EnableInclusiveGstPricing?: string; // "true" | "false" - Enable Tax-Inclusive Pricing toggle in Sale Bill
   EnableBillWiseDetails?: string; // "true" | "false"
   EnableAdvancedAI?: string; // "true" | "false"
   EnableAuditTrail?: string; // "true" | "false"
@@ -433,6 +434,7 @@ export interface CartLine {
   appliedSchemeId?: string;
   appliedSchemeName?: string;
   originalRate?: number;
+  inclusiveRate?: number;
   isFreeItem?: boolean;
   schemeDiscount?: number;
 }

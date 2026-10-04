@@ -1154,6 +1154,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </label>
               )}
 
+              {/* Tax-Inclusive Pricing (Government Quotes / Tenders) */}
+              {isFeatureAllowed(form, 'EnableInclusiveGstPricing', isSuperadminUser) && (
+                <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      checked={form.EnableInclusiveGstPricing === 'true'}
+                      onChange={e => setForm({ ...form, EnableInclusiveGstPricing: e.target.checked ? 'true' : 'false' })}
+                    />
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Tax-Inclusive Pricing (Govt Quotes & Tenders)</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">Enable toggle on Sale Bill for quoting prices inclusive of 5% GST (e.g., entered rate Nu. 100 automatically back-calculates Base Rate Nu. 95.24 + 5% GST Nu. 4.76 = Nu. 100.00).</p>
+                  </div>
+                </label>
+              )}
+
               {/* Serial Numbers Module */}
               {isFeatureAllowed(form, 'EnableSerials', isSuperadminUser) && (
                 <label className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-3.5 cursor-pointer hover:bg-slate-100/70 transition">

@@ -35,6 +35,13 @@ export const ALL_SYSTEM_FEATURES: FeatureDefinition[] = [
     defaultEnabled: true
   },
   {
+    id: 'EnableInclusiveGstPricing',
+    label: 'Tax-Inclusive Pricing (Govt Quotes & Tenders)',
+    shortDesc: 'Allow quoting rates inclusive of 5% GST in Sale Bill with automatic base rate & GST separation.',
+    category: 'Billing & POS',
+    defaultEnabled: true
+  },
+  {
     id: 'EnableItemDiscount',
     label: 'Item-wise Line Discount',
     shortDesc: 'Enable item line discounts (% or flat amount) on individual products.',
