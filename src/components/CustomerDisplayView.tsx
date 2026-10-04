@@ -491,11 +491,13 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
                       </div>
                     )}
 
-                    <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-                      <span className="text-base font-extrabold text-white">Payable Amount</span>
-                      <span className="text-3xl font-black text-emerald-400 tracking-tight">
-                        {currSymbol} {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </span>
+                    <div className="pt-3 border-t border-slate-800">
+                      <div className="bg-blue-600 rounded-xl p-3 flex items-center justify-between gap-3 text-white shadow-md">
+                        <span className="text-sm font-extrabold uppercase tracking-wider whitespace-nowrap">Payable Amount</span>
+                        <span className="text-xl sm:text-2xl font-black tracking-tight whitespace-nowrap font-mono text-white">
+                          {currSymbol} {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
