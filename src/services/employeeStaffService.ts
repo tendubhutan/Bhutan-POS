@@ -1421,7 +1421,7 @@ export function generateTaskWhatsAppUrl(
     `⚡ *Priority:* ${task.priority} | 📅 *Due:* ${task.dueDate}\n` +
     `👤 *Assigned By:* ${task.assignedByName || 'Management'}\n` +
     (task.description ? `📝 *Notes:* ${task.description}\n` : '') +
-    `👉 *Open Staff Link:* ${staffPortalUrl}`;
+    `👉 *Click Here:* ${staffPortalUrl}`;
 
   const encoded = encodeURIComponent(text);
   if (cleanPhone) {
