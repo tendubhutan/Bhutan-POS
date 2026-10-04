@@ -452,6 +452,19 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   // Cart & Customer State
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [customerDisplayStatus, setCustomerDisplayStatus] = useState<'active' | 'payment_pending'>('active');
+  const [customerDisplayQrType, setCustomerDisplayQrType] = useState<'primary' | 'secondary'>('primary');
+  const prevCartLengthRef = useRef(0);
+
+  useEffect(() => {
+    if (cart) {
+      if (cart.length !== prevCartLengthRef.current) {
+        setCustomerDisplayStatus('active');
+      }
+      prevCartLengthRef.current = cart.length;
+    }
+  }, [cart?.length]);
+
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [pricingMode, setPricingMode] = useState<'retail' | 'wholesale'>('retail');
 
@@ -1179,11 +1192,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       companyName: config.CompanyName || DEFAULT_TENANT_COMPANY.company_name,
       companyLogo: config.CompanyLogo || undefined,
       terminalId: deviceCounterId || 'C1',
-      status: cart.length === 0
-        ? 'idle'
-        : (cash !== '' && Number(cash) > 0) || (bank1 !== '' && Number(bank1) > 0) || (bank2 !== '' && Number(bank2) > 0)
-          ? 'payment_pending'
-          : 'active',
+      status: cart.length === 0 ? 'idle' : customerDisplayStatus,
       cartItems: formattedCart,
       summary: {
         subtotal: totals.subtotal,
@@ -1193,10 +1202,16 @@ export const POSBilling: React.FC<POSBillingProps> = ({
         itemCount: cart.length,
         currencySymbol: config.CurrencySymbol || 'Nu.'
       },
-      paymentQrData: (config as any).CompanyBankQrImage || (config as any).BankQrImage || (config as any).BankQrData || (config as any).MerchantQrCode || undefined,
+      paymentQrData: customerDisplayQrType === 'secondary'
+        ? (config.SecondaryBankQrData || undefined)
+        : ((config as any).CompanyBankQrImage || (config as any).BankQrImage || (config as any).BankQrData || (config as any).MerchantQrCode || undefined),
+      paymentQrImage: customerDisplayQrType === 'secondary'
+        ? (config.SecondaryBankQrImage || undefined)
+        : undefined,
+      activeQrType: customerDisplayQrType,
       timestamp: Date.now()
     }, getActiveCompanyId());
-  }, [cart, totals.total, totals.subtotal, totals.discount, totals.gstAmt, config, deviceCounterId, cash, bank1, bank2]);
+  }, [cart, totals.total, totals.subtotal, totals.discount, totals.gstAmt, config, deviceCounterId, cash, bank1, bank2, customerDisplayStatus, customerDisplayQrType]);
 
   const prevTotalRef = useRef(totals.total);
   const prevInvoiceNoRef = useRef(editingInvoiceNo);
@@ -3887,61 +3902,30 @@ export const POSBilling: React.FC<POSBillingProps> = ({
           {/* Dedicated manual trigger buttons to display QR Code on customer screen wirelessly */}
           {(() => {
             const hasSecondaryQr = !!(config.SecondaryBankQrData || config.SecondaryBankQrImage);
+            const isPrimaryActive = customerDisplayStatus === 'payment_pending' && customerDisplayQrType === 'primary';
+            const isSecondaryActive = customerDisplayStatus === 'payment_pending' && customerDisplayQrType === 'secondary';
+
             return (
               <div className="space-y-1.5 mt-2">
                 <button
                   type="button"
                   onClick={() => {
                     if (cart.length > 0) {
-                      const formattedCart = cart.map((line, idx) => {
-                        let lineDisc = 0;
-                        if (line.discount) {
-                          const rawDisc = Number(line.discount) || 0;
-                          const isPct = line.discountType === 'percent' || config.ItemDiscountType === 'percent';
-                          lineDisc = isPct ? ((line.qty * line.rate) * rawDisc / 100) : rawDisc;
-                        }
-                        return {
-                          id: `${line.itemCode}-${idx}`,
-                          name: line.itemName || 'Item',
-                          qty: Number(line.qty) || 0,
-                          rate: Number(line.rate) || 0,
-                          discount: lineDisc,
-                          amount: Math.max(0, (Number(line.qty) || 0) * (Number(line.rate) || 0) - lineDisc),
-                          unit: line.unit,
-                          batchNo: line.selectedBatchNo
-                        };
-                      });
-
-                      broadcastCustomerDisplayState({
-                        companyId: getActiveCompanyId(),
-                        companyName: config.CompanyName || DEFAULT_TENANT_COMPANY.company_name,
-                        companyLogo: config.CompanyLogo || undefined,
-                        terminalId: deviceCounterId || 'C1',
-                        status: 'payment_pending', // Explicit status to force QR view on customer display
-                        cartItems: formattedCart,
-                        summary: {
-                          subtotal: totals.subtotal,
-                          discountTotal: totals.discount,
-                          taxTotal: totals.gstAmt,
-                          grandTotal: totals.total,
-                          itemCount: cart.length,
-                          currencySymbol: config.CurrencySymbol || 'Nu.'
-                        },
-                        paymentQrData: (config as any).CompanyBankQrImage || (config as any).BankQrImage || (config as any).BankQrData || (config as any).MerchantQrCode || undefined,
-                        activeQrType: 'primary',
-                        timestamp: Date.now()
-                      }, getActiveCompanyId());
+                      setCustomerDisplayQrType('primary');
+                      setCustomerDisplayStatus('payment_pending');
                     }
                   }}
                   disabled={cart.length === 0}
                   className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer border ${
                     cart.length === 0
                       ? 'bg-slate-800/50 text-slate-500 border-slate-700/60 cursor-not-allowed'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 shadow-md hover:shadow-lg'
+                      : isPrimaryActive
+                        ? 'bg-emerald-600 text-white border-emerald-400 shadow-inner'
+                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-500 shadow-md'
                   }`}
                 >
-                  <QrCode className="h-4 w-4" />
-                  <span>Show Official QR on Screen</span>
+                  <QrCode className={`h-4 w-4 ${isPrimaryActive ? 'text-white' : 'text-emerald-500'}`} />
+                  <span>{isPrimaryActive ? '✓ Official QR on Screen' : 'Show Official QR on Screen'}</span>
                 </button>
 
                 {hasSecondaryQr && (
@@ -3949,52 +3933,21 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                     type="button"
                     onClick={() => {
                       if (cart.length > 0) {
-                        const formattedCart = cart.map((line, idx) => {
-                          let lineDisc = 0;
-                          if (line.discount) {
-                            const rawDisc = Number(line.discount) || 0;
-                            const isPct = line.discountType === 'percent' || config.ItemDiscountType === 'percent';
-                            lineDisc = isPct ? ((line.qty * line.rate) * rawDisc / 100) : rawDisc;
-                          }
-                          return {
-                            id: `${line.itemCode}-${idx}`,
-                            name: line.itemName || 'Item',
-                            qty: Number(line.qty) || 0,
-                            rate: Number(line.rate) || 0,
-                            discount: lineDisc,
-                            amount: Math.max(0, (Number(line.qty) || 0) * (Number(line.rate) || 0) - lineDisc),
-                            unit: line.unit,
-                            batchNo: line.selectedBatchNo
-                          };
-                        });
-
-                        broadcastCustomerDisplayState({
-                          companyId: getActiveCompanyId(),
-                          companyName: config.CompanyName || DEFAULT_TENANT_COMPANY.company_name,
-                          companyLogo: config.CompanyLogo || undefined,
-                          terminalId: deviceCounterId || 'C1',
-                          status: 'payment_pending',
-                          cartItems: formattedCart,
-                          summary: {
-                            subtotal: totals.subtotal,
-                            discountTotal: totals.discount,
-                            taxTotal: totals.gstAmt,
-                            grandTotal: totals.total,
-                            itemCount: cart.length,
-                            currencySymbol: config.CurrencySymbol || 'Nu.'
-                          },
-                          paymentQrData: config.SecondaryBankQrData || undefined,
-                          paymentQrImage: config.SecondaryBankQrImage || undefined,
-                          activeQrType: 'secondary',
-                          timestamp: Date.now()
-                        }, getActiveCompanyId());
+                        setCustomerDisplayQrType('secondary');
+                        setCustomerDisplayStatus('payment_pending');
                       }
                     }}
                     disabled={cart.length === 0}
-                    className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer border bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-md hover:shadow-lg`}
+                    className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer border ${
+                      cart.length === 0
+                        ? 'bg-slate-800/50 text-slate-500 border-slate-700/60 cursor-not-allowed'
+                        : isSecondaryActive
+                          ? 'bg-indigo-600 text-white border-indigo-400 shadow-inner'
+                          : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700 hover:border-slate-500 shadow-md'
+                    }`}
                   >
-                    <QrCode className="h-4 w-4" />
-                    <span>Show Backup QR on Screen</span>
+                    <QrCode className={`h-4 w-4 ${isSecondaryActive ? 'text-white' : 'text-indigo-400'}`} />
+                    <span>{isSecondaryActive ? '✓ Backup QR on Screen' : 'Show Backup QR on Screen'}</span>
                   </button>
                 )}
               </div>
