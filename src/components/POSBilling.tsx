@@ -226,6 +226,24 @@ export const POSBilling: React.FC<POSBillingProps> = ({
     }
   });
   const [posBillDate, setPosBillDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+
+  const saleVoucherTypes = useMemo(() => {
+    try {
+      const vts = getVoucherTypes();
+      return vts.filter(v => (v.type === 'Sale' || v.parentType === 'Sale' || v.typeCode === 'S') && v.isActive !== false && v.status !== 'Inactive');
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const handleBillDateChange = (newDateStr: string) => {
+    setPosBillDate(newDateStr);
+    if (editingInvoiceNo) {
+      try {
+        setEditingInvoiceDate(new Date(newDateStr + 'T12:00:00').toISOString());
+      } catch {}
+    }
+  };
   const [activeNoteIdx, setActiveNoteIdx] = useState<number | null>(null);
   const [batchSelectModalIdx, setBatchSelectModalIdx] = useState<number | null>(null);
 
@@ -2242,7 +2260,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       voucherTypeId: activeVoucherType?.id,
       voucherTypeName: activeVoucherType?.name,
       originalInvoiceNo: editingInvoiceNo || undefined,
-      date: editingInvoiceDate || (posBillDate ? new Date(posBillDate + 'T12:00:00').toISOString() : undefined),
+      date: posBillDate ? new Date(posBillDate + 'T12:00:00').toISOString() : (editingInvoiceDate || new Date().toISOString()),
       isEdit: Boolean(editingInvoiceNo),
       isPOS: true,
       isRestaurantOrder: isRestaurant,
@@ -2591,6 +2609,48 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               </span>
             </div>
 
+            {/* Voucher / Bill Date Field */}
+            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200/90 rounded px-1.5 py-0.5 text-[9px] shadow-2xs">
+              <span className="font-bold text-slate-600 uppercase tracking-wider flex items-center gap-0.5">
+                <Calendar className="h-3 w-3 text-indigo-600" />
+                <span>Date</span>
+              </span>
+              <input
+                type="date"
+                value={posBillDate}
+                onChange={(e) => handleBillDateChange(e.target.value)}
+                className="bg-white border border-slate-200 hover:border-slate-300 text-slate-900 text-[10px] font-bold font-mono rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer shadow-2xs"
+                title="Voucher / Bill Date"
+              />
+            </div>
+
+            {/* Active Voucher Series Indicator / Selector (if multiple Sale types configured) */}
+            {saleVoucherTypes.length > 1 && (
+              <div className="flex items-center gap-0.5 bg-slate-50 border border-slate-200/90 rounded px-1.5 py-0.5 text-[9px] shadow-2xs">
+                <span className="font-bold text-slate-500 uppercase tracking-wider">Series</span>
+                <select
+                  value={activeVoucherType?.id || ''}
+                  onChange={(e) => {
+                    const vt = saleVoucherTypes.find(v => v.id === e.target.value);
+                    if (vt) {
+                      setActiveVoucherType(vt);
+                      try {
+                        setPosBillNo(peekNextInvoiceNumber(true, vt.id));
+                      } catch {}
+                    }
+                  }}
+                  className="bg-white border border-slate-200 text-slate-900 text-[9px] font-bold rounded px-0.5 outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
+                  title="Sale Voucher Series"
+                >
+                  {saleVoucherTypes.map(vt => (
+                    <option key={vt.id} value={vt.id}>
+                      {vt.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {/* Terminal Select */}
             <div className="flex items-center gap-0.5 bg-slate-50 border border-slate-200/90 rounded px-1.5 py-0.5 text-[9px] shadow-2xs">
               <span className="font-bold text-indigo-600 uppercase tracking-wider">Term</span>
@@ -2717,8 +2777,14 @@ export const POSBilling: React.FC<POSBillingProps> = ({
             <span>Bill: {editingInvoiceNo || posBillNo || 'Auto'}</span>
           </span>
           <span className="text-slate-600 text-[11px] font-semibold flex items-center gap-1">
-            <Calendar className="h-3 w-3 text-slate-400" />
-            <span>{posBillDate}</span>
+            <Calendar className="h-3 w-3 text-indigo-600" />
+            <input
+              type="date"
+              value={posBillDate}
+              onChange={(e) => handleBillDateChange(e.target.value)}
+              className="bg-white border border-slate-200 rounded px-1 py-0.2 text-slate-900 text-[10px] font-bold font-mono outline-none shadow-2xs"
+              title="Voucher / Bill Date"
+            />
           </span>
         </div>
         <div className="flex rounded-xl bg-slate-100 p-0.5 border border-slate-200">
