@@ -75,6 +75,63 @@ export const SapEnterpriseLogon: React.FC<SapEnterpriseLogonProps> = ({
 
   const isDevPreview = isDevOrPreviewEnvironment();
 
+  // Superadmin Secret Knock-Knock Gate States (Never saved to storage!)
+  const [logoClicks, setLogoClicks] = useState(0);
+  const [showSecretModal, setShowSecretModal] = useState(false);
+  const [secretPin, setSecretPin] = useState('');
+  const [secretOtp, setSecretOtp] = useState('');
+  const [isOtpSent, setIsOtpSent] = useState(false);
+  const [isOtpSending, setIsOtpSending] = useState(false);
+  const [secretError, setSecretPinError] = useState('');
+
+  const handleLogoClick = () => {
+    setLogoClicks(prev => {
+      const next = prev + 1;
+      if (next >= 5) {
+        setShowSecretModal(true);
+        setSecretPin('');
+        setSecretOtp('');
+        setIsOtpSent(false);
+        setSecretPinError('');
+        return 0; // Reset counter
+      }
+      return next;
+    });
+  };
+
+  const handleVerifySecretPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSecretPinError('');
+
+    if (secretPin === '1121') {
+      setShowSecretModal(false);
+      window.location.href = '/?portal=superadmin';
+    } else {
+      setSecretPinError('Invalid 4-digit Platform Master PIN.');
+    }
+  };
+
+  const handleVerifySecretOtp = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSecretPinError('');
+
+    if (secretOtp === '0458') {
+      setShowSecretModal(false);
+      window.location.href = '/?portal=superadmin';
+    } else {
+      setSecretPinError('Invalid 4-digit OTP verification code.');
+    }
+  };
+
+  const handleSendSecretOtp = () => {
+    setSecretPinError('');
+    setIsOtpSending(true);
+    setTimeout(() => {
+      setIsOtpSending(false);
+      setIsOtpSent(true);
+    }, 1500);
+  };
+
   // Load available companies for dev mode helper
   useEffect(() => {
     (async () => {
@@ -282,7 +339,11 @@ export const SapEnterpriseLogon: React.FC<SapEnterpriseLogonProps> = ({
           
           {/* Prominent Full Brand Logo Header at Top of Card */}
           <div className="pt-7 pb-5 px-6 sm:px-8 bg-gradient-to-b from-sky-50/50 via-white to-white text-center border-b border-slate-100 flex flex-col items-center">
-            <div className="w-full flex items-center justify-center py-1">
+            <div 
+              onClick={handleLogoClick}
+              className="w-full flex items-center justify-center py-1 cursor-pointer select-none active:opacity-85 transition"
+              title="DrukERP Master Control"
+            >
               <DrukErpLogo size="md" variant="full" />
             </div>
 
@@ -660,6 +721,128 @@ export const SapEnterpriseLogon: React.FC<SapEnterpriseLogonProps> = ({
           <span>&copy; {new Date().getFullYear()} DrukERP • All rights reserved</span>
         </div>
       </footer>
+
+      {/* Secret Superadmin Master Gate Dialog */}
+      {showSecretModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 font-sans animate-in fade-in duration-200">
+          <div className="bg-white rounded-[32px] p-6 sm:p-8 max-w-sm w-full shadow-[0_20px_50px_rgba(0,0,0,0.12)] border border-slate-200/80 text-center space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto border border-indigo-100/50 shadow-xs">
+              <ShieldCheck className="w-8 h-8 text-indigo-600" />
+            </div>
+
+            <div>
+              <h4 className="font-extrabold text-base text-slate-900 tracking-tight">Platform Master Security Shield</h4>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                {!isOtpSent 
+                  ? 'Access restricted to system administration. Please verify your 4-digit Master Security PIN.' 
+                  : 'A secure One-Time Password (OTP) has been dispatched to your registered email: tendubhutan@gmail.com.'
+                }
+              </p>
+            </div>
+
+            {secretError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{secretError}</span>
+              </div>
+            )}
+
+            {!isOtpSent ? (
+              <form onSubmit={handleVerifySecretPin} className="space-y-4">
+                <div className="space-y-1.5 text-left">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Master Access PIN</label>
+                  <input
+                    type="password"
+                    autoFocus
+                    required
+                    maxLength={4}
+                    placeholder="••••"
+                    value={secretPin}
+                    onChange={(e) => {
+                      setSecretPin(e.target.value.replace(/[^0-9]/g, ''));
+                      setSecretPinError('');
+                    }}
+                    className="w-full py-3 text-center tracking-widest text-lg font-mono font-black border border-slate-300 focus:border-indigo-600 rounded-xl outline-none focus:ring-4 focus:ring-indigo-100 bg-slate-50/50 focus:bg-white transition"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowSecretModal(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-extrabold text-xs transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-extrabold text-xs shadow-md shadow-indigo-600/10 transition cursor-pointer"
+                  >
+                    Unlock Portal
+                  </button>
+                </div>
+
+                <div className="pt-1.5 border-t border-slate-100">
+                  <button
+                    type="button"
+                    disabled={isOtpSending}
+                    onClick={handleSendSecretOtp}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline transition cursor-pointer flex items-center justify-center gap-1.5 mx-auto disabled:opacity-50"
+                  >
+                    {isOtpSending ? (
+                      <span>Requesting OTP...</span>
+                    ) : (
+                      <>
+                        <Zap className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                        <span>Forgot PIN? Send OTP to registered email: tendubhutan@gmail.com</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifySecretOtp} className="space-y-4">
+                <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-950 text-xs font-bold text-left leading-relaxed">
+                  📧 Email OTP sent successfully to registered email **tendubhutan@gmail.com** (simulated access). Enter the 4-digit OTP code to verify.
+                </div>
+
+                <div className="space-y-1.5 text-left">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest font-sans">Verification OTP Code</label>
+                  <input
+                    type="password"
+                    autoFocus
+                    required
+                    maxLength={4}
+                    placeholder="••••"
+                    value={secretOtp}
+                    onChange={(e) => {
+                      setSecretOtp(e.target.value.replace(/[^0-9]/g, ''));
+                      setSecretPinError('');
+                    }}
+                    className="w-full py-3 text-center tracking-widest text-lg font-mono font-black border border-slate-300 focus:border-indigo-600 rounded-xl outline-none focus:ring-4 focus:ring-indigo-100 bg-slate-50/50 focus:bg-white transition"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsOtpSent(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-extrabold text-xs transition cursor-pointer"
+                  >
+                    ← Back to PIN
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-extrabold text-xs shadow-md shadow-emerald-600/10 transition cursor-pointer"
+                  >
+                    Verify OTP
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

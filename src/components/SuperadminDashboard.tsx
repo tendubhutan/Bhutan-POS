@@ -209,6 +209,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedStaffId, setCopiedStaffId] = useState<string | null>(null);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // New Company Modal & Feature Configuration
@@ -356,6 +357,15 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     navigator.clipboard.writeText(url);
     setCopiedId(cId);
     setTimeout(() => setCopiedId(null), 2500);
+  };
+
+  // Copy Client Dedicated Staff PWA Portal URL (specifically triggers the Employee Portal)
+  const handleCopyStaffPortalUrl = (cId: string) => {
+    const baseUrl = getCompanyDedicatedUrl(cId, false);
+    const staffUrl = `${baseUrl}&portal=staff`;
+    navigator.clipboard.writeText(staffUrl);
+    setCopiedStaffId(cId);
+    setTimeout(() => setCopiedStaffId(null), 2500);
   };
 
   // Switch workspace to selected company
@@ -1397,14 +1407,28 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
                           <button
                             onClick={() => handleCopyPortalUrl(company.id)}
-                            className="p-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition cursor-pointer"
-                            title="Copy client login portal URL"
+                            className="p-1.5 bg-blue-600/80 hover:bg-blue-700 text-blue-200 hover:text-white rounded-lg border border-blue-600 transition cursor-pointer flex items-center gap-1 shrink-0"
+                            title="Copy Client dedicated ERP Login PWA Link"
                           >
                             {copiedId === company.id ? (
-                              <Check className="h-3.5 w-3.5 text-emerald-400" />
+                              <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                             ) : (
-                              <ExternalLink className="h-3.5 w-3.5" />
+                              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                             )}
+                            <span className="text-[9px] font-bold">ERP</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleCopyStaffPortalUrl(company.id)}
+                            className="p-1.5 bg-emerald-800/80 hover:bg-emerald-700 text-emerald-250 hover:text-white rounded-lg border border-emerald-700 transition cursor-pointer flex items-center gap-1 shrink-0"
+                            title="Copy Client dedicated PWA Staff Clock-in/Leave Portal Link"
+                          >
+                            {copiedStaffId === company.id ? (
+                              <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                            ) : (
+                              <Users className="h-3.5 w-3.5 shrink-0" />
+                            )}
+                            <span className="text-[9px] font-bold">Staff</span>
                           </button>
                         </div>
                       </td>

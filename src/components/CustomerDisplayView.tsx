@@ -190,6 +190,15 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
   }
 
   const items: CustomerDisplayItem[] = activeState?.cartItems || [];
+
+  // Auto-scroll ref and hook for live checkout items (fully dynamic and responsive)
+  const itemsEndRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (itemsEndRef.current) {
+      itemsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [items.length]);
+
   const status = activeState?.status || 'idle';
   const isCompleted = status === 'completed' && activeState?.lastCompletedInvoice;
 
@@ -324,7 +333,7 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
           /* VIEW 3: ACTIVE checkout Billed ITEM LIST + BILL SUMMARY & PAYMENT QR */
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-start">
             {/* Left Column: Billed Items List */}
-            <div className="lg:col-span-7 bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl flex flex-col min-h-[500px]">
+            <div className="lg:col-span-7 bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl flex flex-col min-h-0 lg:min-h-[500px] transition-all duration-300">
               <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
                 <div className="flex items-center gap-2">
                   <Receipt className="h-5 w-5 text-indigo-400" />
@@ -336,7 +345,7 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
               </div>
 
               {/* Items Table */}
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[520px]">
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[260px] lg:max-h-[520px]">
                 {items.map((item, idx) => (
                   <div
                     key={`${item.id}-${idx}`}
@@ -369,6 +378,8 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
                     </div>
                   </div>
                 ))}
+                {/* Invisible Auto-Scroll Anchor */}
+                <div ref={itemsEndRef} />
               </div>
             </div>
 
