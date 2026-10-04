@@ -27,7 +27,9 @@ import {
   exportDailyAttendanceToExcel,
   exportDailyAttendanceToPdf,
   exportLeaveHistoryToExcel,
-  exportLeaveHistoryToPdf
+  exportLeaveHistoryToPdf,
+  exportTaskAssignmentsToExcel,
+  exportTaskAssignmentsToPdf
 } from '../../services/staffReportExportService';
 import { 
   LeaveTypeConfig, LeaveApplication, AttendanceRecord, 
@@ -141,6 +143,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   // Sub-Pills selection states for multi-report pages
   const [leaveSubTab, setLeaveSubTab] = useState<'balances' | 'history' | 'quotas' | 'all'>('balances');
   const [portalSubTab, setPortalSubTab] = useState<'directory' | 'qr_link' | 'security'>('directory');
+  const [assignmentReportViewMode, setAssignmentReportViewMode] = useState<'table' | 'workload' | 'insights' | 'kanban'>('table');
 
   // Header collapsing for full page report view (manual toggle only)
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
@@ -217,6 +220,20 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
     exportLeaveHistoryToPdf({
       config,
       leaveApplications
+    });
+  };
+
+  const handleExportAssignmentExcel = () => {
+    exportTaskAssignmentsToExcel({
+      config,
+      tasks
+    });
+  };
+
+  const handleExportAssignmentPdf = () => {
+    exportTaskAssignmentsToPdf({
+      config,
+      tasks
     });
   };
 
@@ -683,94 +700,112 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         className="sticky z-30 bg-white/95 backdrop-blur-xs border-b border-slate-200/80 px-4 sm:px-6 py-2.5 shadow-2xs transition-all duration-200"
       >
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-          {/* Top Left: Executive Dropdown Selector (Marked in Green) */}
-          <div className="relative shrink-0" ref={dropdownRef}>
-            <button
-              type="button"
-              onClick={() => setIsViewDropdownOpen(prev => !prev)}
-              className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm shadow-sm transition-all cursor-pointer group"
-              title="Switch Staff & Tasks Views"
-            >
-              <div className="h-6 w-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
-                <CurrentNavIcon className="h-3.5 w-3.5" />
-              </div>
-              <div className="flex flex-col text-left">
-                <span className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold leading-none">
-                  Staff & Tasks Menu
-                </span>
-                <span className="text-xs sm:text-sm font-black text-white leading-tight flex items-center gap-1.5">
-                  {currentNav?.shortTitle || 'Navigation'}
-                  {currentNav?.badgeCount !== undefined && currentNav.badgeCount > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-black">
-                      {currentNav.badgeCount}
-                    </span>
-                  )}
-                </span>
-              </div>
-              <ChevronDown className={`h-4 w-4 text-slate-400 group-hover:text-white transition-transform duration-200 ml-2 ${isViewDropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {/* Categorized Dropdown Menu */}
-            {isViewDropdownOpen && (
-              <div className="absolute left-0 mt-2 w-80 rounded-2xl bg-white border border-slate-200 shadow-2xl py-2 z-50 animate-in fade-in zoom-in-95">
-                <div className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
-                  <span>Staff & Tasks Navigation</span>
-                  <span className="font-mono text-slate-500">{navigationItems.length} Sections</span>
+          {/* Top Left: Executive Dropdown Selector & Moved Report View selector (Green Arrow) */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="relative shrink-0" ref={dropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsViewDropdownOpen(prev => !prev)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm shadow-sm transition-all cursor-pointer group"
+                title="Switch Staff & Tasks Views"
+              >
+                <div className="h-6 w-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                  <CurrentNavIcon className="h-3.5 w-3.5" />
                 </div>
+                <div className="flex flex-col text-left">
+                  <span className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold leading-none">
+                    Staff & Tasks Menu
+                  </span>
+                  <span className="text-xs sm:text-sm font-black text-white leading-tight flex items-center gap-1.5">
+                    {currentNav?.shortTitle || 'Navigation'}
+                    {currentNav?.badgeCount !== undefined && currentNav.badgeCount > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-black">
+                        {currentNav.badgeCount}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <ChevronDown className={`h-4 w-4 text-slate-400 group-hover:text-white transition-transform duration-200 ml-2 ${isViewDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-                <div className="max-h-[420px] overflow-y-auto py-1">
-                  {categories.map(cat => {
-                    const catItems = navigationItems.filter(i => i.category === cat);
-                    return (
-                      <div key={cat} className="mb-2">
-                        <div className="px-3.5 py-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                          {cat}
+              {/* Categorized Dropdown Menu */}
+              {isViewDropdownOpen && (
+                <div className="absolute left-0 mt-2 w-80 rounded-2xl bg-white border border-slate-200 shadow-2xl py-2 z-50 animate-in fade-in zoom-in-95">
+                  <div className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100 flex items-center justify-between">
+                    <span>Staff & Tasks Navigation</span>
+                    <span className="font-mono text-slate-500">{navigationItems.length} Sections</span>
+                  </div>
+
+                  <div className="max-h-[420px] overflow-y-auto py-1">
+                    {categories.map(cat => {
+                      const catItems = navigationItems.filter(i => i.category === cat);
+                      return (
+                        <div key={cat} className="mb-2">
+                          <div className="px-3.5 py-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                            {cat}
+                          </div>
+                          {catItems.map(item => {
+                            const Icon = item.icon;
+                            const isSelected = activeTab === item.tab;
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => {
+                                  setActiveTab(item.tab);
+                                  setIsViewDropdownOpen(false);
+                                }}
+                                className={`w-full px-3.5 py-2 text-left flex items-center justify-between text-xs transition cursor-pointer ${
+                                  isSelected 
+                                    ? 'bg-blue-50/90 text-blue-900 font-bold border-l-3 border-blue-600' 
+                                    : 'text-slate-700 hover:bg-slate-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                    isSelected ? 'bg-blue-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-600'
+                                  }`}>
+                                    <Icon className="h-3.5 w-3.5" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="truncate font-bold leading-tight">{item.title}</div>
+                                    <div className="text-[10px] text-slate-400 truncate font-normal leading-tight mt-0.5">{item.subtitle}</div>
+                                  </div>
+                                </div>
+                                {item.badgeCount !== undefined && item.badgeCount > 0 && (
+                                  <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-black shrink-0 ml-2">
+                                    {item.badgeCount}
+                                  </span>
+                                )}
+                                {item.isActive && (
+                                  <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase shrink-0 ml-2">
+                                    Active
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
-                        {catItems.map(item => {
-                          const Icon = item.icon;
-                          const isSelected = activeTab === item.tab;
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              onClick={() => {
-                                setActiveTab(item.tab);
-                                setIsViewDropdownOpen(false);
-                              }}
-                              className={`w-full px-3.5 py-2 text-left flex items-center justify-between text-xs transition cursor-pointer ${
-                                isSelected 
-                                  ? 'bg-blue-50/90 text-blue-900 font-bold border-l-3 border-blue-600' 
-                                  : 'text-slate-700 hover:bg-slate-50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${
-                                  isSelected ? 'bg-blue-600 text-white shadow-2xs' : 'bg-slate-100 text-slate-600'
-                                }`}>
-                                  <Icon className="h-3.5 w-3.5" />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="truncate font-bold leading-tight">{item.title}</div>
-                                  <div className="text-[10px] text-slate-400 truncate font-normal leading-tight mt-0.5">{item.subtitle}</div>
-                                </div>
-                              </div>
-                              {item.badgeCount !== undefined && item.badgeCount > 0 && (
-                                <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-black shrink-0 ml-2">
-                                  {item.badgeCount}
-                                </span>
-                              )}
-                              {item.isActive && (
-                                <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-black uppercase shrink-0 ml-2">
-                                  Active
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
+              )}
+            </div>
+
+            {/* View Mode Selector for Assignment Report (Moved up as indicated by Green Arrow) */}
+            {activeTab === 'assignment_report' && (
+              <div className="relative shrink-0">
+                <select
+                  value={assignmentReportViewMode}
+                  onChange={e => setAssignmentReportViewMode(e.target.value as any)}
+                  className="px-3 py-2 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold text-xs sm:text-sm shadow-2xs outline-none cursor-pointer hover:bg-indigo-100 transition"
+                  title="Select Report View"
+                >
+                  <option value="table">📄 Register Table</option>
+                  <option value="workload">👥 Staff Workload</option>
+                  <option value="insights">📊 Category Insights</option>
+                </select>
               </div>
             )}
           </div>
@@ -1074,6 +1109,36 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
             {/* Assignment Report Controls */}
             {activeTab === 'assignment_report' && (
               <>
+                <button
+                  type="button"
+                  onClick={handleExportAssignmentExcel}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Export filtered tasks to Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">Excel</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportAssignmentPdf}
+                  className="px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 text-rose-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Download Assignment Report PDF"
+                >
+                  <FileText className="h-3.5 w-3.5 text-rose-600" />
+                  <span className="hidden sm:inline">PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Print Report"
+                >
+                  <Printer className="h-3.5 w-3.5 text-slate-600" />
+                  <span className="hidden sm:inline">Print</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setActiveTab('tasks')}
@@ -1613,7 +1678,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         {/* ============================================================== */}
         {/* TAB 3B: DEDICATED ASSIGNMENT REPORT */}
         {/* ============================================================== */}
-        {activeTab === 'assignment_report' && isAssignmentsAllowed && (
+         {activeTab === 'assignment_report' && isAssignmentsAllowed && (
           <AssignmentReportView
             config={config}
             employees={employees}
@@ -1622,6 +1687,9 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
             isHeaderCollapsed={isHeaderCollapsed}
             onToggleCollapse={() => setIsHeaderCollapsed(prev => !prev)}
             stickyTopPx={stickyTopPx}
+            showHeaderControls={false}
+            viewMode={assignmentReportViewMode}
+            onViewModeChange={setAssignmentReportViewMode}
           />
         )}
 

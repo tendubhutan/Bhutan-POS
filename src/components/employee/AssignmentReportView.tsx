@@ -32,6 +32,8 @@ interface AssignmentReportViewProps {
   isHeaderCollapsed?: boolean;
   onToggleCollapse?: () => void;
   stickyTopPx?: number;
+  viewMode?: 'table' | 'workload' | 'insights' | 'kanban';
+  onViewModeChange?: (mode: 'table' | 'workload' | 'insights' | 'kanban') => void;
 }
 
 export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
@@ -42,7 +44,9 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
   showHeaderControls = true,
   isHeaderCollapsed: propIsHeaderCollapsed,
   onToggleCollapse,
-  stickyTopPx
+  stickyTopPx,
+  viewMode: propViewMode,
+  onViewModeChange: propOnViewModeChange
 }) => {
   const companyId = getActiveCompanyId();
   const activeUser = getActiveUser();
@@ -61,8 +65,13 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
     if (onRefreshData) onRefreshData();
   };
 
-  // View Mode: 'table' (Detailed Register) | 'workload' (Staff Performance Matrix) | 'insights' (Category & Priority) | 'kanban' (Workflow board)
-  const [viewMode, setViewMode] = useState<'table' | 'workload' | 'insights' | 'kanban'>('table');
+  // View Mode: 'table' (Detailed Register) | 'workload' (Staff Performance Matrix) | 'insights' (Category & Priority)
+  const [internalViewMode, setInternalViewMode] = useState<'table' | 'workload' | 'insights' | 'kanban'>('table');
+  const viewMode = propViewMode !== undefined ? propViewMode : internalViewMode;
+  const setViewMode = (mode: 'table' | 'workload' | 'insights' | 'kanban') => {
+    setInternalViewMode(mode);
+    if (propOnViewModeChange) propOnViewModeChange(mode);
+  };
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -585,64 +594,25 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
         isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-[1400px] opacity-100 mb-4'
       }`}>
       {showHeaderControls && (
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs print:hidden">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 flex-wrap w-full">
-            {/* Segmented View Mode Tabs on the left */}
-            <div className="flex items-center p-1 bg-slate-100/90 rounded-xl border border-slate-200 shrink-0">
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                  viewMode === 'table'
-                    ? 'bg-white text-indigo-700 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
+        <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs print:hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-wrap w-full">
+            {/* Report View Selector (Dropdown list for selection as moved up by Green Arrow) */}
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0">
+                Report View:
+              </label>
+              <select
+                value={viewMode}
+                onChange={e => setViewMode(e.target.value as any)}
+                className="px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 text-indigo-900 font-bold text-xs shadow-2xs outline-none cursor-pointer hover:bg-indigo-100 transition"
               >
-                <Layers className="h-3.5 w-3.5" />
-                <span>Register Table</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode('workload')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                  viewMode === 'workload'
-                    ? 'bg-white text-indigo-700 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Users className="h-3.5 w-3.5" />
-                <span>Staff Workload</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode('insights')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                  viewMode === 'insights'
-                    ? 'bg-white text-indigo-700 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <BarChart2 className="h-3.5 w-3.5" />
-                <span>Category Insights</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setViewMode('kanban')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                  viewMode === 'kanban'
-                    ? 'bg-white text-indigo-700 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <CheckSquare className="h-3.5 w-3.5" />
-                <span>Kanban Board</span>
-              </button>
+                <option value="table">📄 Register Table</option>
+                <option value="workload">👥 Staff Workload</option>
+                <option value="insights">📊 Category Insights</option>
+              </select>
             </div>
 
-            {/* Action buttons on the right */}
+            {/* Action buttons (Yellow Arrow - Excel, PDF, Print) */}
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
@@ -672,16 +642,6 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
               >
                 <Printer className="h-3.5 w-3.5 text-slate-600" />
                 <span className="hidden sm:inline">Print</span>
-              </button>
-
-              {/* Assign New Task */}
-              <button
-                type="button"
-                onClick={() => setShowNewModal(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Assign Task</span>
               </button>
             </div>
           </div>
@@ -778,142 +738,101 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
       {/* 3. MULTI-FACETED FILTER TOOLBAR */}
       {/* ================================================================ */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs print:hidden">
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5">
-          {/* Search Box (Moved up as requested - Yellow arrow) */}
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="h-3.5 w-3.5 text-slate-400 absolute left-3.5 top-2.5" />
-            <input
-              type="text"
-              placeholder="Search by task ID, title, description or staff..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-8.5 pr-3 py-1.5 bg-slate-50 focus:bg-white rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none transition shadow-2xs"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Status Filter */}
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[125px]"
+          >
+            <option value="ALL">All Statuses</option>
+            <option value="Assigned">Assigned ({kpis.assigned})</option>
+            <option value="In Progress">In Progress ({kpis.inProgress})</option>
+            <option value="Under Review">Under Review ({kpis.underReview})</option>
+            <option value="Completed">Completed ({kpis.completed})</option>
+            <option value="OVERDUE">⚠️ Overdue Only ({kpis.overdue})</option>
+          </select>
 
-          {/* Filter Dropdowns Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:flex lg:items-center gap-2 shrink-0">
-            {/* Status Filter */}
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[110px]"
+          {/* Priority Filter */}
+          <select
+            value={priorityFilter}
+            onChange={e => setPriorityFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[120px]"
+          >
+            <option value="ALL">All Priorities</option>
+            <option value="Urgent">🔴 Urgent</option>
+            <option value="High">🟠 High</option>
+            <option value="Medium">🔵 Medium</option>
+            <option value="Low">⚪ Low</option>
+          </select>
+
+          {/* Staff Assignee Filter */}
+          <select
+            value={assigneeFilter}
+            onChange={e => setAssigneeFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[130px]"
+          >
+            <option value="ALL">All Staff</option>
+            {employees.map(emp => (
+              <option key={emp.id} value={emp.id}>
+                {emp.fullName}
+              </option>
+            ))}
+          </select>
+
+          {/* Date Preset Selector */}
+          <select
+            value={datePreset}
+            onChange={e => handleDatePresetChange(e.target.value as any)}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[120px]"
+          >
+            <option value="ALL">🗓️ All Time</option>
+            <option value="TODAY">🗓️ Today</option>
+            <option value="THIS_WEEK">🗓️ This Week</option>
+            <option value="THIS_MONTH">🗓️ This Month</option>
+            <option value="CUSTOM">🗓️ Custom Range</option>
+          </select>
+
+          {/* Reset Filters Button */}
+          {(statusFilter !== 'ALL' || priorityFilter !== 'ALL' || assigneeFilter !== 'ALL' || datePreset !== 'ALL') && (
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter('ALL');
+                setPriorityFilter('ALL');
+                setAssigneeFilter('ALL');
+                setDatePreset('ALL');
+                setFromDate('');
+                setToDate('');
+              }}
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-900 font-bold text-xs transition cursor-pointer flex items-center gap-1.5 justify-center shadow-2xs"
+              title="Reset all filters"
             >
-              <option value="ALL">All Statuses</option>
-              <option value="Assigned">Assigned ({kpis.assigned})</option>
-              <option value="In Progress">In Progress ({kpis.inProgress})</option>
-              <option value="Under Review">Under Review ({kpis.underReview})</option>
-              <option value="Completed">Completed ({kpis.completed})</option>
-              <option value="OVERDUE">⚠️ Overdue Only ({kpis.overdue})</option>
-            </select>
+              <X className="h-3.5 w-3.5" />
+              <span>Reset</span>
+            </button>
+          )}
 
-            {/* Category Filter (Moved up & provided as dropdown selector - Green arrow) */}
-            <select
-              value={categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value)}
-              className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[125px]"
-            >
-              <option value="ALL">All Categories</option>
-              <option value="General">General</option>
-              <option value="POS Counter">POS Counter</option>
-              <option value="Stock & Inventory">Stock & Inventory</option>
-              <option value="Accounts">Accounts</option>
-              <option value="Customer Followup">Customer Followup</option>
-              <option value="Administration">Administration</option>
-            </select>
-
-            {/* Priority Filter */}
-            <select
-              value={priorityFilter}
-              onChange={e => setPriorityFilter(e.target.value)}
-              className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[110px]"
-            >
-              <option value="ALL">All Priorities</option>
-              <option value="Urgent">🔴 Urgent</option>
-              <option value="High">🟠 High</option>
-              <option value="Medium">🔵 Medium</option>
-              <option value="Low">⚪ Low</option>
-            </select>
-
-            {/* Staff Assignee Filter */}
-            <select
-              value={assigneeFilter}
-              onChange={e => setAssigneeFilter(e.target.value)}
-              className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[120px]"
-            >
-              <option value="ALL">All Staff</option>
-              {employees.map(emp => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.fullName}
-                </option>
-              ))}
-            </select>
-
-            {/* Date Preset Selector */}
-            <select
-              value={datePreset}
-              onChange={e => handleDatePresetChange(e.target.value as any)}
-              className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[110px]"
-            >
-              <option value="ALL">🗓️ All Time</option>
-              <option value="TODAY">🗓️ Today</option>
-              <option value="THIS_WEEK">🗓️ This Week</option>
-              <option value="THIS_MONTH">🗓️ This Month</option>
-              <option value="CUSTOM">🗓️ Custom Range</option>
-            </select>
-
-            {/* Reset Filters Button */}
-            {(searchQuery || statusFilter !== 'ALL' || priorityFilter !== 'ALL' || assigneeFilter !== 'ALL' || categoryFilter !== 'ALL' || datePreset !== 'ALL') && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  setStatusFilter('ALL');
-                  setPriorityFilter('ALL');
-                  setAssigneeFilter('ALL');
-                  setCategoryFilter('ALL');
-                  setDatePreset('ALL');
-                  setFromDate('');
-                  setToDate('');
-                }}
-                className="px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-900 font-bold text-xs transition cursor-pointer flex items-center gap-1.5 justify-center shadow-2xs"
-                title="Reset all filters"
-              >
-                <X className="h-3.5 w-3.5" />
-                <span>Reset</span>
-              </button>
-            )}
-          </div>
+          {/* Custom Date Range Picker */}
+          {datePreset === 'CUSTOM' && (
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-200 animate-in fade-in slide-in-from-top-1 duration-150">
+              <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Custom Range:</span>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={e => setFromDate(e.target.value)}
+                className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
+              />
+              <span className="text-slate-400 text-xs">to</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={e => setToDate(e.target.value)}
+                className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
+              />
+            </div>
+          )}
         </div>
-
-        {/* Custom Date Range Picker */}
-        {datePreset === 'CUSTOM' && (
-          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100 animate-in fade-in slide-in-from-top-1 duration-150">
-            <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Custom Range:</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={e => setFromDate(e.target.value)}
-              className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
-            />
-            <span className="text-slate-400 text-xs">to</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={e => setToDate(e.target.value)}
-              className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
-            />
-          </div>
-        )}
       </div>
       </div>
       </div>
