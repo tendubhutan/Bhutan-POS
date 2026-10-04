@@ -86,7 +86,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     };
   }, [updateHeaderHeight, activeTab]);
 
-  const stickyTopPx = isHeaderCollapsed ? 0 : headerHeight;
+  const stickyTopPx = headerHeight;
 
   const payrollTabs = [
     { id: 'processing', label: 'Salary Processing', icon: Calendar },
@@ -1211,50 +1211,74 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
         </div>
       )}
 
-      {/* Top Compact Banner Header */}
+      {/* Top Compact Banner Header (Sticky to Top) */}
       <div 
         ref={headerRef}
-        className={`sticky top-0 z-30 transition-all duration-300 ease-in-out pt-1 pb-2 bg-slate-50/95 backdrop-blur-xs ${
-        isHeaderCollapsed 
-          ? 'max-h-0 py-0 opacity-0 overflow-hidden border-b-0 pointer-events-none mb-0' 
-          : 'max-h-28 opacity-100 mb-2'
-      }`}>
+        className="sticky top-0 z-30 transition-all duration-200 pt-1 pb-2 bg-slate-50/95 backdrop-blur-xs mb-2"
+      >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-900 text-white px-3.5 py-2 sm:px-4.5 sm:py-2.5 rounded-2xl shadow-md border border-slate-800">
-          <div>
+          <div className="flex items-center gap-2">
             <h1 className="text-sm sm:text-base font-black tracking-tight text-white leading-tight">Payroll & HR Management</h1>
+            {isHeaderCollapsed && (
+              <span className="px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-300 text-[10px] font-bold border border-indigo-400/30">
+                Max Report
+              </span>
+            )}
           </div>
 
-          {/* Tab Selector Buttons (Single-Line Pills Style) */}
-          <div 
-            role="tablist"
-            aria-label="Payroll Navigation Tabs"
-            className="flex items-center gap-1 sm:gap-1.5 bg-slate-950/90 p-1 rounded-2xl border border-slate-800/90 shadow-inner self-start sm:self-auto flex-nowrap overflow-x-auto max-w-full"
-          >
-            {payrollTabs.map((tab, idx) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  ref={el => (tabButtonRefs.current[idx] = el)}
-                  role="tab"
-                  aria-selected={isActive}
-                  tabIndex={isActive ? 0 : -1}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
-                    isActive
-                      ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-black shadow-md shadow-indigo-500/20 border border-indigo-400/30'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 font-bold'
-                  }`}
-                >
-                  <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                  <span>
-                    {tab.label}
-                    {tab.id === 'employees' ? ` (${employees.length})` : ''}
-                  </span>
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-2 max-w-full">
+            {/* Tab Selector Buttons (Single-Line Pills Style) */}
+            <div 
+              role="tablist"
+              aria-label="Payroll Navigation Tabs"
+              className="flex items-center gap-1 sm:gap-1.5 bg-slate-950/90 p-1 rounded-2xl border border-slate-800/90 shadow-inner self-start sm:self-auto flex-nowrap overflow-x-auto max-w-full"
+            >
+              {payrollTabs.map((tab, idx) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    ref={el => (tabButtonRefs.current[idx] = el)}
+                    role="tab"
+                    aria-selected={isActive}
+                    tabIndex={isActive ? 0 : -1}
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+                      isActive
+                        ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-black shadow-md shadow-indigo-500/20 border border-indigo-400/30'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-800/80 font-bold'
+                    }`}
+                  >
+                    <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    <span>
+                      {tab.label}
+                      {tab.id === 'employees' ? ` (${employees.length})` : ''}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Quick Max Report Area / Collapse Panels Toggle */}
+            <button
+              type="button"
+              onClick={() => setIsHeaderCollapsed(prev => !prev)}
+              className="px-2.5 py-1.5 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0"
+              title={isHeaderCollapsed ? "Expand summary and filter panels" : "Collapse panels for maximum report area"}
+            >
+              {isHeaderCollapsed ? (
+                <>
+                  <ChevronDown className="h-3.5 w-3.5 text-indigo-400" />
+                  <span className="hidden md:inline text-[11px]">Expand</span>
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
+                  <span className="hidden md:inline text-[11px]">Max View</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

@@ -458,12 +458,9 @@ export const POSBilling: React.FC<POSBillingProps> = ({
 
   useEffect(() => {
     if (cart) {
-      if (cart.length !== prevCartLengthRef.current) {
-        setCustomerDisplayStatus('active');
-      }
-      prevCartLengthRef.current = cart.length;
+      setCustomerDisplayStatus('active');
     }
-  }, [cart?.length]);
+  }, [cart]);
 
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [pricingMode, setPricingMode] = useState<'retail' | 'wholesale'>('retail');
@@ -2505,43 +2502,176 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       )}
 
       {/* Header & Quick Summary Bar */}
-      <div className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-xs flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <div className="h-8 w-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold shadow-xs">
-            <ShoppingCart className="h-4.5 w-4.5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm sm:text-base font-extrabold text-slate-900 leading-tight">
-                {config.EnableRestaurantMode === 'true' ? 'Restaurant POS Billing' : 'POS Billing / Sale'}
+      <div className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Main Title Section */}
+          <div className="flex items-center gap-1.5">
+            <div className="h-7 w-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-xs shrink-0">
+              <ShoppingCart className="h-4 w-4" />
+            </div>
+            <div>
+              <h1 className="text-sm font-black text-slate-900 leading-tight whitespace-nowrap">
+                {config.EnableRestaurantMode === 'true' ? 'Restaurant POS Bill' : 'POS Bill'}
               </h1>
-              <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 rounded text-[10px] font-bold">
-                {activeVoucherType?.name || 'Sale'}
+            </div>
+          </div>
+
+          {/* Compact Control Buttons (Green Area) moved directly next to the title */}
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
+            {config.EnableCustomerDisplay !== 'false' && (
+              <button
+                type="button"
+                onClick={() => {
+                  const cId = getActiveCompanyId();
+                  const formattedCart: CustomerDisplayItem[] = cart.map((line, idx) => {
+                    let lineDisc = 0;
+                    if (showItemDiscount || line.appliedSchemeName || Number(line.discount) > 0) {
+                      const rawDisc = Number(line.discount) || 0;
+                      const isPct = line.discountType === 'percent' || config.ItemDiscountType === 'percent';
+                      lineDisc = isPct ? ((line.qty * line.rate) * rawDisc / 100) : rawDisc;
+                    }
+                    return {
+                      id: `${line.itemCode}-${idx}`,
+                      name: line.itemName || (line as any)['Item Name'] || 'Item',
+                      qty: Number(line.qty) || 0,
+                      rate: Number(line.rate) || 0,
+                      discount: lineDisc,
+                      amount: Math.max(0, (Number(line.qty) || 0) * (Number(line.rate) || 0) - lineDisc),
+                      unit: line.unit,
+                      batchNo: line.selectedBatchNo
+                    };
+                  });
+
+                  broadcastCustomerDisplayState({
+                    companyId: cId,
+                    companyName: config.CompanyName || 'Retail Store',
+                    companyLogo: config.CompanyLogo || undefined,
+                    terminalId: deviceCounterId || 'C1',
+                    status: cart.length === 0 ? 'idle' : 'active',
+                    cartItems: formattedCart,
+                    summary: {
+                      subtotal: totals.subtotal,
+                      discountTotal: totals.discount,
+                      taxTotal: totals.gstAmt,
+                      grandTotal: totals.total,
+                      itemCount: cart.length,
+                      currencySymbol: config.CurrencySymbol || 'Nu.'
+                    },
+                    paymentQrData: (config as any).BankQrData || (config as any).MerchantQrCode || undefined,
+                    timestamp: Date.now()
+                  }, cId);
+
+                  window.open(`?portal=display&companyId=${encodeURIComponent(cId)}`, 'CustomerDisplay', 'width=1100,height=800,menubar=no,toolbar=no');
+                }}
+                className="px-1.5 py-0.5 bg-slate-900 hover:bg-slate-800 text-slate-100 font-bold text-[9px] rounded border border-slate-700 transition flex items-center gap-0.5 shadow-2xs cursor-pointer whitespace-nowrap"
+                title="Open Secondary / Dual Screen Customer Display Window"
+              >
+                <span>💻 Display</span>
+              </button>
+            )}
+
+            {config.EnableCashDrawer !== 'false' && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerCashDrawerKick();
+                }}
+                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[9px] rounded border border-slate-300 transition flex items-center gap-0.5 shadow-2xs cursor-pointer whitespace-nowrap"
+                title="Trigger Physical Cash Drawer Open Signal"
+              >
+                <span>💵 Cash Box</span>
+              </button>
+            )}
+
+            {/* Bill No Indicator */}
+            <div className="flex items-center gap-0.5 bg-slate-50 border border-slate-200/90 rounded px-1.5 py-0.5 text-[9px] shadow-2xs font-mono">
+              <span className="font-bold text-slate-500 uppercase tracking-wider">Bill</span>
+              <span className="font-black text-slate-900 bg-white px-1 rounded border border-slate-200">
+                {editingInvoiceNo || posBillNo || 'Auto'}
               </span>
-              {activeTableName && (
-                <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full text-[11px] font-black animate-pulse">
-                  🍽️ {activeTableName}
-                </span>
-              )}
-              {pricingMode === 'wholesale' && (
-                <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.2 rounded text-[10px] font-extrabold animate-pulse">
-                  Wholesale Mode
+            </div>
+
+            {/* Terminal Select */}
+            <div className="flex items-center gap-0.5 bg-slate-50 border border-slate-200/90 rounded px-1.5 py-0.5 text-[9px] shadow-2xs">
+              <span className="font-bold text-indigo-600 uppercase tracking-wider">Term</span>
+              <select
+                value={deviceCounterId}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setLocalDeviceCounterId(val);
+                  setDeviceCounterId(val);
+                }}
+                className="bg-white border border-indigo-200 text-indigo-900 text-[9px] font-bold font-mono rounded px-0.5 outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
+                title="Local Terminal Counter"
+              >
+                {allowedTerminals.map(term => (
+                  <option key={term.code || term.id} value={term.code || term.id}>
+                    {term.code || term.id}
+                  </option>
+                ))}
+              </select>
+              {!isSystemOnline() && (
+                <span className={`text-[8px] font-extrabold px-1 py-0.2 rounded flex items-center gap-0.5 border ${
+                  canCurrentDeviceBillOffline().allowed
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : 'bg-indigo-100 text-indigo-950 border-indigo-300'
+                }`}>
+                  {canCurrentDeviceBillOffline().allowed ? '⚡ Master' : '🔍 Query'}
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-slate-500 font-medium">
-              Quick Entry (Press <kbd className="bg-slate-100 border border-slate-300 rounded px-1 py-0.2 text-[10px] font-mono font-bold">F2</kbd> to Save)
-            </p>
+
+            {/* Retail / Wholesale Toggle Button */}
+            {config.EnableWholesalePrice !== 'false' && (
+              <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => handlePricingModeChange('retail')}
+                  className={`px-1.5 py-0.5 text-[9px] font-extrabold rounded transition cursor-pointer ${
+                    pricingMode === 'retail'
+                      ? 'bg-white text-indigo-700 shadow-2xs border border-slate-150'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Retail
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePricingModeChange('wholesale')}
+                  className={`px-1.5 py-0.5 text-[9px] font-extrabold rounded transition cursor-pointer ${
+                    pricingMode === 'wholesale'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Wholesale
+                </button>
+              </div>
+            )}
+
+            {/* Offers Badge */}
+            <button
+              type="button"
+              onClick={() => setShowOffersModal(true)}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold rounded-lg bg-amber-50 text-amber-900 border border-amber-250 hover:bg-amber-100 transition shadow-2xs cursor-pointer"
+              title="View Active Schemes & Offers (Alt+O)"
+            >
+              <Tags className="h-3.5 w-3.5 text-amber-600" />
+              <span>Offers</span>
+              <span className="bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                {getAllActiveSchemes('pos').length}
+              </span>
+            </button>
           </div>
         </div>
 
         {/* Restaurant Suite Quick Action Buttons */}
         {config.EnableRestaurantMode === 'true' && (
-          <div className="flex items-center gap-1.5 flex-wrap my-1 sm:my-0">
+          <div className="flex items-center gap-1 flex-wrap my-1 sm:my-0">
             <button
               type="button"
               onClick={() => setShowRestaurantFloorPlan(true)}
-              className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-[10px] rounded-lg transition flex items-center gap-1 shadow-2xs cursor-pointer"
             >
               <span>🍽️ Table Floor Plan</span>
             </button>
@@ -2550,7 +2680,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               <button
                 type="button"
                 onClick={() => setShowKDSModal(true)}
-                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[10px] rounded-lg transition flex items-center gap-1 shadow-2xs cursor-pointer"
               >
                 <span>👨‍🍳 Kitchen (KDS)</span>
               </button>
@@ -2560,7 +2690,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               <button
                 type="button"
                 onClick={() => setShowWaiterPadModal(true)}
-                className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[10px] rounded-lg transition flex items-center gap-1 shadow-2xs cursor-pointer"
               >
                 <span>📱 Waiter Pad</span>
               </button>
@@ -2570,174 +2700,13 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               <button
                 type="button"
                 onClick={() => setShowQRModal(true)}
-                className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold text-[10px] rounded-lg transition flex items-center gap-1 shadow-2xs cursor-pointer"
               >
                 <span>🖨️ Table QRs</span>
               </button>
             )}
           </div>
         )}
-
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-          {config.EnableCustomerDisplay !== 'false' && (
-            <button
-              type="button"
-              onClick={() => {
-                const cId = getActiveCompanyId();
-                const formattedCart: CustomerDisplayItem[] = cart.map((line, idx) => {
-                  let lineDisc = 0;
-                  if (showItemDiscount || line.appliedSchemeName || Number(line.discount) > 0) {
-                    const rawDisc = Number(line.discount) || 0;
-                    const isPct = line.discountType === 'percent' || config.ItemDiscountType === 'percent';
-                    lineDisc = isPct ? ((line.qty * line.rate) * rawDisc / 100) : rawDisc;
-                  }
-                  return {
-                    id: `${line.itemCode}-${idx}`,
-                    name: line.itemName || (line as any)['Item Name'] || 'Item',
-                    qty: Number(line.qty) || 0,
-                    rate: Number(line.rate) || 0,
-                    discount: lineDisc,
-                    amount: Math.max(0, (Number(line.qty) || 0) * (Number(line.rate) || 0) - lineDisc),
-                    unit: line.unit,
-                    batchNo: line.selectedBatchNo
-                  };
-                });
-
-                broadcastCustomerDisplayState({
-                  companyId: cId,
-                  companyName: config.CompanyName || 'Retail Store',
-                  companyLogo: config.CompanyLogo || undefined,
-                  terminalId: deviceCounterId || 'C1',
-                  status: cart.length === 0 ? 'idle' : 'active',
-                  cartItems: formattedCart,
-                  summary: {
-                    subtotal: totals.subtotal,
-                    discountTotal: totals.discount,
-                    taxTotal: totals.gstAmt,
-                    grandTotal: totals.total,
-                    itemCount: cart.length,
-                    currencySymbol: config.CurrencySymbol || 'Nu.'
-                  },
-                  paymentQrData: (config as any).BankQrData || (config as any).MerchantQrCode || undefined,
-                  timestamp: Date.now()
-                }, cId);
-
-                window.open(`?portal=display&companyId=${encodeURIComponent(cId)}`, 'CustomerDisplay', 'width=1100,height=800,menubar=no,toolbar=no');
-              }}
-              className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-100 font-bold text-xs rounded-xl border border-slate-700 transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-              title="Open Secondary / Dual Screen Customer Display Window or connect Tablet"
-            >
-              <span>💻 Customer Display</span>
-            </button>
-          )}
-
-          {config.EnableCashDrawer !== 'false' && (
-            <button
-              type="button"
-              onClick={() => {
-                triggerCashDrawerKick();
-              }}
-              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl border border-slate-300 transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
-              title="Trigger Physical Cash Drawer Open Signal"
-            >
-              <span>💵 Open Cash Box</span>
-            </button>
-          )}
-          {/* Bill No & Date Indicator */}
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/90 rounded-xl px-2.5 py-1 text-xs shadow-2xs">
-            <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
-              <Receipt className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Bill No</span>
-              <span className="font-mono text-xs font-black text-slate-900 bg-white px-1.5 py-0.5 rounded border border-slate-200 shadow-2xs">
-                {editingInvoiceNo || posBillNo || 'Auto'}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 pr-2 border-r border-slate-200">
-              <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Terminal</span>
-              <select
-                value={deviceCounterId}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setLocalDeviceCounterId(val);
-                  setDeviceCounterId(val);
-                }}
-                className="bg-white border border-indigo-200 text-indigo-900 text-xs font-bold font-mono rounded px-1.5 py-0.5 outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
-                title="Local Terminal / Counter Identifier (For offline multi-device safety without creating extra voucher types)"
-              >
-                {allowedTerminals.map(term => (
-                  <option key={term.code || term.id} value={term.code || term.id}>
-                    {term.name || `${term.tag} (${term.code})`}
-                  </option>
-                ))}
-              </select>
-              {!isSystemOnline() && (
-                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-lg flex items-center gap-1 border ${
-                  canCurrentDeviceBillOffline().allowed
-                    ? 'bg-amber-100 text-amber-900 border-amber-300'
-                    : 'bg-indigo-100 text-indigo-950 border-indigo-300'
-                }`}>
-                  {canCurrentDeviceBillOffline().allowed ? (
-                    <span>⚡ Offline Master</span>
-                  ) : (
-                    <span>🔍 Price Check Only</span>
-                  )}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Calendar className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Date</span>
-              <input
-                type="date"
-                value={posBillDate}
-                onChange={(e) => setPosBillDate(e.target.value)}
-                className="text-xs font-bold text-slate-800 bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 cursor-pointer shadow-2xs"
-                title="POS Bill Date (Click to adjust)"
-              />
-            </div>
-          </div>
-
-          {/* Retail / Wholesale Toggle Button */}
-          {config.EnableWholesalePrice !== 'false' && (
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
-              <button
-                type="button"
-                onClick={() => handlePricingModeChange('retail')}
-                className={`px-3 py-1 text-xs font-extrabold rounded-lg transition cursor-pointer ${
-                  pricingMode === 'retail'
-                    ? 'bg-white text-indigo-700 shadow-xs border border-slate-200'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Retail
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePricingModeChange('wholesale')}
-                className={`px-3 py-1 text-xs font-extrabold rounded-lg transition cursor-pointer ${
-                  pricingMode === 'wholesale'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Wholesale
-              </button>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setShowOffersModal(true)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-xl bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 transition shadow-2xs cursor-pointer"
-            title="View Active Schemes & Offers (Alt+O)"
-          >
-            <Tags className="h-3.5 w-3.5 text-amber-600" />
-            <span>Offers</span>
-            <span className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
-              {getAllActiveSchemes('pos').length}
-            </span>
-          </button>
-        </div>
       </div>
 
       {/* Mobile-only switcher between Cart and Checkout */}
@@ -3913,6 +3882,47 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                     if (cart.length > 0) {
                       setCustomerDisplayQrType('primary');
                       setCustomerDisplayStatus('payment_pending');
+
+                      // Immediate real-time broadcast to tablet/wireless display
+                      const formattedCart = cart.map((line, idx) => {
+                        let lineDisc = 0;
+                        if (showItemDiscount || line.appliedSchemeName || Number(line.discount) > 0) {
+                          const rawDisc = Number(line.discount) || 0;
+                          const isPct = line.discountType === 'percent' || config.ItemDiscountType === 'percent';
+                          lineDisc = isPct ? ((line.qty * line.rate) * rawDisc / 100) : rawDisc;
+                        }
+                        return {
+                          id: `${line.itemCode}-${idx}`,
+                          name: line.itemName,
+                          qty: Number(line.qty) || 0,
+                          rate: Number(line.rate) || 0,
+                          discount: lineDisc,
+                          amount: Math.max(0, (Number(line.qty) || 0) * (Number(line.rate) || 0) - lineDisc),
+                          unit: line.unit,
+                          batchNo: line.selectedBatchNo
+                        };
+                      });
+
+                      broadcastCustomerDisplayState({
+                        companyId: getActiveCompanyId(),
+                        companyName: config.CompanyName || DEFAULT_TENANT_COMPANY.company_name,
+                        companyLogo: config.CompanyLogo || undefined,
+                        terminalId: deviceCounterId || 'C1',
+                        status: 'payment_pending',
+                        cartItems: formattedCart,
+                        summary: {
+                          subtotal: totals.subtotal,
+                          discountTotal: totals.discount,
+                          taxTotal: totals.gstAmt,
+                          grandTotal: totals.total,
+                          itemCount: cart.length,
+                          currencySymbol: config.CurrencySymbol || 'Nu.'
+                        },
+                        paymentQrData: (config as any).CompanyBankQrImage || (config as any).BankQrImage || (config as any).BankQrData || (config as any).MerchantQrCode || undefined,
+                        paymentQrImage: undefined,
+                        activeQrType: 'primary',
+                        timestamp: Date.now()
+                      }, getActiveCompanyId());
                     }
                   }}
                   disabled={cart.length === 0}
@@ -3935,6 +3945,47 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                       if (cart.length > 0) {
                         setCustomerDisplayQrType('secondary');
                         setCustomerDisplayStatus('payment_pending');
+
+                        // Immediate real-time broadcast to tablet/wireless display
+                        const formattedCart = cart.map((line, idx) => {
+                          let lineDisc = 0;
+                          if (showItemDiscount || line.appliedSchemeName || Number(line.discount) > 0) {
+                            const rawDisc = Number(line.discount) || 0;
+                            const isPct = line.discountType === 'percent' || config.ItemDiscountType === 'percent';
+                            lineDisc = isPct ? ((line.qty * line.rate) * rawDisc / 100) : rawDisc;
+                          }
+                          return {
+                            id: `${line.itemCode}-${idx}`,
+                            name: line.itemName,
+                            qty: Number(line.qty) || 0,
+                            rate: Number(line.rate) || 0,
+                            discount: lineDisc,
+                            amount: Math.max(0, (Number(line.qty) || 0) * (Number(line.rate) || 0) - lineDisc),
+                            unit: line.unit,
+                            batchNo: line.selectedBatchNo
+                          };
+                        });
+
+                        broadcastCustomerDisplayState({
+                          companyId: getActiveCompanyId(),
+                          companyName: config.CompanyName || DEFAULT_TENANT_COMPANY.company_name,
+                          companyLogo: config.CompanyLogo || undefined,
+                          terminalId: deviceCounterId || 'C1',
+                          status: 'payment_pending',
+                          cartItems: formattedCart,
+                          summary: {
+                            subtotal: totals.subtotal,
+                            discountTotal: totals.discount,
+                            taxTotal: totals.gstAmt,
+                            grandTotal: totals.total,
+                            itemCount: cart.length,
+                            currencySymbol: config.CurrencySymbol || 'Nu.'
+                          },
+                          paymentQrData: config.SecondaryBankQrData || undefined,
+                          paymentQrImage: config.SecondaryBankQrImage || undefined,
+                          activeQrType: 'secondary',
+                          timestamp: Date.now()
+                        }, getActiveCompanyId());
                       }
                     }}
                     disabled={cart.length === 0}

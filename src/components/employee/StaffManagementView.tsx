@@ -146,7 +146,7 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
 
   // Total sticky offset for table headers below this header
-  const stickyTopPx = topOffset + (isHeaderCollapsed ? 0 : headerHeight);
+  const stickyTopPx = topOffset + headerHeight;
 
   // Daily attendance quick stats
   const todayAttendanceRecords = attendanceRecords.filter(r => r.date === selectedDate);
@@ -659,15 +659,12 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
 
   return (
     <div className="flex-1 bg-slate-50 flex flex-col min-h-full text-slate-800">
-      {/* Top Banner / Executive Navigation Header */}
+      {/* Top Banner / Executive Navigation Header (Sticky to Top) */}
       <div 
         ref={headerRef}
         style={{ top: `${topOffset}px` }}
-        className={`sticky z-30 bg-white/95 backdrop-blur-xs border-slate-200/80 px-4 sm:px-6 transition-all duration-300 ease-in-out ${
-        isHeaderCollapsed 
-          ? 'max-h-0 py-0 opacity-0 overflow-hidden border-b-0 pointer-events-none' 
-          : 'max-h-32 py-2.5 border-b shadow-2xs opacity-100'
-      }`}>
+        className="sticky z-30 bg-white/95 backdrop-blur-xs border-b border-slate-200/80 px-4 sm:px-6 py-2.5 shadow-2xs transition-all duration-200"
+      >
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           {/* Top Left: Executive Dropdown Selector (Marked in Green) */}
           <div className="relative shrink-0" ref={dropdownRef}>
@@ -1129,6 +1126,30 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                 </a>
               </>
             )}
+
+            {/* Quick Collapse / Expand Panels Toggle for Max Report Area */}
+            <button
+              type="button"
+              onClick={() => setIsHeaderCollapsed(prev => !prev)}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs ${
+                isHeaderCollapsed 
+                  ? 'border-blue-400 bg-blue-50 text-blue-800' 
+                  : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-700'
+              }`}
+              title={isHeaderCollapsed ? "Expand summary and filter panels" : "Collapse panels for full screen report view"}
+            >
+              {isHeaderCollapsed ? (
+                <>
+                  <ChevronDown className="h-3.5 w-3.5 text-blue-600" />
+                  <span className="hidden sm:inline">Expand Panels</span>
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="h-3.5 w-3.5 text-slate-500" />
+                  <span className="hidden sm:inline">Max Report View</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

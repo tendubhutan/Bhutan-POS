@@ -50,7 +50,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
   const [internalIsHeaderCollapsed, setInternalIsHeaderCollapsed] = useState(false);
   const isHeaderCollapsed = propIsHeaderCollapsed !== undefined ? propIsHeaderCollapsed : internalIsHeaderCollapsed;
   const handleToggleCollapse = onToggleCollapse || (() => setInternalIsHeaderCollapsed(prev => !prev));
-  const effectiveStickyTop = stickyTopPx !== undefined ? stickyTopPx : (isHeaderCollapsed ? 0 : 54);
+  const effectiveStickyTop = stickyTopPx !== undefined ? stickyTopPx : 54;
 
   // Local state for tasks if not passed from parent
   const [internalTasks, setInternalTasks] = useState<TaskAssignment[]>(() => getTaskAssignments(companyId));

@@ -78,7 +78,7 @@ export const MonthlyAttendanceRegisterView: React.FC<MonthlyAttendanceRegisterVi
   const [internalIsHeaderCollapsed, setInternalIsHeaderCollapsed] = useState(false);
   const isHeaderCollapsed = propIsHeaderCollapsed !== undefined ? propIsHeaderCollapsed : internalIsHeaderCollapsed;
   const handleToggleCollapse = onToggleCollapse || (() => setInternalIsHeaderCollapsed(prev => !prev));
-  const effectiveStickyTop = stickyTopPx !== undefined ? stickyTopPx : (isHeaderCollapsed ? 0 : 54);
+  const effectiveStickyTop = stickyTopPx !== undefined ? stickyTopPx : 54;
 
   const searchQuery = externalSearchQuery !== undefined ? externalSearchQuery : internalSearchQuery;
   const setSearchQuery = externalOnSearchChange || setInternalSearchQuery;

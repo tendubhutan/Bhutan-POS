@@ -21,7 +21,9 @@ import {
   ArrowRight,
   Receipt,
   Smartphone,
-  X
+  X,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 
 interface CustomerDisplayViewProps {
@@ -38,6 +40,8 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTabletQrModal, setShowTabletQrModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'cart' | 'pay'>('cart');
+  const [isHeaderCollapsed, setIsHeaderCollapsed] = useState(false);
+  const [isSummaryCollapsed, setIsSummaryCollapsed] = useState(false);
 
   // Keep a persistent hold on the "completed / thank you" screen so it is not instantly overridden by a cleared cart
   const [completedHoldState, setCompletedHoldState] = useState<CustomerDisplayState | null>(null);
@@ -230,59 +234,71 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans flex flex-col justify-between select-none overflow-x-hidden">
       {/* Top Header Bar */}
-      <header className="px-6 py-4 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between gap-4 backdrop-blur-md sticky top-0 z-20">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-black">
-            {activeState?.companyLogo ? (
-              <img src={activeState.companyLogo} alt={companyName} className="w-8 h-8 object-contain rounded-xl" />
-            ) : (
-              <Building2 className="h-5 w-5" />
-            )}
+      {!isHeaderCollapsed && (
+        <header className="px-6 py-4 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between gap-4 backdrop-blur-md sticky top-0 z-20">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-black">
+              {activeState?.companyLogo ? (
+                <img src={activeState.companyLogo} alt={companyName} className="w-8 h-8 object-contain rounded-xl" />
+              ) : (
+                <Building2 className="h-5 w-5" />
+              )}
+            </div>
+            <div>
+              <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
+                <span>{companyName}</span>
+              </h1>
+              <p className="text-xs text-slate-400 flex items-center gap-1.5 font-mono">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Customer Terminal Display</span>
+                {activeState?.terminalId && <span className="text-indigo-400 font-bold">({activeState.terminalId})</span>}
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
-              <span>{companyName}</span>
-            </h1>
-            <p className="text-xs text-slate-400 flex items-center gap-1.5 font-mono">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Customer Terminal Display</span>
-              {activeState?.terminalId && <span className="text-indigo-400 font-bold">({activeState.terminalId})</span>}
-            </p>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowTabletQrModal(true)}
-            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-            title="Scan with tablet or smartphone"
-          >
-            <Smartphone className="h-4 w-4 text-indigo-400" />
-            <span className="hidden sm:inline">Connect Tablet / Wireless</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="p-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded-xl transition cursor-pointer"
-            title="Toggle Fullscreen Mode"
-          >
-            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-          </button>
-
-          {onClose && (
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onClose}
-              className="p-2 bg-slate-800 hover:bg-rose-900/50 border border-slate-700 hover:border-rose-700 text-slate-400 hover:text-rose-300 rounded-xl transition cursor-pointer"
-              title="Close Customer Display"
+              onClick={() => setShowTabletQrModal(true)}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              title="Scan with tablet or smartphone"
             >
-              <X className="h-4 w-4" />
+              <Smartphone className="h-4 w-4 text-indigo-400" />
+              <span className="hidden sm:inline">Connect Tablet / Wireless</span>
             </button>
-          )}
-        </div>
-      </header>
+
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="p-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded-xl transition cursor-pointer"
+              title="Toggle Fullscreen Mode"
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsHeaderCollapsed(true)}
+              className="p-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white rounded-xl transition cursor-pointer flex items-center gap-1.5"
+              title="Collapse Header & Tabs to maximize space"
+            >
+              <ChevronUp className="h-4 w-4 text-indigo-400" />
+              <span className="hidden sm:inline font-bold text-xs">Collapse</span>
+            </button>
+
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-2 bg-slate-800 hover:bg-rose-900/50 border border-slate-700 hover:border-rose-700 text-slate-400 hover:text-rose-300 rounded-xl transition cursor-pointer"
+                title="Close Customer Display"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </header>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto flex flex-col">
@@ -352,32 +368,34 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
           /* VIEW 3: ACTIVE checkout Billed ITEM LIST + BILL SUMMARY & PAYMENT QR */
           <div className="flex flex-col flex-1">
             {/* Tactile Segmented Tab Switcher (Only visible on tablet & smartphone screen widths < lg) */}
-            <div className="flex lg:hidden items-center p-1.5 bg-slate-900 border border-slate-800 rounded-2xl mb-5 shadow-inner">
-              <button
-                type="button"
-                onClick={() => setActiveTab('cart')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
-                  activeTab === 'cart'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <ShoppingBag className="h-4 w-4" />
-                <span>Items List ({items.length})</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('pay')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
-                  activeTab === 'pay'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <QrCode className="h-4 w-4" />
-                <span>Pay & QR ({currSymbol} {grandTotal.toFixed(2)})</span>
-              </button>
-            </div>
+            {!isHeaderCollapsed && (
+              <div className="flex lg:hidden items-center p-1.5 bg-slate-900 border border-slate-800 rounded-2xl mb-5 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('cart')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                    activeTab === 'cart'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <ShoppingBag className="h-4 w-4" />
+                  <span>Items List ({items.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('pay')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                    activeTab === 'pay'
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <QrCode className="h-4 w-4" />
+                  <span>Pay & QR ({currSymbol} {grandTotal.toFixed(2)})</span>
+                </button>
+              </div>
+            )}
 
             {/* Layout Grid: split-columns on desktop widescreen, responsive state-toggled on tablet/phone */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-start">
@@ -398,7 +416,7 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
                 {/* Items Table */}
                 <div 
                   ref={listContainerRef}
-                  className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[280px] lg:max-h-[520px] scroll-smooth"
+                  className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[380px] lg:max-h-[580px] scroll-smooth"
                 >
                   {items.map((item, idx) => {
                     const isCompact = items.length > 4;
@@ -443,9 +461,9 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
 
                 {/* Mobile Cart Summary & Interactive Action Drawer (Only visible on tablet/smartphone) */}
                 <div className="mt-4 pt-4 border-t border-slate-800 flex lg:hidden flex-col gap-3">
-                  <div className="flex justify-between items-center font-mono">
-                    <span className="text-xs text-slate-400 font-bold uppercase">PAYABLE AMOUNT:</span>
-                    <span className="text-2xl font-black text-emerald-400">
+                  <div className="bg-blue-600 rounded-xl p-3.5 flex items-center justify-between gap-3 text-white shadow-md w-full">
+                    <span className="text-xs font-black uppercase tracking-wider whitespace-nowrap">Payable Amount</span>
+                    <span className="text-xl font-black tracking-tight whitespace-nowrap font-mono text-white">
                       {currSymbol} {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </span>
                   </div>
@@ -468,42 +486,60 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
                 <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                     <span className="font-extrabold text-sm text-slate-300 uppercase tracking-wider">Billing Summary</span>
-                    <span className="text-xs text-slate-400 font-mono">LIVE TOTAL</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsSummaryCollapsed(!isSummaryCollapsed)}
+                      className="text-xs font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer transition select-none"
+                    >
+                      {isSummaryCollapsed ? (
+                        <>
+                          <ChevronDown className="h-4 w-4" />
+                          <span>Show Details</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronUp className="h-4 w-4" />
+                          <span>Hide Details</span>
+                        </>
+                      )}
+                    </button>
                   </div>
 
-                  <div className="space-y-2.5 font-mono text-sm">
-                    <div className="flex items-center justify-between text-slate-400">
-                      <span>Items Subtotal</span>
-                      <span>{currSymbol} {(activeState?.summary?.subtotal || 0).toFixed(2)}</span>
-                    </div>
+                  <div className="space-y-4 font-mono text-sm">
+                    {!isSummaryCollapsed && (
+                      <div className="space-y-2.5 border-b border-slate-800/50 pb-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <div className="flex items-center justify-between text-slate-400">
+                          <span>Items Subtotal</span>
+                          <span>{currSymbol} {(activeState?.summary?.subtotal || 0).toFixed(2)}</span>
+                        </div>
 
-                    {(activeState?.summary?.discountTotal || 0) > 0 && (
-                      <div className="flex items-center justify-between text-emerald-400">
-                        <span>Total Savings / Discount</span>
-                        <span>-{currSymbol} {(activeState?.summary?.discountTotal || 0).toFixed(2)}</span>
+                        {(activeState?.summary?.discountTotal || 0) > 0 && (
+                          <div className="flex items-center justify-between text-emerald-400">
+                            <span>Total Savings / Discount</span>
+                            <span>-{currSymbol} {(activeState?.summary?.discountTotal || 0).toFixed(2)}</span>
+                          </div>
+                        )}
+
+                        {(activeState?.summary?.taxTotal || 0) > 0 && (
+                          <div className="flex items-center justify-between text-slate-400">
+                            <span>GST / Taxes</span>
+                            <span>+{currSymbol} {(activeState?.summary?.taxTotal || 0).toFixed(2)}</span>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {(activeState?.summary?.taxTotal || 0) > 0 && (
-                      <div className="flex items-center justify-between text-slate-400">
-                        <span>GST / Taxes</span>
-                        <span>+{currSymbol} {(activeState?.summary?.taxTotal || 0).toFixed(2)}</span>
-                      </div>
-                    )}
-
-                    <div className="pt-3 border-t border-slate-800">
-                      <div className="bg-blue-600 rounded-xl p-3 flex items-center justify-between gap-3 text-white shadow-md">
-                        <span className="text-sm font-extrabold uppercase tracking-wider whitespace-nowrap">Payable Amount</span>
-                        <span className="text-xl sm:text-2xl font-black tracking-tight whitespace-nowrap font-mono text-white">
-                          {currSymbol} {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
+                    <div className="bg-blue-600 rounded-xl p-3 flex items-center justify-between gap-3 text-white shadow-md">
+                      <span className="text-sm font-extrabold uppercase tracking-wider whitespace-nowrap">Payable Amount</span>
+                      <span className="text-xl sm:text-2xl font-black tracking-tight whitespace-nowrap font-mono text-white">
+                        {currSymbol} {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </span>
                     </div>
                   </div>
                 </div>
 
                 {/* Dynamic / Uploaded Payment QR Code Card */}
-                {grandTotal > 0 && (() => {
+                {grandTotal > 0 && activeState?.status === 'payment_pending' && (() => {
                   const uploadedQrImage = isSecondaryActive
                     ? (activeState?.paymentQrImage || config.SecondaryBankQrImage || '')
                     : (activeState?.paymentQrImage || config.CompanyBankQrImage || config.BankQrImage || (activeState?.paymentQrData?.startsWith('data:image') ? activeState.paymentQrData : ''));
@@ -591,6 +627,18 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
             </button>
           </div>
         </div>
+      )}
+
+      {isHeaderCollapsed && (
+        <button
+          type="button"
+          onClick={() => setIsHeaderCollapsed(false)}
+          className="fixed bottom-4 right-4 z-50 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full font-black shadow-2xl hover:shadow-indigo-500/30 transition flex items-center justify-center gap-1.5 cursor-pointer border border-indigo-400 backdrop-blur-md animate-bounce"
+          title="Expand Header & Tabs"
+        >
+          <ChevronDown className="h-4 w-4" />
+          <span className="text-xs font-black">Show Header</span>
+        </button>
       )}
     </div>
   );
