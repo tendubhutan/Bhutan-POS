@@ -37,6 +37,7 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
   const [displayState, setDisplayState] = useState<CustomerDisplayState | null>(() => getCustomerDisplayState(urlCompanyId));
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showTabletQrModal, setShowTabletQrModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'cart' | 'pay'>('cart');
 
   // Keep a persistent hold on the "completed / thank you" screen so it is not instantly overridden by a cleared cart
   const [completedHoldState, setCompletedHoldState] = useState<CustomerDisplayState | null>(null);
@@ -189,15 +190,30 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
     }
   }
 
-  const items: CustomerDisplayItem[] = activeState?.cartItems || [];
+  const items = activeState?.cartItems || [];
 
-  // Auto-scroll ref and hook for live checkout items (fully dynamic and responsive)
-  const itemsEndRef = useRef<HTMLDivElement>(null);
+  // Auto-scroll hook for live checkout items (fully dynamic, contained scroll - prevents window scrolling)
+  const listContainerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (itemsEndRef.current) {
-      itemsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (listContainerRef.current) {
+      listContainerRef.current.scrollTop = listContainerRef.current.scrollHeight;
     }
   }, [items.length]);
+
+  // Auto-switch tabs based on workflow updates
+  const prevItemsLengthRef = useRef(items.length);
+  useEffect(() => {
+    if (items.length > prevItemsLengthRef.current) {
+      setActiveTab('cart'); // Flip back to items list to let customer view newly added items
+    }
+    prevItemsLengthRef.current = items.length;
+  }, [items.length]);
+
+  useEffect(() => {
+    if (activeState?.status === 'payment_pending') {
+      setActiveTab('pay'); // Auto flip to Payment QR screen when checkout state transitions to payment
+    }
+  }, [activeState?.status]);
 
   const status = activeState?.status || 'idle';
   const isCompleted = status === 'completed' && activeState?.lastCompletedInvoice;
@@ -331,124 +347,195 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
           </div>
         ) : (
           /* VIEW 3: ACTIVE checkout Billed ITEM LIST + BILL SUMMARY & PAYMENT QR */
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-start">
-            {/* Left Column: Billed Items List */}
-            <div className="lg:col-span-7 bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl flex flex-col min-h-0 lg:min-h-[500px] transition-all duration-300">
-              <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <Receipt className="h-5 w-5 text-indigo-400" />
-                  <span className="font-extrabold text-sm text-white uppercase tracking-wider">Billed Items List</span>
-                </div>
-                <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-mono text-xs font-bold">
-                  {items.length} {items.length === 1 ? 'Item' : 'Items'}
-                </span>
-              </div>
-
-              {/* Items Table */}
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[260px] lg:max-h-[520px]">
-                {items.map((item, idx) => (
-                  <div
-                    key={`${item.id}-${idx}`}
-                    className="p-3.5 bg-slate-950/70 border border-slate-800/80 rounded-2xl flex items-center justify-between gap-3 hover:border-slate-700 transition"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-md bg-slate-800 text-slate-400 font-mono text-[10px] font-bold flex items-center justify-center shrink-0">
-                          {idx + 1}
-                        </span>
-                        <h4 className="font-bold text-sm text-white truncate">{item.name}</h4>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-mono pl-7">
-                        <span>
-                          {item.qty} {item.unit || 'pcs'} × {currSymbol} {item.rate.toFixed(2)}
-                        </span>
-                        {item.discount > 0 && (
-                          <span className="text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-1.5 py-0.2 rounded text-[10px] font-bold">
-                            -{currSymbol} {item.discount.toFixed(2)} Off
-                          </span>
-                        )}
-                        {item.batchNo && <span className="text-indigo-400">Batch: {item.batchNo}</span>}
-                      </div>
-                    </div>
-
-                    <div className="text-right font-mono shrink-0">
-                      <span className="text-base font-black text-white">
-                        {currSymbol} {item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                {/* Invisible Auto-Scroll Anchor */}
-                <div ref={itemsEndRef} />
-              </div>
+          <div className="flex flex-col flex-1">
+            {/* Tactile Segmented Tab Switcher (Only visible on tablet & smartphone screen widths < lg) */}
+            <div className="flex lg:hidden items-center p-1.5 bg-slate-900 border border-slate-800 rounded-2xl mb-5 shadow-inner">
+              <button
+                type="button"
+                onClick={() => setActiveTab('cart')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'cart'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <ShoppingBag className="h-4 w-4" />
+                <span>Items List ({items.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('pay')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-black rounded-xl transition-all cursor-pointer ${
+                  activeTab === 'pay'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <QrCode className="h-4 w-4" />
+                <span>Pay & QR ({currSymbol} {grandTotal.toFixed(2)})</span>
+              </button>
             </div>
 
-            {/* Right Column: Billing Summary & Dynamic Payment QR Code */}
-            <div className="lg:col-span-5 space-y-4">
-              {/* Bill Summary Card */}
-              <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <span className="font-extrabold text-sm text-slate-300 uppercase tracking-wider">Billing Summary</span>
-                  <span className="text-xs text-slate-400 font-mono">LIVE TOTAL</span>
+            {/* Layout Grid: split-columns on desktop widescreen, responsive state-toggled on tablet/phone */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-start">
+              {/* Column 1: Billed Items List */}
+              <div className={`lg:col-span-7 bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl flex flex-col min-h-0 lg:min-h-[500px] transition-all duration-300 ${
+                activeTab === 'cart' ? 'block' : 'hidden lg:flex'
+              }`}>
+                <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="h-5 w-5 text-indigo-400" />
+                    <span className="font-extrabold text-sm text-white uppercase tracking-wider">Billed Items List</span>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-mono text-xs font-bold">
+                    {items.length} {items.length === 1 ? 'Item' : 'Items'}
+                  </span>
                 </div>
 
-                <div className="space-y-2.5 font-mono text-sm">
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span>Items Subtotal</span>
-                    <span>{currSymbol} {(activeState?.summary?.subtotal || 0).toFixed(2)}</span>
-                  </div>
+                {/* Items Table */}
+                <div 
+                  ref={listContainerRef}
+                  className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[280px] lg:max-h-[520px] scroll-smooth"
+                >
+                  {items.map((item, idx) => {
+                    const isCompact = items.length > 4;
+                    return (
+                      <div
+                        key={`${item.id}-${idx}`}
+                        className={`bg-slate-950/70 border border-slate-800/80 rounded-2xl flex items-center justify-between gap-3 hover:border-slate-700 transition-all duration-200 ${
+                          isCompact ? 'p-2 text-xs' : 'p-3.5 text-sm'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`rounded-md bg-slate-800 text-slate-400 font-mono font-bold flex items-center justify-center shrink-0 ${
+                              isCompact ? 'w-5 h-5 text-[9px]' : 'w-6 h-6 text-[10px]'
+                            }`}>
+                              {idx + 1}
+                            </span>
+                            <h4 className={`font-bold text-white truncate ${isCompact ? 'text-xs' : 'text-sm'}`}>{item.name}</h4>
+                          </div>
+                          <div className={`flex items-center gap-3 text-slate-400 mt-1 font-mono ${isCompact ? 'text-[10px] pl-7' : 'text-xs pl-8'}`}>
+                            <span>
+                              {item.qty} {item.unit || 'pcs'} × {currSymbol} {item.rate.toFixed(2)}
+                            </span>
+                            {item.discount > 0 && (
+                              <span className="text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-1.5 py-0.2 rounded text-[10px] font-bold">
+                                -{currSymbol} {item.discount.toFixed(2)} Off
+                              </span>
+                            )}
+                            {item.batchNo && <span className="text-indigo-400">Batch: {item.batchNo}</span>}
+                          </div>
+                        </div>
 
-                  {(activeState?.summary?.discountTotal || 0) > 0 && (
-                    <div className="flex items-center justify-between text-emerald-400">
-                      <span>Total Savings / Discount</span>
-                      <span>-{currSymbol} {(activeState?.summary?.discountTotal || 0).toFixed(2)}</span>
-                    </div>
-                  )}
+                        <div className="text-right font-mono shrink-0">
+                          <span className={`font-black text-white ${isCompact ? 'text-xs' : 'text-base'}`}>
+                            {currSymbol} {item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
 
-                  {(activeState?.summary?.taxTotal || 0) > 0 && (
-                    <div className="flex items-center justify-between text-slate-400">
-                      <span>GST / Taxes</span>
-                      <span>+{currSymbol} {(activeState?.summary?.taxTotal || 0).toFixed(2)}</span>
-                    </div>
-                  )}
-
-                  <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-                    <span className="text-base font-extrabold text-white">Payable Amount</span>
-                    <span className="text-3xl font-black text-emerald-400 tracking-tight">
+                {/* Mobile Cart Summary & Interactive Action Drawer (Only visible on tablet/smartphone) */}
+                <div className="mt-4 pt-4 border-t border-slate-800 flex lg:hidden flex-col gap-3">
+                  <div className="flex justify-between items-center font-mono">
+                    <span className="text-xs text-slate-400 font-bold uppercase">PAYABLE AMOUNT:</span>
+                    <span className="text-2xl font-black text-emerald-400">
                       {currSymbol} {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('pay')}
+                    className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+                  >
+                    <QrCode className="h-4.5 w-4.5 text-indigo-200" />
+                    <span>Proceed to Scan QR & Pay</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Dynamic / Uploaded Payment QR Code Card */}
-              {grandTotal > 0 && (() => {
-                const uploadedQrImage = (config as any).CompanyBankQrImage || (config as any).BankQrImage || (activeState?.paymentQrData?.startsWith('data:image') ? activeState.paymentQrData : '');
+              {/* Column 2: Billing Summary & Dynamic Payment QR Code */}
+              <div className={`lg:col-span-5 space-y-4 ${
+                activeTab === 'pay' ? 'block' : 'hidden lg:block'
+              }`}>
+                {/* Bill Summary Card */}
+                <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                    <span className="font-extrabold text-sm text-slate-300 uppercase tracking-wider">Billing Summary</span>
+                    <span className="text-xs text-slate-400 font-mono">LIVE TOTAL</span>
+                  </div>
 
-                return (
-                  <div className="bg-gradient-to-br from-indigo-950/80 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-3xl p-5 shadow-2xl text-center space-y-3">
-                    <div className="flex items-center justify-center gap-2 text-indigo-300 font-bold text-xs uppercase tracking-wider">
-                      <QrCode className="h-4 w-4 text-indigo-400" />
-                      <span>Scan QR to Pay {currSymbol} {grandTotal.toFixed(2)}</span>
+                  <div className="space-y-2.5 font-mono text-sm">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span>Items Subtotal</span>
+                      <span>{currSymbol} {(activeState?.summary?.subtotal || 0).toFixed(2)}</span>
                     </div>
 
-                    {uploadedQrImage ? (
-                      <div className="bg-white p-3 rounded-2xl inline-block shadow-xl border-2 border-indigo-400/50 max-w-[240px]">
-                        <img src={uploadedQrImage} alt="Official Bank QR Code" className="w-48 h-48 object-contain mx-auto rounded-lg" />
-                        <span className="text-[10px] text-slate-700 font-extrabold block mt-1.5 uppercase">Official Bank QR Code</span>
+                    {(activeState?.summary?.discountTotal || 0) > 0 && (
+                      <div className="flex items-center justify-between text-emerald-400">
+                        <span>Total Savings / Discount</span>
+                        <span>-{currSymbol} {(activeState?.summary?.discountTotal || 0).toFixed(2)}</span>
                       </div>
-                    ) : paymentQrUrl ? (
-                      <div className="bg-white p-3 rounded-2xl inline-block shadow-xl border-2 border-indigo-400/50">
-                        <img src={paymentQrUrl} alt="Scan QR Code to Pay" className="w-48 h-48 object-contain mx-auto" />
-                      </div>
-                    ) : null}
+                    )}
 
-                    <div className="text-[11px] text-slate-400 leading-tight">
-                      <span>Scan with mobile banking app (mBoB, B-Wallet, mPAY, UPI, or Camera). Pay {currSymbol} {grandTotal.toFixed(2)}.</span>
+                    {(activeState?.summary?.taxTotal || 0) > 0 && (
+                      <div className="flex items-center justify-between text-slate-400">
+                        <span>GST / Taxes</span>
+                        <span>+{currSymbol} {(activeState?.summary?.taxTotal || 0).toFixed(2)}</span>
+                      </div>
+                    )}
+
+                    <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+                      <span className="text-base font-extrabold text-white">Payable Amount</span>
+                      <span className="text-3xl font-black text-emerald-400 tracking-tight">
+                        {currSymbol} {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </span>
                     </div>
                   </div>
-                );
-              })()}
+                </div>
+
+                {/* Dynamic / Uploaded Payment QR Code Card */}
+                {grandTotal > 0 && (() => {
+                  const uploadedQrImage = (config as any).CompanyBankQrImage || (config as any).BankQrImage || (activeState?.paymentQrData?.startsWith('data:image') ? activeState.paymentQrData : '');
+
+                  return (
+                    <div className="bg-gradient-to-br from-indigo-950/80 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-3xl p-5 shadow-2xl text-center space-y-3">
+                      <div className="flex items-center justify-center gap-2 text-indigo-300 font-bold text-xs uppercase tracking-wider">
+                        <QrCode className="h-4 w-4 text-indigo-400" />
+                        <span>Scan QR to Pay {currSymbol} {grandTotal.toFixed(2)}</span>
+                      </div>
+
+                      {uploadedQrImage ? (
+                        <div className="bg-white p-3 rounded-2xl inline-block shadow-xl border-2 border-indigo-400/50 max-w-[240px]">
+                          <img src={uploadedQrImage} alt="Official Bank QR Code" className="w-48 h-48 object-contain mx-auto rounded-lg" />
+                          <span className="text-[10px] text-slate-700 font-extrabold block mt-1.5 uppercase">Official Bank QR Code</span>
+                        </div>
+                      ) : paymentQrUrl ? (
+                        <div className="bg-white p-3 rounded-2xl inline-block shadow-xl border-2 border-indigo-400/50">
+                          <img src={paymentQrUrl} alt="Scan QR Code to Pay" className="w-48 h-48 object-contain mx-auto" />
+                        </div>
+                      ) : null}
+
+                      <div className="text-[11px] text-slate-400 leading-tight">
+                        <span>Scan with mobile banking app (mBoB, B-Wallet, mPAY, UPI, or Camera). Pay {currSymbol} {grandTotal.toFixed(2)}.</span>
+                      </div>
+
+                      {/* Return button on mobile view */}
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('cart')}
+                        className="w-full mt-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-750 text-slate-300 font-bold rounded-xl text-xs transition flex lg:hidden items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <ShoppingBag className="h-4 w-4 text-slate-400" />
+                        <span>Back to Items List</span>
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
           </div>
         )}

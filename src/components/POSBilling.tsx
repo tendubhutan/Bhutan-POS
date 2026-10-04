@@ -1178,7 +1178,11 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       companyName: config.CompanyName || DEFAULT_TENANT_COMPANY.company_name,
       companyLogo: config.CompanyLogo || undefined,
       terminalId: deviceCounterId || 'C1',
-      status: cart.length === 0 ? 'idle' : 'active',
+      status: cart.length === 0
+        ? 'idle'
+        : (cash !== '' && Number(cash) > 0) || (bank1 !== '' && Number(bank1) > 0) || (bank2 !== '' && Number(bank2) > 0)
+          ? 'payment_pending'
+          : 'active',
       cartItems: formattedCart,
       summary: {
         subtotal: totals.subtotal,
@@ -1191,7 +1195,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
       paymentQrData: (config as any).CompanyBankQrImage || (config as any).BankQrImage || (config as any).BankQrData || (config as any).MerchantQrCode || undefined,
       timestamp: Date.now()
     }, getActiveCompanyId());
-  }, [cart, totals.total, totals.subtotal, totals.discount, totals.gstAmt, config, deviceCounterId]);
+  }, [cart, totals.total, totals.subtotal, totals.discount, totals.gstAmt, config, deviceCounterId, cash, bank1, bank2]);
 
   const prevTotalRef = useRef(totals.total);
   const prevInvoiceNoRef = useRef(editingInvoiceNo);
