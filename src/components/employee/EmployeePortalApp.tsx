@@ -2795,12 +2795,12 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
                     }
                   }
                 }}
-                className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 outline-none focus:border-blue-500 whitespace-pre-wrap break-words resize-none overflow-hidden min-h-[38px] max-h-[160px]"
+                className="flex-1 px-2.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 outline-none focus:border-blue-500 whitespace-pre-wrap break-words resize-none overflow-hidden min-h-[32px] max-h-[160px]"
               />
               <button
                 type="submit"
                 disabled={!taskCommentText.trim()}
-                className="px-3 py-2 h-[38px] rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-md shrink-0 active:scale-95"
+                className="px-3 py-1.5 h-[32px] rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-md shrink-0 active:scale-95"
               >
                 <Send className="h-3.5 w-3.5" />
                 <span>Reply</span>

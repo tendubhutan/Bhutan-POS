@@ -1417,10 +1417,8 @@ export function generateTaskWhatsAppUrl(
   const cId = companyId || task.companyId || getActiveCompanyId();
   const staffPortalUrl = getDedicatedEmployeePortalUrl(cId, task.assignedToEmpId, task.id);
 
-  const text = `📋 *TASK:* ${task.title} (${task.taskNo})\n` +
-    `⚡ *Priority:* ${task.priority} | 📅 *Due:* ${task.dueDate}\n` +
-    `👤 *Assigned By:* ${task.assignedByName || 'Management'}\n` +
-    (task.description ? `📝 *Notes:* ${task.description}\n` : '') +
+  const text = `📋 *Task:* ${task.title} (${task.taskNo})\n` +
+    `📅 *Due Date:* ${task.dueDate}\n` +
     `👉 *Click Here:* ${staffPortalUrl}`;
 
   const encoded = encodeURIComponent(text);

@@ -154,11 +154,17 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
   const activeTerminalsCount = terminals.filter(t => t.isActive).length;
   const isAtLimit = maxLimit > 0 && activeTerminalsCount >= maxLimit;
 
-  // Base URL calculation with domain selector
+  // Base URL calculation with domain selector (Default to current origin / preview sandbox)
   const [usePreviewDomain, setUsePreviewDomain] = useState<boolean>(true);
 
   const getBaseAppUrl = () => {
-    return getAppBaseDomain(usePreviewDomain);
+    if (usePreviewDomain && typeof window !== 'undefined' && window.location.origin) {
+      const cleanPath = window.location.pathname.replace(/\/+$/, '');
+      return `${window.location.origin}${cleanPath}`;
+    }
+    const domain = getAppBaseDomain(false);
+    const protocol = domain.includes('localhost') || domain.includes('127.0.0.1') ? 'http' : 'https';
+    return `${protocol}://${domain}`;
   };
 
   const getCompanyAppUrl = () => {

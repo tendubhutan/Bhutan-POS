@@ -61,8 +61,8 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
     if (onRefreshData) onRefreshData();
   };
 
-  // View Mode: 'table' (Detailed Register) | 'workload' (Staff Performance Matrix) | 'insights' (Category & Priority)
-  const [viewMode, setViewMode] = useState<'table' | 'workload' | 'insights'>('table');
+  // View Mode: 'table' (Detailed Register) | 'workload' (Staff Performance Matrix) | 'insights' (Category & Priority) | 'kanban' (Workflow board)
+  const [viewMode, setViewMode] = useState<'table' | 'workload' | 'insights' | 'kanban'>('table');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -585,69 +585,65 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
         isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-[1400px] opacity-100 mb-4'
       }`}>
       {showHeaderControls && (
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4 print:hidden">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-                  <CheckSquare className="h-4 w-4" />
-                </div>
-                <div>
-                  <h2 className="font-bold text-slate-900 text-base leading-tight">
-                    Staff Assignment & Task Report
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Comprehensive ledger of assignments, operational duties, deadlines, and staff progress.
-                  </p>
-                </div>
-              </div>
+        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs print:hidden">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 flex-wrap w-full">
+            {/* Segmented View Mode Tabs on the left */}
+            <div className="flex items-center p-1 bg-slate-100/90 rounded-xl border border-slate-200 shrink-0">
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'table'
+                    ? 'bg-white text-indigo-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Layers className="h-3.5 w-3.5" />
+                <span>Register Table</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode('workload')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'workload'
+                    ? 'bg-white text-indigo-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Users className="h-3.5 w-3.5" />
+                <span>Staff Workload</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode('insights')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'insights'
+                    ? 'bg-white text-indigo-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <BarChart2 className="h-3.5 w-3.5" />
+                <span>Category Insights</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode('kanban')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'kanban'
+                    ? 'bg-white text-indigo-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <CheckSquare className="h-3.5 w-3.5" />
+                <span>Kanban Board</span>
+              </button>
             </div>
 
-            {/* View Mode Switcher & Primary Action Buttons */}
+            {/* Action buttons on the right */}
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Segmented View Mode Tabs */}
-              <div className="flex items-center p-1 bg-slate-100/90 rounded-xl border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('table')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                    viewMode === 'table'
-                      ? 'bg-white text-indigo-700 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Layers className="h-3.5 w-3.5" />
-                  <span>Register Table</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setViewMode('workload')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                    viewMode === 'workload'
-                      ? 'bg-white text-indigo-700 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Users className="h-3.5 w-3.5" />
-                  <span>Staff Workload</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setViewMode('insights')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                    viewMode === 'insights'
-                      ? 'bg-white text-indigo-700 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <BarChart2 className="h-3.5 w-3.5" />
-                  <span>Category Insights</span>
-                </button>
-              </div>
-
-              {/* Export & Print */}
               <button
                 type="button"
                 onClick={handleExportExcel}
@@ -779,84 +775,52 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
       </div>
 
       {/* ================================================================ */}
-      {/* 3. MULTI-FACETED FILTER & SEARCH TOOLBAR */}
+      {/* 3. MULTI-FACETED FILTER TOOLBAR */}
       {/* ================================================================ */}
-      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-3 print:hidden">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
-          {/* Search */}
-          <div className="lg:col-span-2 relative">
-            <Search className="h-3.5 w-3.5 text-slate-400 absolute left-3 top-2.5" />
+      <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs print:hidden">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5">
+          {/* Search Box (Moved up as requested - Yellow arrow) */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="h-3.5 w-3.5 text-slate-400 absolute left-3.5 top-2.5" />
             <input
               type="text"
-              placeholder="Search task #, title, description, staff..."
+              placeholder="Search by task ID, title, description or staff..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-8.5 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-100"
+              className="w-full pl-8.5 pr-3 py-1.5 bg-slate-50 focus:bg-white rounded-xl border border-slate-200 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none transition shadow-2xs"
             />
             {searchQuery && (
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
 
-          {/* Status Filter */}
-          <div>
+          {/* Filter Dropdowns Row */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:flex lg:items-center gap-2 shrink-0">
+            {/* Status Filter */}
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:border-indigo-500"
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[110px]"
             >
-              <option value="ALL">All Statuses ({tasks.length})</option>
+              <option value="ALL">All Statuses</option>
               <option value="Assigned">Assigned ({kpis.assigned})</option>
               <option value="In Progress">In Progress ({kpis.inProgress})</option>
               <option value="Under Review">Under Review ({kpis.underReview})</option>
               <option value="Completed">Completed ({kpis.completed})</option>
               <option value="OVERDUE">⚠️ Overdue Only ({kpis.overdue})</option>
             </select>
-          </div>
 
-          {/* Priority Filter */}
-          <div>
-            <select
-              value={priorityFilter}
-              onChange={e => setPriorityFilter(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:border-indigo-500"
-            >
-              <option value="ALL">All Priorities</option>
-              <option value="Urgent">🔴 Urgent</option>
-              <option value="High">🟠 High</option>
-              <option value="Medium">🔵 Medium</option>
-              <option value="Low">⚪ Low</option>
-            </select>
-          </div>
-
-          {/* Staff Assignee Filter */}
-          <div>
-            <select
-              value={assigneeFilter}
-              onChange={e => setAssigneeFilter(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:border-indigo-500"
-            >
-              <option value="ALL">All Staff Members</option>
-              {employees.map(emp => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.fullName} {emp.empCode ? `(${emp.empCode})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Category Filter */}
-          <div>
+            {/* Category Filter (Moved up & provided as dropdown selector - Green arrow) */}
             <select
               value={categoryFilter}
               onChange={e => setCategoryFilter(e.target.value)}
-              className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white focus:outline-none focus:border-indigo-500"
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[125px]"
             >
               <option value="ALL">All Categories</option>
               <option value="General">General</option>
@@ -866,54 +830,48 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
               <option value="Customer Followup">Customer Followup</option>
               <option value="Administration">Administration</option>
             </select>
-          </div>
-        </div>
 
-        {/* Date Presets & Custom Date Range */}
-        <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-100 text-xs">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mr-1">Period:</span>
-            {(['ALL', 'TODAY', 'THIS_WEEK', 'THIS_MONTH', 'CUSTOM'] as const).map(preset => (
-              <button
-                key={preset}
-                type="button"
-                onClick={() => handleDatePresetChange(preset)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
-                  datePreset === preset
-                    ? 'bg-slate-900 text-white shadow-2xs font-bold'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {preset === 'ALL' ? 'All Time' : preset.replace('_', ' ')}
-              </button>
-            ))}
+            {/* Priority Filter */}
+            <select
+              value={priorityFilter}
+              onChange={e => setPriorityFilter(e.target.value)}
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[110px]"
+            >
+              <option value="ALL">All Priorities</option>
+              <option value="Urgent">🔴 Urgent</option>
+              <option value="High">🟠 High</option>
+              <option value="Medium">🔵 Medium</option>
+              <option value="Low">⚪ Low</option>
+            </select>
 
-            {datePreset === 'CUSTOM' && (
-              <div className="flex items-center gap-1.5 ml-2">
-                <input
-                  type="date"
-                  value={fromDate}
-                  onChange={e => setFromDate(e.target.value)}
-                  className="px-2 py-1 rounded-lg border border-slate-200 text-xs font-mono text-slate-800"
-                  placeholder="From"
-                />
-                <span className="text-slate-400">to</span>
-                <input
-                  type="date"
-                  value={toDate}
-                  onChange={e => setToDate(e.target.value)}
-                  className="px-2 py-1 rounded-lg border border-slate-200 text-xs font-mono text-slate-800"
-                  placeholder="To"
-                />
-              </div>
-            )}
-          </div>
+            {/* Staff Assignee Filter */}
+            <select
+              value={assigneeFilter}
+              onChange={e => setAssigneeFilter(e.target.value)}
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[120px]"
+            >
+              <option value="ALL">All Staff</option>
+              {employees.map(emp => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.fullName}
+                </option>
+              ))}
+            </select>
 
-          <div className="flex items-center gap-3 text-slate-500">
-            <span className="text-xs">
-              Showing <strong className="text-slate-900 font-mono tabular-nums">{filteredTasks.length}</strong> of{' '}
-              <span className="font-mono tabular-nums">{tasks.length}</span> assignments
-            </span>
+            {/* Date Preset Selector */}
+            <select
+              value={datePreset}
+              onChange={e => handleDatePresetChange(e.target.value as any)}
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-white focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs min-w-[110px]"
+            >
+              <option value="ALL">🗓️ All Time</option>
+              <option value="TODAY">🗓️ Today</option>
+              <option value="THIS_WEEK">🗓️ This Week</option>
+              <option value="THIS_MONTH">🗓️ This Month</option>
+              <option value="CUSTOM">🗓️ Custom Range</option>
+            </select>
+
+            {/* Reset Filters Button */}
             {(searchQuery || statusFilter !== 'ALL' || priorityFilter !== 'ALL' || assigneeFilter !== 'ALL' || categoryFilter !== 'ALL' || datePreset !== 'ALL') && (
               <button
                 type="button"
@@ -923,15 +881,39 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                   setPriorityFilter('ALL');
                   setAssigneeFilter('ALL');
                   setCategoryFilter('ALL');
-                  handleDatePresetChange('ALL');
+                  setDatePreset('ALL');
+                  setFromDate('');
+                  setToDate('');
                 }}
-                className="text-indigo-600 hover:text-indigo-800 font-bold hover:underline cursor-pointer"
+                className="px-2.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-900 font-bold text-xs transition cursor-pointer flex items-center gap-1.5 justify-center shadow-2xs"
+                title="Reset all filters"
               >
-                Reset Filters
+                <X className="h-3.5 w-3.5" />
+                <span>Reset</span>
               </button>
             )}
           </div>
         </div>
+
+        {/* Custom Date Range Picker */}
+        {datePreset === 'CUSTOM' && (
+          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100 animate-in fade-in slide-in-from-top-1 duration-150">
+            <span className="text-[10px] font-bold text-slate-400 uppercase shrink-0">Custom Range:</span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={e => setFromDate(e.target.value)}
+              className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
+            />
+            <span className="text-slate-400 text-xs">to</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={e => setToDate(e.target.value)}
+              className="px-2.5 py-1 rounded-lg border border-slate-200 text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
+            />
+          </div>
+        )}
       </div>
       </div>
       </div>
@@ -1415,6 +1397,123 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
       )}
 
       {/* ================================================================ */}
+      {/* 6.5 VIEW MODE 4: KANBAN BOARD */}
+      {/* ================================================================ */}
+      {viewMode === 'kanban' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in duration-150">
+          {(['Assigned', 'In Progress', 'Under Review', 'Completed'] as TaskStatus[]).map(status => {
+            const statusTasks = filteredTasks.filter(t => t.status === status);
+            const colColors = {
+              'Assigned': { bg: 'bg-slate-50', headerBg: 'bg-slate-100', border: 'border-slate-200/80', text: 'text-slate-800', dot: 'bg-slate-400' },
+              'In Progress': { bg: 'bg-blue-50/20', headerBg: 'bg-blue-50', border: 'border-blue-200/80', text: 'text-blue-800', dot: 'bg-blue-500' },
+              'Under Review': { bg: 'bg-amber-50/20', headerBg: 'bg-amber-50', border: 'border-amber-200/80', text: 'text-amber-800', dot: 'bg-amber-500' },
+              'Completed': { bg: 'bg-emerald-50/20', headerBg: 'bg-emerald-50', border: 'border-emerald-200/80', text: 'text-emerald-800', dot: 'bg-emerald-500' }
+            }[status];
+
+            return (
+              <div 
+                key={status} 
+                className={`rounded-2xl border ${colColors.border} ${colColors.bg} p-4 flex flex-col space-y-3 min-h-[450px] shadow-2xs`}
+              >
+                {/* Column Header */}
+                <div className={`flex items-center justify-between p-2.5 rounded-xl ${colColors.headerBg} border ${colColors.border}`}>
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${colColors.dot}`} />
+                    <span className={`font-bold text-xs ${colColors.text}`}>{status}</span>
+                  </div>
+                  <span className="font-mono text-xs font-bold text-slate-500 bg-white px-2 py-0.5 rounded-lg border border-slate-200">
+                    {statusTasks.length}
+                  </span>
+                </div>
+
+                {/* Cards Container */}
+                <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[600px] pr-1">
+                  {statusTasks.map(task => {
+                    const todayZero = new Date().setHours(0, 0, 0, 0);
+                    const isOverdue = new Date(task.dueDate).getTime() < todayZero && task.status !== 'Completed';
+
+                    return (
+                      <div 
+                        key={task.id}
+                        className={`bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs hover:border-indigo-300 transition cursor-pointer space-y-2.5 relative group ${
+                          isOverdue ? 'border-rose-200 bg-rose-50/10' : ''
+                        }`}
+                        onClick={() => setSelectedTaskDetail(task)}
+                      >
+                        {/* Card Header */}
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-bold text-[10px] text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                            {task.taskNo}
+                          </span>
+                          <span className="text-[10px] font-semibold text-slate-400">
+                            {task.category || 'General'}
+                          </span>
+                        </div>
+
+                        {/* Title */}
+                        <h4 className="font-bold text-slate-900 text-xs leading-snug group-hover:text-indigo-600 transition">
+                          {task.title}
+                        </h4>
+
+                        {/* Assigned To Avatar & Name */}
+                        <div className="flex items-center gap-2">
+                          <div className="h-6 w-6 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-[9px] text-slate-700">
+                            {task.assignedToEmpName ? task.assignedToEmpName.charAt(0).toUpperCase() : 'U'}
+                          </div>
+                          <span className="text-[11px] font-semibold text-slate-700 truncate">
+                            {task.assignedToEmpName}
+                          </span>
+                        </div>
+
+                        {/* Footer info: Due Date, Comments */}
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                          <span className={`font-mono font-bold ${isOverdue ? 'text-rose-600' : 'text-slate-500'}`}>
+                            Due: {formatDateDMY(task.dueDate)}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <MessageSquare className="h-3 w-3 text-slate-400" />
+                            <span>{task.comments ? task.comments.length : 0}</span>
+                          </div>
+                        </div>
+
+                        {/* Quick Status Select on Card */}
+                        <div 
+                          className="pt-1.5"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <select
+                            value={task.status}
+                            onChange={e => handleStatusChange(task.id, e.target.value as TaskStatus)}
+                            className={`w-full px-2 py-1 rounded-lg text-[10px] font-bold border transition cursor-pointer outline-none ${
+                              task.status === 'Completed' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
+                              task.status === 'In Progress' ? 'bg-blue-50 text-blue-800 border-blue-200' :
+                              task.status === 'Under Review' ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                              'bg-slate-100 text-slate-700 border-slate-300'
+                            }`}
+                          >
+                            <option value="Assigned">Assigned</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Under Review">Under Review</option>
+                            <option value="Completed">Completed</option>
+                          </select>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {statusTasks.length === 0 && (
+                    <div className="py-8 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-white/40">
+                      <p className="text-[11px] font-medium">No tasks in this column</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ================================================================ */}
       {/* 7. MODAL: ASSIGN NEW TASK */}
       {/* ================================================================ */}
       {showNewModal && (
@@ -1762,12 +1861,12 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                     }
                   }
                 }}
-                className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none whitespace-pre-wrap break-words resize-none overflow-hidden min-h-[38px] max-h-[150px]"
+                className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none whitespace-pre-wrap break-words resize-none overflow-hidden min-h-[32px] max-h-[150px]"
               />
               <button
                 type="submit"
                 disabled={!newCommentInput.trim()}
-                className="px-4 py-2 h-[38px] rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1 cursor-pointer shrink-0"
+                className="px-3.5 py-1.5 h-[32px] rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1 cursor-pointer shrink-0"
               >
                 <Send className="h-3.5 w-3.5" />
                 <span>Send</span>

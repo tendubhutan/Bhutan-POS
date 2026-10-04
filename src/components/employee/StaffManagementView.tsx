@@ -2721,13 +2721,13 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                     }
                   }
                 }}
-                className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none whitespace-pre-wrap break-words resize-none overflow-hidden min-h-[38px] max-h-[150px]"
+                className="flex-1 px-3 py-1.5 rounded-xl border border-slate-300 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none whitespace-pre-wrap break-words resize-none overflow-hidden min-h-[32px] max-h-[150px]"
               />
               <button
                 type="button"
                 onClick={handleAddComment}
                 disabled={!taskCommentInput.trim()}
-                className="px-3.5 py-2 h-[38px] rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs transition flex items-center justify-center gap-1 cursor-pointer shrink-0 shadow-sm"
+                className="px-3.5 py-1.5 h-[32px] rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs transition flex items-center justify-center gap-1 cursor-pointer shrink-0 shadow-sm"
               >
                 <Send className="h-3.5 w-3.5" />
                 <span>Send</span>
