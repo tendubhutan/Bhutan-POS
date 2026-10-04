@@ -5,7 +5,7 @@ import {
   Coffee, ShieldCheck, ArrowRight, Sparkles, Download, CheckCircle2,
   CalendarCheck, Timer, Briefcase, Award, Info, Wifi, WifiOff, RefreshCw, MapPin, Lock,
   Phone, KeyRound, Eye, EyeOff, UserCheck, Shield, ChevronDown, Fingerprint, ScanFace,
-  Bell
+  Bell, Edit3
 } from 'lucide-react';
 import { 
   getEmployees, saveEmployees, syncEmployeesFromSupabase 
@@ -18,7 +18,7 @@ import {
   calculateEmployeeLeaveBalance, getTodayDateString,
   getAttendanceRecords, employeeClockIn, employeeClockOut,
   getEmployeeTodayAttendance, getTaskAssignments, updateTaskStatus,
-  addTaskComment, getEmployeeStaffSession, setEmployeeStaffSession,
+  addTaskComment, editTaskComment, getEmployeeStaffSession, setEmployeeStaffSession,
   clearEmployeeStaffSession, getOfficeNetworkConfig, verifyOfficeNetwork,
   fetchRemoteOfficeNetworkConfig,
   findEmployeeByMobileOrCode, updateEmployeePortalPin, normalizePhoneNumber,
@@ -323,20 +323,50 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  // Check saved session & initialize WebAuthn
+  // Check saved session, handle individual staff link query params, & initialize WebAuthn
   useEffect(() => {
     const refreshEmps = (empsList?: Employee[]) => {
       const allEmps = (empsList || getEmployees(companyId)).filter(e => e.status === 'Active');
       setAvailableEmployees(allEmps);
 
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlEmpId = urlParams.get('emp') || urlParams.get('employee') || urlParams.get('staff') || urlParams.get('empId');
+      const urlTaskId = urlParams.get('task') || urlParams.get('taskId');
+
+      // Individual staff link force binding
+      let targetEmp: Employee | undefined = undefined;
+      if (urlEmpId) {
+        targetEmp = allEmps.find(e => 
+          e.id === urlEmpId || 
+          e.empCode?.toLowerCase() === urlEmpId.toLowerCase() || 
+          (e.contactNo && normalizePhoneNumber(e.contactNo) === normalizePhoneNumber(urlEmpId))
+        );
+        if (targetEmp) {
+          setLoginMobile(targetEmp.contactNo || targetEmp.empCode || '');
+        }
+      }
+
       const session = getEmployeeStaffSession();
-      if (session && session.employee) {
-        // Confirm employee still exists
+      if (targetEmp) {
+        // If link specifies an individual staff ID, force login/bind to that staff member
+        setCurrentEmployee(targetEmp);
+        setEmployeeStaffSession(targetEmp, companyId);
+      } else if (session && session.employee) {
         const match = allEmps.find(e => e.id === session.employee.id || e.empCode === session.employee.empCode);
         if (match) {
           setCurrentEmployee(match);
         } else {
           setCurrentEmployee(session.employee);
+        }
+      }
+
+      // If URL specifies a task ID, pre-open that task
+      if (urlTaskId) {
+        setActiveTab('tasks');
+        const tasks = getTaskAssignments(companyId);
+        const matchTask = tasks.find(t => t.id === urlTaskId || t.taskNo?.toLowerCase() === urlTaskId.toLowerCase());
+        if (matchTask) {
+          setSelectedTask(matchTask);
         }
       }
     };
@@ -876,6 +906,10 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
     }
   };
 
+  // Task comment editing state
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState<string>('');
+
   // Post Task Comment / Reply
   const handleSendComment = () => {
     if (!selectedTask || !taskCommentText.trim() || !currentEmployee) return;
@@ -897,6 +931,22 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
     } else {
       const match = updated.find(t => t.id === selectedTask.id);
       if (match) setSelectedTask(match);
+    }
+  };
+
+  // Save edited comment
+  const handleSaveEditComment = (commentId: string, newMsg: string) => {
+    if (!selectedTask || !newMsg.trim() || !currentEmployee) return;
+    const edited = editTaskComment(selectedTask.id, commentId, newMsg.trim(), currentEmployee.id, companyId);
+    if (edited) {
+      const updated = getTaskAssignments(companyId).filter(t => t.assignedToEmpId === currentEmployee.id);
+      setMyTasks(updated);
+      const match = updated.find(t => t.id === selectedTask.id);
+      if (match) setSelectedTask(match);
+      setEditingCommentId(null);
+      setEditingCommentText('');
+      setTaskReplySuccess('Comment updated successfully!');
+      setTimeout(() => setTaskReplySuccess(null), 3000);
     }
   };
 
@@ -2633,15 +2683,78 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
                 <span>Notes with Manager / GM</span>
               </div>
 
-              {selectedTask.comments.map(c => (
-                <div key={c.id} className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1">
-                  <div className="flex items-center justify-between text-[10px]">
-                    <span className="font-bold text-slate-300">{c.authorName} ({c.authorRole})</span>
-                    <span className="text-slate-500 font-mono">{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              {selectedTask.comments.map(c => {
+                const editWindowSec = Number(effectiveConfig?.TaskCommentEditWindowSeconds) || 15;
+                const ageSec = Math.floor((Date.now() - new Date(c.createdAt).getTime()) / 1000);
+                const remainingSec = Math.max(0, editWindowSec - ageSec);
+                const isAuthor = currentEmployee && (c.authorId === currentEmployee.id || c.authorName === currentEmployee.fullName);
+                const isEditing = editingCommentId === c.id;
+
+                return (
+                  <div key={c.id} className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="font-bold text-slate-300">{c.authorName} ({c.authorRole})</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-500 font-mono">
+                          {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {c.editedAt ? ' (edited)' : ''}
+                        </span>
+                        {isAuthor && !isEditing && remainingSec > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCommentId(c.id);
+                              setEditingCommentText(c.message);
+                            }}
+                            className="px-2 py-0.5 rounded bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white font-bold text-[9px] transition cursor-pointer flex items-center gap-1"
+                            title={`Edit comment within ${remainingSec}s`}
+                          >
+                            <Edit3 className="h-2.5 w-2.5" />
+                            <span>Edit ({remainingSec}s)</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {isEditing ? (
+                      <div className="space-y-1.5 pt-1">
+                        <textarea
+                          rows={2}
+                          value={editingCommentText}
+                          onChange={e => setEditingCommentText(e.target.value)}
+                          onInput={(e) => {
+                            const target = e.currentTarget;
+                            target.style.height = 'auto';
+                            target.style.height = `${Math.min(target.scrollHeight, 160)}px`;
+                          }}
+                          className="w-full p-2 rounded-xl bg-slate-900 border border-blue-500/60 text-xs text-white outline-none whitespace-pre-wrap break-words resize-none overflow-hidden"
+                        />
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCommentId(null);
+                              setEditingCommentText('');
+                            }}
+                            className="px-2 py-1 rounded-lg bg-slate-800 text-slate-400 font-bold text-[10px] cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEditComment(c.id, editingCommentText)}
+                            className="px-2.5 py-1 rounded-lg bg-blue-600 text-white font-bold text-[10px] cursor-pointer"
+                          >
+                            Save Changes
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-slate-200 whitespace-pre-wrap break-words leading-relaxed">{c.message}</p>
+                    )}
                   </div>
-                  <p className="text-slate-200">{c.message}</p>
-                </div>
-              ))}
+                );
+              })}
 
               {selectedTask.comments.length === 0 && (
                 <p className="text-[11px] text-slate-500 italic py-1">No comments yet. Send a note or question below.</p>
@@ -2656,25 +2769,38 @@ export const EmployeePortalApp: React.FC<EmployeePortalAppProps> = ({
               </div>
             )}
 
-            {/* Reply Input Form */}
+            {/* Reply Input Form with Auto-Expanding Textarea */}
             <form 
               onSubmit={(e) => {
                 e.preventDefault();
                 handleSendComment();
               }} 
-              className="flex items-center gap-2 pt-2 border-t border-slate-800"
+              className="flex items-end gap-2 pt-2 border-t border-slate-800"
             >
-              <input
-                type="text"
+              <textarea
+                rows={1}
                 placeholder="Type your reply to manager..."
                 value={taskCommentText}
                 onChange={e => setTaskCommentText(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 outline-none focus:border-blue-500"
+                onInput={(e) => {
+                  const target = e.currentTarget;
+                  target.style.height = 'auto';
+                  target.style.height = `${Math.min(target.scrollHeight, 160)}px`;
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (taskCommentText.trim()) {
+                      handleSendComment();
+                    }
+                  }
+                }}
+                className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 outline-none focus:border-blue-500 whitespace-pre-wrap break-words resize-none overflow-hidden min-h-[38px] max-h-[160px]"
               />
               <button
                 type="submit"
                 disabled={!taskCommentText.trim()}
-                className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shrink-0 active:scale-95"
+                className="px-3 py-2 h-[38px] rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-md shrink-0 active:scale-95"
               >
                 <Send className="h-3.5 w-3.5" />
                 <span>Reply</span>

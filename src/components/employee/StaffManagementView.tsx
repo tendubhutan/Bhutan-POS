@@ -12,7 +12,7 @@ import {
   getLeaveTypes, saveLeaveTypes, updateLeaveType,
   getLeaveApplications, applyForLeave, reviewLeaveApplication,
   getAttendanceRecords, employeeClockIn, employeeClockOut,
-  getTaskAssignments, createTaskAssignment, updateTaskStatus, addTaskComment,
+  getTaskAssignments, createTaskAssignment, updateTaskStatus, addTaskComment, editTaskComment,
   generateTaskWhatsAppUrl,
   getDedicatedEmployeePortalUrl, getEmployeePortalQrCodeUrl,
   calculateMonthlyAttendanceSummary, calculateEmployeeLeaveBalance,
@@ -228,6 +228,8 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [showTaskDetailModal, setShowTaskDetailModal] = useState<TaskAssignment | null>(null);
   const [taskCommentInput, setTaskCommentInput] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState<string>('');
   const [showLeavePolicyModal, setShowLeavePolicyModal] = useState(false);
   const [showHolidayPolicyModal, setShowHolidayPolicyModal] = useState(false);
   const [showNewLeaveModal, setShowNewLeaveModal] = useState(false);
@@ -506,6 +508,21 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
     setTasksList(updatedTasks);
     const updatedCurrent = updatedTasks.find(t => t.id === showTaskDetailModal.id);
     if (updatedCurrent) setShowTaskDetailModal(updatedCurrent);
+  };
+
+  // Handle Save Edit Comment
+  const handleSaveEditComment = (commentId: string, newMsg: string) => {
+    if (!showTaskDetailModal || !newMsg.trim()) return;
+    const cId = getActiveCompanyId();
+    const edited = editTaskComment(showTaskDetailModal.id, commentId, newMsg, 'admin_mgr', cId);
+    if (edited) {
+      setEditingCommentId(null);
+      setEditingCommentText('');
+      const updatedTasks = getTaskAssignments(cId);
+      setTasksList(updatedTasks);
+      const updatedCurrent = updatedTasks.find(t => t.id === showTaskDetailModal.id);
+      if (updatedCurrent) setShowTaskDetailModal(updatedCurrent);
+    }
   };
 
   // Handle Change Task Status
@@ -2606,34 +2623,111 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                 <span>Discussion & Progress Notes</span>
               </div>
 
-              {showTaskDetailModal.comments.map(c => (
-                <div key={c.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1 text-xs">
-                  <div className="flex items-center justify-between text-[10px]">
-                    <span className="font-bold text-slate-900">{c.authorName} ({c.authorRole})</span>
-                    <span className="text-slate-400 font-mono">{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              {showTaskDetailModal.comments.map(c => {
+                const editWindowSec = Number(config?.TaskCommentEditWindowSeconds) || 15;
+                const ageSec = Math.floor((Date.now() - new Date(c.createdAt).getTime()) / 1000);
+                const remainingSec = Math.max(0, editWindowSec - ageSec);
+                const isAuthor = true; // Managers/Admins can edit notes in this management view
+                const isEditing = editingCommentId === c.id;
+
+                return (
+                  <div key={c.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <span className="font-bold text-slate-900">{c.authorName} ({c.authorRole})</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-400 font-mono">
+                          {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {c.editedAt ? ' (edited)' : ''}
+                        </span>
+                        {isAuthor && !isEditing && remainingSec > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCommentId(c.id);
+                              setEditingCommentText(c.message);
+                            }}
+                            className="px-2 py-0.5 rounded bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold text-[9px] transition cursor-pointer flex items-center gap-1"
+                            title={`Edit comment within ${remainingSec}s`}
+                          >
+                            <Edit3 className="h-2.5 w-2.5" />
+                            <span>Edit ({remainingSec}s)</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {isEditing ? (
+                      <div className="space-y-1.5 pt-1">
+                        <textarea
+                          rows={2}
+                          value={editingCommentText}
+                          onChange={e => setEditingCommentText(e.target.value)}
+                          onInput={(e) => {
+                            const target = e.currentTarget;
+                            target.style.height = 'auto';
+                            target.style.height = `${Math.min(target.scrollHeight, 160)}px`;
+                          }}
+                          className="w-full p-2 rounded-xl bg-white border border-indigo-300 text-xs text-slate-900 outline-none whitespace-pre-wrap break-words resize-none overflow-hidden"
+                        />
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCommentId(null);
+                              setEditingCommentText('');
+                            }}
+                            className="px-2 py-1 rounded-lg bg-slate-200 text-slate-700 font-bold text-[10px] cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEditComment(c.id, editingCommentText)}
+                            className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-bold text-[10px] cursor-pointer"
+                          >
+                            Save Changes
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-slate-700 whitespace-pre-wrap break-words leading-relaxed">{c.message}</p>
+                    )}
                   </div>
-                  <p className="text-slate-700 leading-snug">{c.message}</p>
-                </div>
-              ))}
+                );
+              })}
 
               {showTaskDetailModal.comments.length === 0 && (
                 <p className="text-xs text-slate-400 italic py-2">No comments yet. Post feedback or instructions below.</p>
               )}
             </div>
 
-            {/* Comment Input */}
-            <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
-              <input
-                type="text"
+            {/* Comment Input with Auto-Expanding Textarea */}
+            <div className="flex items-end gap-2 pt-2 border-t border-slate-100">
+              <textarea
+                rows={1}
                 placeholder="Write note or instruction..."
                 value={taskCommentInput}
                 onChange={e => setTaskCommentInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') handleAddComment(); }}
-                className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none"
+                onInput={(e) => {
+                  const target = e.currentTarget;
+                  target.style.height = 'auto';
+                  target.style.height = `${Math.min(target.scrollHeight, 150)}px`;
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (taskCommentInput.trim()) {
+                      handleAddComment();
+                    }
+                  }
+                }}
+                className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none whitespace-pre-wrap break-words resize-none overflow-hidden min-h-[38px] max-h-[150px]"
               />
               <button
+                type="button"
                 onClick={handleAddComment}
-                className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition flex items-center gap-1 cursor-pointer shrink-0 shadow-sm"
+                disabled={!taskCommentInput.trim()}
+                className="px-3.5 py-2 h-[38px] rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs transition flex items-center justify-center gap-1 cursor-pointer shrink-0 shadow-sm"
               >
                 <Send className="h-3.5 w-3.5" />
                 <span>Send</span>

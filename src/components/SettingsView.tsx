@@ -14,7 +14,7 @@ import { BranchMaster } from './masters/BranchMaster';
 import { 
   Save, CheckCircle2, Shield, FileText, Image as ImageIcon, PenTool, Plus, Lock, UserCheck, RefreshCw, 
   ShoppingCart, Zap, SlidersHorizontal, AlertTriangle, Keyboard, Percent, CreditCard, RotateCcw,
-  Building2, Hash, Layers, Store, Check, Sparkles, Sliders, ShieldCheck, Trash2, History, Eye, Settings as SettingsIcon,
+  Building2, Hash, Layers, Store, Check, Sparkles, Sliders, ShieldCheck, Trash2, History, Eye, Settings as SettingsIcon, CheckSquare,
   Cloud, CloudUpload, Database, Wrench, Shirt, HardDrive, ArrowDownToLine, ShieldAlert, QrCode, Upload
 } from 'lucide-react';
 import { BackupManagerView } from './BackupManagerView';
@@ -1594,6 +1594,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </p>
               </div>
             </div>
+
+            {/* Task & Staff Assignments Controls Section */}
+            {isFeatureAllowed(form, 'EnableStaffAssignments', isSuperadminUser) && (
+              <div className="p-4 bg-indigo-50/60 border border-indigo-200/80 rounded-2xl space-y-3">
+                <div className="flex items-center gap-2 text-indigo-950 font-extrabold text-xs">
+                  <CheckSquare className="h-4 w-4 text-indigo-600" />
+                  <span>Task Assignment & Staff Communication Rules</span>
+                </div>
+                <div className="p-3.5 bg-white border border-slate-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="font-extrabold text-slate-900 text-xs">Task Comment Edit Time Limit (Seconds)</span>
+                    <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+                      Time window after pressing send during which managers and staff can edit or change comment text.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <input
+                      type="number"
+                      min={5}
+                      max={600}
+                      value={form.TaskCommentEditWindowSeconds || '15'}
+                      onChange={e => setForm({ ...form, TaskCommentEditWindowSeconds: e.target.value })}
+                      className="w-20 px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 text-center outline-none focus:border-indigo-500"
+                    />
+                    <span className="text-xs font-bold text-slate-600">Sec</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Banking Features Section */}
             {(isFeatureAllowed(form, 'EnableBankReconciliation', isSuperadminUser) || isFeatureAllowed(form, 'EnableBankTxnId', isSuperadminUser)) && (

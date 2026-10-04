@@ -351,9 +351,9 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     }
   };
 
-  // Copy Client Dedicated URL (defaults to production drukerp.com domain)
+  // Copy Client Dedicated URL (uses active domain or configured custom domain)
   const handleCopyPortalUrl = (cId: string) => {
-    const url = getCompanyDedicatedUrl(cId, false);
+    const url = getCompanyDedicatedUrl(cId, true);
     navigator.clipboard.writeText(url);
     setCopiedId(cId);
     setTimeout(() => setCopiedId(null), 2500);
@@ -361,7 +361,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
   // Copy Client Dedicated Staff PWA Portal URL (specifically triggers the Employee Portal)
   const handleCopyStaffPortalUrl = (cId: string) => {
-    const baseUrl = getCompanyDedicatedUrl(cId, false);
+    const baseUrl = getCompanyDedicatedUrl(cId, true);
     const staffUrl = `${baseUrl}&portal=staff`;
     navigator.clipboard.writeText(staffUrl);
     setCopiedStaffId(cId);

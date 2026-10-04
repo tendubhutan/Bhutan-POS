@@ -142,6 +142,7 @@ export interface TaskAssignmentComment {
   authorRole: 'Manager' | 'GM' | 'Admin' | 'Employee';
   message: string;
   createdAt: string;
+  editedAt?: string;
 }
 
 export type TaskPriority = 'Urgent' | 'High' | 'Medium' | 'Low';

@@ -374,20 +374,37 @@ export default function App() {
       if (href.includes('superadmin') || href.includes('portal=superadmin')) {
         return false;
       }
-      const params = new URLSearchParams(window.location.search);
+      const queryStr = window.location.search || (window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
+      const params = new URLSearchParams(queryStr);
       const isSuperadminPath = window.location.pathname === '/superadmin' || window.location.pathname === '/superadmin/';
-      if (
+      
+      const dedicatedId = getDedicatedCompanyIdFromUrl();
+      const isStaffOrEmp = (
+        params.get('portal') === 'employee' ||
+        params.get('portal') === 'staff' ||
+        params.get('mode') === 'staff' ||
+        params.get('mode') === 'employee' ||
+        Boolean(params.get('emp')) ||
+        Boolean(params.get('staff')) ||
+        Boolean(params.get('task')) ||
+        window.location.pathname.includes('/employee-portal') ||
+        window.location.pathname.includes('/staff')
+      );
+      const isClientOrApp = (
+        dedicatedId !== null ||
         params.get('portal') === 'app' || 
         params.get('portal') === 'login' || 
         params.get('portal') === 'gate' ||
         params.get('portal') === 'superadmin' ||
         params.get('portal') === 'superadmin-login' ||
+        params.get('counter') !== null ||
+        params.get('terminal') !== null ||
+        params.get('branch') !== null ||
+        params.get('view') !== null ||
         isSuperadminPath
-      ) {
-        return false;
-      }
-      const dedicatedId = getDedicatedCompanyIdFromUrl();
-      if (dedicatedId) {
+      );
+
+      if (isStaffOrEmp || isClientOrApp) {
         return false;
       }
     }
@@ -465,8 +482,25 @@ export default function App() {
 
   const [isEmployeePortalMode, setIsEmployeePortalMode] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const p = new URLSearchParams(window.location.search);
-      return p.get('portal') === 'employee' || p.get('portal') === 'staff' || p.get('mode') === 'staff' || p.get('mode') === 'employee';
+      const queryStr = window.location.search || (window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
+      const p = new URLSearchParams(queryStr);
+      const isPathPortal = window.location.pathname.includes('/employee-portal') || window.location.pathname.includes('/staff');
+      const isParamPortal = (
+        p.get('portal') === 'employee' || 
+        p.get('portal') === 'staff' || 
+        p.get('mode') === 'staff' || 
+        p.get('mode') === 'employee' ||
+        Boolean(p.get('emp')) ||
+        Boolean(p.get('staff')) ||
+        Boolean(p.get('task'))
+      );
+      if (isPathPortal || isParamPortal) {
+        const compId = p.get('company') || p.get('company_id') || p.get('cid');
+        if (compId) {
+          setActiveCompanyId(compId);
+        }
+        return true;
+      }
     }
     return false;
   });
@@ -513,15 +547,20 @@ export default function App() {
         }
       }
 
-      const urlParams = new URLSearchParams(window.location.search);
+      const queryStr = window.location.search || (window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
+      const urlParams = new URLSearchParams(queryStr);
       const counterParam = urlParams.get('counter') || urlParams.get('terminal');
       const branchParam = urlParams.get('branch');
       const viewParam = urlParams.get('view');
       const portalParam = urlParams.get('portal');
       const modeParam = urlParams.get('mode');
+      const empParam = urlParams.get('emp') || urlParams.get('staff');
+      const taskParam = urlParams.get('task');
+      const isPathPortal = window.location.pathname.includes('/employee-portal') || window.location.pathname.includes('/staff');
 
-      if (portalParam === 'employee' || portalParam === 'staff' || modeParam === 'staff' || modeParam === 'employee') {
+      if (portalParam === 'employee' || portalParam === 'staff' || modeParam === 'staff' || modeParam === 'employee' || empParam || taskParam || isPathPortal) {
         setIsEmployeePortalMode(true);
+        setShowLandingPage(false);
       }
 
       const isSuperadminPath = window.location.pathname === '/superadmin' || window.location.pathname === '/superadmin/';

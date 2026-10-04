@@ -155,7 +155,7 @@ export const ClientLinkAndPwaModal: React.FC<ClientLinkAndPwaModalProps> = ({
   const isAtLimit = maxLimit > 0 && activeTerminalsCount >= maxLimit;
 
   // Base URL calculation with domain selector
-  const [usePreviewDomain, setUsePreviewDomain] = useState<boolean>(false);
+  const [usePreviewDomain, setUsePreviewDomain] = useState<boolean>(true);
 
   const getBaseAppUrl = () => {
     return getAppBaseDomain(usePreviewDomain);

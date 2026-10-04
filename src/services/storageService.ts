@@ -282,6 +282,7 @@ export const DEFAULT_CONFIG: Config = {
   EnablePayroll: 'true',
   EnableStaffAttendanceAndLeave: 'true',
   EnableStaffAssignments: 'true',
+  TaskMessageEditGraceSeconds: '15',
   EnablePOS: 'true',
   EnableNormalSale: 'true',
   EnableEmployeeAdvances: 'true',

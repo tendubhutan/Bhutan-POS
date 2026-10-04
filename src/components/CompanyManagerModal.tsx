@@ -91,8 +91,8 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
   // Dedicated URL Share Modal state
   const [shareCompany, setShareCompany] = useState<SupabaseCompany | null>(null);
   const [copiedUrl, setCopiedUrl] = useState(false);
-  const [usePreviewDomain, setUsePreviewDomain] = useState<boolean>(false);
-  const [customDomainInput, setCustomDomainInput] = useState<string>(() => getAppBaseDomain(false));
+  const [usePreviewDomain, setUsePreviewDomain] = useState<boolean>(true);
+  const [customDomainInput, setCustomDomainInput] = useState<string>(() => getAppBaseDomain(true));
   const [isEditingDomain, setIsEditingDomain] = useState<boolean>(false);
 
   // Edit Company state

@@ -1406,22 +1406,22 @@ export function triggerBrowserNotification(title: string, body: string): void {
 export function generateTaskWhatsAppUrl(
   task: TaskAssignment,
   employeeMobile?: string,
-  companyName?: string
+  companyName?: string,
+  companyId?: string
 ): string {
   let cleanPhone = (employeeMobile || '').replace(/\D/g, '');
   if (cleanPhone.length === 8 && !cleanPhone.startsWith('975')) {
     // Bhutan 8-digit mobile number prefix with 975
     cleanPhone = `975${cleanPhone}`;
   }
-  const portalUrl = typeof window !== 'undefined' ? `${window.location.origin}/employee-portal` : '';
-  const text = `📋 *NEW TASK ASSIGNMENT*\n\n` +
-    `🏢 *Company:* ${companyName || 'Business Operations'}\n` +
-    `📌 *Task:* ${task.title} (${task.taskNo})\n` +
-    `⚡ *Priority:* ${task.priority}\n` +
-    `📅 *Due Date:* ${task.dueDate}\n` +
+  const cId = companyId || task.companyId || getActiveCompanyId();
+  const staffPortalUrl = getDedicatedEmployeePortalUrl(cId, task.assignedToEmpId, task.id);
+
+  const text = `📋 *TASK:* ${task.title} (${task.taskNo})\n` +
+    `⚡ *Priority:* ${task.priority} | 📅 *Due:* ${task.dueDate}\n` +
     `👤 *Assigned By:* ${task.assignedByName || 'Management'}\n` +
-    (task.description ? `📝 *Instructions:* ${task.description}\n` : '') +
-    `\n👉 *View & Reply in Employee Portal:* ${portalUrl}`;
+    (task.description ? `📝 *Notes:* ${task.description}\n` : '') +
+    `👉 *Open Staff Link:* ${staffPortalUrl}`;
 
   const encoded = encodeURIComponent(text);
   if (cleanPhone) {
@@ -1629,6 +1629,29 @@ export function addTaskComment(
   return comment;
 }
 
+export function editTaskComment(
+  taskId: string,
+  commentId: string,
+  newMessage: string,
+  authorId?: string,
+  companyId?: string
+): TaskAssignmentComment | null {
+  const cId = companyId || getActiveCompanyId();
+  const all = getTaskAssignments(cId);
+  const target = all.find(t => t.id === taskId);
+  if (!target || !Array.isArray(target.comments) || !newMessage.trim()) return null;
+
+  const comment = target.comments.find(c => c.id === commentId);
+  if (!comment) return null;
+
+  comment.message = newMessage.trim();
+  comment.editedAt = new Date().toISOString();
+  target.updatedAt = new Date().toISOString();
+
+  saveTaskAssignments(all, cId);
+  return comment;
+}
+
 export function deleteTaskAssignment(taskId: string, companyId?: string): boolean {
   const cId = companyId || getActiveCompanyId();
   const all = getTaskAssignments(cId);
@@ -1665,12 +1688,20 @@ export function updateTaskAssignment(
 // DEDICATED EMPLOYEE MOBILE PORTAL URL & AUTH
 // ---------------------------------------------------------------------------
 
-export function getDedicatedEmployeePortalUrl(companyId?: string): string {
+export function getDedicatedEmployeePortalUrl(companyId?: string, empId?: string, taskId?: string): string {
   const cId = companyId || getActiveCompanyId() || DEFAULT_TENANT_COMPANY.id;
-  const baseUrl = getBaseAppUrl();
+  let baseUrl = '';
+  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+    const cleanPath = window.location.pathname.replace(/\/+$/, '');
+    baseUrl = `${window.location.origin}${cleanPath}`;
+  } else {
+    baseUrl = getBaseAppUrl();
+  }
   const url = new URL(baseUrl);
   url.searchParams.set('portal', 'employee');
   url.searchParams.set('company', cId);
+  if (empId) url.searchParams.set('emp', empId);
+  if (taskId) url.searchParams.set('task', taskId);
   return url.toString();
 }
 

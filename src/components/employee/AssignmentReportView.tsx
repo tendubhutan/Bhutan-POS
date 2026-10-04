@@ -11,7 +11,7 @@ import { TaskAssignment, TaskStatus, TaskPriority, TaskAssignmentComment } from 
 import { Employee, Config } from '../../types';
 import { 
   getTaskAssignments, createTaskAssignment, updateTaskStatus, 
-  addTaskComment, updateTaskAssignment, deleteTaskAssignment,
+  addTaskComment, editTaskComment, updateTaskAssignment, deleteTaskAssignment,
   generateTaskWhatsAppUrl,
   getTodayDateString 
 } from '../../services/employeeStaffService';
@@ -82,6 +82,8 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
   const [editingTask, setEditingTask] = useState<TaskAssignment | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [newCommentInput, setNewCommentInput] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState<string>('');
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
   // New Task Form
@@ -480,6 +482,32 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
         comments: updatedComments
       });
       refreshLocalTasks();
+    }
+  };
+
+  // Save Edited Comment
+  const handleSaveEditComment = (commentId: string, newMsg: string) => {
+    if (!selectedTaskDetail || !newMsg.trim()) return;
+    const edited = editTaskComment(
+      selectedTaskDetail.id,
+      commentId,
+      newMsg.trim(),
+      activeUser?.username || 'admin',
+      companyId
+    );
+
+    if (edited) {
+      setEditingCommentId(null);
+      setEditingCommentText('');
+      const updatedComments = (selectedTaskDetail.comments || []).map(c => 
+        c.id === commentId ? { ...c, message: newMsg.trim(), editedAt: new Date().toISOString() } : c
+      );
+      setSelectedTaskDetail({
+        ...selectedTaskDetail,
+        comments: updatedComments
+      });
+      refreshLocalTasks();
+      showToast('Comment updated successfully!');
     }
   };
 
@@ -1629,43 +1657,117 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                 Activity & Conversation ({selectedTaskDetail.comments ? selectedTaskDetail.comments.length : 0})
               </span>
 
-              {selectedTaskDetail.comments && selectedTaskDetail.comments.map(c => (
-                <div 
-                  key={c.id} 
-                  className={`p-3 rounded-xl text-xs space-y-1 ${
-                    c.authorRole === 'Manager' || c.authorRole === 'Admin'
-                      ? 'bg-indigo-50/70 border border-indigo-100 text-indigo-950 ml-4'
-                      : 'bg-slate-100 border border-slate-200 text-slate-800 mr-4'
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-semibold">
-                    <span className="text-slate-900">{c.authorName} ({c.authorRole})</span>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+              {selectedTaskDetail.comments && selectedTaskDetail.comments.map(c => {
+                const editWindowSec = Number(config?.TaskCommentEditWindowSeconds) || 15;
+                const ageSec = Math.floor((Date.now() - new Date(c.createdAt).getTime()) / 1000);
+                const remainingSec = Math.max(0, editWindowSec - ageSec);
+                const isAuthor = c.authorId === (activeUser?.username || 'admin') || c.authorName === (activeUser?.username || 'Manager') || activeUser?.role === 'admin' || activeUser?.role === 'superadmin' || activeUser?.role === 'Manager';
+                const isEditing = editingCommentId === c.id;
+
+                return (
+                  <div 
+                    key={c.id} 
+                    className={`p-3 rounded-xl text-xs space-y-1.5 ${
+                      c.authorRole === 'Manager' || c.authorRole === 'Admin'
+                        ? 'bg-indigo-50/70 border border-indigo-100 text-indigo-950 ml-4'
+                        : 'bg-slate-100 border border-slate-200 text-slate-800 mr-4'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-semibold">
+                      <span className="text-slate-900">{c.authorName} ({c.authorRole})</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {c.editedAt ? ' (edited)' : ''}
+                        </span>
+                        {isAuthor && !isEditing && remainingSec > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCommentId(c.id);
+                              setEditingCommentText(c.message);
+                            }}
+                            className="px-2 py-0.5 rounded bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold text-[9px] transition cursor-pointer flex items-center gap-1"
+                            title={`Edit comment within ${remainingSec}s`}
+                          >
+                            <Edit3 className="h-2.5 w-2.5" />
+                            <span>Edit ({remainingSec}s)</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {isEditing ? (
+                      <div className="space-y-1.5 pt-1">
+                        <textarea
+                          rows={2}
+                          value={editingCommentText}
+                          onChange={e => setEditingCommentText(e.target.value)}
+                          onInput={(e) => {
+                            const target = e.currentTarget;
+                            target.style.height = 'auto';
+                            target.style.height = `${Math.min(target.scrollHeight, 160)}px`;
+                          }}
+                          className="w-full p-2 rounded-xl bg-white border border-indigo-300 text-xs text-slate-900 outline-none whitespace-pre-wrap break-words resize-none overflow-hidden"
+                        />
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCommentId(null);
+                              setEditingCommentText('');
+                            }}
+                            className="px-2 py-1 rounded-lg bg-slate-200 text-slate-700 font-bold text-[10px] cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEditComment(c.id, editingCommentText)}
+                            className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white font-bold text-[10px] cursor-pointer"
+                          >
+                            Save Changes
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-slate-800 whitespace-pre-wrap break-words leading-relaxed">{c.message}</p>
+                    )}
                   </div>
-                  <p className="text-slate-700 leading-normal">{c.message}</p>
-                </div>
-              ))}
+                );
+              })}
 
               {(!selectedTaskDetail.comments || selectedTaskDetail.comments.length === 0) && (
                 <p className="text-xs text-slate-400 italic text-center py-4">No comments or activity notes yet.</p>
               )}
             </div>
 
-            {/* Add Comment Input */}
-            <form onSubmit={handleSendComment} className="pt-2 border-t border-slate-100 flex gap-2">
-              <input
-                type="text"
+            {/* Add Comment Input with Auto-Expanding Textarea */}
+            <form onSubmit={handleSendComment} className="pt-2 border-t border-slate-100 flex items-end gap-2">
+              <textarea
+                rows={1}
                 placeholder="Type instructions or reply to staff..."
                 value={newCommentInput}
                 onChange={e => setNewCommentInput(e.target.value)}
-                className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none"
+                onInput={(e) => {
+                  const target = e.currentTarget;
+                  target.style.height = 'auto';
+                  target.style.height = `${Math.min(target.scrollHeight, 150)}px`;
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (newCommentInput.trim()) {
+                      handleSendComment(e);
+                    }
+                  }
+                }}
+                className="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 text-xs text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none whitespace-pre-wrap break-words resize-none overflow-hidden min-h-[38px] max-h-[150px]"
               />
               <button
                 type="submit"
                 disabled={!newCommentInput.trim()}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition flex items-center gap-1 cursor-pointer"
+                className="px-4 py-2 h-[38px] rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1 cursor-pointer shrink-0"
               >
                 <Send className="h-3.5 w-3.5" />
                 <span>Send</span>

@@ -124,13 +124,13 @@ export function setAppCustomDomain(domain: string): void {
  * or defaults to production URL.
  */
 export function getCompanyDedicatedUrl(companyId: string, forceCurrentOrigin: boolean = false): string {
-  if (forceCurrentOrigin && typeof window !== 'undefined' && window.location.origin) {
+  if (typeof window !== 'undefined' && window.location && window.location.origin) {
     const cleanPath = window.location.pathname.replace(/\/+$/, '');
-    return `${window.location.origin}${cleanPath}/?company=${companyId}`;
+    return `${window.location.origin}${cleanPath}/?company=${encodeURIComponent(companyId)}`;
   }
   const domain = getAppBaseDomain(false);
   const protocol = domain.includes('localhost') || domain.includes('127.0.0.1') ? 'http' : 'https';
-  return `${protocol}://${domain}/?company=${companyId}`;
+  return `${protocol}://${domain}/?company=${encodeURIComponent(companyId)}`;
 }
 
 // Fallback / Initial Demo Company (Actual UUID from Supabase)

@@ -55,6 +55,7 @@ import { handleGridKeyDown } from "../utils/gridKeyboardNav";
 import { QuickItemModal } from "./QuickItemModal";
 import { QuickLedgerModal } from "./QuickLedgerModal";
 import { DrillModal } from "./DrillModal";
+import { OrderDispatchDetailsModal } from "./OrderDispatchDetailsModal";
 
 interface SalesInvoiceEntryProps {
   config: Config;
@@ -682,6 +683,15 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   const [showItemAlterModal, setShowItemAlterModal] = useState(false);
   const [ledgerToAlter, setLedgerToAlter] = useState<Ledger | null>(null);
   const [showLedgerAlterModal, setShowLedgerAlterModal] = useState(false);
+  const [showOrderDispatchModal, setShowOrderDispatchModal] = useState(false);
+
+  const isDebtorLedger = (ledgerName: string) => {
+    if (!ledgerName) return false;
+    const l = ledgers.find((x) => x["Ledger Name"] === ledgerName);
+    if (!l) return true; // Default custom typed debtor name to true
+    const grp = (l.Group || '').toLowerCase();
+    return grp.includes('sundry debtor') || grp.includes('debtor') || grp.includes('customer');
+  };
 
   // Drill Modal Info State (F7 / Ctrl+I / Alt+I)
   const [drillModalState, setDrillModalState] = useState<{
@@ -1456,11 +1466,8 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
               <ShoppingBag className="h-4 w-4" />
             </div>
             <h1 className="text-sm font-extrabold text-slate-900 leading-tight">
-              Sales Invoice (B2B)
+              Sales Invoice
             </h1>
-            <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px] font-bold">
-              Credit / Cash
-            </span>
           </div>
 
           {/* Bill/Invoice No & Date Indicator */}
@@ -1552,6 +1559,24 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
               </button>
             </div>
           )}
+        </div>
+
+        {/* Top-Right Action Controls (Fetch DN/Order, Offers) as indicated by green arrow */}
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
+          {deliveryNoteNo && (
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-cyan-50 border border-cyan-300 text-cyan-800 text-[11px] font-bold shadow-2xs shrink-0" title="Items dispatched via Delivery Challan. Stock will not be double-deducted upon invoice save.">
+              <Truck className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
+              <span>Challan: <strong className="font-mono text-cyan-950">{deliveryNoteNo}</strong></span>
+              <button
+                type="button"
+                onClick={() => setDeliveryNoteNo("")}
+                className="ml-0.5 text-cyan-600 hover:text-rose-600 font-bold cursor-pointer"
+                title="Unlink Delivery Note"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Fetch from Delivery Note / Sales Order Button */}
           <button
@@ -1576,30 +1601,6 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
               {getAllActiveSchemes('b2b').length}
             </span>
           </button>
-
-          {deliveryNoteNo && (
-            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-cyan-50 border border-cyan-300 text-cyan-800 text-[11px] font-bold shadow-2xs shrink-0" title="Items dispatched via Delivery Challan. Stock will not be double-deducted upon invoice save.">
-              <Truck className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
-              <span>Challan: <strong className="font-mono text-cyan-950">{deliveryNoteNo}</strong></span>
-              <span className="text-[9px] bg-cyan-200/80 text-cyan-900 px-1 py-0.2 rounded font-bold">Challan Stock Out</span>
-              <button
-                type="button"
-                onClick={() => setDeliveryNoteNo("")}
-                className="ml-0.5 text-cyan-600 hover:text-rose-600 font-bold"
-                title="Unlink Delivery Note"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="text-[10px] text-slate-400 font-medium hidden lg:block">
-          Continuous Loop Entry (Press{" "}
-          <kbd className="bg-slate-100 border border-slate-300 rounded px-1 py-0.2 text-[9px] font-mono font-bold text-slate-600">
-            F2
-          </kbd>{" "}
-          to Save)
         </div>
       </div>
 
@@ -1644,7 +1645,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
               </div>
             )}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="flex items-center gap-3 flex-1 min-w-0 flex-wrap">
                 <div className="flex items-center gap-1 shrink-0">
                   <span className="text-xs font-black uppercase tracking-wider text-slate-800 whitespace-nowrap">
                     Customer Ledger <span className="text-rose-500">*</span>
@@ -1660,6 +1661,8 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                       setCustomerName(val);
                       if (isBankLedger(val, ledgers, config)) {
                         setBankTxnModalOpen(true);
+                      } else if (isDebtorLedger(val)) {
+                        setShowOrderDispatchModal(true);
                       }
                     }}
                     filterGroups={[
@@ -1672,6 +1675,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                       onOpenNewLedgerModal("Sundry Debtors", (name) => {
                         lastSelectedCustomerRef.current = name;
                         setCustomerName(name);
+                        setShowOrderDispatchModal(true);
                       })
                     }
                     onEditLedger={(name) => {
@@ -1692,6 +1696,10 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                       if (isBankLedger(cust, ledgers, config)) {
                         return;
                       }
+                      if (isDebtorLedger(cust)) {
+                        setShowOrderDispatchModal(true);
+                        return;
+                      }
                       focusItemPicker();
                     }}
                     onArrowRight={() => {
@@ -1703,14 +1711,38 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                   />
                 </div>
                 {customerName && (
-                  <button
-                    type="button"
-                    onClick={() => setCustomerDrawerOpen(true)}
-                    className="shrink-0 px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-bold hover:bg-indigo-100 transition cursor-pointer"
-                    title="View Customer Ledger Profile"
-                  >
-                    Ledger Profile
-                  </button>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setCustomerDrawerOpen(true)}
+                      className="shrink-0 px-2 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-[11px] font-bold hover:bg-indigo-100 transition cursor-pointer"
+                      title="View Customer Ledger Profile"
+                    >
+                      Ledger Profile
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowOrderDispatchModal(true)}
+                      className={`shrink-0 px-2 py-1 rounded-lg border text-[11px] font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                        orderNo || deliveryNoteNo
+                          ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100 shadow-2xs'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                      title="Order &amp; Challan Details"
+                    >
+                      <Truck className="h-3.5 w-3.5 text-slate-500" />
+                      <span>
+                        {orderNo || deliveryNoteNo
+                          ? `${deliveryNoteNo ? `Challan: ${deliveryNoteNo}` : ''}${deliveryNoteNo && orderNo ? ' | ' : ''}${orderNo ? `Order: ${orderNo}` : ''}`
+                          : 'Order / Challan Details'}
+                      </span>
+                      {(orderNo || deliveryNoteNo) && (
+                        <span className="text-[9px] bg-blue-200/80 text-blue-900 px-1 py-0.2 rounded font-mono font-bold">
+                          Set
+                        </span>
+                      )}
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1725,62 +1757,6 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                   <ChevronUp className="h-3.5 w-3.5" />
                 </button>
               </div>
-            </div>
-
-            {/* Delivery Challan & Order References */}
-            <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center gap-3 text-xs">
-              <div className="flex items-center gap-1.5">
-                <Truck className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                <span className="text-[11px] font-bold text-slate-600">Delivery Challan No:</span>
-                <input
-                  type="text"
-                  value={deliveryNoteNo}
-                  onChange={(e) => setDeliveryNoteNo(e.target.value)}
-                  placeholder="e.g. DLV-1"
-                  className="font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded px-2 py-0.5 outline-none focus:border-cyan-500 focus:bg-white w-28"
-                  title="If sale is made against a Delivery Note, stock is already deducted from Challan"
-                />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-bold text-slate-600">Order Ref:</span>
-                <input
-                  id="sale-order-ref-input"
-                  type="text"
-                  value={orderNo}
-                  onChange={(e) => setOrderNo(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      document.getElementById("sale-order-date-input")?.focus();
-                    }
-                  }}
-                  placeholder="e.g. SO-101"
-                  className="font-mono text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded px-2 py-0.5 outline-none focus:border-indigo-500 focus:bg-white w-28"
-                />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-bold text-slate-600">Order Date:</span>
-                <input
-                  id="sale-order-date-input"
-                  type="date"
-                  value={orderDate}
-                  onChange={(e) => setOrderDate(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      focusItemPicker();
-                    }
-                  }}
-                  className="text-xs font-bold text-slate-800 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 outline-none focus:border-indigo-500 focus:bg-white cursor-pointer shadow-2xs"
-                  title="Sales Order Date"
-                />
-              </div>
-              {deliveryNoteNo && (
-                <span className="text-[10px] font-bold text-cyan-800 bg-cyan-50 border border-cyan-300 px-2 py-0.5 rounded flex items-center gap-1">
-                  <CheckCircle2 className="h-3 w-3 text-cyan-600 shrink-0" />
-                  Stock Outward already handled via Delivery Note ({deliveryNoteNo}). Sale will not double deduct.
-                </span>
-              )}
             </div>
           </div>
         )}
@@ -2479,6 +2455,30 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
           setBankTxnModalOpen(false);
           setTimeout(() => {
             document.getElementById('sale-fast-item-picker')?.focus();
+          }, 50);
+        }}
+      />
+
+      {/* Floating screen for Order & Dispatch Details when Sundry Debtor is selected */}
+      <OrderDispatchDetailsModal
+        isOpen={showOrderDispatchModal}
+        customerName={customerName || 'Sundry Debtor'}
+        initialChallanNo={deliveryNoteNo}
+        initialOrderNo={orderNo}
+        initialOrderDate={orderDate}
+        onSave={(details) => {
+          setDeliveryNoteNo(details.deliveryNoteNo);
+          setOrderNo(details.orderNo);
+          setOrderDate(details.orderDate);
+          setShowOrderDispatchModal(false);
+          setTimeout(() => {
+            focusItemPicker();
+          }, 50);
+        }}
+        onClose={() => {
+          setShowOrderDispatchModal(false);
+          setTimeout(() => {
+            focusItemPicker();
           }, 50);
         }}
       />
