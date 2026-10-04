@@ -316,6 +316,12 @@ export default function App() {
     return base;
   });
   const [isTerminalLocked, setIsTerminalLocked] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const href = window.location.href.toLowerCase();
+      if (href.includes('superadmin') || href.includes('portal=superadmin')) {
+        return true;
+      }
+    }
     const dedicatedId = getDedicatedCompanyIdFromUrl();
     const rawLocalRole = (typeof localStorage !== 'undefined'
       ? (localStorage.getItem('deep_pos_auth_role') ||
@@ -364,8 +370,20 @@ export default function App() {
       if (sessionUnlocked === 'true') return false;
     }
     if (typeof window !== 'undefined') {
+      const href = window.location.href.toLowerCase();
+      if (href.includes('superadmin') || href.includes('portal=superadmin')) {
+        return false;
+      }
       const params = new URLSearchParams(window.location.search);
-      if (params.get('portal') === 'app' || params.get('portal') === 'login' || params.get('portal') === 'gate') {
+      const isSuperadminPath = window.location.pathname === '/superadmin' || window.location.pathname === '/superadmin/';
+      if (
+        params.get('portal') === 'app' || 
+        params.get('portal') === 'login' || 
+        params.get('portal') === 'gate' ||
+        params.get('portal') === 'superadmin' ||
+        params.get('portal') === 'superadmin-login' ||
+        isSuperadminPath
+      ) {
         return false;
       }
       const dedicatedId = getDedicatedCompanyIdFromUrl();
@@ -504,6 +522,18 @@ export default function App() {
 
       if (portalParam === 'employee' || portalParam === 'staff' || modeParam === 'staff' || modeParam === 'employee') {
         setIsEmployeePortalMode(true);
+      }
+
+      const isSuperadminPath = window.location.pathname === '/superadmin' || window.location.pathname === '/superadmin/';
+      const href = window.location.href.toLowerCase();
+      if (portalParam === 'superadmin' || portalParam === 'superadmin-login' || isSuperadminPath || href.includes('superadmin') || href.includes('portal=superadmin')) {
+        setCurrentView('superadmin');
+        setShowLandingPage(false);
+        const sessionUnlocked = sessionStorage.getItem('bhutan_pos_session_unlocked');
+        const storedRole = (localStorage.getItem('deep_pos_auth_role') || '').toLowerCase().trim();
+        if (sessionUnlocked !== 'true' || storedRole !== 'superadmin') {
+          setIsTerminalLocked(true);
+        }
       }
 
       if (counterParam) {

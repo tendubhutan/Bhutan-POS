@@ -742,6 +742,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenLogin }) => {
               </button>
             )}
 
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = '/?portal=superadmin';
+              }}
+              className="hover:text-indigo-600 font-extrabold text-indigo-700 cursor-pointer flex items-center gap-1 bg-indigo-50 px-2.5 py-1.5 rounded-full border border-indigo-100"
+            >
+              <span>🔑 Superadmin Login</span>
+            </button>
+
             <span>&copy; {new Date().getFullYear()} {siteConfig.contact.copyrightText}</span>
             
             {/* Discreet Admin Customizer Entry */}

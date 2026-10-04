@@ -99,6 +99,13 @@ export const SapEnterpriseLogon: React.FC<SapEnterpriseLogonProps> = ({
   const handleVerifyOrganization = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+
+    const emailInput = companyEmail.trim().toLowerCase();
+    if (emailInput === 'tendubhutan@gmail.com' || emailInput === 'admin@bhutanerp.bt') {
+      window.location.href = '/?portal=superadmin';
+      return;
+    }
+
     setIsVerifyingOrg(true);
 
     try {
@@ -135,6 +142,12 @@ export const SapEnterpriseLogon: React.FC<SapEnterpriseLogonProps> = ({
   const handleLogonSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+
+    const cleanUserLower = user.trim().toLowerCase();
+    if (cleanUserLower === 'tendubhutan@gmail.com') {
+      window.location.href = '/?portal=superadmin';
+      return;
+    }
 
     if (!verifiedCompany) {
       setErrorMsg('Organization verification required. Please verify Company Email and Code first.');
@@ -402,6 +415,20 @@ export const SapEnterpriseLogon: React.FC<SapEnterpriseLogonProps> = ({
                       <ArrowRight className="w-3.5 h-3.5" />
                     </>
                   )}
+                </button>
+              </div>
+
+              {/* Option to Switch to Superadmin Portal */}
+              <div className="pt-2 text-center border-t border-slate-100 mt-4 flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = '/?portal=superadmin';
+                  }}
+                  className="text-xs font-black text-indigo-600 hover:text-indigo-800 transition inline-flex items-center gap-1.5 cursor-pointer py-1"
+                >
+                  <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span>🔑 Switch to Superadmin Master Portal</span>
                 </button>
               </div>
 

@@ -303,6 +303,11 @@ Format your response using Markdown.
     });
   });
 
+  // Superadmin path redirection to root with portal parameter (avoids relative path asset loading failures)
+  app.get(["/superadmin", "/superadmin/"], (req, res) => {
+    res.redirect("/?portal=superadmin");
+  });
+
   // Vite middleware for development or fallback if dist is missing
   const distPath = path.join(process.cwd(), "dist");
   const hasDist = fs.existsSync(path.join(distPath, "index.html"));

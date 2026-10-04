@@ -809,37 +809,37 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     ];
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 text-slate-800">
         {/* Preset Bot Row */}
-        <div className="p-3.5 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-2.5">
+        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+              <div className="w-7 h-7 rounded-lg bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-600">
                 <Bot className="h-4 w-4" />
               </div>
               <div>
-                <span className="font-bold text-white text-xs block">Industry Preset Bot (7 Dedicated Presets)</span>
-                <p className="text-[10px] text-slate-400">
+                <span className="font-bold text-slate-900 text-xs block">Industry Preset Bot (7 Dedicated Presets)</span>
+                <p className="text-[10px] text-slate-500">
                   Select an industry template to auto-toggle features. Payroll, HR, Assets & Warehouses are restricted to Enterprise.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-1.5">
-              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-bold border border-emerald-500/30">
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-mono text-[10px] font-bold border border-emerald-200">
                 {totalActive} / {visibleSystemFeatures.length} Modules Active
               </span>
               <button
                 type="button"
                 onClick={() => handleSetAllFeatures(true, target)}
-                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] font-bold border border-slate-700 transition cursor-pointer"
+                className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 rounded text-[10px] font-bold border border-slate-200 shadow-xs transition cursor-pointer"
               >
                 All ON
               </button>
               <button
                 type="button"
                 onClick={() => handleSetAllFeatures(false, target)}
-                className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[10px] font-bold border border-slate-700 transition cursor-pointer"
+                className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-700 rounded text-[10px] font-bold border border-slate-200 shadow-xs transition cursor-pointer"
               >
                 All OFF
               </button>
@@ -856,19 +856,19 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                   onClick={() => handleApplyPreset(preset, target)}
                   className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
                     isSelected
-                      ? 'bg-indigo-600/25 border-indigo-400 text-white shadow-md shadow-indigo-600/20 ring-1 ring-indigo-400/80'
-                      : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:bg-slate-800 hover:border-slate-700 hover:text-white'
+                      ? 'bg-indigo-50 border-indigo-300 text-indigo-900 shadow-xs ring-1 ring-indigo-400'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-1 mb-1">
                     <span className="text-xs font-bold truncate">{preset.badge}</span>
                     {isSelected && (
-                      <span className="px-1 py-0.2 bg-indigo-500 text-[8px] font-mono text-white rounded font-bold">
+                      <span className="px-1 py-0.2 bg-indigo-600 text-[8px] font-mono text-white rounded font-bold">
                         ACTIVE
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-slate-400 line-clamp-2 leading-tight">{preset.description}</p>
+                  <p className="text-[10px] text-slate-500 line-clamp-2 leading-tight">{preset.description}</p>
                 </button>
               );
             })}
@@ -883,13 +883,13 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
             );
             const activeInCategory = categoryFeatures.filter(f => features[f.id] === true).length;
             return (
-              <div key={category} className="p-3 bg-slate-950/40 border border-slate-800/80 rounded-2xl space-y-2">
-                <div className="flex items-center justify-between pb-1.5 border-b border-slate-800">
-                  <span className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                    <Layers className="h-3.5 w-3.5 text-indigo-400" />
+              <div key={category} className="p-4 bg-white border border-slate-200 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5 text-indigo-500" />
                     <span>{category}</span>
                   </span>
-                  <span className="text-[10px] font-mono text-slate-400">
+                  <span className="text-[10px] font-mono text-slate-500">
                     {activeInCategory} / {categoryFeatures.length} Active
                   </span>
                 </div>
@@ -904,19 +904,19 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                         onClick={() => handleToggleFeature(feat.id as string, target)}
                         className={`p-2.5 rounded-xl border transition cursor-pointer flex items-start justify-between gap-2 select-none ${
                           isEnabled
-                            ? 'bg-slate-900/90 border-indigo-500/40 hover:border-indigo-400'
-                            : 'bg-slate-950/60 border-slate-800/60 hover:border-slate-700 opacity-60'
+                            ? 'bg-indigo-50/45 border-indigo-200 hover:border-indigo-350'
+                            : 'bg-slate-50/50 border-slate-200 hover:border-slate-300 opacity-80'
                         }`}
                       >
                         <div className="min-w-0 pr-1">
                           <div className="flex items-center gap-1.5">
-                            <span className={`text-xs font-bold ${isEnabled ? 'text-white' : 'text-slate-400'}`}>
+                            <span className={`text-xs font-bold ${isEnabled ? 'text-slate-900' : 'text-slate-500'}`}>
                               {feat.label}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-400 leading-tight mt-0.5">{feat.shortDesc}</p>
+                          <p className="text-[10px] text-slate-500 leading-tight mt-0.5">{feat.shortDesc}</p>
                           {isRestaurantMode && (
-                            <div className="mt-1 text-[9px] font-bold text-amber-400/90 flex items-center gap-1">
+                            <div className="mt-1 text-[9px] font-bold text-amber-700 flex items-center gap-1">
                               <span>⚡ Auto-enables Digital Menu, KDS, Table Grid & Waiter Pad for client</span>
                             </div>
                           )}
@@ -924,7 +924,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                         <div className="shrink-0 pt-0.5 flex flex-col items-end gap-1">
                           <div
                             className={`w-9 h-5 rounded-full transition-colors relative flex items-center px-0.5 ${
-                              isEnabled ? 'bg-indigo-600' : 'bg-slate-700'
+                              isEnabled ? 'bg-indigo-600' : 'bg-slate-200'
                             }`}
                           >
                             <div
@@ -933,7 +933,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                               }`}
                             />
                           </div>
-                          <span className={`text-[9px] font-bold ${isEnabled ? 'text-emerald-400' : 'text-slate-500'}`}>
+                          <span className={`text-[9px] font-bold ${isEnabled ? 'text-emerald-600' : 'text-slate-400'}`}>
                             {isEnabled ? 'ON' : 'HIDDEN'}
                           </span>
                         </div>
@@ -952,19 +952,19 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   // RESTRICTED ACCESS SCREEN FOR NON-SUPERADMINS
   if (!isSuperadminUser) {
     return (
-      <div className="min-h-[80vh] flex flex-col items-center justify-center p-6 text-center">
-        <div className="h-20 w-20 rounded-3xl bg-rose-950/80 border border-rose-800 flex items-center justify-center text-rose-400 mb-5 shadow-2xl shadow-rose-900/30">
+      <div className="min-h-[80vh] flex flex-col items-center justify-center p-6 text-center bg-white rounded-3xl border border-slate-200 shadow-sm m-4">
+        <div className="h-20 w-20 rounded-3xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 mb-5 shadow-lg shadow-rose-100">
           <Lock className="h-10 w-10" />
         </div>
-        <h2 className="text-2xl font-black text-white mb-2">
+        <h2 className="text-2xl font-black text-slate-900 mb-2">
           Restricted Access Area
         </h2>
-        <p className="text-slate-400 max-w-md text-sm mb-6 leading-relaxed">
-          The Superadmin Tenant Control Panel is strictly restricted to platform administrators with superadmin privileges in the <code className="text-rose-300 font-mono text-xs">company_users</code> registry.
+        <p className="text-slate-600 max-w-md text-sm mb-6 leading-relaxed">
+          The Superadmin Tenant Control Panel is strictly restricted to platform administrators with superadmin privileges in the <code className="text-rose-700 font-mono text-xs">company_users</code> registry.
         </p>
         <button
           onClick={() => onNavigate && onNavigate('dashboard')}
-          className="py-2.5 px-5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold border border-slate-700 transition cursor-pointer flex items-center gap-2"
+          className="py-2.5 px-5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 shadow-xs transition cursor-pointer flex items-center gap-2"
         >
           <span>Return to Dashboard</span>
           <ArrowRight className="h-4 w-4" />
@@ -974,23 +974,23 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200 text-slate-100">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200 text-slate-800">
       {/* Top Banner Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950/70 border border-slate-800 p-6 rounded-3xl shadow-xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 border border-indigo-700 p-6 rounded-3xl shadow-xl shadow-indigo-600/10 text-white">
         <div>
           <div className="flex items-center gap-2 mb-1.5">
-            <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 text-[11px] font-mono font-bold flex items-center gap-1.5">
-              <ShieldCheck className="h-3.5 w-3.5 text-indigo-400" />
+            <span className="px-2.5 py-0.5 rounded-full bg-white/20 border border-white/10 text-white text-[11px] font-mono font-bold flex items-center gap-1.5">
+              <ShieldCheck className="h-3.5 w-3.5 text-white" />
               <span>SUPERADMIN ACCESS RESTRICTED</span>
             </span>
-            <span className="px-2 py-0.5 rounded-md bg-emerald-950/80 border border-emerald-800 text-emerald-400 text-[10px] font-bold font-mono">
+            <span className="px-2 py-0.5 rounded-md bg-emerald-500 border border-emerald-400 text-white text-[10px] font-bold font-mono">
               Live RLS Sync
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center gap-3">
             <span>Tenant Control Panel</span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-indigo-100 mt-1">
             Master multi-tenant registry, commercial subscription status, and tenant isolation controls.
           </p>
         </div>
@@ -999,7 +999,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
           <button
             onClick={loadMasterCompanies}
             disabled={isLoading}
-            className="py-2.5 px-3.5 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            className="py-2.5 px-3.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl text-xs font-bold text-white transition flex items-center gap-2 cursor-pointer disabled:opacity-50 shadow-sm"
             title="Refresh tenants list"
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -1008,7 +1008,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
           <button
             onClick={() => setShowAddModal(true)}
-            className="py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-600/30 transition flex items-center gap-2 cursor-pointer active:scale-[0.98]"
+            className="py-2.5 px-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white rounded-xl text-xs font-bold shadow-lg shadow-amber-500/20 transition flex items-center gap-2 cursor-pointer active:scale-[0.98] border border-amber-600"
           >
             <Plus className="h-4 w-4" />
             <span>Provision Client Tenant</span>
@@ -1045,40 +1045,40 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
       {/* KPI Cards & Plan Quota Tracker */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Total Tenants */}
-        <div className="p-4 sm:p-5 bg-slate-900/90 border border-slate-800 rounded-2xl flex flex-col justify-between shadow-md">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Total Tenants</span>
-            <Building2 className="h-4 w-4 text-blue-400" />
+            <Building2 className="h-4 w-4 text-blue-500" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-white">{totalTenants}</span>
-            <span className="text-[11px] text-slate-400 font-medium">Registered Companies</span>
+            <span className="text-2xl sm:text-3xl font-black text-slate-900">{totalTenants}</span>
+            <span className="text-[11px] text-slate-500 font-medium">Registered Companies</span>
           </div>
-          <div className="mt-2 text-[10px] text-slate-500 flex items-center gap-1 font-mono">
-            <ShieldCheck className="h-3 w-3 text-emerald-400" />
+          <div className="mt-2 text-[10px] text-slate-400 flex items-center gap-1 font-mono border-t border-slate-100 pt-2">
+            <ShieldCheck className="h-3 w-3 text-emerald-500" />
             <span>Isolated PostgreSQL RLS</span>
           </div>
         </div>
 
         {/* Card 2: Active Subscriptions */}
-        <div className="p-4 sm:p-5 bg-slate-900/90 border border-slate-800 rounded-2xl flex flex-col justify-between shadow-md">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Active Subscriptions</span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-emerald-400">{activeTenants}</span>
-            <span className="text-[11px] text-slate-400 font-medium">Unlocked Clients</span>
+            <span className="text-2xl sm:text-3xl font-black text-emerald-600">{activeTenants}</span>
+            <span className="text-[11px] text-slate-500 font-medium">Unlocked Clients</span>
           </div>
-          <div className="mt-2 text-[10px] text-slate-500 flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="mt-2 text-[10px] text-slate-400 flex items-center gap-1 border-t border-slate-100 pt-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
             <span>{inactiveTenants} Suspended / Locked Out</span>
           </div>
         </div>
 
         {/* Card 3: Estimated MRR */}
-        <div className="p-4 sm:p-5 bg-slate-900/90 border border-slate-800 rounded-2xl flex flex-col justify-between shadow-md relative group">
-          <div className="flex items-center justify-between text-slate-400 mb-2">
+        <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl flex flex-col justify-between shadow-sm relative group">
+          <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-bold uppercase tracking-wider">Estimated MRR</span>
             <div className="flex items-center gap-1">
               <button
@@ -1089,19 +1089,19 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                   setEditGlobalTierName(globalPricing.defaultTierName);
                   setShowGlobalPricingModal(true);
                 }}
-                className="p-1 hover:bg-slate-800 text-slate-400 hover:text-indigo-300 rounded-lg transition cursor-pointer"
+                className="p-1 hover:bg-slate-100 text-slate-400 hover:text-indigo-600 rounded-lg transition cursor-pointer"
                 title="Configure platform benchmark pricing & default currency"
               >
                 <Settings2 className="h-3.5 w-3.5" />
               </button>
-              <DollarSign className="h-4 w-4 text-indigo-400" />
+              <DollarSign className="h-4 w-4 text-indigo-500" />
             </div>
           </div>
           <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-2xl sm:text-3xl font-black text-indigo-400">{mrrData.displayValue}</span>
-            <span className="text-[11px] text-slate-400 font-medium">{mrrData.suffix}</span>
+            <span className="text-2xl sm:text-3xl font-black text-indigo-600">{mrrData.displayValue}</span>
+            <span className="text-[11px] text-slate-500 font-medium">{mrrData.suffix}</span>
           </div>
-          <div className="mt-2 text-[10px] text-indigo-300/80 font-mono flex items-center justify-between">
+          <div className="mt-2 text-[10px] text-slate-400 font-mono flex items-center justify-between border-t border-slate-100 pt-2">
             <span className="truncate mr-1">{mrrData.subtitle}</span>
             <button
               type="button"
@@ -1111,7 +1111,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                 setEditGlobalTierName(globalPricing.defaultTierName);
                 setShowGlobalPricingModal(true);
               }}
-              className="text-indigo-400 hover:text-indigo-200 underline cursor-pointer text-[10px] shrink-0"
+              className="text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer text-[10px] shrink-0 font-bold"
             >
               Configure
             </button>
@@ -1119,49 +1119,49 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
         </div>
 
         {/* Card 4: Plan Limits Tracker ($25/mo Quota) */}
-        <div className="p-4 sm:p-5 bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-500/30 rounded-2xl flex flex-col justify-between shadow-md">
-          <div className="flex items-center justify-between text-slate-300 mb-1.5">
-            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 text-indigo-300">
-              <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+        <div className="p-4 sm:p-5 bg-gradient-to-br from-indigo-50 to-blue-50/50 border border-indigo-100 rounded-2xl flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between text-indigo-800 mb-1.5">
+            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 text-indigo-700">
+              <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
               <span>Plan Limits Tracker</span>
             </span>
-            <span className="text-[10px] font-mono font-bold text-indigo-400">
+            <span className="text-[10px] font-mono font-bold text-indigo-600">
               {totalTenants}/{RECOMMENDED_TENANT_QUOTA}
             </span>
           </div>
           
           <div>
-            <div className="flex items-center justify-between text-[11px] font-medium text-slate-400 mb-1">
+            <div className="flex items-center justify-between text-[11px] font-medium text-indigo-700 mb-1">
               <span>Tenant Quota Usage</span>
-              <span className="text-white font-bold">{quotaPercent}%</span>
+              <span className="text-indigo-950 font-bold">{quotaPercent}%</span>
             </div>
-            <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700/60">
+            <div className="w-full bg-indigo-100/50 rounded-full h-2 overflow-hidden border border-indigo-200/30">
               <div 
-                className="bg-gradient-to-r from-blue-500 to-indigo-500 h-full rounded-full transition-all duration-500"
+                className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full rounded-full transition-all duration-500"
                 style={{ width: `${quotaPercent}%` }}
-              />
+                />
             </div>
           </div>
 
-          <div className="mt-2 text-[10px] text-slate-400 flex items-center justify-between">
+          <div className="mt-2 text-[10px] text-indigo-600 flex items-center justify-between border-t border-indigo-100/50 pt-2">
             <span>Quota: {RECOMMENDED_TENANT_QUOTA} Recommended</span>
-            <span className="text-emerald-400 font-bold">Good Capacity</span>
+            <span className="text-emerald-600 font-bold">Good Capacity</span>
           </div>
         </div>
       </div>
 
       {/* Main Client Overview Section */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+      <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
         {/* Table Filters & Search Bar */}
-        <div className="flex flex-col md:flex-row items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-3 pb-3 border-b border-slate-100">
           <div className="relative w-full md:w-80">
-            <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search by name, license, email, ID..."
-              className="w-full pl-9 pr-3 py-2 bg-slate-800/80 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition"
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
             />
           </div>
 
@@ -1171,7 +1171,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 statusFilter === 'all'
                   ? 'bg-indigo-600 text-white shadow'
-                  : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700/60'
+                  : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-100'
               }`}
             >
               All Clients ({totalTenants})
@@ -1181,7 +1181,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
                 statusFilter === 'active'
                   ? 'bg-emerald-600 text-white shadow'
-                  : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700/60'
+                  : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-100'
               }`}
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
@@ -1192,7 +1192,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
                 statusFilter === 'inactive'
                   ? 'bg-rose-600 text-white shadow'
-                  : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700/60'
+                  : 'bg-slate-50 text-slate-600 hover:text-slate-900 border border-slate-200 hover:bg-slate-100'
               }`}
             >
               <XCircle className="h-3.5 w-3.5" />
@@ -1205,7 +1205,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+              <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                 <th className="py-3 px-3">Commercial Client</th>
                 <th className="py-3 px-3">License & Tax ID</th>
                 <th className="py-3 px-3">Contact Details</th>
@@ -1219,23 +1219,23 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                 <th className="py-3 px-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60">
+            <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={6} className="py-12 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <RefreshCw className="h-6 w-6 animate-spin text-indigo-400" />
+                      <RefreshCw className="h-6 w-6 animate-spin text-indigo-600" />
                       <span>Fetching client database records...</span>
                     </div>
                   </td>
                 </tr>
               ) : filteredCompanies.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={6} className="py-12 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <Building2 className="h-8 w-8 text-slate-600" />
-                      <span className="font-bold text-white text-sm">No clients matched your filter</span>
-                      <span className="text-xs text-slate-500">Try adjusting your search criteria or register a new company.</span>
+                      <Building2 className="h-8 w-8 text-slate-400" />
+                      <span className="font-black text-slate-900 text-sm">No clients matched your filter</span>
+                      <span className="text-xs text-slate-400">Try adjusting your search criteria or register a new company.</span>
                     </div>
                   </td>
                 </tr>
@@ -1247,38 +1247,38 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                   return (
                     <tr
                       key={company.id}
-                      className="hover:bg-slate-800/40 transition group"
+                      className="hover:bg-slate-50/70 transition group"
                     >
                       {/* Column 1: Client Name & UUID */}
                       <td className="py-3.5 px-3">
                         <div className="flex items-start gap-2.5">
                           <div className={`h-8 w-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
                             isActive
-                              ? 'bg-blue-600/20 border border-blue-500/40 text-blue-400'
-                              : 'bg-rose-600/20 border border-rose-500/40 text-rose-400'
+                              ? 'bg-blue-50 border border-blue-100 text-blue-600'
+                              : 'bg-rose-50 border border-rose-100 text-rose-600'
                           }`}>
                             <Building2 className="h-4 w-4" />
                           </div>
                           <div>
-                            <div className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5">
+                            <div className="font-black text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
                               <span>{company.company_name}</span>
                               {company.id === DEFAULT_TENANT_COMPANY.id && (
-                                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/50">
+                                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
                                   Default
                                 </span>
                               )}
                             </div>
-                            <div className="font-mono text-[10px] text-slate-500 mt-0.5 flex items-center gap-1">
+                            <div className="font-mono text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
                               <span className="truncate max-w-[140px] sm:max-w-[200px]" title={company.id}>
                                 ID: {company.id}
                               </span>
                               <button
                                 onClick={() => handleCopyPortalUrl(company.id)}
-                                className="text-slate-400 hover:text-white p-0.5 rounded transition cursor-pointer"
+                                className="text-slate-400 hover:text-slate-700 p-0.5 rounded transition cursor-pointer"
                                 title="Copy client portal URL"
                               >
                                 {copiedId === company.id ? (
-                                  <Check className="h-3 w-3 text-emerald-400" />
+                                  <Check className="h-3 w-3 text-emerald-600" />
                                 ) : (
                                   <Copy className="h-3 w-3" />
                                 )}
@@ -1290,31 +1290,31 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
                       {/* Column 2: License & TPN */}
                       <td className="py-3.5 px-3 font-mono text-[11px]">
-                        <div className="text-slate-200">
-                          <span className="text-slate-500 text-[10px] block">Trade License:</span>
+                        <div className="text-slate-700 font-bold">
+                          <span className="text-slate-400 text-[10px] block">Trade License:</span>
                           {company.trade_license_no || '—'}
                         </div>
                         {company.tax_payer_id && (
-                          <div className="text-slate-400 text-[10px] mt-0.5">
-                            <span className="text-slate-500">TPN: </span>
+                          <div className="text-slate-500 text-[10px] mt-0.5">
+                            <span className="text-slate-400">TPN: </span>
                             {company.tax_payer_id}
                           </div>
                         )}
                       </td>
 
                       {/* Column 3: Contact */}
-                      <td className="py-3.5 px-3 text-[11px] text-slate-300">
+                      <td className="py-3.5 px-3 text-[11px] text-slate-600">
                         {company.email ? (
-                          <div className="flex items-center gap-1 text-slate-300">
-                            <Mail className="h-3 w-3 text-slate-500 shrink-0" />
-                            <span className="truncate max-w-[150px]">{company.email}</span>
+                          <div className="flex items-center gap-1 text-slate-600">
+                            <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                            <span className="truncate max-w-[150px] font-medium">{company.email}</span>
                           </div>
                         ) : (
-                          <span className="text-slate-500">—</span>
+                          <span className="text-slate-400">—</span>
                         )}
                         {company.phone && (
-                          <div className="flex items-center gap-1 text-slate-400 text-[10px] mt-0.5">
-                            <Phone className="h-3 w-3 text-slate-500 shrink-0" />
+                          <div className="flex items-center gap-1 text-slate-500 text-[10px] mt-0.5">
+                            <Phone className="h-3 w-3 text-slate-400 shrink-0" />
                             <span>{company.phone}</span>
                           </div>
                         )}
@@ -1331,15 +1331,15 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleOpenPlanModal(company)}
-                                className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-800/60 hover:border-indigo-500 text-indigo-300 hover:text-white text-[11px] font-medium font-mono transition-all cursor-pointer shadow-xs"
+                                className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 text-indigo-700 hover:text-indigo-900 text-[11px] font-medium font-mono transition-all cursor-pointer shadow-2xs"
                                 title="Click to edit Commercial Plan, pricing & billing details"
                               >
-                                <CreditCard className="h-3 w-3 text-indigo-400 group-hover:text-indigo-200 shrink-0" />
+                                <CreditCard className="h-3 w-3 text-indigo-500 shrink-0" />
                                 <span className="font-semibold">{badge.label}</span>
-                                <Pencil className="h-2.5 w-2.5 text-indigo-400/60 group-hover:text-indigo-200 ml-0.5" />
+                                <Pencil className="h-2.5 w-2.5 text-indigo-500/60 ml-0.5" />
                               </button>
-                              <span className="text-[10px] bg-slate-800/90 text-slate-300 border border-slate-700/70 px-2 py-0.2 rounded font-mono flex items-center gap-1">
-                                <Sliders className="h-2.5 w-2.5 text-indigo-400" />
+                              <span className="text-[10px] bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.2 rounded font-mono flex items-center gap-1">
+                                <Sliders className="h-2.5 w-2.5 text-indigo-500" />
                                 <span>{limit === 0 ? 'Unlimited Counters' : `${limit} Counter${limit > 1 ? 's' : ''}`}</span>
                               </span>
                             </div>
@@ -1355,7 +1355,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                             onClick={() => handleToggleStatus(company)}
                             disabled={isToggling}
                             className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 ${
-                              isActive ? 'bg-emerald-600' : 'bg-slate-700'
+                              isActive ? 'bg-emerald-500' : 'bg-slate-250'
                             }`}
                             title={isActive ? 'Click to deactivate / lock tenant out' : 'Click to activate / unlock tenant'}
                           >
@@ -1367,7 +1367,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                           </button>
                           
                           <span className={`text-[10px] font-bold ${
-                            isActive ? 'text-emerald-400' : 'text-rose-400'
+                            isActive ? 'text-emerald-600' : 'text-rose-600'
                           }`}>
                             {isToggling ? 'Updating...' : isActive ? 'Active / Unlocked' : 'Suspended / Locked'}
                           </span>
@@ -1419,22 +1419,22 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
       {/* Provision Client Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 text-slate-850">
             {/* Modal Header */}
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-800 shrink-0">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="h-9 w-9 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                <div className="h-9 w-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
                   <Building2 className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-white text-base">Provision New Commercial Client</h3>
-                  <p className="text-xs text-slate-400">Creates isolated workspace, admin credentials & financial year</p>
+                  <h3 className="font-bold text-slate-900 text-base">Provision New Commercial Client</h3>
+                  <p className="text-xs text-slate-500 font-medium">Creates isolated workspace, admin credentials & financial year</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
                 ✕
               </button>
@@ -1448,7 +1448,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
                   newCompanyActiveTab === 'details'
                     ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                    : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700/60'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/60'
                 }`}
               >
                 <Building2 className="h-3.5 w-3.5" />
@@ -1460,12 +1460,12 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
                   newCompanyActiveTab === 'features'
                     ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                    : 'bg-slate-800 text-slate-400 hover:text-white border border-slate-700/60'
+                    : 'bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/60'
                 }`}
               >
-                <Bot className="h-3.5 w-3.5 text-indigo-400" />
+                <Bot className="h-3.5 w-3.5 text-indigo-600" />
                 <span>2. Feature Checklist & Presets</span>
-                <span className="px-1.5 py-0.5 rounded-full bg-slate-900 text-[10px] font-mono text-emerald-400 border border-slate-700">
+                <span className="px-1.5 py-0.5 rounded-full bg-slate-200 text-[10px] font-mono text-indigo-700 border border-slate-300">
                   {ALL_SYSTEM_FEATURES.filter(f => newFeatures[f.id] === true).length} Active
                 </span>
               </button>
@@ -1476,89 +1476,89 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
               {newCompanyActiveTab === 'details' && (
                 <div className="space-y-3.5">
                   <div>
-                    <label className="block text-slate-300 font-bold mb-1">Company / Store Name *</label>
+                    <label className="block text-slate-700 font-bold mb-1">Company / Store Name *</label>
                     <input
                       type="text"
                       required
                       value={newCompanyName}
                       onChange={e => setNewCompanyName(e.target.value)}
                       placeholder="e.g. Paro Wholesale Mart"
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-850 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-slate-300 font-bold mb-1">Trade License No</label>
+                      <label className="block text-slate-700 font-bold mb-1">Trade License No</label>
                       <input
                         type="text"
                         value={newTradeLicense}
                         onChange={e => setNewTradeLicense(e.target.value)}
                         placeholder="TRD-2026-XXXX"
-                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-850 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-300 font-bold mb-1">Tax Payer ID (TPN)</label>
+                      <label className="block text-slate-700 font-bold mb-1">Tax Payer ID (TPN)</label>
                       <input
                         type="text"
                         value={newTaxId}
                         onChange={e => setNewTaxId(e.target.value)}
                         placeholder="TPN-XXXXXXX"
-                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-850 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-slate-300 font-bold mb-1">Contact Email</label>
+                      <label className="block text-slate-700 font-bold mb-1">Contact Email</label>
                       <input
                         type="email"
                         value={newEmail}
                         onChange={e => setNewEmail(e.target.value)}
                         placeholder="admin@clientstore.bt"
-                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-850 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-300 font-bold mb-1">Phone Number</label>
+                      <label className="block text-slate-700 font-bold mb-1">Phone Number</label>
                       <input
                         type="text"
                         value={newPhone}
                         onChange={e => setNewPhone(e.target.value)}
                         placeholder="+975 17 XXX XXX"
-                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-850 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-slate-300 font-bold mb-1">Store Address</label>
+                    <label className="block text-slate-700 font-bold mb-1">Store Address</label>
                     <input
                       type="text"
                       value={newAddress}
                       onChange={e => setNewAddress(e.target.value)}
                       placeholder="Main Town, Dzongkhag, Bhutan"
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-850 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                     />
                   </div>
 
                   {/* Allowed Active POS Counters Limit */}
-                  <div className="p-3.5 bg-slate-800/80 border border-indigo-500/30 rounded-xl space-y-1.5">
-                    <label className="block text-xs font-bold text-indigo-300 flex items-center justify-between">
+                  <div className="p-4 bg-slate-50 border border-indigo-100 rounded-xl space-y-1.5">
+                    <label className="block text-xs font-bold text-indigo-800 flex items-center justify-between">
                       <span className="flex items-center gap-1.5">
-                        <Sliders className="h-3.5 w-3.5 text-indigo-400" />
+                        <Sliders className="h-3.5 w-3.5 text-indigo-500" />
                         <span>Allowed Active Counters Limit (Superadmin Control)</span>
                       </span>
-                      <span className="text-[10px] font-mono text-indigo-400">
+                      <span className="text-[10px] font-mono text-indigo-600 font-bold">
                         {newAllowedCounters === 0 ? 'Unlimited' : `${newAllowedCounters} Counter${newAllowedCounters > 1 ? 's' : ''}`}
                       </span>
                     </label>
                     <select
                       value={newAllowedCounters}
                       onChange={e => setNewAllowedCounters(parseInt(e.target.value, 10))}
-                      className="w-full bg-slate-900 border border-indigo-500/40 rounded-lg px-3 py-2 text-white font-semibold text-xs focus:border-indigo-400 focus:outline-none"
+                      className="w-full bg-white border border-indigo-200 rounded-lg px-3 py-2 text-slate-800 font-semibold text-xs focus:border-indigo-500 focus:outline-none shadow-xs"
                     >
                       <option value={1}>1 Terminal (Single Counter Plan - Default)</option>
                       <option value={2}>2 Terminals (Dual Cashier Counters)</option>
@@ -1567,32 +1567,32 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                       <option value={5}>5 Terminals (5-Desk Setup)</option>
                       <option value={0}>Unlimited Terminals (Enterprise Tier)</option>
                     </select>
-                    <p className="text-[10px] text-slate-400">
+                    <p className="text-[10px] text-slate-500">
                       Enforces how many POS billing counters this client can simultaneously activate on their system.
                     </p>
                   </div>
 
-                  <div className="p-3.5 bg-indigo-950/30 border border-indigo-800/40 rounded-xl space-y-2">
-                    <span className="text-[11px] font-bold text-indigo-300 block">Initial Store Admin Login Setup</span>
+                  <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-2">
+                    <span className="text-[11px] font-bold text-indigo-800 block">Initial Store Admin Login Setup</span>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[10px] text-slate-400 font-medium mb-1">Admin Username</label>
+                        <label className="block text-[10px] text-slate-500 font-medium mb-1">Admin Username</label>
                         <input
                           type="text"
                           value={newAdminUsername}
                           onChange={e => setNewAdminUsername(e.target.value)}
                           placeholder="admin"
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 text-xs focus:border-indigo-500 focus:outline-none"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-slate-400 font-medium mb-1">Initial PIN Code</label>
+                        <label className="block text-[10px] text-slate-500 font-medium mb-1">Initial PIN Code</label>
                         <input
                           type="text"
                           value={newAdminPin}
                           onChange={e => setNewAdminPin(e.target.value)}
                           placeholder="1234"
-                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white text-xs"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 text-xs focus:border-indigo-500 focus:outline-none"
                         />
                       </div>
                     </div>
@@ -1605,11 +1605,11 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
               )}
 
               {/* Modal Footer */}
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2.5 shrink-0">
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="py-2 px-4 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition font-bold"
+                  className="py-2 px-4 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition font-bold"
                 >
                   Cancel
                 </button>
@@ -1625,7 +1625,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                         }
                         setNewCompanyActiveTab('features');
                       }}
-                      className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold transition border border-slate-700 flex items-center gap-1.5 cursor-pointer"
+                      className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition border border-slate-200 flex items-center gap-1.5 cursor-pointer"
                     >
                       <span>Next: Configure Features</span>
                       <ArrowRight className="h-3.5 w-3.5" />
@@ -1634,7 +1634,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                     <button
                       type="button"
                       onClick={() => setNewCompanyActiveTab('details')}
-                      className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold transition border border-slate-700 cursor-pointer"
+                      className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition border border-slate-200 cursor-pointer"
                     >
                       ← Back to Profile
                     </button>
@@ -1666,43 +1666,43 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
       {/* Manage Client Features & Permissions Modal (For Existing Clients) */}
       {managingCompany && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 text-slate-850">
             {/* Modal Header */}
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-800 shrink-0">
+            <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="h-9 w-9 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                <div className="h-9 w-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
                   <Sliders className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-white text-base">Client Feature Permissions</h3>
-                  <p className="text-xs text-slate-400">
-                    Managing active modules for <span className="text-indigo-300 font-bold">"{managingCompany.company_name}"</span>
+                  <h3 className="font-bold text-slate-900 text-base">Client Feature Permissions</h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Managing active modules for <span className="text-indigo-600 font-bold">"{managingCompany.company_name}"</span>
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setManagingCompany(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
             {/* Notice */}
-            <div className="py-2.5 px-3 bg-amber-500/10 border border-amber-500/20 rounded-xl my-3 text-[11px] text-amber-300/90 leading-relaxed shrink-0">
-              <span className="font-bold">Superadmin Policy:</span> Modules turned <span className="font-bold text-rose-400">OFF</span> are completely hidden from the client's screen, sidebar, and settings menu. Whatever modules are left <span className="font-bold text-emerald-400">ON</span>, the client can use freely.
+            <div className="py-2.5 px-3.5 bg-amber-50 border border-amber-200 rounded-xl my-3 text-[11px] text-amber-800 leading-relaxed shrink-0">
+              <span className="font-bold">Superadmin Policy:</span> Modules turned <span className="font-bold text-rose-700">OFF</span> are completely hidden from the client's screen, sidebar, and settings menu. Whatever modules are left <span className="font-bold text-emerald-700">ON</span>, the client can use freely.
             </div>
 
             {/* Allowed Active POS Counters Limit */}
-            <div className="p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-2xl mb-3 shrink-0">
+            <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-2xl mb-3 shrink-0">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <label className="text-xs font-bold text-indigo-300 flex items-center gap-1.5">
-                    <Sliders className="h-3.5 w-3.5 text-indigo-400" />
+                  <label className="text-xs font-bold text-indigo-800 flex items-center gap-1.5">
+                    <Sliders className="h-3.5 w-3.5 text-indigo-500" />
                     <span>Authorized POS Billing Counters Limit</span>
                   </label>
-                  <p className="text-[10px] text-slate-400 mt-0.5">
+                  <p className="text-[10px] text-slate-500 mt-0.5">
                     Maximum number of active cashier desks/terminals this client can run concurrently.
                   </p>
                 </div>
@@ -1710,7 +1710,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                   <select
                     value={managingAllowedCounters}
                     onChange={e => setManagingAllowedCounters(parseInt(e.target.value, 10))}
-                    className="w-full bg-slate-900 border border-indigo-500/50 rounded-xl px-3 py-1.5 text-white font-semibold text-xs focus:border-indigo-400 focus:outline-none"
+                    className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-1.5 text-slate-800 font-semibold text-xs focus:border-indigo-500 focus:outline-none shadow-xs"
                   >
                     <option value={1}>1 Terminal (Single Counter)</option>
                     <option value={2}>2 Terminals (Dual Cashier)</option>
@@ -1729,11 +1729,11 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
             </div>
 
             {/* Modal Footer */}
-            <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setManagingCompany(null)}
-                className="py-2 px-4 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition font-bold text-xs cursor-pointer"
+                className="py-2 px-4 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition font-bold text-xs cursor-pointer"
               >
                 Cancel
               </button>
@@ -1763,25 +1763,25 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
       {/* 3. Commercial Subscription Plan & Pricing Modal */}
       {showPlanModal && editingPlanCompany && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg shadow-2xl p-6 flex flex-col max-h-[90vh] text-slate-100 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg shadow-2xl p-6 flex flex-col max-h-[90vh] text-slate-800 animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
-                <div className="h-9 w-9 rounded-xl bg-indigo-950 border border-indigo-700 flex items-center justify-center text-indigo-400">
+                <div className="h-9 w-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
                   <CreditCard className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">Commercial Subscription Plan</h3>
-                  <p className="text-xs text-slate-400">
-                    Set tier, pricing & billing interval for <span className="text-indigo-300 font-bold">{editingPlanCompany.company_name}</span>
+                  <h3 className="text-base font-black text-slate-900">Commercial Subscription Plan</h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Set tier, pricing & billing interval for <span className="text-indigo-600 font-bold">{editingPlanCompany.company_name}</span>
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowPlanModal(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
                 ✕
               </button>
@@ -1791,7 +1791,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
             <form onSubmit={handleSaveCompanyPlan} className="flex-1 overflow-y-auto pt-4 pb-2 space-y-4 text-xs">
               {/* Quick Plan Preset Selector */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
                   Select Plan Preset
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1807,12 +1807,12 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                       onClick={() => applyPlanPreset(preset.id)}
                       className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
                         planFormTier === preset.id
-                          ? 'bg-indigo-600/30 border-indigo-500 text-white shadow-xs'
-                          : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                          ? 'bg-indigo-50 border-indigo-300 text-indigo-900 shadow-xs ring-1 ring-indigo-400'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-950 hover:border-slate-350'
                       }`}
                     >
                       <div className="font-bold text-xs">{preset.label}</div>
-                      <div className="text-[10px] text-indigo-400 font-mono mt-0.5">{preset.priceLabel}</div>
+                      <div className="text-[10px] text-indigo-600 font-mono mt-0.5">{preset.priceLabel}</div>
                     </button>
                   ))}
                 </div>
@@ -1821,7 +1821,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
               {/* Plan Name & Price */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-bold mb-1">Plan Tier Name *</label>
+                  <label className="block text-slate-700 font-bold mb-1">Plan Tier Name *</label>
                   <input
                     type="text"
                     required
@@ -1831,12 +1831,12 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                       setPlanFormTier('custom');
                     }}
                     placeholder="e.g. Commercial Plan"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-bold mb-1">Billing Price / Rate *</label>
+                  <label className="block text-slate-700 font-bold mb-1">Billing Price / Rate *</label>
                   <input
                     type="number"
                     min="0"
@@ -1848,7 +1848,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                       setPlanFormTier('custom');
                     }}
                     placeholder="25"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                   />
                 </div>
               </div>
@@ -1856,11 +1856,11 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
               {/* Currency & Billing Frequency */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-bold mb-1">Currency</label>
+                  <label className="block text-slate-700 font-bold mb-1">Currency</label>
                   <select
                     value={planFormCurrency}
                     onChange={e => setPlanFormCurrency(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                   >
                     <option value="USD">USD ($ - US Dollar)</option>
                     <option value="Nu.">Nu. (BTN - Bhutanese Ngultrum)</option>
@@ -1869,11 +1869,11 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-bold mb-1">Billing Cycle</label>
+                  <label className="block text-slate-700 font-bold mb-1">Billing Cycle</label>
                   <select
                     value={planFormCycle}
                     onChange={e => setPlanFormCycle(e.target.value as any)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                   >
                     <option value="monthly">Monthly (/mo)</option>
                     <option value="yearly">Yearly (/yr)</option>
@@ -1886,42 +1886,42 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
               {/* Expiry Date & Notes */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-bold mb-1">Subscription / Renewal Expiry (Optional)</label>
+                  <label className="block text-slate-700 font-bold mb-1">Subscription / Renewal Expiry (Optional)</label>
                   <input
                     type="date"
                     value={planFormExpiresAt}
                     onChange={e => setPlanFormExpiresAt(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-bold mb-1">Admin Notes (Optional)</label>
+                  <label className="block text-slate-700 font-bold mb-1">Admin Notes (Optional)</label>
                   <input
                     type="text"
                     value={planFormNotes}
                     onChange={e => setPlanFormNotes(e.target.value)}
                     placeholder="e.g. Contract signed, direct invoice"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                   />
                 </div>
               </div>
 
               {/* Allowed POS Counters / Terminal Licenses */}
-              <div className="p-3 bg-slate-950/60 border border-indigo-500/40 rounded-xl space-y-1.5">
-                <label className="block text-slate-300 font-bold mb-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-indigo-300">
-                    <Sliders className="h-3.5 w-3.5 text-indigo-400" />
+              <div className="p-4 bg-slate-50 border border-indigo-100 rounded-xl space-y-1.5">
+                <label className="block text-slate-700 font-bold mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-indigo-800">
+                    <Sliders className="h-3.5 w-3.5 text-indigo-500" />
                     <span>Authorized POS Billing Counters Limit (Superadmin Control)</span>
                   </span>
-                  <span className="text-indigo-400 font-mono text-[10px]">
+                  <span className="text-indigo-600 font-mono text-[10px] font-bold">
                     {planFormAllowedCounters === 0 ? 'Unlimited Desks' : `${planFormAllowedCounters} Counter${planFormAllowedCounters > 1 ? 's' : ''}`}
                   </span>
                 </label>
                 <select
                   value={planFormAllowedCounters}
                   onChange={e => setPlanFormAllowedCounters(parseInt(e.target.value, 10))}
-                  className="w-full bg-slate-800 border border-indigo-500/50 rounded-xl px-3 py-2 text-white font-semibold focus:outline-none focus:border-indigo-400"
+                  className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-slate-800 font-semibold focus:outline-none focus:border-indigo-550 shadow-xs"
                 >
                   <option value={1}>1 Terminal (Single Counter Plan - Default)</option>
                   <option value={2}>2 Terminals (Dual Cashier Counters)</option>
@@ -1930,15 +1930,15 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                   <option value={5}>5 Terminals (5-Desk Setup)</option>
                   <option value={0}>Unlimited Terminals (Enterprise Unlimited)</option>
                 </select>
-                <p className="text-[10px] text-slate-400">
+                <p className="text-[10px] text-slate-500">
                   Controls how many active billing counters or client terminals this company can register and run simultaneously.
                 </p>
               </div>
 
               {/* Live Preview Box */}
-              <div className="p-3 bg-indigo-950/40 border border-indigo-800/60 rounded-2xl flex items-center justify-between">
+              <div className="p-4 bg-indigo-50 border border-indigo-150 rounded-2xl flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">Live Badge Preview</span>
+                  <span className="text-[10px] text-slate-500 block font-bold uppercase tracking-wider">Live Badge Preview</span>
                   <div className="mt-1">
                     {(() => {
                       const numP = typeof planFormPrice === 'string' ? (parseFloat(planFormPrice) || 0) : planFormPrice;
@@ -1949,8 +1949,8 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                         billingCycle: planFormCycle
                       });
                       return (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/80 border border-indigo-700 text-indigo-300 font-mono text-xs font-bold">
-                          <CreditCard className="h-3.5 w-3.5 text-indigo-400" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-indigo-700 font-mono text-xs font-bold">
+                          <CreditCard className="h-3.5 w-3.5 text-indigo-500" />
                           <span>{badge.label}</span>
                         </span>
                       );
@@ -1958,8 +1958,8 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">Monthly MRR Value</span>
-                  <span className="text-sm font-black text-emerald-400 font-mono">
+                  <span className="text-[10px] text-indigo-900 block font-bold uppercase tracking-wider">Monthly MRR Value</span>
+                  <span className="text-sm font-black text-emerald-600 font-mono">
                     {(() => {
                       const numP = typeof planFormPrice === 'string' ? (parseFloat(planFormPrice) || 0) : planFormPrice;
                       const sym = planFormCurrency === 'USD' ? '$' : planFormCurrency === 'Nu.' ? 'Nu. ' : '₹';
@@ -1971,11 +1971,11 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
               </div>
 
               {/* Modal Footer */}
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0">
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => setShowPlanModal(false)}
-                  className="py-2 px-4 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition font-bold text-xs cursor-pointer"
+                  className="py-2 px-4 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition font-bold text-xs cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -2004,17 +2004,17 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
       {/* 4. Global Benchmark Pricing Settings Modal */}
       {showGlobalPricingModal && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md shadow-2xl p-6 flex flex-col text-slate-100 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md shadow-2xl p-6 flex flex-col text-slate-800 animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
-                <div className="h-9 w-9 rounded-xl bg-indigo-950 border border-indigo-700 flex items-center justify-center text-indigo-400">
+                <div className="h-9 w-9 rounded-xl bg-indigo-55 bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
                   <Settings2 className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">Global Pricing Benchmark</h3>
-                  <p className="text-xs text-slate-400">
+                  <h3 className="text-base font-black text-slate-900">Global Pricing Benchmark</h3>
+                  <p className="text-xs text-slate-500 font-medium">
                     Default rate for unassigned companies & baseline MRR
                   </p>
                 </div>
@@ -2022,7 +2022,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => setShowGlobalPricingModal(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition cursor-pointer"
               >
                 ✕
               </button>
@@ -2031,20 +2031,20 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
             {/* Form */}
             <form onSubmit={handleSaveGlobalPricing} className="pt-4 space-y-4 text-xs">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Default Plan Tier Name</label>
+                <label className="block text-slate-750 font-bold mb-1">Default Plan Tier Name</label>
                 <input
                   type="text"
                   required
                   value={editGlobalTierName}
                   onChange={e => setEditGlobalTierName(e.target.value)}
                   placeholder="Commercial"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 font-bold mb-1">Default Monthly Rate</label>
+                  <label className="block text-slate-750 font-bold mb-1">Default Monthly Rate</label>
                   <input
                     type="number"
                     min="0"
@@ -2053,16 +2053,16 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                     value={editGlobalPrice}
                     onChange={e => setEditGlobalPrice(e.target.value)}
                     placeholder="25"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-bold mb-1">Default Currency</label>
+                  <label className="block text-slate-750 font-bold mb-1">Default Currency</label>
                   <select
                     value={editGlobalCurrency}
                     onChange={e => setEditGlobalCurrency(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                   >
                     <option value="USD">USD ($)</option>
                     <option value="Nu.">Nu. (BTN)</option>
@@ -2071,16 +2071,16 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                 </div>
               </div>
 
-              <div className="p-3 bg-slate-800/80 border border-slate-700 rounded-xl text-[11px] text-slate-400 leading-relaxed">
-                <span className="font-bold text-slate-200">Note:</span> Individual client companies with custom plans configured will keep their specific pricing. This setting controls the default baseline rate and fallback for MRR estimation.
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 leading-relaxed">
+                <span className="font-bold text-slate-800">Note:</span> Individual client companies with custom plans configured will keep their specific pricing. This setting controls the default baseline rate and fallback for MRR estimation.
               </div>
 
               {/* Modal Footer */}
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowGlobalPricingModal(false)}
-                  className="py-2 px-4 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition font-bold text-xs cursor-pointer"
+                  className="py-2 px-4 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition font-bold text-xs cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -2099,32 +2099,32 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
 
       {/* Privacy Protection Shield Modal */}
       {privacyBlockedCompany && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-200 text-left">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-amber-300 rounded-3xl p-6 max-w-lg w-full shadow-2xl animate-in zoom-in-95 duration-200 text-left text-slate-800">
             <div className="flex items-center gap-3.5 mb-4">
-              <div className="h-12 w-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <div className="h-12 w-12 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 shrink-0">
                 <Lock className="h-6 w-6" />
               </div>
               <div>
-                <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
                   Client Data Privacy Active
                 </span>
-                <h3 className="font-bold text-lg text-white mt-1">Platform Support Access is OFF</h3>
+                <h3 className="font-bold text-lg text-slate-900 mt-1">Platform Support Access is OFF</h3>
               </div>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed mb-4">
-              The owner of <strong className="text-white">"{privacyBlockedCompany.company_name}"</strong> has set Platform Support Access to <span className="text-amber-400 font-bold">OFF</span> to protect confidential business books, daily sales, and customer ledger balances.
+            <p className="text-xs text-slate-650 leading-relaxed mb-4">
+              The owner of <strong className="text-slate-950">"{privacyBlockedCompany.company_name}"</strong> has set Platform Support Access to <span className="text-amber-700 font-bold">OFF</span> to protect confidential business books, daily sales, and customer ledger balances.
             </p>
 
-            <div className="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs text-slate-300 space-y-2 mb-5">
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-2 mb-5">
               <div className="flex items-start gap-2">
-                <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                <ShieldCheck className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
                 <span>Client records, day books, and financial transactions are protected from unauthorized observation.</span>
               </div>
               <div className="flex items-start gap-2">
-                <Clock className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
-                <span>If this client requires remote assistance, request their Company Admin to toggle on <strong>"Allow Platform Support Access"</strong> in <span className="text-white font-semibold">Settings → Security & Permissions</span>.</span>
+                <Clock className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                <span>If this client requires remote assistance, request their Company Admin to toggle on <strong>"Allow Platform Support Access"</strong> in <span className="text-slate-900 font-semibold">Settings → Security & Permissions</span>.</span>
               </div>
             </div>
 
@@ -2132,7 +2132,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => setPrivacyBlockedCompany(null)}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer font-bold border border-slate-200"
               >
                 Close
               </button>
