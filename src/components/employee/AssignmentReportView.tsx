@@ -841,8 +841,9 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
       {/* 4. VIEW MODE 1: DETAILED TABULAR REGISTER */}
       {/* ================================================================ */}
       {viewMode === 'table' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs">
-          <table className="w-full text-left text-xs border-separate border-spacing-0">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full min-w-[1100px] text-left text-xs border-separate border-spacing-0">
             <thead className="sticky z-20 shadow-xs bg-white" style={{ top: `${effectiveStickyTop}px` }}>
                 <tr className="bg-white">
                   <th colSpan={10} className="px-5 py-3.5 text-left bg-white border-b border-slate-100">
@@ -1137,6 +1138,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                 )}
               </tbody>
             </table>
+          </div>
         </div>
       )}
 
