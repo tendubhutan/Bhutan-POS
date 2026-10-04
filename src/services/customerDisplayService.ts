@@ -30,6 +30,8 @@ export interface CustomerDisplayState {
   cartItems: CustomerDisplayItem[];
   summary: CustomerDisplaySummary;
   paymentQrData?: string;
+  paymentQrImage?: string;
+  activeQrType?: 'primary' | 'secondary';
   lastCompletedInvoice?: {
     invoiceNo: string;
     grandTotal: number;

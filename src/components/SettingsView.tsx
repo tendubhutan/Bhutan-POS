@@ -151,6 +151,64 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  const [secondaryBankQrImageError, setSecondaryBankQrImageError] = useState<string | null>(null);
+
+  const handleUploadSecondaryBankQrImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSecondaryBankQrImageError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const currentU = getActiveUser();
+    const rLower = String(currentU?.role || '').toLowerCase();
+    const isAuthorized = rLower === 'superadmin' || rLower === 'admin' || rLower === 'administrator' || rLower === 'manager' || (currentU as any)?.isAdmin === true;
+    if (!isAuthorized) {
+      const errMsg = '🔒 SECURITY VIOLATION: Uploading or modifying the Secondary Bank QR Code is restricted to Super Admin or Store Owner only.';
+      setSecondaryBankQrImageError(errMsg);
+      alert(errMsg);
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setSecondaryBankQrImageError('File size exceeds 2MB limit. Please select a smaller image file.');
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setSecondaryBankQrImageError('Invalid file type. Please upload an image file (PNG, JPG, WEBP).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64Str = event.target?.result as string;
+      if (base64Str) {
+        setForm(prev => ({
+          ...prev,
+          SecondaryBankQrImage: base64Str
+        }));
+        playSaveSound();
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveSecondaryBankQrImage = () => {
+    const currentU = getActiveUser();
+    const rLower = String(currentU?.role || '').toLowerCase();
+    const isAuthorized = rLower === 'superadmin' || rLower === 'admin' || rLower === 'administrator' || rLower === 'manager' || (currentU as any)?.isAdmin === true;
+    if (!isAuthorized) {
+      alert('🔒 SECURITY VIOLATION: Removing the Secondary Bank QR Code is restricted to Super Admin or Store Owner only.');
+      return;
+    }
+
+    if (confirm('Are you sure you want to remove the Secondary Bank QR Image?')) {
+      setForm(prev => ({
+        ...prev,
+        SecondaryBankQrImage: ''
+      }));
+    }
+  };
+
   // Supabase Multi-Tenant Cloud Sync State
   const [cloudSyncLoading, setCloudSyncLoading] = useState(false);
   const [cloudSyncProgress, setCloudSyncProgress] = useState<{ msg: string; pct: number } | null>(null);
@@ -925,6 +983,110 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               type="file"
                               accept="image/png, image/jpeg, image/webp, image/svg+xml"
                               onChange={handleUploadBankQrImage}
+                              className="hidden"
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* OPTIONAL/SECONDARY BANK QR PAYLOAD */}
+              <div className="space-y-1">
+                <label className="block font-bold text-slate-700 mb-1">Optional / Secondary Merchant Bank QR Payload (mBoB / mPAY / RMA QR String)</label>
+                <input
+                  type="text"
+                  value={form.SecondaryBankQrData || ''}
+                  onChange={e => setForm({ ...form, SecondaryBankQrData: e.target.value })}
+                  placeholder="e.g. mbob://pay?account=2001938491 or secondary RMA National QR String"
+                  className="w-full h-9 rounded-lg border border-slate-300 px-3 font-mono text-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none bg-slate-50/30"
+                />
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  Paste your store's optional backup bank QR string. The customer display will offer this as an alternative payment channel.
+                </p>
+              </div>
+
+              {/* RESTRICTED SECURITY SECTION: OPTIONAL/SECONDARY BANK QR CODE IMAGE UPLOAD */}
+              <div className="p-4 sm:p-5 rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/20 space-y-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap border-b border-indigo-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <QrCode className="h-5 w-5 text-indigo-600 shrink-0" />
+                    <div>
+                      <h4 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                        <span>Secondary / Backup Store Bank QR Code Image Upload (Optional)</span>
+                        <span className="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-black border border-indigo-200 uppercase tracking-wider">
+                          🔐 Admin / Owner Restricted
+                        </span>
+                      </h4>
+                      <p className="text-xs text-slate-600 mt-0.5">
+                        Upload your store's secondary backup QR Code image (useful in case the primary bank network fails).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {secondaryBankQrImageError && (
+                  <div className="p-3 rounded-xl bg-rose-100 border border-rose-300 text-rose-800 text-xs font-bold flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+                    <span>{secondaryBankQrImageError}</span>
+                  </div>
+                )}
+
+                {(() => {
+                  const roleStr = String(activeUser?.role || '').toLowerCase();
+                  const isAuth = roleStr === 'superadmin' || roleStr === 'admin' || roleStr === 'administrator' || roleStr === 'manager' || (activeUser as any)?.isAdmin === true;
+                  if (!isAuth) {
+                    return (
+                      <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-start gap-2.5">
+                        <Lock className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold block">ACCESS RESTRICTED: SECURITY POLICY ENFORCED</span>
+                          <span>Only Superadmin or Store Owners can upload or replace the secondary bank QR code image.</span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-3">
+                      {form.SecondaryBankQrImage ? (
+                        <div className="flex items-start gap-4 p-3.5 bg-white rounded-xl border border-indigo-100">
+                          <div className="w-36 h-36 rounded-lg bg-slate-100 p-2 border border-slate-200 shrink-0 flex items-center justify-center">
+                            <img src={form.SecondaryBankQrImage} alt="Secondary Store Bank QR Code" className="max-w-full max-h-full object-contain" />
+                          </div>
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-1.5 text-xs text-indigo-700 font-bold">
+                              <CheckCircle2 className="h-4 w-4 text-indigo-600" />
+                              <span>Secondary Bank QR Image Active</span>
+                            </div>
+                            <p className="text-[11px] text-slate-500">
+                              This secondary QR code will be loaded as an optional payment method for the customer display.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={handleRemoveSecondaryBankQrImage}
+                              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              <span>Remove Secondary QR Image</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-indigo-300 rounded-2xl bg-white text-center space-y-2">
+                          <QrCode className="h-8 w-8 text-indigo-400" />
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block">Select & Upload Store's Secondary Bank QR Image</span>
+                            <span className="text-[11px] text-slate-500">Supported formats: PNG, JPG, WEBP (Max 2MB)</span>
+                          </div>
+                          <label className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-sm">
+                            <Upload className="h-4 w-4" />
+                            <span>Upload Secondary Bank QR Image</span>
+                            <input
+                              type="file"
+                              accept="image/png, image/jpeg, image/webp, image/svg+xml"
+                              onChange={handleUploadSecondaryBankQrImage}
                               className="hidden"
                             />
                           </label>

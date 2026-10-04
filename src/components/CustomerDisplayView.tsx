@@ -168,7 +168,10 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
 
   // Construct Dynamic Payment QR URL
   const grandTotal = activeState?.summary?.grandTotal || 0;
-  const rawQrTemplate = activeState?.paymentQrData || (config as any).BankQrData || (config as any).MerchantQrCode || '';
+  const isSecondaryActive = activeState?.activeQrType === 'secondary';
+  const rawQrTemplate = isSecondaryActive
+    ? (activeState?.paymentQrData || config.SecondaryBankQrData || '')
+    : (activeState?.paymentQrData || config.BankQrData || config.MerchantQrCode || '');
   let paymentQrUrl = '';
 
   if (grandTotal > 0) {
@@ -499,19 +502,21 @@ export const CustomerDisplayView: React.FC<CustomerDisplayViewProps> = ({ config
 
                 {/* Dynamic / Uploaded Payment QR Code Card */}
                 {grandTotal > 0 && (() => {
-                  const uploadedQrImage = (config as any).CompanyBankQrImage || (config as any).BankQrImage || (activeState?.paymentQrData?.startsWith('data:image') ? activeState.paymentQrData : '');
+                  const uploadedQrImage = isSecondaryActive
+                    ? (activeState?.paymentQrImage || config.SecondaryBankQrImage || '')
+                    : (activeState?.paymentQrImage || config.CompanyBankQrImage || config.BankQrImage || (activeState?.paymentQrData?.startsWith('data:image') ? activeState.paymentQrData : ''));
 
                   return (
                     <div className="bg-gradient-to-br from-indigo-950/80 via-slate-900 to-slate-950 border border-indigo-500/30 rounded-3xl p-5 shadow-2xl text-center space-y-3">
                       <div className="flex items-center justify-center gap-2 text-indigo-300 font-bold text-xs uppercase tracking-wider">
                         <QrCode className="h-4 w-4 text-indigo-400" />
-                        <span>Scan QR to Pay {currSymbol} {grandTotal.toFixed(2)}</span>
+                        <span>Scan {isSecondaryActive ? 'Secondary / Backup' : 'Official'} QR to Pay {currSymbol} {grandTotal.toFixed(2)}</span>
                       </div>
 
                       {uploadedQrImage ? (
                         <div className="bg-white p-3 rounded-2xl inline-block shadow-xl border-2 border-indigo-400/50 max-w-[240px]">
-                          <img src={uploadedQrImage} alt="Official Bank QR Code" className="w-48 h-48 object-contain mx-auto rounded-lg" />
-                          <span className="text-[10px] text-slate-700 font-extrabold block mt-1.5 uppercase">Official Bank QR Code</span>
+                          <img src={uploadedQrImage} alt="Store Bank QR Code" className="w-48 h-48 object-contain mx-auto rounded-lg" />
+                          <span className="text-[10px] text-slate-700 font-extrabold block mt-1.5 uppercase">{isSecondaryActive ? 'Secondary Bank QR Code' : 'Official Bank QR Code'}</span>
                         </div>
                       ) : paymentQrUrl ? (
                         <div className="bg-white p-3 rounded-2xl inline-block shadow-xl border-2 border-indigo-400/50">

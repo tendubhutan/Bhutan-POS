@@ -31,6 +31,10 @@ export interface Config {
   CompanyBankDetails: string;
   BankQrData?: string;
   MerchantQrCode?: string;
+  CompanyBankQrImage?: string;
+  BankQrImage?: string;
+  SecondaryBankQrData?: string;
+  SecondaryBankQrImage?: string;
   EnableGST: string; // "true" | "false"
   EnableGSTInputTax?: string; // "true" | "false"
   EnableTDS2Tracking?: string; // "true" | "false"

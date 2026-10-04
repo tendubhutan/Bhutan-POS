@@ -109,7 +109,8 @@ import {
   Calendar,
   Info,
   RefreshCw,
-  Ban
+  Ban,
+  QrCode
 } from 'lucide-react';
 import { SerialModal } from './SerialModal';
 import { ThermalReceiptModal } from './ThermalReceiptModal';
@@ -3882,6 +3883,123 @@ export const POSBilling: React.FC<POSBillingProps> = ({
               <span>{totals.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           </div>
+
+          {/* Dedicated manual trigger buttons to display QR Code on customer screen wirelessly */}
+          {(() => {
+            const hasSecondaryQr = !!(config.SecondaryBankQrData || config.SecondaryBankQrImage);
+            return (
+              <div className="space-y-1.5 mt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (cart.length > 0) {
+                      const formattedCart = cart.map((line, idx) => {
+                        let lineDisc = 0;
+                        if (line.discount) {
+                          const rawDisc = Number(line.discount) || 0;
+                          const isPct = line.discountType === 'percent' || config.ItemDiscountType === 'percent';
+                          lineDisc = isPct ? ((line.qty * line.rate) * rawDisc / 100) : rawDisc;
+                        }
+                        return {
+                          id: `${line.itemCode}-${idx}`,
+                          name: line.itemName || 'Item',
+                          qty: Number(line.qty) || 0,
+                          rate: Number(line.rate) || 0,
+                          discount: lineDisc,
+                          amount: Math.max(0, (Number(line.qty) || 0) * (Number(line.rate) || 0) - lineDisc),
+                          unit: line.unit,
+                          batchNo: line.selectedBatchNo
+                        };
+                      });
+
+                      broadcastCustomerDisplayState({
+                        companyId: getActiveCompanyId(),
+                        companyName: config.CompanyName || DEFAULT_TENANT_COMPANY.company_name,
+                        companyLogo: config.CompanyLogo || undefined,
+                        terminalId: deviceCounterId || 'C1',
+                        status: 'payment_pending', // Explicit status to force QR view on customer display
+                        cartItems: formattedCart,
+                        summary: {
+                          subtotal: totals.subtotal,
+                          discountTotal: totals.discount,
+                          taxTotal: totals.gstAmt,
+                          grandTotal: totals.total,
+                          itemCount: cart.length,
+                          currencySymbol: config.CurrencySymbol || 'Nu.'
+                        },
+                        paymentQrData: (config as any).CompanyBankQrImage || (config as any).BankQrImage || (config as any).BankQrData || (config as any).MerchantQrCode || undefined,
+                        activeQrType: 'primary',
+                        timestamp: Date.now()
+                      }, getActiveCompanyId());
+                    }
+                  }}
+                  disabled={cart.length === 0}
+                  className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer border ${
+                    cart.length === 0
+                      ? 'bg-slate-800/50 text-slate-500 border-slate-700/60 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 shadow-md hover:shadow-lg'
+                  }`}
+                >
+                  <QrCode className="h-4 w-4" />
+                  <span>Show Official QR on Screen</span>
+                </button>
+
+                {hasSecondaryQr && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (cart.length > 0) {
+                        const formattedCart = cart.map((line, idx) => {
+                          let lineDisc = 0;
+                          if (line.discount) {
+                            const rawDisc = Number(line.discount) || 0;
+                            const isPct = line.discountType === 'percent' || config.ItemDiscountType === 'percent';
+                            lineDisc = isPct ? ((line.qty * line.rate) * rawDisc / 100) : rawDisc;
+                          }
+                          return {
+                            id: `${line.itemCode}-${idx}`,
+                            name: line.itemName || 'Item',
+                            qty: Number(line.qty) || 0,
+                            rate: Number(line.rate) || 0,
+                            discount: lineDisc,
+                            amount: Math.max(0, (Number(line.qty) || 0) * (Number(line.rate) || 0) - lineDisc),
+                            unit: line.unit,
+                            batchNo: line.selectedBatchNo
+                          };
+                        });
+
+                        broadcastCustomerDisplayState({
+                          companyId: getActiveCompanyId(),
+                          companyName: config.CompanyName || DEFAULT_TENANT_COMPANY.company_name,
+                          companyLogo: config.CompanyLogo || undefined,
+                          terminalId: deviceCounterId || 'C1',
+                          status: 'payment_pending',
+                          cartItems: formattedCart,
+                          summary: {
+                            subtotal: totals.subtotal,
+                            discountTotal: totals.discount,
+                            taxTotal: totals.gstAmt,
+                            grandTotal: totals.total,
+                            itemCount: cart.length,
+                            currencySymbol: config.CurrencySymbol || 'Nu.'
+                          },
+                          paymentQrData: config.SecondaryBankQrData || undefined,
+                          paymentQrImage: config.SecondaryBankQrImage || undefined,
+                          activeQrType: 'secondary',
+                          timestamp: Date.now()
+                        }, getActiveCompanyId());
+                      }
+                    }}
+                    disabled={cart.length === 0}
+                    className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer border bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-md hover:shadow-lg`}
+                  >
+                    <QrCode className="h-4 w-4" />
+                    <span>Show Backup QR on Screen</span>
+                  </button>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Payment Modes */}
