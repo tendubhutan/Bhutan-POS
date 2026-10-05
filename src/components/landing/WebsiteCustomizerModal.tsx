@@ -16,6 +16,7 @@ import {
   HelpCircle,
   FileJson,
   Upload,
+  Download,
   ArrowRight,
   Type,
   Maximize2,
@@ -1374,21 +1375,41 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
 
               {/* JSON Export & GitHub Deployment */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 border-b border-slate-200">
                   <div>
                     <h5 className="text-xs font-extrabold text-slate-800">Export Configuration &amp; GitHub Sync</h5>
-                    <p className="text-[11px] text-slate-500">Saved to <code className="font-mono bg-slate-200 px-1 py-0.5 rounded text-[10px]">src/config/websiteConfig.json</code> for GitHub commits and Cloudflare deployment.</p>
+                    <p className="text-[11px] text-slate-500">Saved to <code className="font-mono bg-slate-200 px-1 py-0.5 rounded text-[10px]">src/config/websiteConfig.json</code> for GitHub commits.</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(JSON.stringify(formData, null, 2));
-                      alert('Website configuration JSON copied to clipboard!');
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
-                  >
-                    <span>Copy JSON</span>
-                  </button>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(JSON.stringify(formData, null, 2));
+                        alert('Website configuration JSON copied to clipboard!');
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs shadow-xs transition cursor-pointer"
+                    >
+                      <span>Copy JSON</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const blob = new Blob([JSON.stringify(formData, null, 2)], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'websiteConfig.json';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download websiteConfig.json</span>
+                    </button>
+                  </div>
                 </div>
                 <textarea
                   readOnly
@@ -1396,8 +1417,50 @@ export const WebsiteCustomizerModal: React.FC<WebsiteCustomizerModalProps> = ({
                   value={JSON.stringify(formData, null, 2)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-[10px] bg-white"
                 />
-                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-[11px] leading-relaxed">
-                  <strong>🚀 Updating www.drukerp.com:</strong> Clicking <em>&quot;Save &amp; Sync to Live Website&quot;</em> automatically updates <code className="font-mono text-blue-800">src/config/websiteConfig.json</code>. After saving, push your git commits to GitHub to trigger Cloudflare Pages to build and publish your new website!
+
+                {/* Highly Readable Step-by-Step Sync Guidance */}
+                <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 space-y-2.5 text-blue-950 text-[11px] leading-relaxed">
+                  <h6 className="font-extrabold text-blue-900 flex items-center gap-1 text-[11px]">
+                    <span>🚀 How to Publish Your Changes to drukerp.com Instantly:</span>
+                  </h6>
+                  
+                  <div className="space-y-3 mt-1">
+                    <div>
+                      <span className="font-black text-amber-800 block mb-0.5">⭐ Recommended: If editing directly inside the AI Studio Cloud Workspace (No-Code Sync to GitHub)</span>
+                      <p className="pl-3 text-slate-600 leading-relaxed">
+                        Since your project is linked directly from AI Studio to GitHub, server file writes must be saved inside the editor UI for the IDE to recognize and push the changes:
+                        <ol className="list-decimal pl-4 mt-1 space-y-1 text-slate-700 font-medium">
+                          <li>Click the <strong className="text-blue-900">"Copy JSON"</strong> button above.</li>
+                          <li>In the left sidebar of this **AI Studio Cloud Editor**, find and click on the file <code className="font-mono bg-blue-100/70 px-1 rounded text-[10px]">src/config/websiteConfig.json</code>.</li>
+                          <li>Press <kbd className="bg-slate-100 px-1 border border-slate-300 rounded shadow-2xs font-mono">Ctrl+A</kbd> to select everything, then press <kbd className="bg-slate-100 px-1 border border-slate-300 rounded shadow-2xs font-mono">Ctrl+V</kbd> to paste.</li>
+                          <li>Press <kbd className="bg-slate-100 px-1 border border-slate-300 rounded shadow-2xs font-mono">Ctrl+S</kbd> to **Save the file** inside the editor.</li>
+                          <li>Your AI Studio git tracker will instantly show the changes! Click **"Push to GitHub"** in AI Studio, and Cloudflare will deploy to <strong className="text-emerald-800 font-extrabold">drukerp.com</strong> instantly!</li>
+                        </ol>
+                      </p>
+                    </div>
+
+                    <div className="border-t border-blue-200/60 pt-2.5">
+                      <span className="font-black text-blue-800 block mb-0.5">💻 Option 2: If editing in a local PC terminal (localhost:3000)</span>
+                      <p className="pl-3 text-slate-600">
+                        Clicking <em className="font-semibold text-blue-900">"Save &amp; Sync to Live Website"</em> automatically updates your local configuration file. Just push your commits to GitHub:
+                        <code className="block mt-1 bg-blue-100/70 p-2 rounded font-mono text-[10px] text-blue-900 whitespace-pre">
+                          git add src/config/websiteConfig.json{"\n"}
+                          git commit -m "Update website content"{"\n"}
+                          git push origin main
+                        </code>
+                      </p>
+                    </div>
+
+                    <div className="border-t border-blue-200/60 pt-2.5">
+                      <span className="font-black text-blue-800 block mb-0.5">🌍 Option 3: If editing directly on the live production browser</span>
+                      <p className="pl-3 text-slate-600 leading-relaxed">
+                        1. Click the <strong className="text-blue-900">Download websiteConfig.json</strong> button above.{"\n"}<br />
+                        2. Overwrite the file inside your project repository folder under <code className="font-mono bg-blue-100/70 px-1 rounded text-[10px]">src/config/websiteConfig.json</code>.{"\n"}<br />
+                        3. Open your terminal and push to GitHub (same git commands as Option 2).{"\n"}<br />
+                        <span className="font-bold text-emerald-800">Cloudflare Pages will build and deploy your new website to drukerp.com instantly!</span>
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

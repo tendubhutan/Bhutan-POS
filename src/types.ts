@@ -50,6 +50,7 @@ export interface Config {
   EnableStaffAttendanceAndLeave?: string; // "true" | "false"
   EnableStaffAssignments?: string; // "true" | "false"
   TaskCommentEditWindowSeconds?: string; // Time limit in seconds for editing comments after sending (default: 15)
+  TaskMessageEditGraceSeconds?: string;
   EnablePOS?: string;
   EnableNormalSale?: string;
   EnableEmployeeAdvances?: string; // "true" | "false"

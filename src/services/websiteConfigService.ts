@@ -218,8 +218,10 @@ export async function saveWebsiteConfig(config: WebsiteConfig): Promise<void> {
   // Cross-domain sync: Also try Supabase if configured
   if (isSupabaseConfigured) {
     try {
+      // Use a valid UUID format 'da7a0000-0000-0000-0000-000000000000' to avoid UUID syntax errors in Postgres.
+      // If a database policy or foreign key rejects it, it will catch gracefully.
       await supabase.from('tenant_settings').upsert({
-        company_id: 'global',
+        company_id: 'da7a0000-0000-0000-0000-000000000000',
         record_id: 'website_config',
         data: toSave,
         updated_at: new Date().toISOString()
@@ -236,7 +238,7 @@ export async function fetchRemoteWebsiteConfig(): Promise<WebsiteConfig | null> 
     const { data, error } = await supabase
       .from('tenant_settings')
       .select('data')
-      .eq('company_id', 'global')
+      .eq('company_id', 'da7a0000-0000-0000-0000-000000000000')
       .eq('record_id', 'website_config')
       .maybeSingle();
 
@@ -293,7 +295,7 @@ export async function resetWebsiteConfig(): Promise<WebsiteConfig> {
   if (isSupabaseConfigured) {
     try {
       await supabase.from('tenant_settings').delete()
-        .eq('company_id', 'global')
+        .eq('company_id', 'da7a0000-0000-0000-0000-000000000000')
         .eq('record_id', 'website_config');
     } catch (err) {
       console.warn('Could not reset website config in Supabase:', err);

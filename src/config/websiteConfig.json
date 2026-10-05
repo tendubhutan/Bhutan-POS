@@ -251,7 +251,7 @@
       "description": "Matrix-based inventory for fashion retail, apparel, and shoe stores. Enter 50 size/color variations on a single screen and print custom price tags with barcodes.",
       "features": [
         "Variant Matrix: track products across Color, Size, Style, and Brand attributes",
-        "Matrix Bulk Stock Entry: enter quantities for all sizes and colors in a single grid",
+        "Variant Matrix Bulk Stock Entry: enter quantities for all sizes and colors in a single grid",
         "Custom Barcode Sticker Printing with Brand, Size, Color, and MRP",
         "Size-wise sales breakdown to identify fast-selling sizes for reordering"
       ],
@@ -428,7 +428,24 @@
       "bhutanBenefit": "Run Losar or Festival sales promotions automatically at checkout without manual cashier entries.",
       "isVisible": true,
       "detailBoxTheme": "purple"
+    },
+    {
+      "id": "custom-app-1791131440448",
+      "name": "Smart POS Display",
+      "category": "Business Module",
+      "color": "from-blue-600 to-indigo-600",
+      "iconName": "Boxes",
+      "tagline": "Your Bill, Your Way: Connect, View, and Pay Instantly.",
+      "description": "Enhance your checkout experience with the Smart POS Customer Display. This versatile feature allows businesses to project real-time, itemized bills to any secondary screen—whether connected via USB/HDMI or wirelessly to a smartphone or tablet. Customers gain complete transparency over their purchases and can complete transactions instantly by scanning a dynamic QR code directly from the display..",
+      "features": [
+        "1.Flexible Connectivity: Connect secondary screens seamlessly using wired options like USB/HDMI or cast wirelessly to any iOS/Android smartphone or tablet.",
+        "2.Real-Time Itemized Billing: Display live order updates, prices, and taxes item-by-item as the cashier scans them to ensure accuracy and build customer trust.",
+        "3.Instant QR Code Payments: Generate dynamic payment QR codes directly on the customer screen for contactless checkout via mobile wallets."
+      ],
+      "bhutanBenefit": "Scan, pay, and go—the fastest way for Bhutanese shoppers to check their bills and pay instantly via mBoB, mPay, or UPI.",
+      "isVisible": true,
+      "detailBoxTheme": "blue"
     }
   ],
-  "lastUpdated": 1790950000000
+  "lastUpdated": 1791131795299
 }
