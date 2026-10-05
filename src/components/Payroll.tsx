@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import {
   Users,
   DollarSign,
+  RefreshCw,
   Plus,
   Edit,
   Trash2,
@@ -27,7 +28,11 @@ import {
   WalletCards,
   Banknote,
   Clock,
-  Save
+  Save,
+  Mail,
+  MessageSquare,
+  Share2,
+  Send
 } from 'lucide-react';
 import { EmployeeAdvances } from './payroll/EmployeeAdvances';
 import { StaffManagementView } from './employee/StaffManagementView';
@@ -191,8 +196,11 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
   // Edit Single Payroll Entry Modal
   const [editingEntry, setEditingEntry] = useState<PayrollEntry | null>(null);
 
-  // Printable Payslip Modal
+  // Printable Payslip Hub & Search Modal
   const [payslipModalEntry, setPayslipModalEntry] = useState<PayrollEntry | null>(null);
+  const [showPayslipHub, setShowPayslipHub] = useState<boolean>(false);
+  const [payslipSearchQuery, setPayslipSearchQuery] = useState<string>('');
+  const [registerSearchQuery, setRegisterSearchQuery] = useState<string>('');
 
   // Printable Bank Transfer Sheet Modal
   const [showBankSheetModal, setShowBankSheetModal] = useState(false);
@@ -862,6 +870,273 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     showToast('DRC Form IT-1(a) Excel schedule exported successfully!');
   };
 
+  // Salary Register Export & Share Handlers
+  const handleExportSalaryRegisterExcel = () => {
+    if (!currentPayroll) return;
+    const entries = displayedRegisterEntries.length > 0 ? displayedRegisterEntries : currentPayroll.entries;
+
+    const titleRow = [`${config.CompanyName} - SALARY REGISTER SHEET FOR ${currentPayroll.monthYear.toUpperCase()}`];
+    const headerRow = [
+      'ID No',
+      'Employee Name',
+      'Designation',
+      'Days Worked',
+      ...activeEarningsHeads.map(h => h.name),
+      'Gross Pay',
+      ...activeDeductionsHeads.map(h => h.name),
+      'Total Deductions',
+      'Net Payable'
+    ];
+
+    const dataRows = entries.map(entry => {
+      const mDays = entry.monthTotalDays || 30;
+      const wDays = entry.workingDays !== undefined ? entry.workingDays : mDays;
+      const earningsVals = activeEarningsHeads.map(h => {
+        if (h.id === 'ph_basic') {
+          return entry.earnings.find(e => e.payHeadId === 'ph_basic')?.amount ?? entry.basicSalary;
+        }
+        return entry.earnings.find(e => e.payHeadId === h.id)?.amount ?? 0;
+      });
+      const deductionsVals = activeDeductionsHeads.map(h => {
+        return entry.deductions.find(d => d.payHeadId === h.id)?.amount ?? 0;
+      });
+
+      return [
+        entry.empCode,
+        entry.fullName,
+        entry.designation,
+        wDays,
+        ...earningsVals,
+        entry.grossPay,
+        ...deductionsVals,
+        entry.totalDeductions,
+        entry.netPay
+      ];
+    });
+
+    const totalEarningsVals = activeEarningsHeads.map(h => earningTotals[h.id] || 0);
+    const totalDeductionsVals = activeDeductionsHeads.map(h => deductionTotals[h.id] || 0);
+
+    const totalRow = [
+      'TOTAL',
+      `${entries.length} Staff`,
+      '',
+      '',
+      ...totalEarningsVals,
+      displayedTotalGross,
+      ...totalDeductionsVals,
+      displayedTotalDeductions,
+      displayedTotalNet
+    ];
+
+    const sheetData = [titleRow, [], headerRow, ...dataRows, totalRow];
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Salary Register");
+
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Salary_Register_${currentPayroll.monthYear.replace(/\s+/g, '_')}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast('Salary Register exported to Excel successfully!');
+  };
+
+  const handleShareSalaryRegisterWhatsApp = () => {
+    if (!currentPayroll) return;
+    const entries = displayedRegisterEntries.length > 0 ? displayedRegisterEntries : currentPayroll.entries;
+    const text = `*SALARY REGISTER SUMMARY - ${currentPayroll.monthYear}*\n` +
+      `Company: *${config.CompanyName}*\n` +
+      `Total Staff: ${entries.length}\n` +
+      `Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalGross.toLocaleString('en-IN')}\n` +
+      `Total Deductions: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalDeductions.toLocaleString('en-IN')}\n` +
+      `*Net Payable Salary: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalNet.toLocaleString('en-IN')}*\n\n` +
+      `_Generated via ${config.CompanyName} Payroll System_`;
+
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  const handleShareSalaryRegisterEmail = () => {
+    if (!currentPayroll) return;
+    const entries = displayedRegisterEntries.length > 0 ? displayedRegisterEntries : currentPayroll.entries;
+    const subject = `Salary Register Report - ${currentPayroll.monthYear} (${config.CompanyName})`;
+    const body = `Dear Team,\n\nPlease find the Salary Register Summary for ${currentPayroll.monthYear}:\n\n` +
+      `Company Name: ${config.CompanyName}\n` +
+      `Payroll Period: ${currentPayroll.monthYear}\n` +
+      `Total Staff: ${entries.length}\n` +
+      `Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalGross.toLocaleString('en-IN')}\n` +
+      `Total Deductions: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalDeductions.toLocaleString('en-IN')}\n` +
+      `Net Salary Payable: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalNet.toLocaleString('en-IN')}\n\n` +
+      `Regards,\nHR & Finance Department\n${config.CompanyName}`;
+
+    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+  };
+
+  // Payslip Export & Share Handlers
+  const handleExportPayslipExcel = (entry: PayrollEntry) => {
+    if (!currentPayroll) return;
+    const titleRow = [`${config.CompanyName} - PAYSLIP FOR ${currentPayroll.monthYear.toUpperCase()}`];
+    const infoRows = [
+      [`Employee Name:`, entry.fullName, `ID No:`, entry.empCode],
+      [`CID Number:`, entry.cidNo || '-', `Designation:`, entry.designation],
+      [`Department:`, entry.department || '-', `Bank A/C:`, `${entry.bankName} (${entry.accountNo})`]
+    ];
+
+    const earningsData = entry.earnings.map(item => [formatPayHeadDisplayName(item.payHeadName, item.payHeadId), item.amount]);
+    const deductionsData = entry.deductions.map(item => [formatPayHeadDisplayName(item.payHeadName, item.payHeadId), item.amount]);
+
+    const sheetData = [
+      titleRow,
+      [],
+      ...infoRows,
+      [],
+      [`EARNINGS`, `AMOUNT (${config.CurrencySymbol || 'Nu.'})`, `DEDUCTIONS`, `AMOUNT (${config.CurrencySymbol || 'Nu.'})`],
+      ...Array.from({ length: Math.max(earningsData.length, deductionsData.length) }).map((_, i) => [
+        earningsData[i]?.[0] || '',
+        earningsData[i]?.[1] || '',
+        deductionsData[i]?.[0] || '',
+        deductionsData[i]?.[1] || ''
+      ]),
+      [`TOTAL GROSS PAY`, entry.grossPay, `TOTAL DEDUCTIONS`, entry.totalDeductions],
+      [],
+      [`NET SALARY PAYABLE`, entry.netPay, `(${numberToWordsBhutan(entry.netPay)})`]
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Payslip");
+
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Payslip_${entry.fullName.replace(/\s+/g, '_')}_${currentPayroll.monthYear.replace(/\s+/g, '_')}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast(`Payslip for ${entry.fullName} exported to Excel!`);
+  };
+
+  const handleSharePayslipWhatsApp = (entry: PayrollEntry) => {
+    if (!currentPayroll) return;
+    const earningsList = entry.earnings.map(e => `• ${formatPayHeadDisplayName(e.payHeadName, e.payHeadId)}: ${config.CurrencySymbol || 'Nu.'} ${e.amount.toLocaleString('en-IN')}`).join('\n');
+    const deductionsList = entry.deductions.map(d => `• ${formatPayHeadDisplayName(d.payHeadName, d.payHeadId)}: ${config.CurrencySymbol || 'Nu.'} ${d.amount.toLocaleString('en-IN')}`).join('\n');
+
+    const text = `*PAYSLIP FOR ${currentPayroll.monthYear.toUpperCase()}*\n` +
+      `Company: *${config.CompanyName}*\n` +
+      `Employee: *${entry.fullName}*\n` +
+      `ID No: *${entry.empCode}* | CID: *${entry.cidNo || '-'}*\n` +
+      `Designation: ${entry.designation}\n\n` +
+      `*EARNINGS:*\n${earningsList}\n` +
+      `*Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${entry.grossPay.toLocaleString('en-IN')}*\n\n` +
+      `*DEDUCTIONS:*\n${deductionsList}\n` +
+      `*Total Deductions: ${config.CurrencySymbol || 'Nu.'} ${entry.totalDeductions.toLocaleString('en-IN')}*\n\n` +
+      `*NET SALARY PAYABLE: ${config.CurrencySymbol || 'Nu.'} ${entry.netPay.toLocaleString('en-IN')}*\n` +
+      `_(${numberToWordsBhutan(entry.netPay)})_\n\n` +
+      `_Generated by ${config.CompanyName} Payroll_`;
+
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  const handleSharePayslipEmail = (entry: PayrollEntry) => {
+    if (!currentPayroll) return;
+    const subject = `Pay Slip for ${currentPayroll.monthYear} - ${entry.fullName}`;
+    const earningsList = entry.earnings.map(e => `  - ${formatPayHeadDisplayName(e.payHeadName, e.payHeadId)}: ${config.CurrencySymbol || 'Nu.'} ${e.amount.toLocaleString('en-IN')}`).join('\n');
+    const deductionsList = entry.deductions.map(d => `  - ${formatPayHeadDisplayName(d.payHeadName, d.payHeadId)}: ${config.CurrencySymbol || 'Nu.'} ${d.amount.toLocaleString('en-IN')}`).join('\n');
+
+    const body = `Dear ${entry.fullName},\n\n` +
+      `Please find your Salary Payslip breakdown for ${currentPayroll.monthYear}:\n\n` +
+      `Company: ${config.CompanyName}\n` +
+      `Employee Name: ${entry.fullName}\n` +
+      `ID No: ${entry.empCode}\n` +
+      `CID Card Number: ${entry.cidNo || '-'}\n` +
+      `Designation: ${entry.designation}\n` +
+      `Bank Account: ${entry.bankName} (${entry.accountNo})\n\n` +
+      `EARNINGS BREAKDOWN:\n${earningsList}\n` +
+      `Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${entry.grossPay.toLocaleString('en-IN')}\n\n` +
+      `DEDUCTIONS BREAKDOWN:\n${deductionsList}\n` +
+      `Total Deductions: ${config.CurrencySymbol || 'Nu.'} ${entry.totalDeductions.toLocaleString('en-IN')}\n\n` +
+      `NET SALARY PAYABLE: ${config.CurrencySymbol || 'Nu.'} ${entry.netPay.toLocaleString('en-IN')}\n` +
+      `Amount in Words: ${numberToWordsBhutan(entry.netPay)}\n\n` +
+      `Best regards,\n` +
+      `Finance & HR Department\n` +
+      `${config.CompanyName}`;
+
+    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+  };
+
+  // Bank Advice Sheet Export & Share Handlers
+  const handleExportBankSheetExcel = () => {
+    if (!currentPayroll) return;
+    const titleRow = [`${config.CompanyName} - BANK SALARY TRANSFER ADVICE SCHEDULE`];
+    const subRow = [`Month/Year: ${currentPayroll.monthYear}`];
+    const headerRow = ['S.No', 'ID No', 'Employee Name', 'Bank Name', 'Account Number', 'Net Payable Amount (Nu.)'];
+
+    let totalNet = 0;
+    const dataRows = currentPayroll.entries.map((entry, idx) => {
+      totalNet += entry.netPay;
+      return [
+        idx + 1,
+        entry.empCode,
+        entry.fullName,
+        entry.bankName || '-',
+        entry.accountNo || '-',
+        entry.netPay
+      ];
+    });
+
+    const totalRow = ['TOTAL', '', `${currentPayroll.entries.length} Staff`, '', '', totalNet];
+
+    const sheetData = [titleRow, subRow, [], headerRow, ...dataRows, totalRow];
+    const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Bank Advice");
+
+    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Bank_Salary_Advice_${currentPayroll.monthYear.replace(/\s+/g, '_')}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast('Bank Advice Schedule exported to Excel!');
+  };
+
+  const handleShareBankSheetWhatsApp = () => {
+    if (!currentPayroll) return;
+    const text = `*BANK SALARY ADVICE SCHEDULE - ${currentPayroll.monthYear}*\n` +
+      `Company: *${config.CompanyName}*\n` +
+      `Total Employees: ${currentPayroll.entries.length}\n` +
+      `*Total Net Salary Transfer: ${config.CurrencySymbol || 'Nu.'} ${currentPayroll.totalNetPay.toLocaleString('en-IN')}*\n\n` +
+      `Please process salary disbursement to employee bank accounts as per attached schedule.\n\n` +
+      `_Generated via ${config.CompanyName} Payroll System_`;
+
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  const handleShareBankSheetEmail = () => {
+    if (!currentPayroll) return;
+    const subject = `Bank Salary Transfer Advice Letter - ${currentPayroll.monthYear} (${config.CompanyName})`;
+    const body = `To The Branch Manager,\n\n` +
+      `Re: Salary Disbursement Advice for ${currentPayroll.monthYear}\n\n` +
+      `Please find below the salary transfer advice summary for ${config.CompanyName}:\n\n` +
+      `Payroll Month: ${currentPayroll.monthYear}\n` +
+      `Total Number of Staff: ${currentPayroll.entries.length}\n` +
+      `Total Net Salary Transfer Amount: ${config.CurrencySymbol || 'Nu.'} ${currentPayroll.totalNetPay.toLocaleString('en-IN')}\n\n` +
+      `Kindly debit our company account and credit the respective employee bank accounts listed in the official salary advice schedule.\n\n` +
+      `Thank you.\n\n` +
+      `Authorized Signatory,\n` +
+      `${config.CompanyName}`;
+
+    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+  };
+
   // Employee CRUD & Salary Structure Helpers
   const handleToggleEmpPayHead = (payHeadId: string, isEnabled: boolean) => {
     const currentCustom = employeeForm.customPayHeads || {};
@@ -1196,6 +1471,127 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
   const departmentsList = Array.from(new Set(employees.map(e => e.department))).filter(Boolean);
 
+  // Helper to rename heads for the Salary Register:
+  // House Rent Allowance (HRA) -> HRA, Health Contribution (1%) -> HC, NPPF Providend Fund -> PF, Group Insurance Scheme (GIS) -> GIS, Personal Income Tax(PIT) -> Tax
+  const formatPayHeadDisplayName = (name: string, id?: string): string => {
+    const lowerName = (name || '').toLowerCase();
+    const lowerId = (id || '').toLowerCase();
+
+    if (lowerName.includes('house rent') || lowerName.includes('hra') || lowerId === 'ph_hra') {
+      return 'HRA';
+    }
+    if (lowerName.includes('health') || lowerName.includes('hc') || lowerId === 'ph_health') {
+      return 'HC';
+    }
+    if (lowerName.includes('nppf') || lowerName.includes('provid') || lowerId === 'ph_nppf') {
+      return 'PF';
+    }
+    if (lowerName.includes('group insurance') || lowerName.includes('gis') || lowerId === 'ph_gis') {
+      return 'GIS';
+    }
+    if (lowerName.includes('personal income tax') || lowerName.includes('pit') || lowerName.includes('tax') || lowerId === 'ph_pit') {
+      return 'Tax';
+    }
+    return name;
+  };
+
+  // Dynamic active earnings heads and deductions heads across the current payroll entries
+  const activeEarningsHeads = useMemo(() => {
+    const list: { id: string; name: string }[] = [{ id: 'ph_basic', name: 'Basic Pay' }];
+    if (currentPayroll?.entries) {
+      currentPayroll.entries.forEach(entry => {
+        entry.earnings?.forEach(item => {
+          if (item.payHeadId && item.payHeadId !== 'ph_basic' && !list.some(h => h.id === item.payHeadId)) {
+            list.push({ id: item.payHeadId, name: formatPayHeadDisplayName(item.payHeadName || item.payHeadId, item.payHeadId) });
+          }
+        });
+      });
+    }
+    return list;
+  }, [currentPayroll]);
+
+  const activeDeductionsHeads = useMemo(() => {
+    const list: { id: string; name: string }[] = [];
+    if (currentPayroll?.entries) {
+      currentPayroll.entries.forEach(entry => {
+        entry.deductions?.forEach(item => {
+          if (item.payHeadId && !list.some(h => h.id === item.payHeadId)) {
+            list.push({ id: item.payHeadId, name: formatPayHeadDisplayName(item.payHeadName || item.payHeadId, item.payHeadId) });
+          }
+        });
+      });
+    }
+    return list;
+  }, [currentPayroll]);
+
+  // Filtered employees for the main Salary Register table
+  const displayedRegisterEntries = useMemo(() => {
+    if (!currentPayroll?.entries) return [];
+    if (!registerSearchQuery.trim()) return currentPayroll.entries;
+    const q = registerSearchQuery.toLowerCase().trim();
+    return currentPayroll.entries.filter(e =>
+      e.fullName.toLowerCase().includes(q) ||
+      e.empCode.toLowerCase().includes(q) ||
+      (e.cidNo && e.cidNo.toLowerCase().includes(q)) ||
+      (e.designation && e.designation.toLowerCase().includes(q)) ||
+      (e.department && e.department.toLowerCase().includes(q))
+    );
+  }, [currentPayroll, registerSearchQuery]);
+
+  const earningTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    if (!displayedRegisterEntries) return totals;
+    activeEarningsHeads.forEach(head => {
+      totals[head.id] = displayedRegisterEntries.reduce((sum, entry) => {
+        if (head.id === 'ph_basic') {
+          const amt = entry.earnings.find(e => e.payHeadId === 'ph_basic')?.amount || entry.basicSalary;
+          return sum + (amt || 0);
+        }
+        const item = entry.earnings.find(e => e.payHeadId === head.id);
+        return sum + (item?.amount || 0);
+      }, 0);
+    });
+    return totals;
+  }, [displayedRegisterEntries, activeEarningsHeads]);
+
+  const deductionTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    if (!displayedRegisterEntries) return totals;
+    activeDeductionsHeads.forEach(head => {
+      totals[head.id] = displayedRegisterEntries.reduce((sum, entry) => {
+        const item = entry.deductions.find(d => d.payHeadId === head.id);
+        return sum + (item?.amount || 0);
+      }, 0);
+    });
+    return totals;
+  }, [displayedRegisterEntries, activeDeductionsHeads]);
+
+  const displayedTotalGross = useMemo(() => {
+    return displayedRegisterEntries.reduce((sum, e) => sum + (e.grossPay || 0), 0);
+  }, [displayedRegisterEntries]);
+
+  const displayedTotalDeductions = useMemo(() => {
+    return displayedRegisterEntries.reduce((sum, e) => sum + (e.totalDeductions || 0), 0);
+  }, [displayedRegisterEntries]);
+
+  const displayedTotalNet = useMemo(() => {
+    return displayedRegisterEntries.reduce((sum, e) => sum + (e.netPay || 0), 0);
+  }, [displayedRegisterEntries]);
+
+  // Filtered employees for the Payslip Search Hub
+  const filteredPayslipEntries = useMemo(() => {
+    if (!currentPayroll?.entries) return [];
+    if (!payslipSearchQuery.trim()) return currentPayroll.entries;
+    const q = payslipSearchQuery.toLowerCase().trim();
+    return currentPayroll.entries.filter(e =>
+      e.fullName.toLowerCase().includes(q) ||
+      e.empCode.toLowerCase().includes(q) ||
+      (e.cidNo && e.cidNo.toLowerCase().includes(q)) ||
+      (e.designation && e.designation.toLowerCase().includes(q)) ||
+      (e.department && e.department.toLowerCase().includes(q))
+    );
+  }, [currentPayroll, payslipSearchQuery]);
+
   return (
     <div className={`min-h-full flex flex-col ${activeTab === 'attendance' ? 'space-y-0 p-0' : 'space-y-3 p-3 sm:p-4 pb-2'}`}>
       {/* Toast Notification */}
@@ -1237,25 +1633,44 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
                 return (
-                  <button
-                    key={tab.id}
-                    ref={el => (tabButtonRefs.current[idx] = el)}
-                    role="tab"
-                    aria-selected={isActive}
-                    tabIndex={isActive ? 0 : -1}
-                    onClick={() => setActiveTab(tab.id as any)}
-                    className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
-                      isActive
-                        ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-black shadow-md shadow-indigo-500/20 border border-indigo-400/30'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-800/80 font-bold'
-                    }`}
-                  >
-                    <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                    <span>
-                      {tab.label}
-                      {tab.id === 'employees' ? ` (${employees.length})` : ''}
-                    </span>
-                  </button>
+                  <React.Fragment key={tab.id}>
+                    <button
+                      ref={el => (tabButtonRefs.current[idx] = el)}
+                      role="tab"
+                      aria-selected={isActive}
+                      tabIndex={isActive ? 0 : -1}
+                      onClick={() => setActiveTab(tab.id as any)}
+                      className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
+                        isActive
+                          ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-black shadow-md shadow-indigo-500/20 border border-indigo-400/30'
+                          : 'text-slate-300 hover:text-white hover:bg-slate-800/80 font-bold'
+                      }`}
+                    >
+                      <Icon className={`h-3.5 w-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                      <span>
+                        {tab.label}
+                        {tab.id === 'employees' ? ` (${employees.length})` : ''}
+                      </span>
+                    </button>
+
+                    {/* Auto-deduct LOP toggle moved up right next to Salary Processing */}
+                    {tab.id === 'processing' && (
+                      <label 
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-[11px] font-semibold text-slate-300 cursor-pointer select-none transition shrink-0"
+                        title="Auto-deduct Loss of Pay from Attendance"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={linkAttendanceToPayroll}
+                          onChange={e => setLinkAttendanceToPayroll(e.target.checked)}
+                          className="rounded text-indigo-500 w-3.5 h-3.5 cursor-pointer accent-indigo-600"
+                        />
+                        <Clock className="h-3.5 w-3.5 text-indigo-400" />
+                        <span className="hidden md:inline">Auto-deduct LOP</span>
+                        <span className="md:hidden">LOP</span>
+                      </label>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </div>
@@ -1321,29 +1736,33 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 </select>
               </div>
 
-              {/* Right: Actions & Options (Green Area, moved up & compact) */}
+              {/* Right: Actions & Options */}
               <div className="flex items-center gap-2 flex-wrap">
-                <label className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200/80 border border-slate-300 text-xs font-semibold text-slate-700 cursor-pointer select-none transition">
-                  <input
-                    type="checkbox"
-                    checked={linkAttendanceToPayroll}
-                    onChange={e => setLinkAttendanceToPayroll(e.target.checked)}
-                    className="rounded text-indigo-600 w-3.5 h-3.5 cursor-pointer"
-                  />
-                  <Clock className="h-3.5 w-3.5 text-indigo-600" />
-                  <span>Auto-deduct LOP from Attendance</span>
-                </label>
-
                 <button
                   onClick={handleProcessPayroll}
                   className="h-8 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                 >
-                  <DollarSign className="h-3.5 w-3.5" />
-                  <span>{currentPayroll ? 'Recalculate / Reprocess Payroll' : 'Process Monthly Payroll'}</span>
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>{currentPayroll ? 'Reprocess Payroll' : 'Process Monthly Payroll'}</span>
                 </button>
 
                 {currentPayroll && (
                   <>
+                    <button
+                      onClick={() => {
+                        setPayslipSearchQuery('');
+                        if (currentPayroll.entries.length > 0) {
+                          setPayslipModalEntry(currentPayroll.entries[0]);
+                        }
+                        setShowPayslipHub(true);
+                      }}
+                      className="h-8 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
+                      title="Search & Print Employee Pay Slips"
+                    >
+                      <Printer className="h-3.5 w-3.5 text-indigo-600" />
+                      <span>Pay Slip</span>
+                    </button>
+
                     <button
                       onClick={() => setShowBankSheetModal(true)}
                       className="h-8 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
@@ -1396,16 +1815,16 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 onClick={handleProcessPayroll}
                 className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition inline-flex items-center gap-1.5 cursor-pointer"
               >
-                <DollarSign className="h-4 w-4" />
+                <RefreshCw className="h-4 w-4" />
                 <span>Process Payroll Now</span>
               </button>
             </div>
           )}
 
-          {/* Salary Register - Blue Area - occupying at least 70% of page */}
+          {/* Salary Register - Dynamic Height without blank space */}
           {currentPayroll && (
-            <div className="flex-1 min-h-[68vh] lg:min-h-[72vh] flex flex-col bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="px-4 py-2.5 bg-slate-800 text-white flex items-center justify-between shrink-0">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="px-3.5 py-2.5 bg-slate-800 text-white flex flex-wrap items-center justify-between gap-2.5 shrink-0">
                 <div className="font-bold text-xs sm:text-sm flex items-center gap-2">
                   <FileText className="h-4 w-4 text-indigo-400" />
                   <span>Salary Register - {currentPayroll.monthYear}</span>
@@ -1415,9 +1834,72 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-[11px] text-slate-400 font-mono">
-                    {currentPayroll.entries.length} Records
+
+                {/* Instant Register Staff Search Bar */}
+                <div className="flex items-center gap-2 flex-1 max-w-xs mx-auto sm:mx-0">
+                  <div className="relative w-full">
+                    <Search className="h-3.5 w-3.5 absolute left-2.5 top-2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search Name, ID No, CID Card..."
+                      value={registerSearchQuery}
+                      onChange={e => setRegisterSearchQuery(e.target.value)}
+                      className="w-full h-7 pl-8 pr-7 rounded-lg bg-slate-900 border border-slate-700 text-[11px] text-white placeholder-slate-400 focus:outline-none focus:border-indigo-400 font-semibold"
+                    />
+                    {registerSearchQuery && (
+                      <button
+                        onClick={() => setRegisterSearchQuery('')}
+                        className="absolute right-2 top-1.5 text-slate-400 hover:text-white cursor-pointer"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                  {/* Export & Share Action Bar for Salary Register */}
+                  <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-700">
+                    <button
+                      type="button"
+                      onClick={handleExportSalaryRegisterExcel}
+                      className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      title="Export Salary Register to Excel (.xlsx)"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                      <span>Excel</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className="h-7 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      title="Print or Export PDF"
+                    >
+                      <Printer className="h-3.5 w-3.5" />
+                      <span>PDF</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleShareSalaryRegisterWhatsApp}
+                      className="h-7 px-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      title="Share Summary via WhatsApp"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      <span>WhatsApp</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleShareSalaryRegisterEmail}
+                      className="h-7 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      title="Send Summary via Email"
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      <span>Email</span>
+                    </button>
+                  </div>
+
+                  <span className="text-[11px] text-slate-300 font-mono font-bold">
+                    {displayedRegisterEntries.length} / {currentPayroll.entries.length} Staff
                   </span>
                   <button
                     type="button"
@@ -1440,71 +1922,71 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 </div>
               </div>
 
-              <div className="flex-1 overflow-auto min-h-0 bg-white">
+              <div className="overflow-x-auto min-h-0 bg-white">
                 <table className="w-full border-separate border-spacing-0 text-xs">
                   <thead className="sticky top-0 z-10 shadow-xs bg-slate-100">
                     <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200 whitespace-nowrap">Emp Code</th>
+                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200 whitespace-nowrap">ID No</th>
                       <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200 whitespace-nowrap">Employee Name</th>
                       <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200 whitespace-nowrap">Designation</th>
                       <th className="py-2.5 px-3 text-center bg-slate-100 border-b border-slate-200 whitespace-nowrap">Days Worked</th>
-                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200 whitespace-nowrap">Basic Pay</th>
-                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200 whitespace-nowrap">Gross Pay</th>
-                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200 whitespace-nowrap">Deductions</th>
-                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200 whitespace-nowrap">Net Payable</th>
-                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200 whitespace-nowrap">Bank / A/C No</th>
+                      {activeEarningsHeads.map(h => (
+                        <th key={h.id} className="py-2.5 px-2.5 text-right bg-slate-100 border-b border-slate-200 whitespace-normal leading-tight min-w-[75px] max-w-[120px]">
+                          {h.name}
+                        </th>
+                      ))}
+                      <th className="py-2.5 px-2.5 text-right bg-indigo-50/70 text-indigo-900 border-b border-indigo-200 whitespace-nowrap font-black">Gross Pay</th>
+                      {activeDeductionsHeads.map(h => (
+                        <th key={h.id} className="py-2.5 px-2.5 text-right bg-slate-100 border-b border-slate-200 whitespace-normal leading-tight min-w-[75px] max-w-[120px]">
+                          {h.name}
+                        </th>
+                      ))}
+                      <th className="py-2.5 px-2.5 text-right bg-rose-50/70 text-rose-900 border-b border-rose-200 whitespace-nowrap font-black">Total Ded.</th>
+                      <th className="py-2.5 px-3 text-right bg-emerald-50 text-emerald-950 border-b border-emerald-200 whitespace-nowrap font-black">Net Payable</th>
                       <th className="py-2.5 px-3 text-center bg-slate-100 border-b border-slate-200 whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {currentPayroll.entries.map((entry) => {
+                    {displayedRegisterEntries.map((entry) => {
                       const mDays = entry.monthTotalDays || 30;
                       const wDays = entry.workingDays !== undefined ? entry.workingDays : mDays;
-                      const isProrated = wDays < mDays;
 
                       return (
                         <tr key={entry.id} className="hover:bg-slate-50/80 transition">
-                          <td className="py-2.5 px-3 font-mono font-bold text-slate-800">{entry.empCode}</td>
-                          <td className="py-2.5 px-3">
-                            <div className="font-bold text-slate-900">{entry.fullName}</div>
-                            <div className="text-[10px] text-slate-500">CID: {entry.cidNo}</div>
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-800 whitespace-nowrap">{entry.empCode}</td>
+                          <td className="py-2.5 px-3 whitespace-nowrap font-bold text-slate-900">{entry.fullName}</td>
+                          <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap text-xs">{entry.designation}</td>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800 whitespace-nowrap">
+                            {wDays}
                           </td>
-                          <td className="py-2.5 px-3 text-slate-600">
-                            <div>{entry.designation}</div>
-                            <div className="text-[10px] text-slate-400">{entry.department}</div>
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            <div className="font-mono font-bold text-slate-800">
-                              {wDays} / {mDays} Days
-                            </div>
-                            {isProrated && (
-                              <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-bold px-1.5 py-0.2 rounded-full inline-block mt-0.5">
-                                Mid-Month Prorated
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-700">
-                            {entry.earnings.find(e => e.payHeadId === 'ph_basic')?.amount.toLocaleString('en-IN') || entry.basicSalary.toLocaleString('en-IN')}
-                            {isProrated && (
-                              <div className="text-[9px] text-slate-400 line-through font-normal">
-                                Nu. {entry.basicSalary.toLocaleString('en-IN')}
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-indigo-600">
+                          {activeEarningsHeads.map(h => {
+                            const amt = h.id === 'ph_basic'
+                              ? (entry.earnings.find(e => e.payHeadId === 'ph_basic')?.amount ?? entry.basicSalary)
+                              : (entry.earnings.find(e => e.payHeadId === h.id)?.amount ?? 0);
+                            return (
+                              <td key={h.id} className="py-2.5 px-2.5 text-right font-mono font-semibold text-slate-700 whitespace-nowrap">
+                                {amt ? amt.toLocaleString('en-IN') : '-'}
+                              </td>
+                            );
+                          })}
+                          <td className="py-2.5 px-2.5 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30 whitespace-nowrap">
                             {entry.grossPay.toLocaleString('en-IN')}
                           </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600">
+                          {activeDeductionsHeads.map(h => {
+                            const amt = entry.deductions.find(d => d.payHeadId === h.id)?.amount ?? 0;
+                            return (
+                              <td key={h.id} className="py-2.5 px-2.5 text-right font-mono font-medium text-slate-700 whitespace-nowrap">
+                                {amt ? amt.toLocaleString('en-IN') : '-'}
+                              </td>
+                            );
+                          })}
+                          <td className="py-2.5 px-2.5 text-right font-mono font-bold text-rose-600 bg-rose-50/30 whitespace-nowrap">
                             {entry.totalDeductions.toLocaleString('en-IN')}
                           </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-black text-emerald-700 text-sm">
+                          <td className="py-2.5 px-3 text-right font-mono font-black text-emerald-700 bg-emerald-50/40 text-sm whitespace-nowrap">
                             {config.CurrencySymbol || 'Nu.'} {entry.netPay.toLocaleString('en-IN')}
                           </td>
-                          <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">
-                            <div>{entry.bankName}</div>
-                            <div className="text-[10px] text-slate-400 font-bold">{entry.accountNo}</div>
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
+                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 onClick={() => setEditingEntry({ ...entry })}
@@ -1514,7 +1996,11 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                                 <Edit className="h-3.5 w-3.5" />
                               </button>
                               <button
-                                onClick={() => setPayslipModalEntry(entry)}
+                                onClick={() => {
+                                  setPayslipSearchQuery('');
+                                  setPayslipModalEntry(entry);
+                                  setShowPayslipHub(true);
+                                }}
                                 className="px-2 py-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
                                 title="Print Individual Payslip"
                               >
@@ -1526,71 +2012,45 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         </tr>
                       );
                     })}
+                    {displayedRegisterEntries.length === 0 && (
+                      <tr>
+                        <td colSpan={10 + activeEarningsHeads.length + activeDeductionsHeads.length} className="py-8 text-center text-slate-400">
+                          <Search className="h-6 w-6 mx-auto mb-2 opacity-40" />
+                          <div className="font-bold text-slate-600 text-xs">No employees found matching "{registerSearchQuery}"</div>
+                          <div className="text-[11px] text-slate-400 mt-1">Try searching by Name, ID No, or CID Card number.</div>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
+                  {/* Table Total Row */}
+                  <tfoot className="bg-slate-100/90 border-t-2 border-slate-300 font-black text-xs">
+                    <tr className="text-slate-800">
+                      <td colSpan={4} className="py-2.5 px-3 text-left font-black uppercase text-[11px] tracking-wider text-slate-900 border-t-2 border-slate-300 whitespace-nowrap">
+                        TOTAL ({displayedRegisterEntries.length} Staff)
+                      </td>
+                      {activeEarningsHeads.map(h => (
+                        <td key={h.id} className="py-2.5 px-2.5 text-right font-mono font-bold text-slate-900 border-t-2 border-slate-300 whitespace-nowrap">
+                          {(earningTotals[h.id] || 0).toLocaleString('en-IN')}
+                        </td>
+                      ))}
+                      <td className="py-2.5 px-2.5 text-right font-mono font-black text-indigo-700 border-t-2 border-slate-300 bg-indigo-50/40 whitespace-nowrap">
+                        {displayedTotalGross.toLocaleString('en-IN')}
+                      </td>
+                      {activeDeductionsHeads.map(h => (
+                        <td key={h.id} className="py-2.5 px-2.5 text-right font-mono font-bold text-slate-900 border-t-2 border-slate-300 whitespace-nowrap">
+                          {(deductionTotals[h.id] || 0).toLocaleString('en-IN')}
+                        </td>
+                      ))}
+                      <td className="py-2.5 px-2.5 text-right font-mono font-black text-rose-600 border-t-2 border-slate-300 bg-rose-50/40 whitespace-nowrap">
+                        {displayedTotalDeductions.toLocaleString('en-IN')}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono font-black text-emerald-700 text-sm border-t-2 border-slate-300 bg-emerald-50/60 whitespace-nowrap">
+                        {config.CurrencySymbol || 'Nu.'} {displayedTotalNet.toLocaleString('en-IN')}
+                      </td>
+                      <td className="py-2.5 px-3 border-t-2 border-slate-300"></td>
+                    </tr>
+                  </tfoot>
                 </table>
-              </div>
-            </div>
-          )}
-
-          {/* Sticky Bottom Compact Summary Cards (Yellow Field - moved to bottom and sticky) */}
-          {currentPayroll && (
-            <div className="sticky bottom-0 z-20 bg-white/95 backdrop-blur-md border border-slate-200 shadow-md rounded-2xl p-2 sm:px-3 mt-1">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2 shadow-2xs">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">
-                      Active Staff
-                    </div>
-                    <div className="text-[10px] text-slate-400 truncate">
-                      Processed for {currentPayroll.monthYear}
-                    </div>
-                  </div>
-                  <div className="text-base sm:text-lg font-black text-slate-900 shrink-0">
-                    {currentPayroll.entries.length} Staff
-                  </div>
-                </div>
-
-                <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2 shadow-2xs">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider truncate">
-                      Total Gross Earnings
-                    </div>
-                    <div className="text-[10px] text-indigo-400 truncate">
-                      Basic + Allowances
-                    </div>
-                  </div>
-                  <div className="text-base sm:text-lg font-black text-indigo-600 font-mono shrink-0">
-                    {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalGrossPay.toLocaleString('en-IN')}
-                  </div>
-                </div>
-
-                <div className="bg-rose-50/60 border border-rose-100 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2 shadow-2xs">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-bold text-rose-700 uppercase tracking-wider truncate">
-                      Statutory Deductions
-                    </div>
-                    <div className="text-[10px] text-rose-400 truncate">
-                      NPPF (11%) + GIS + PIT
-                    </div>
-                  </div>
-                  <div className="text-base sm:text-lg font-black text-rose-600 font-mono shrink-0">
-                    {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalDeductions.toLocaleString('en-IN')}
-                  </div>
-                </div>
-
-                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2 shadow-2xs">
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider truncate">
-                      Net Salary Payable
-                    </div>
-                    <div className="text-[10px] text-emerald-600 font-medium truncate">
-                      Net Direct Bank Transfer
-                    </div>
-                  </div>
-                  <div className="text-base sm:text-lg font-black text-emerald-700 font-mono shrink-0">
-                    {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalNetPay.toLocaleString('en-IN')}
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -1738,7 +2198,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition mt-0.5"
                             title="Configure customized allowances & deductions for this employee"
                           >
-                            <DollarSign className="h-3 w-3 text-indigo-600" />
+                            <TrendingUp className="h-3 w-3 text-indigo-600" />
                             <span>Salary Package</span>
                           </button>
                         </td>
@@ -2724,147 +3184,283 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
         </div>
       )}
 
-      {/* MODAL 4: PRINTABLE PAYSLIP */}
-      {payslipModalEntry && currentPayroll && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 border border-slate-200 space-y-5 my-8">
-            <div className="flex items-center justify-between no-print border-b border-slate-200 pb-3">
-              <span className="font-bold text-slate-800 text-sm">Official Employee Salary Slip</span>
+      {/* MODAL 4: PAYSLIP SEARCH & PRINT HUB */}
+      {showPayslipHub && currentPayroll && (
+        <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full h-[90vh] max-h-[860px] flex flex-col border border-slate-200 overflow-hidden">
+            {/* Header (no-print) */}
+            <div className="px-4 sm:px-6 py-3 bg-slate-900 text-white flex items-center justify-between shrink-0 no-print">
+              <div className="flex items-center gap-3">
+                <FileText className="h-5 w-5 text-indigo-400" />
+                <div>
+                  <h2 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                    <span>Employee Pay Slips</span>
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 text-[10px] font-bold border border-indigo-400/30">
+                      {currentPayroll.monthYear}
+                    </span>
+                  </h2>
+                </div>
+              </div>
               <div className="flex items-center gap-2">
+                {payslipModalEntry && (
+                  <div className="flex items-center gap-1.5 flex-wrap no-print">
+                    <button
+                      onClick={() => {
+                        const idx = filteredPayslipEntries.findIndex(e => e.id === payslipModalEntry.id);
+                        if (idx > 0) setPayslipModalEntry(filteredPayslipEntries[idx - 1]);
+                      }}
+                      disabled={filteredPayslipEntries.findIndex(e => e.id === payslipModalEntry.id) <= 0}
+                      className="px-2 h-7.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white font-bold text-[11px] transition cursor-pointer"
+                      title="Previous Employee Payslip"
+                    >
+                      ← Prev
+                    </button>
+                    <button
+                      onClick={() => {
+                        const idx = filteredPayslipEntries.findIndex(e => e.id === payslipModalEntry.id);
+                        if (idx >= 0 && idx < filteredPayslipEntries.length - 1) setPayslipModalEntry(filteredPayslipEntries[idx + 1]);
+                      }}
+                      disabled={filteredPayslipEntries.findIndex(e => e.id === payslipModalEntry.id) >= filteredPayslipEntries.length - 1}
+                      className="px-2 h-7.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white font-bold text-[11px] transition cursor-pointer"
+                      title="Next Employee Payslip"
+                    >
+                      Next →
+                    </button>
+
+                    <button
+                      onClick={() => handleExportPayslipExcel(payslipModalEntry)}
+                      className="px-2.5 h-7.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      title="Export Payslip to Excel (.xlsx)"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                      <span>Excel</span>
+                    </button>
+                    <button
+                      onClick={() => handleSharePayslipWhatsApp(payslipModalEntry)}
+                      className="px-2.5 h-7.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      title="Share Payslip via WhatsApp"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      <span>WhatsApp</span>
+                    </button>
+                    <button
+                      onClick={() => handleSharePayslipEmail(payslipModalEntry)}
+                      className="px-2.5 h-7.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      title="Send Payslip via Email"
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      <span>Email</span>
+                    </button>
+                    <button
+                      onClick={() => window.print()}
+                      className="px-3 h-7.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-xs transition flex items-center gap-1 cursor-pointer ml-1"
+                      title="Print or Save PDF"
+                    >
+                      <Printer className="h-3.5 w-3.5" />
+                      <span>PDF</span>
+                    </button>
+                  </div>
+                )}
                 <button
-                  onClick={() => window.print()}
-                  className="px-4 h-9 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 shadow-xs flex items-center gap-1.5"
-                >
-                  <Printer className="h-4 w-4" />
-                  <span>Print Slip</span>
-                </button>
-                <button
-                  onClick={() => setPayslipModalEntry(null)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                  onClick={() => {
+                    setShowPayslipHub(false);
+                    setPayslipModalEntry(null);
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
                 >
                   <X className="h-5 w-5" />
                 </button>
-      
               </div>
-      
             </div>
 
-            {/* Print Slip Layout */}
-            <div className="printable-area border border-slate-300 p-6 rounded-xl space-y-4 text-xs font-sans text-slate-900 bg-white">
-              {/* Header */}
-              <div className="text-center border-b border-slate-200 pb-3">
-                <h2 className="text-lg font-black tracking-wide text-slate-900">{config.CompanyName}</h2>
-                <p className="text-[11px] text-slate-500 font-medium">{config.Address}</p>
-                <div className="mt-2 inline-block px-3 py-1 bg-slate-100 rounded-full font-extrabold text-[11px] uppercase tracking-wider text-slate-800">
-                  PAYSLIP FOR THE MONTH OF {currentPayroll.monthYear.toUpperCase()}
-      
-                </div>
-      
-              </div>
-
-              {/* Employee Info Box */}
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px]">
-                <div>
-                  <div><span className="font-bold text-slate-500">Employee Name:</span> <strong className="text-slate-900">{payslipModalEntry.fullName}</strong></div>
-                  <div><span className="font-bold text-slate-500">Employee Code:</span> <span className="font-mono font-bold">{payslipModalEntry.empCode}</span></div>
-                  <div><span className="font-bold text-slate-500">CID Number:</span> <span className="font-mono">{payslipModalEntry.cidNo || '-'}</span></div>
-      
-                </div>
-                <div>
-                  <div><span className="font-bold text-slate-500">Designation:</span> <span>{payslipModalEntry.designation}</span></div>
-                  <div><span className="font-bold text-slate-500">Department:</span> <span>{payslipModalEntry.department}</span></div>
-                  <div><span className="font-bold text-slate-500">Bank A/C:</span> <span className="font-mono">{payslipModalEntry.bankName} ({payslipModalEntry.accountNo})</span></div>
-      
-                </div>
-      
-              </div>
-
-              {/* Itemized Table */}
-              <div className="grid grid-cols-2 gap-0 border border-slate-300 rounded-xl overflow-hidden">
-                {/* Earnings Column */}
-                <div className="border-r border-slate-300">
-                  <div className="bg-emerald-800 text-white font-bold p-2 text-center uppercase text-[10px] tracking-wider">
-                    Earnings
-      
+            {/* Modal Body: Split view with Search Sidebar on Left & Payslip on Right */}
+            <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden">
+              {/* Left Search Sidebar (no-print) */}
+              <div className="w-full md:w-80 lg:w-96 border-r border-slate-200 bg-slate-50/70 flex flex-col shrink-0 no-print">
+                {/* Search Box */}
+                <div className="p-3 border-b border-slate-200 bg-white space-y-1.5 shrink-0">
+                  <div className="relative">
+                    <Search className="h-4 w-4 absolute left-3 top-2.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search Name, ID No, CID Card..."
+                      value={payslipSearchQuery}
+                      onChange={e => setPayslipSearchQuery(e.target.value)}
+                      className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-slate-50 focus:bg-white"
+                      autoFocus
+                    />
+                    {payslipSearchQuery && (
+                      <button
+                        onClick={() => setPayslipSearchQuery('')}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
-                  <div className="p-2 space-y-1.5 min-h-[140px]">
-                    {payslipModalEntry.earnings.map((item, idx) => (
-                      <div key={idx} className="flex justify-between items-center text-[11px]">
-                        <span>{item.payHeadName}</span>
-                        <span className="font-mono font-bold">{item.amount.toFixed(2)}</span>
-      
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 px-1 font-medium">
+                    <span>{filteredPayslipEntries.length} of {currentPayroll.entries.length} staff</span>
+                    {payslipSearchQuery && (
+                      <span className="text-indigo-600 font-bold">Filtered</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Employee List */}
+                <div className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
+                  {filteredPayslipEntries.map(entry => {
+                    const isSelected = payslipModalEntry?.id === entry.id;
+                    return (
+                      <button
+                        key={entry.id}
+                        type="button"
+                        onClick={() => setPayslipModalEntry(entry)}
+                        className={`w-full text-left p-2.5 rounded-xl border transition cursor-pointer flex flex-col gap-1 ${
+                          isSelected
+                            ? 'bg-indigo-50/90 border-indigo-300 shadow-2xs ring-1 ring-indigo-400/30'
+                            : 'bg-white hover:bg-slate-100/80 border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-900 text-xs truncate">
+                            {entry.fullName}
+                          </span>
+                          <span className="font-mono font-black text-emerald-700 text-xs shrink-0">
+                            {config.CurrencySymbol || 'Nu.'} {entry.netPay.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
+                          <span className="font-bold text-slate-700">ID No: {entry.empCode}</span>
+                          {entry.cidNo && <span>• CID: {entry.cidNo}</span>}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate">
+                          {entry.designation} {entry.department ? `• ${entry.department}` : ''}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {filteredPayslipEntries.length === 0 && (
+                    <div className="p-8 text-center text-slate-400 text-xs">
+                      <Search className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                      <div>No matching staff found</div>
+                      <div className="text-[11px] text-slate-400 mt-1">Try searching by name, ID No, or CID Card number</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Panel: Active Payslip Preview */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-100/50 flex flex-col items-center justify-start min-h-0">
+                {payslipModalEntry ? (
+                  <div className="printable-area border border-slate-300 p-6 rounded-xl space-y-4 text-xs font-sans text-slate-900 bg-white max-w-2xl w-full shadow-xs">
+                    {/* Header */}
+                    <div className="text-center border-b border-slate-200 pb-3">
+                      <h2 className="text-lg font-black tracking-wide text-slate-900">{config.CompanyName}</h2>
+                      <p className="text-[11px] text-slate-500 font-medium">{config.Address}</p>
+                      <div className="mt-2 inline-block px-3 py-1 bg-slate-100 rounded-full font-extrabold text-[11px] uppercase tracking-wider text-slate-800">
+                        PAYSLIP FOR THE MONTH OF {currentPayroll.monthYear.toUpperCase()}
                       </div>
-                    ))}
-      
-                  </div>
-                  <div className="bg-emerald-50 border-t border-slate-300 p-2 flex justify-between font-bold text-emerald-900">
-                    <span>Total Gross Pay:</span>
-                    <span className="font-mono">{config.CurrencySymbol || 'Nu.'} {payslipModalEntry.grossPay.toFixed(2)}</span>
-      
-                  </div>
-      
-                </div>
+                    </div>
 
-                {/* Deductions Column */}
-                <div>
-                  <div className="bg-rose-800 text-white font-bold p-2 text-center uppercase text-[10px] tracking-wider">
-                    Deductions
-      
-                  </div>
-                  <div className="p-2 space-y-1.5 min-h-[140px]">
-                    {payslipModalEntry.deductions.map((item, idx) => (
-                      <div key={idx} className="flex justify-between items-center text-[11px]">
-                        <span>{item.payHeadName}</span>
-                        <span className="font-mono font-bold text-rose-700">{item.amount.toFixed(2)}</span>
-      
+                    {/* Employee Info Box */}
+                    <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px]">
+                      <div>
+                        <div><span className="font-bold text-slate-500">Employee Name:</span> <strong className="text-slate-900">{payslipModalEntry.fullName}</strong></div>
+                        <div><span className="font-bold text-slate-500">ID No:</span> <span className="font-mono font-bold">{payslipModalEntry.empCode}</span></div>
+                        <div><span className="font-bold text-slate-500">CID Number:</span> <span className="font-mono">{payslipModalEntry.cidNo || '-'}</span></div>
                       </div>
-                    ))}
-      
-                  </div>
-                  <div className="bg-rose-50 border-t border-slate-300 p-2 flex justify-between font-bold text-rose-900">
-                    <span>Total Deductions:</span>
-                    <span className="font-mono">{config.CurrencySymbol || 'Nu.'} {payslipModalEntry.totalDeductions.toFixed(2)}</span>
-      
-                  </div>
-      
-                </div>
-      
-              </div>
+                      <div>
+                        <div><span className="font-bold text-slate-500">Designation:</span> <span>{payslipModalEntry.designation}</span></div>
+                        <div><span className="font-bold text-slate-500">Department:</span> <span>{payslipModalEntry.department || '-'}</span></div>
+                        <div><span className="font-bold text-slate-500">Bank A/C:</span> <span className="font-mono">{payslipModalEntry.bankName} ({payslipModalEntry.accountNo})</span></div>
+                      </div>
+                    </div>
 
-              {/* Net Payable Banner */}
-              <div className="bg-slate-900 text-white p-3 rounded-xl flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] uppercase font-bold text-slate-400">Net Salary Payable:</div>
-                  <div className="text-xs font-semibold italic text-slate-300">
-                    {numberToWordsBhutan(payslipModalEntry.netPay)}
-      
-                  </div>
-      
-                </div>
-                <div className="text-lg font-black text-emerald-400 font-mono">
-                  {config.CurrencySymbol || 'Nu.'} {payslipModalEntry.netPay.toLocaleString('en-IN')}
-      
-                </div>
-      
-              </div>
+                    {/* Itemized Table */}
+                    <div className="grid grid-cols-2 gap-0 border border-slate-300 rounded-xl overflow-hidden">
+                      {/* Earnings Column */}
+                      <div className="border-r border-slate-300">
+                        <div className="bg-emerald-800 text-white font-bold p-2 text-center uppercase text-[10px] tracking-wider">
+                          Earnings
+                        </div>
+                        <div className="p-2 space-y-1.5 min-h-[140px]">
+                          {payslipModalEntry.earnings.map((item, idx) => (
+                            <div key={idx} className="flex justify-between items-center text-[11px]">
+                              <span>{formatPayHeadDisplayName(item.payHeadName, item.payHeadId)}</span>
+                              <span className="font-mono font-bold">{item.amount.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="bg-emerald-50 border-t border-slate-300 p-2 flex justify-between font-bold text-emerald-900">
+                          <span>Total Gross Pay:</span>
+                          <span className="font-mono">{config.CurrencySymbol || 'Nu.'} {payslipModalEntry.grossPay.toFixed(2)}</span>
+                        </div>
+                      </div>
 
-              {/* Signatures */}
-              <div className="pt-8 grid grid-cols-2 gap-8 text-center text-[10px] text-slate-500 font-bold">
-                <div>
-                  <div className="border-t border-slate-400 pt-1">Employer / Authorized Signature</div>
-      
-                </div>
-                <div>
-                  <div className="border-t border-slate-400 pt-1">Employee Signature</div>
-      
-                </div>
-      
+                      {/* Deductions Column */}
+                      <div>
+                        <div className="bg-rose-800 text-white font-bold p-2 text-center uppercase text-[10px] tracking-wider">
+                          Deductions
+                        </div>
+                        <div className="p-2 space-y-1.5 min-h-[140px]">
+                          {payslipModalEntry.deductions.map((item, idx) => (
+                            <div key={idx} className="flex justify-between items-center text-[11px]">
+                              <span>{formatPayHeadDisplayName(item.payHeadName, item.payHeadId)}</span>
+                              <span className="font-mono font-bold text-rose-700">{item.amount.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="bg-rose-50 border-t border-slate-300 p-2 flex justify-between font-bold text-rose-900">
+                          <span>Total Deductions:</span>
+                          <span className="font-mono">{config.CurrencySymbol || 'Nu.'} {payslipModalEntry.totalDeductions.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Net Payable Banner */}
+                    <div className="bg-slate-900 text-white p-3 rounded-xl flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-slate-400">Net Salary Payable:</div>
+                        <div className="text-xs font-semibold italic text-slate-300">
+                          {numberToWordsBhutan(payslipModalEntry.netPay)}
+                        </div>
+                      </div>
+                      <div className="text-lg font-black text-emerald-400 font-mono">
+                        {config.CurrencySymbol || 'Nu.'} {payslipModalEntry.netPay.toLocaleString('en-IN')}
+                      </div>
+                    </div>
+
+                    {/* Signatures */}
+                    <div className="pt-8 grid grid-cols-2 gap-8 text-center text-[10px] text-slate-500 font-bold">
+                      <div>
+                        <div className="border-t border-slate-400 pt-1">Employer / Authorized Signature</div>
+                      </div>
+                      <div>
+                        <div className="border-t border-slate-400 pt-1">Employee Signature</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-slate-500 max-w-md my-auto space-y-3 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+                    <Search className="h-10 w-10 mx-auto text-indigo-500 opacity-80" />
+                    <div className="font-bold text-slate-900 text-sm">Employee Pay Slip Search</div>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      Search by <strong className="text-slate-800">Employee Name</strong>, <strong className="text-slate-800">ID No</strong>, or <strong className="text-slate-800">CID Card number</strong> in the left search bar to instantly generate and print official employee payslips.
+                    </p>
+                    {filteredPayslipEntries.length > 0 && (
+                      <button
+                        onClick={() => setPayslipModalEntry(filteredPayslipEntries[0])}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition inline-flex items-center gap-1.5 cursor-pointer mt-2"
+                      >
+                        <FileText className="h-4 w-4" />
+                        <span>View First Result ({filteredPayslipEntries[0].fullName})</span>
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-      
             </div>
-      
           </div>
-      
         </div>
       )}
 
@@ -2874,21 +3470,45 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full p-6 border border-slate-200 space-y-4 my-8">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <span className="font-bold text-slate-800 text-sm">Bank Salary Advice Letter</span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={handleExportBankSheetExcel}
+                  className="px-3 h-8.5 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  title="Export Bank Schedule to Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  <span>Excel</span>
+                </button>
+                <button
+                  onClick={handleShareBankSheetWhatsApp}
+                  className="px-3 h-8.5 rounded-xl bg-emerald-500 text-white font-bold text-xs hover:bg-emerald-600 shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  title="Share Bank Advice via WhatsApp"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  <span>WhatsApp</span>
+                </button>
+                <button
+                  onClick={handleShareBankSheetEmail}
+                  className="px-3 h-8.5 rounded-xl bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  title="Send Bank Advice via Email"
+                >
+                  <Mail className="h-4 w-4" />
+                  <span>Email</span>
+                </button>
                 <button
                   onClick={() => window.print()}
-                  className="px-4 h-9 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 shadow-xs flex items-center gap-1.5"
+                  className="px-3 h-8.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  title="Print or Save as PDF"
                 >
                   <Printer className="h-4 w-4" />
-                  <span>Print Advice Sheet</span>
+                  <span>PDF / Print</span>
                 </button>
                 <button
                   onClick={() => setShowBankSheetModal(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
                 >
                   <X className="h-5 w-5" />
                 </button>
-      
               </div>
       
             </div>
@@ -2909,7 +3529,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   <thead className="sticky top-0 z-20 shadow-xs">
                     <tr className="bg-slate-100 font-bold uppercase text-[10px]">
                       <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">#</th>
-                      <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">Emp Code</th>
+                      <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">ID No</th>
                       <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">Employee Name</th>
                       <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">Bank Name</th>
                       <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">Account Number</th>
