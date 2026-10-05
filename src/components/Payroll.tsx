@@ -1285,22 +1285,22 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
       {/* TAB 1: SALARY PROCESSING */}
       {activeTab === 'processing' && (
-        <div className="space-y-4">
-          {/* Collapsible Period Bar & Summary Cards */}
-          <div className={`transition-all duration-300 ease-in-out space-y-4 ${
-            isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-[600px] opacity-100 mb-4'
+        <div className="flex-1 flex flex-col min-h-0 space-y-2">
+          {/* Collapsible Period Bar & Action Controls (Green field moved up & compact) */}
+          <div className={`transition-all duration-300 ease-in-out ${
+            isHeaderCollapsed ? 'max-h-0 opacity-0 overflow-hidden pointer-events-none mb-0' : 'max-h-28 opacity-100 mb-0'
           }`}>
-            {/* Month / Year Bar */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                  <Calendar className="h-4 w-4 text-indigo-600" />
+            <div className="bg-white px-3.5 py-2 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-2.5">
+              {/* Left: Payroll Period Dropdowns */}
+              <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-indigo-600" />
                   Payroll Period:
                 </span>
                 <select
                   value={selectedMonth}
                   onChange={e => setSelectedMonth(Number(e.target.value))}
-                  className="h-9 rounded-xl border border-slate-300 px-3 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
+                  className="h-8 rounded-lg border border-slate-300 px-2.5 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none cursor-pointer"
                 >
                   {monthsList.map(m => (
                     <option key={m.value} value={m.value}>
@@ -1311,7 +1311,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 <select
                   value={selectedYear}
                   onChange={e => setSelectedYear(Number(e.target.value))}
-                  className="h-9 rounded-xl border border-slate-300 px-3 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none"
+                  className="h-8 rounded-lg border border-slate-300 px-2.5 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none cursor-pointer"
                 >
                   {[2024, 2025, 2026, 2027, 2028].map(y => (
                     <option key={y} value={y}>
@@ -1321,8 +1321,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 </select>
               </div>
 
+              {/* Right: Actions & Options (Green Area, moved up & compact) */}
               <div className="flex items-center gap-2 flex-wrap">
-                <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-300 text-xs font-bold text-slate-700 cursor-pointer select-none transition">
+                <label className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200/80 border border-slate-300 text-xs font-semibold text-slate-700 cursor-pointer select-none transition">
                   <input
                     type="checkbox"
                     checked={linkAttendanceToPayroll}
@@ -1335,9 +1336,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
                 <button
                   onClick={handleProcessPayroll}
-                  className="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+                  className="h-8 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                 >
-                  <DollarSign className="h-4 w-4" />
+                  <DollarSign className="h-3.5 w-3.5" />
                   <span>{currentPayroll ? 'Recalculate / Reprocess Payroll' : 'Process Monthly Payroll'}</span>
                 </button>
 
@@ -1345,33 +1346,33 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   <>
                     <button
                       onClick={() => setShowBankSheetModal(true)}
-                      className="h-9 px-3 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition flex items-center gap-1.5"
+                      className="h-8 px-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
                       title="Export Bank Salary Advice Letter"
                     >
-                      <CreditCard className="h-4 w-4 text-indigo-600" />
+                      <CreditCard className="h-3.5 w-3.5 text-indigo-600" />
                       <span className="hidden sm:inline">Bank Advice Sheet</span>
                     </button>
 
                     <button
                       onClick={() => setShowDrcFormModal(true)}
-                      className="h-9 px-3 rounded-xl border border-blue-600 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+                      className="h-8 px-2.5 rounded-lg border border-blue-600 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                       title="Export DRC Form IT-1(a) Monthly Tax & Health Schedule"
                     >
-                      <FileSpreadsheet className="h-4 w-4" />
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
                       <span>DRC Form IT-1(a)</span>
                     </button>
 
                     {currentPayroll.isPostedToAccounting ? (
-                      <span className="h-9 px-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-xs flex items-center gap-1.5">
+                      <span className="h-8 px-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-xs flex items-center gap-1.5">
                         <Lock className="h-3.5 w-3.5 text-emerald-600" />
                         <span>Posted ({currentPayroll.voucherRefNo})</span>
                       </span>
                     ) : (
                       <button
                         onClick={handlePostToAccounting}
-                        className="h-9 px-3 rounded-xl border border-emerald-600 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5"
+                        className="h-8 px-2.5 rounded-lg border border-emerald-600 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                       >
-                        <CheckCircle className="h-4 w-4" />
+                        <CheckCircle className="h-3.5 w-3.5" />
                         <span>Post JV to Accounting</span>
                       </button>
                     )}
@@ -1379,72 +1380,32 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 )}
               </div>
             </div>
-
-            {/* Current Payroll Statistics Cards */}
-            {currentPayroll ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Active Staff Count
-                  </div>
-                  <div className="text-xl font-black text-slate-900">{currentPayroll.entries.length} Staff</div>
-                  <div className="text-[11px] text-slate-400 mt-1">Processed for {currentPayroll.monthYear}</div>
-                </div>
-
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Total Gross Earnings
-                  </div>
-                  <div className="text-xl font-black text-indigo-600">
-                    {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalGrossPay.toLocaleString('en-IN')}
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-1">Basic + Allowances</div>
-                </div>
-
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Total Statutory Deductions
-                  </div>
-                  <div className="text-xl font-black text-rose-600">
-                    {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalDeductions.toLocaleString('en-IN')}
-                  </div>
-                  <div className="text-[11px] text-slate-400 mt-1">NPPF (11%) + GIS + PIT</div>
-                </div>
-
-                <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-2xl shadow-xs">
-                  <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider mb-1">
-                    Net Salary Payable
-                  </div>
-                  <div className="text-xl font-black text-emerald-700">
-                    {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalNetPay.toLocaleString('en-IN')}
-                  </div>
-                  <div className="text-[11px] text-emerald-600 font-medium mt-1">Net Direct Bank Transfer</div>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">
-                <Calendar className="h-10 w-10 mx-auto mb-2 text-slate-400 stroke-1" />
-                <div className="font-bold text-slate-800 text-sm">
-                  No processed payroll found for {monthsList.find(m => m.value === selectedMonth)?.label} {selectedYear}
-                </div>
-                <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-4">
-                  Click "Process Monthly Payroll" above to automatically calculate Basic Pay, Allowances, NPPF (11%), GIS, and PIT for all active employees.
-                </p>
-                <button
-                  onClick={handleProcessPayroll}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition inline-flex items-center gap-1.5"
-                >
-                  <DollarSign className="h-4 w-4" />
-                  <span>Process Payroll Now</span>
-                </button>
-              </div>
-            )}
           </div>
 
-          {/* Payroll Sheet Table */}
+          {/* Empty State when no payroll processed */}
+          {!currentPayroll && (
+            <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500 min-h-[60vh] flex flex-col items-center justify-center">
+              <Calendar className="h-10 w-10 mx-auto mb-2 text-slate-400 stroke-1" />
+              <div className="font-bold text-slate-800 text-sm">
+                No processed payroll found for {monthsList.find(m => m.value === selectedMonth)?.label} {selectedYear}
+              </div>
+              <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 mb-4">
+                Click "Process Monthly Payroll" above to automatically calculate Basic Pay, Allowances, NPPF (11%), GIS, and PIT for all active employees.
+              </p>
+              <button
+                onClick={handleProcessPayroll}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <DollarSign className="h-4 w-4" />
+                <span>Process Payroll Now</span>
+              </button>
+            </div>
+          )}
+
+          {/* Salary Register - Blue Area - occupying at least 70% of page */}
           {currentPayroll && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="px-4 py-3 bg-slate-800 text-white flex items-center justify-between">
+            <div className="flex-1 min-h-[68vh] lg:min-h-[72vh] flex flex-col bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              <div className="px-4 py-2.5 bg-slate-800 text-white flex items-center justify-between shrink-0">
                 <div className="font-bold text-xs sm:text-sm flex items-center gap-2">
                   <FileText className="h-4 w-4 text-indigo-400" />
                   <span>Salary Register - {currentPayroll.monthYear}</span>
@@ -1479,20 +1440,20 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white shadow-2xs">
+              <div className="flex-1 overflow-auto min-h-0 bg-white">
                 <table className="w-full border-separate border-spacing-0 text-xs">
-                  <thead className="sticky z-20 shadow-xs" style={{ top: `${stickyTopPx}px` }}>
+                  <thead className="sticky top-0 z-10 shadow-xs bg-slate-100">
                     <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200">Emp Code</th>
-                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200">Employee Name</th>
-                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200">Designation</th>
-                      <th className="py-2.5 px-3 text-center bg-slate-100 border-b border-slate-200">Days Worked</th>
-                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200">Basic Pay</th>
-                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200">Gross Pay</th>
-                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200">Deductions</th>
-                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200">Net Payable</th>
-                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200">Bank / A/C No</th>
-                      <th className="py-2.5 px-3 text-center bg-slate-100 border-b border-slate-200">Actions</th>
+                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200 whitespace-nowrap">Emp Code</th>
+                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200 whitespace-nowrap">Employee Name</th>
+                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200 whitespace-nowrap">Designation</th>
+                      <th className="py-2.5 px-3 text-center bg-slate-100 border-b border-slate-200 whitespace-nowrap">Days Worked</th>
+                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200 whitespace-nowrap">Basic Pay</th>
+                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200 whitespace-nowrap">Gross Pay</th>
+                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200 whitespace-nowrap">Deductions</th>
+                      <th className="py-2.5 px-3 text-right bg-slate-100 border-b border-slate-200 whitespace-nowrap">Net Payable</th>
+                      <th className="py-2.5 px-3 text-left bg-slate-100 border-b border-slate-200 whitespace-nowrap">Bank / A/C No</th>
+                      <th className="py-2.5 px-3 text-center bg-slate-100 border-b border-slate-200 whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
@@ -1515,7 +1476,6 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                           <td className="py-2.5 px-3 text-center">
                             <div className="font-mono font-bold text-slate-800">
                               {wDays} / {mDays} Days
-      
                             </div>
                             {isProrated && (
                               <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-bold px-1.5 py-0.2 rounded-full inline-block mt-0.5">
@@ -1528,7 +1488,6 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                             {isProrated && (
                               <div className="text-[9px] text-slate-400 line-through font-normal">
                                 Nu. {entry.basicSalary.toLocaleString('en-IN')}
-      
                               </div>
                             )}
                           </td>
@@ -1549,20 +1508,19 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 onClick={() => setEditingEntry({ ...entry })}
-                                className="p-1 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition"
+                                className="p-1 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
                                 title="Edit Entry Amounts or Prorated Days"
                               >
                                 <Edit className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 onClick={() => setPayslipModalEntry(entry)}
-                                className="px-2 py-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-[11px] transition flex items-center gap-1"
+                                className="px-2 py-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
                                 title="Print Individual Payslip"
                               >
                                 <Printer className="h-3 w-3" />
                                 <span>Payslip</span>
                               </button>
-      
                             </div>
                           </td>
                         </tr>
@@ -1570,12 +1528,72 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     })}
                   </tbody>
                 </table>
-      
               </div>
-      
             </div>
           )}
-      
+
+          {/* Sticky Bottom Compact Summary Cards (Yellow Field - moved to bottom and sticky) */}
+          {currentPayroll && (
+            <div className="sticky bottom-0 z-20 bg-white/95 backdrop-blur-md border border-slate-200 shadow-md rounded-2xl p-2 sm:px-3 mt-1">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2 shadow-2xs">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate">
+                      Active Staff
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      Processed for {currentPayroll.monthYear}
+                    </div>
+                  </div>
+                  <div className="text-base sm:text-lg font-black text-slate-900 shrink-0">
+                    {currentPayroll.entries.length} Staff
+                  </div>
+                </div>
+
+                <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2 shadow-2xs">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider truncate">
+                      Total Gross Earnings
+                    </div>
+                    <div className="text-[10px] text-indigo-400 truncate">
+                      Basic + Allowances
+                    </div>
+                  </div>
+                  <div className="text-base sm:text-lg font-black text-indigo-600 font-mono shrink-0">
+                    {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalGrossPay.toLocaleString('en-IN')}
+                  </div>
+                </div>
+
+                <div className="bg-rose-50/60 border border-rose-100 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2 shadow-2xs">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold text-rose-700 uppercase tracking-wider truncate">
+                      Statutory Deductions
+                    </div>
+                    <div className="text-[10px] text-rose-400 truncate">
+                      NPPF (11%) + GIS + PIT
+                    </div>
+                  </div>
+                  <div className="text-base sm:text-lg font-black text-rose-600 font-mono shrink-0">
+                    {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalDeductions.toLocaleString('en-IN')}
+                  </div>
+                </div>
+
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5 flex items-center justify-between gap-2 shadow-2xs">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider truncate">
+                      Net Salary Payable
+                    </div>
+                    <div className="text-[10px] text-emerald-600 font-medium truncate">
+                      Net Direct Bank Transfer
+                    </div>
+                  </div>
+                  <div className="text-base sm:text-lg font-black text-emerald-700 font-mono shrink-0">
+                    {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalNetPay.toLocaleString('en-IN')}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
