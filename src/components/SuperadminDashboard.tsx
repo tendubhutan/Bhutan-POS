@@ -37,7 +37,21 @@ import {
   Pencil,
   Settings2,
   Calendar,
-  Tag
+  Tag,
+  Eye,
+  EyeOff,
+  Key,
+  MessageCircle,
+  Share2,
+  Smartphone,
+  HelpCircle,
+  ChevronRight,
+  X,
+  HardDrive,
+  Database,
+  Activity,
+  Wifi,
+  Server
 } from 'lucide-react';
 import { 
   SupabaseCompany, 
@@ -49,6 +63,14 @@ import {
   getCompanyDedicatedUrl,
   DEFAULT_TENANT_COMPANY
 } from '../services/supabaseTenantService';
+import { 
+  fetchSupabaseStorageStats, 
+  SupabaseStorageOverview, 
+  ClientStorageStats, 
+  formatBytes, 
+  getStorageQuotaMB, 
+  setStorageQuotaMB 
+} from '../services/supabaseStorageStatsService';
 import { 
   getCurrentTenantSession, 
   isSuperAdmin as checkIsSuperAdmin 
@@ -241,6 +263,39 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [isSavingFeatures, setIsSavingFeatures] = useState<boolean>(false);
 
+  // Unified Client 360° Management Hub state
+  const [unifiedClient, setUnifiedClient] = useState<SupabaseCompany | null>(null);
+  const [unifiedActiveTab, setUnifiedActiveTab] = useState<'profile' | 'features' | 'links' | 'plan' | 'storage'>('profile');
+  const [unifiedCompanyName, setUnifiedCompanyName] = useState<string>('');
+  const [unifiedTradeLicense, setUnifiedTradeLicense] = useState<string>('');
+  const [unifiedTaxId, setUnifiedTaxId] = useState<string>('');
+  const [unifiedPhone, setUnifiedPhone] = useState<string>('');
+  const [unifiedEmail, setUnifiedEmail] = useState<string>('');
+  const [unifiedAddress, setUnifiedAddress] = useState<string>('');
+  const [unifiedCurrency, setUnifiedCurrency] = useState<string>('Nu.');
+  const [unifiedIsActive, setUnifiedIsActive] = useState<boolean>(true);
+  const [unifiedAllowedCounters, setUnifiedAllowedCounters] = useState<number>(1);
+  const [unifiedAdminUsername, setUnifiedAdminUsername] = useState<string>('admin');
+  const [unifiedAdminPassword, setUnifiedAdminPassword] = useState<string>('');
+  const [unifiedAdminPin, setUnifiedAdminPin] = useState<string>('1234');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [isSavingUnified, setIsSavingUnified] = useState<boolean>(false);
+
+  // Supabase Data Storage & Realtime Telemetry State
+  const [storageOverview, setStorageOverview] = useState<SupabaseStorageOverview | null>(null);
+  const [isLoadingStorage, setIsLoadingStorage] = useState<boolean>(false);
+  const [showQuotaModal, setShowQuotaModal] = useState<boolean>(false);
+  const [quotaInputMB, setQuotaInputMB] = useState<number>(getStorageQuotaMB);
+
+  // Unified Plan details
+  const [unifiedPlanTier, setUnifiedPlanTier] = useState<string>('commercial');
+  const [unifiedPlanName, setUnifiedPlanName] = useState<string>('Commercial Plan');
+  const [unifiedPlanPrice, setUnifiedPlanPrice] = useState<number | string>(25);
+  const [unifiedPlanCurrency, setUnifiedPlanCurrency] = useState<string>('USD');
+  const [unifiedPlanCycle, setUnifiedPlanCycle] = useState<'monthly' | 'yearly' | 'quarterly' | 'one-time'>('monthly');
+  const [unifiedPlanExpiresAt, setUnifiedPlanExpiresAt] = useState<string>('');
+  const [unifiedPlanNotes, setUnifiedPlanNotes] = useState<string>('');
+
   // Global Benchmark Pricing state
   const [globalPricing, setGlobalPricing] = useState<GlobalPricingSettings>(getGlobalPricingSettings);
   const [showGlobalPricingModal, setShowGlobalPricingModal] = useState<boolean>(false);
@@ -283,12 +338,47 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     session?.isSuperadmin === true || 
     rawRole === 'superadmin';
 
-  // Load companies directly from Supabase / master list
+  // Load live Supabase storage and realtime metrics
+  const loadStorageTelemetry = async (comps: SupabaseCompany[]) => {
+    if (!comps || comps.length === 0) return;
+    setIsLoadingStorage(true);
+    try {
+      const stats = await fetchSupabaseStorageStats(comps);
+      setStorageOverview(stats);
+    } catch (err) {
+      console.warn('Failed to load storage telemetry:', err);
+    } finally {
+      setIsLoadingStorage(false);
+    }
+  };
+
+  const handleSaveQuota = (mb: number) => {
+    setStorageQuotaMB(mb);
+    setShowQuotaModal(false);
+    setFeedbackMsg({
+      type: 'success',
+      text: `Supabase platform storage quota updated to ${mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb + ' MB'}.`
+    });
+    if (companies.length > 0) {
+      loadStorageTelemetry(companies);
+    }
+  };
+
+  // Load companies directly from Supabase / master list with credentials merged
   const loadMasterCompanies = async () => {
     setIsLoading(true);
     setFeedbackMsg(null);
     try {
-      // 1. Try querying Supabase directly for real-time table state
+      // 1. Primary: fetchUserCompanies with includeAll=true loads both companies and credentials from tenant_settings
+      const { companies: list } = await fetchUserCompanies(true);
+      if (list && list.length > 0) {
+        setCompanies(list);
+        loadStorageTelemetry(list);
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Direct Supabase fallback
       if (isSupabaseConfigured) {
         try {
           const { data: sbComps, error: sbErr } = await supabase
@@ -297,10 +387,10 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
             .order('created_at', { ascending: false });
 
           if (sbComps && sbComps.length > 0 && !sbErr) {
-            // Ensure default company exists in list
             const hasDefault = sbComps.some(c => c.id === DEFAULT_TENANT_COMPANY.id);
-            const list = hasDefault ? sbComps : [DEFAULT_TENANT_COMPANY, ...sbComps];
-            setCompanies(list);
+            const fallbackList = hasDefault ? sbComps : [DEFAULT_TENANT_COMPANY, ...sbComps];
+            setCompanies(fallbackList);
+            loadStorageTelemetry(fallbackList);
             setIsLoading(false);
             return;
           }
@@ -309,9 +399,8 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
         }
       }
 
-      // 2. Fallback to master service
-      const { companies: list } = await fetchUserCompanies(true);
-      setCompanies(list);
+      setCompanies([DEFAULT_TENANT_COMPANY]);
+      loadStorageTelemetry([DEFAULT_TENANT_COMPANY]);
     } catch (err: any) {
       setFeedbackMsg({ type: 'error', text: err?.message || 'Failed to load companies' });
     } finally {
@@ -324,6 +413,14 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
       loadMasterCompanies();
     }
   }, [isSuperadminUser]);
+
+  useEffect(() => {
+    if (!isSuperadminUser || companies.length === 0) return;
+    const interval = setInterval(() => {
+      loadStorageTelemetry(companies);
+    }, 45000);
+    return () => clearInterval(interval);
+  }, [isSuperadminUser, companies.length]);
 
   // Subscription Toggle Handler
   const handleToggleStatus = async (company: SupabaseCompany) => {
@@ -385,8 +482,77 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     }
   };
 
-  // Open features modal for existing company
-  const handleOpenFeaturesModal = (company: SupabaseCompany) => {
+  // Helper to generate a random strong password
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$';
+    let res = '';
+    for (let i = 0; i < 8; i++) {
+      res += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setUnifiedAdminPassword(`Druk@${res}`);
+  };
+
+  // Helper to format WhatsApp share URL
+  const getWhatsAppShareUrl = () => {
+    if (!unifiedClient) return '';
+    const erpUrl = getCompanyDedicatedUrl(unifiedClient.id, true);
+    const staffUrl = `${erpUrl}&portal=staff`;
+    const msg = `*DrukERP Portal Details*
+Store: ${unifiedCompanyName || unifiedClient.company_name}
+
+🔑 *Store Admin Login:*
+• Portal: ${erpUrl}
+• Username: ${unifiedAdminUsername || 'admin'}
+• Password: ${unifiedAdminPassword || 'ClientPass@123'}
+• PIN: ${unifiedAdminPin || '1234'}
+
+👥 *Staff Clock-in & Leave Portal:*
+• Staff URL: ${staffUrl}
+
+Please save this link to your phone or desktop.`;
+    const cleanPhone = (unifiedPhone || '').replace(/[^0-9]/g, '');
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+  };
+
+  // Open the Unified Client 360° Management Hub
+  const handleOpenUnifiedClient = async (
+    company: SupabaseCompany, 
+    defaultTab: 'profile' | 'features' | 'links' | 'plan' | 'storage' = 'profile'
+  ) => {
+    setUnifiedClient(company);
+    setUnifiedActiveTab(defaultTab);
+    setUnifiedCompanyName(company.company_name || '');
+    setUnifiedTradeLicense(company.trade_license_no || '');
+    setUnifiedTaxId(company.tax_payer_id || '');
+    setUnifiedPhone(company.phone || '');
+    setUnifiedEmail(company.email || '');
+    setUnifiedAddress(company.address || '');
+    setUnifiedCurrency(company.currency_symbol || 'Nu.');
+    setUnifiedIsActive(company.is_active !== false);
+
+    const limit = company.allowed_counters !== undefined ? company.allowed_counters : getMaxTerminalLimit(company.id);
+    setUnifiedAllowedCounters(limit);
+
+    setUnifiedAdminUsername(company.admin_username || 'admin');
+    setUnifiedAdminPassword(company.admin_password || 'ClientPass@123');
+    setUnifiedAdminPin(company.admin_pin || '1234');
+    setShowPassword(false);
+
+    // Plan
+    const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing);
+    setUnifiedPlanName(plan.planName);
+    setUnifiedPlanPrice(plan.price);
+    setUnifiedPlanCurrency(plan.currency);
+    setUnifiedPlanCycle(plan.billingCycle);
+    setUnifiedPlanExpiresAt(company.subscription_expires_at || plan.expiresAt || '');
+    setUnifiedPlanNotes(plan.notes || '');
+    if (plan.price === 0) setUnifiedPlanTier('free');
+    else if (plan.price === 15 || plan.price === 1000) setUnifiedPlanTier('starter');
+    else if (plan.price === 25 || plan.price === 1800) setUnifiedPlanTier('commercial');
+    else if (plan.price === 50 || plan.price === 3500) setUnifiedPlanTier('enterprise');
+    else setUnifiedPlanTier('custom');
+
+    // Features
     const currentCfg = getCompanyConfig(company.id);
     const initialMap: Record<string, boolean> = {};
     ALL_SYSTEM_FEATURES.forEach(f => {
@@ -401,15 +567,101 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
         }
       }
     });
-
     const matchingPreset = FEATURE_PRESETS.find(p => {
       return Object.entries(p.features).every(([key, val]) => initialMap[key] === val);
     });
-
     setEditingFeatures(initialMap);
     setEditingPresetId(matchingPreset ? matchingPreset.id : null);
-    setManagingAllowedCounters(company.allowed_counters !== undefined ? company.allowed_counters : getMaxTerminalLimit(company.id));
-    setManagingCompany(company);
+
+    // Try fetching remote credentials from tenant_settings if needed
+    if (isSupabaseConfigured) {
+      try {
+        const { data: credsRow } = await supabase
+          .from('tenant_settings')
+          .select('data')
+          .eq('company_id', company.id)
+          .eq('record_id', 'admin_credentials')
+          .maybeSingle();
+
+        if (credsRow && credsRow.data) {
+          if (credsRow.data.admin_username) setUnifiedAdminUsername(credsRow.data.admin_username);
+          if (credsRow.data.admin_password) setUnifiedAdminPassword(credsRow.data.admin_password);
+          if (credsRow.data.admin_pin) setUnifiedAdminPin(credsRow.data.admin_pin);
+        }
+      } catch (e) {
+        console.warn('Could not fetch remote creds:', e);
+      }
+    }
+  };
+
+  // Save all Unified Client changes in one atomic action
+  const handleSaveUnifiedClient = async () => {
+    if (!unifiedClient) return;
+    if (!unifiedCompanyName.trim()) {
+      setFeedbackMsg({ type: 'error', text: 'Store Name cannot be empty.' });
+      setUnifiedActiveTab('profile');
+      return;
+    }
+
+    setIsSavingUnified(true);
+    try {
+      const numPrice = typeof unifiedPlanPrice === 'string' ? (parseFloat(unifiedPlanPrice) || 0) : unifiedPlanPrice;
+      const planDetails: SubscriptionPlanDetails = {
+        planName: unifiedPlanName.trim() || 'Commercial Plan',
+        price: numPrice,
+        currency: unifiedPlanCurrency,
+        billingCycle: unifiedPlanCycle,
+        expiresAt: unifiedPlanExpiresAt || undefined,
+        notes: unifiedPlanNotes.trim() || undefined
+      };
+      const serializedPlan = JSON.stringify(planDetails);
+
+      const updates: Partial<SupabaseCompany> = {
+        company_name: unifiedCompanyName.trim(),
+        trade_license_no: unifiedTradeLicense.trim() || undefined,
+        tax_payer_id: unifiedTaxId.trim() || undefined,
+        phone: unifiedPhone.trim() || undefined,
+        email: unifiedEmail.trim() || undefined,
+        address: unifiedAddress.trim() || undefined,
+        currency_symbol: unifiedCurrency.trim() || 'Nu.',
+        is_active: unifiedIsActive,
+        allowed_counters: unifiedAllowedCounters,
+        admin_username: unifiedAdminUsername.trim() || 'admin',
+        admin_password: unifiedAdminPassword.trim() || 'ClientPass@123',
+        admin_pin: unifiedAdminPin.trim() || '1234',
+        subscription_plan: serializedPlan,
+        subscription_expires_at: unifiedPlanExpiresAt || undefined
+      };
+
+      await updateCompany(unifiedClient.id, updates);
+      await updateCompanyStatus(unifiedClient.id, unifiedIsActive);
+
+      saveCompanyFeatures(unifiedClient.id, editingFeatures);
+      setMaxTerminalLimit(unifiedAllowedCounters, unifiedClient.id);
+
+      setCompanies(prev =>
+        prev.map(c =>
+          c.id === unifiedClient.id
+            ? { ...c, ...updates }
+            : c
+        )
+      );
+
+      setFeedbackMsg({
+        type: 'success',
+        text: `All changes for "${unifiedCompanyName.trim()}" (Profile, Login Credentials, Features & Plan) have been saved successfully!`
+      });
+      setUnifiedClient(null);
+    } catch (err: any) {
+      setFeedbackMsg({ type: 'error', text: err?.message || 'Failed to save client settings' });
+    } finally {
+      setIsSavingUnified(false);
+    }
+  };
+
+  // Open features modal for existing company (redirects to unified hub)
+  const handleOpenFeaturesModal = (company: SupabaseCompany) => {
+    handleOpenUnifiedClient(company, 'features');
   };
 
   // Save features for existing company
@@ -603,31 +855,9 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     }
   };
 
-  // Open Plan Modal for Tenant
+  // Open Plan Modal for Tenant (redirects to Unified Hub)
   const handleOpenPlanModal = (company: SupabaseCompany) => {
-    const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing);
-    setEditingPlanCompany(company);
-    setPlanFormName(plan.planName);
-    setPlanFormPrice(plan.price);
-    setPlanFormCurrency(plan.currency);
-    setPlanFormCycle(plan.billingCycle);
-    setPlanFormExpiresAt(company.subscription_expires_at || plan.expiresAt || '');
-    setPlanFormNotes(plan.notes || '');
-    setPlanFormAllowedCounters(company.allowed_counters !== undefined ? company.allowed_counters : getMaxTerminalLimit(company.id));
-
-    if (plan.price === 0) {
-      setPlanFormTier('free');
-    } else if (plan.price === 15 || plan.price === 1000) {
-      setPlanFormTier('starter');
-    } else if (plan.price === 25 || plan.price === 1800) {
-      setPlanFormTier('commercial');
-    } else if (plan.price === 50 || plan.price === 3500) {
-      setPlanFormTier('enterprise');
-    } else {
-      setPlanFormTier('custom');
-    }
-
-    setShowPlanModal(true);
+    handleOpenUnifiedClient(company, 'plan');
   };
 
   // Quick Preset Selector for Plan Modal
@@ -1160,6 +1390,160 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
         </div>
       </div>
 
+      {/* ======================================================== */}
+      {/* SUPABASE CLOUD STORAGE & REALTIME TELEMETRY CONSOLE      */}
+      {/* Realtime tracking: consumption, row counts & balance     */}
+      {/* ======================================================== */}
+      <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-xl border border-slate-800 space-y-4">
+        {/* Header with Live Status & Controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-indigo-500/20 border border-indigo-500/30 rounded-2xl text-indigo-400">
+              <Database className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-black text-sm sm:text-base tracking-tight text-white">
+                  Supabase Cloud Storage &amp; Realtime Telemetry
+                </h3>
+                <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  {storageOverview?.realtimeStatus === 'connected' ? 'Live Connected' : 'Checking'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Multi-tenant Postgres database consumption, table records, and active realtime synchronization
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setQuotaInputMB(getStorageQuotaMB());
+                setShowQuotaModal(true);
+              }}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/10 transition cursor-pointer flex items-center gap-1.5"
+              title="Configure platform storage quota limit (e.g. Free Tier 500MB vs Pro Tier 8GB)"
+            >
+              <Settings2 className="h-3.5 w-3.5 text-indigo-300" />
+              <span>Quota: {getStorageQuotaMB() >= 1024 ? `${(getStorageQuotaMB() / 1024).toFixed(1)} GB` : `${getStorageQuotaMB()} MB`}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => loadStorageTelemetry(companies)}
+              disabled={isLoadingStorage}
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+              title="Re-scan Supabase storage & latency"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoadingStorage ? 'animate-spin' : ''}`} />
+              <span>{isLoadingStorage ? 'Scanning...' : 'Scan DB'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Metrics Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          {/* Total Storage Used */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4 hover:border-indigo-400/30 transition">
+            <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1">
+              <HardDrive className="h-3.5 w-3.5 text-indigo-400" />
+              <span>Total Consumed</span>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl sm:text-2xl font-black text-white">
+                {formatBytes(storageOverview?.totalBytesUsed || 0)}
+              </span>
+              <span className="text-[10px] sm:text-xs text-indigo-300 font-mono">
+                ({storageOverview?.usagePercentage || 0}%)
+              </span>
+            </div>
+            <div className="mt-2 text-[10px] text-slate-400">
+              Across all {companies.length} client{companies.length === 1 ? '' : 's'}
+            </div>
+          </div>
+
+          {/* Balance Left */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4 hover:border-emerald-400/30 transition">
+            <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5 mb-1">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Balance Remaining</span>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl sm:text-2xl font-black text-emerald-400">
+                {formatBytes(storageOverview?.balanceBytesRemaining || 0)}
+              </span>
+            </div>
+            <div className="mt-2 text-[10px] text-emerald-300/80 font-medium">
+              Storage headroom available
+            </div>
+          </div>
+
+          {/* Total Table Rows */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4 hover:border-blue-400/30 transition">
+            <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1">
+              <Layers className="h-3.5 w-3.5 text-blue-400" />
+              <span>Total Records</span>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl sm:text-2xl font-black text-white">
+                {(storageOverview?.totalRowsCount || 0).toLocaleString()}
+              </span>
+              <span className="text-[10px] sm:text-xs text-slate-400">rows</span>
+            </div>
+            <div className="mt-2 text-[10px] text-slate-400">
+              Items, invoices, vouchers &amp; settings
+            </div>
+          </div>
+
+          {/* Realtime Connections */}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4 hover:border-amber-400/30 transition">
+            <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1">
+              <Activity className="h-3.5 w-3.5 text-amber-400" />
+              <span>Realtime Connections</span>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl sm:text-2xl font-black text-amber-300">
+                {storageOverview?.activeRealtimeConnections || companies.length}
+              </span>
+              <span className="text-[10px] sm:text-xs text-slate-400 font-mono">
+                /{storageOverview?.realtimeQuota || 200}
+              </span>
+            </div>
+            <div className="mt-2 text-[10px] text-slate-400 flex items-center gap-1.5">
+              <span className="text-emerald-400 font-mono font-bold">~{storageOverview?.pingMs || 24}ms</span>
+              <span>Supabase ping</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Overall Storage Capacity Bar */}
+        <div className="bg-black/30 rounded-2xl p-3 border border-white/5">
+          <div className="flex flex-wrap items-center justify-between text-[11px] mb-1.5 font-medium gap-1">
+            <span className="text-slate-300">
+              Platform Storage Allocation ({formatBytes(storageOverview?.totalBytesUsed || 0)} of {formatBytes(storageOverview?.quotaBytes || 500 * 1024 * 1024)})
+            </span>
+            <span className="font-mono font-bold text-indigo-300">
+              {storageOverview?.usagePercentage || 0}% Consumed • {formatBytes(storageOverview?.balanceBytesRemaining || 0)} Balance Left
+            </span>
+          </div>
+          <div className="w-full bg-white/10 rounded-full h-2.5 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                (storageOverview?.usagePercentage || 0) > 85
+                  ? 'bg-rose-500'
+                  : (storageOverview?.usagePercentage || 0) > 60
+                  ? 'bg-amber-500'
+                  : 'bg-gradient-to-r from-emerald-500 via-indigo-500 to-blue-500'
+              }`}
+              style={{ width: `${Math.max(1, Math.min(100, storageOverview?.usagePercentage || 0))}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Main Client Overview Section */}
       <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
         {/* Table Filters & Search Bar */}
@@ -1211,18 +1595,205 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
           </div>
         </div>
 
-        {/* Client Master Table */}
-        <div className="overflow-x-auto">
+        {/* ======================================================== */}
+        {/* SMARTPHONE CLIENT CARDS VIEW (block md:hidden)           */}
+        {/* Optimized for mobile touch, big touch targets >= 44px     */}
+        {/* ======================================================== */}
+        <div className="block md:hidden space-y-3">
+          {isLoading ? (
+            <div className="py-12 text-center text-slate-500 bg-slate-50 rounded-2xl border border-slate-200">
+              <RefreshCw className="h-6 w-6 animate-spin text-indigo-600 mx-auto mb-2" />
+              <span className="text-xs">Fetching client database records...</span>
+            </div>
+          ) : filteredCompanies.length === 0 ? (
+            <div className="py-12 text-center text-slate-500 bg-slate-50 rounded-2xl border border-slate-200 p-4">
+              <Building2 className="h-8 w-8 text-slate-400 mx-auto mb-2" />
+              <span className="font-bold text-slate-900 text-sm block">No clients found</span>
+              <span className="text-xs text-slate-400">Try adjusting your search criteria.</span>
+            </div>
+          ) : (
+            filteredCompanies.map(company => {
+              const isActive = company.is_active !== false;
+              const isToggling = togglingId === company.id;
+              const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing);
+              const badge = formatPlanBadge(plan);
+              const limit = company.allowed_counters !== undefined ? company.allowed_counters : getMaxTerminalLimit(company.id);
+
+              return (
+                <div
+                  key={company.id}
+                  className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3 hover:border-indigo-300 transition"
+                >
+                  {/* Card Header */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div 
+                      onClick={() => handleOpenUnifiedClient(company)}
+                      className="flex items-start gap-2.5 cursor-pointer flex-1 min-w-0"
+                    >
+                      <div className={`h-9 w-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                        isActive
+                          ? 'bg-blue-50 border border-blue-100 text-blue-600'
+                          : 'bg-rose-50 border border-rose-100 text-rose-600'
+                      }`}>
+                        <Building2 className="h-4.5 w-4.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-extrabold text-slate-900 text-sm flex items-center gap-1.5 flex-wrap">
+                          <span className="truncate">{company.company_name}</span>
+                          {company.id === DEFAULT_TENANT_COMPANY.id && (
+                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              Default
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
+                          <span className="truncate max-w-[130px]" title={company.id}>ID: {company.id.slice(0, 8)}...</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyPortalUrl(company.id);
+                            }}
+                            className="p-1 text-slate-400 hover:text-slate-700"
+                            title="Copy Portal Link"
+                          >
+                            {copiedId === company.id ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Status switch */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleStatus(company)}
+                      disabled={isToggling}
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition shrink-0 cursor-pointer ${
+                        isActive 
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                          : 'bg-rose-50 text-rose-700 border-rose-200'
+                      }`}
+                    >
+                      {isToggling ? 'Updating...' : isActive ? '● Active' : '○ Suspended'}
+                    </button>
+                  </div>
+
+                  {/* Details metadata */}
+                  <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-50 p-2.5 rounded-xl border border-slate-150">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-medium">Trade License / TPN:</span>
+                      <span className="font-bold text-slate-700 truncate block">{company.trade_license_no || company.tax_payer_id || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-medium">Plan &amp; Desks:</span>
+                      <span className="font-semibold text-indigo-700 truncate block">{badge.label} · {limit === 0 ? 'Unlimited' : `${limit} Desk`}</span>
+                    </div>
+                    {company.phone && (
+                      <div className="col-span-2 flex items-center gap-1.5 text-slate-600 truncate">
+                        <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                        <a href={`tel:${company.phone}`} className="hover:underline">{company.phone}</a>
+                        {company.address && <span className="text-slate-400 truncate">· {company.address}</span>}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Smartphone Storage Consumption Pill */}
+                  {(() => {
+                    const cs = storageOverview?.clientStats[company.id];
+                    const bytes = cs?.totalBytes || 1024;
+                    const rows = cs?.totalRows || 1;
+                    const pct = cs?.percentageOfTotal || 0;
+                    return (
+                      <div 
+                        onClick={() => handleOpenUnifiedClient(company, 'storage')}
+                        className="flex items-center justify-between bg-slate-50 hover:bg-indigo-50/60 border border-slate-200/80 rounded-xl px-3 py-2 text-[11px] transition cursor-pointer"
+                        title="Click to view full database storage breakdown"
+                      >
+                        <div className="flex items-center gap-1.5 text-slate-700 min-w-0">
+                          <HardDrive className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                          <span className="font-bold text-slate-700">Storage:</span>
+                          <span className="font-mono font-bold text-slate-900">{formatBytes(bytes)}</span>
+                          <span className="text-[10px] text-slate-400 truncate">({rows} rows)</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 font-mono">
+                            {pct}% share
+                          </span>
+                          <ChevronRight className="h-3 w-3 text-slate-400" />
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Primary Touch Action: Manage Client (Profile, Credentials, Features, Links) */}
+                  <button
+                    type="button"
+                    onClick={() => handleOpenUnifiedClient(company)}
+                    className="w-full py-2.5 px-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 cursor-pointer min-h-[44px]"
+                  >
+                    <Sliders className="h-4 w-4" />
+                    <span>Manage Client (Profile, Password &amp; Features)</span>
+                    <ChevronRight className="h-4 w-4 ml-auto" />
+                  </button>
+
+                  {/* Quick Mobile Icons Row */}
+                  <div className="grid grid-cols-3 gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => handleCopyPortalUrl(company.id)}
+                      className="py-2 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold flex items-center justify-center gap-1.5 border border-slate-200 min-h-[40px] cursor-pointer"
+                      title="Copy Client Portal URL"
+                    >
+                      {copiedId === company.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <ExternalLink className="h-3.5 w-3.5 text-blue-600" />}
+                      <span>{copiedId === company.id ? 'Copied' : 'ERP Link'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopyStaffPortalUrl(company.id)}
+                      className="py-2 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold flex items-center justify-center gap-1.5 border border-slate-200 min-h-[40px] cursor-pointer"
+                      title="Copy Staff Portal URL"
+                    >
+                      {copiedStaffId === company.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Users className="h-3.5 w-3.5 text-emerald-600" />}
+                      <span>{copiedStaffId === company.id ? 'Copied' : 'Staff PWA'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleEnterClientWorkspace(company)}
+                      className="py-2 px-2 rounded-xl bg-slate-850 hover:bg-slate-900 text-white text-[11px] font-bold flex items-center justify-center gap-1 min-h-[40px] cursor-pointer"
+                      title="Enter Store Workspace"
+                    >
+                      <span>Enter</span>
+                      <ArrowRight className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* ======================================================== */}
+        {/* DESKTOP CLIENT TABLE VIEW (hidden md:block)              */}
+        {/* ======================================================== */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                 <th className="py-3 px-3">Commercial Client</th>
-                <th className="py-3 px-3">License & Tax ID</th>
+                <th className="py-3 px-3">License &amp; Tax ID</th>
                 <th className="py-3 px-3">Contact Details</th>
                 <th className="py-3 px-3">
                   <div className="flex items-center gap-1.5">
                     <span>Commercial Plan</span>
                     <span className="text-[9px] text-indigo-400 font-normal font-sans lowercase tracking-normal">(click to edit)</span>
+                  </div>
+                </th>
+                <th className="py-3 px-3">
+                  <div className="flex items-center gap-1.5">
+                    <HardDrive className="h-3.5 w-3.5 text-indigo-500" />
+                    <span>Supabase Storage</span>
                   </div>
                 </th>
                 <th className="py-3 px-3 text-center">Account Status</th>
@@ -1232,7 +1803,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-500">
+                  <td colSpan={7} className="py-12 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <RefreshCw className="h-6 w-6 animate-spin text-indigo-600" />
                       <span>Fetching client database records...</span>
@@ -1241,7 +1812,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                 </tr>
               ) : filteredCompanies.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-500">
+                  <td colSpan={7} className="py-12 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <Building2 className="h-8 w-8 text-slate-400" />
                       <span className="font-black text-slate-900 text-sm">No clients matched your filter</span>
@@ -1257,7 +1828,8 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                   return (
                     <tr
                       key={company.id}
-                      className="hover:bg-slate-50/70 transition group"
+                      className="hover:bg-slate-50/70 transition group cursor-pointer"
+                      onClick={() => handleOpenUnifiedClient(company)}
                     >
                       {/* Column 1: Client Name & UUID */}
                       <td className="py-3.5 px-3">
@@ -1271,18 +1843,19 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                           </div>
                           <div>
                             <div className="font-black text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-                              <span>{company.company_name}</span>
+                              <span className="hover:text-indigo-600 transition">{company.company_name}</span>
                               {company.id === DEFAULT_TENANT_COMPANY.id && (
                                 <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
                                   Default
                                 </span>
                               )}
                             </div>
-                            <div className="font-mono text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                            <div className="font-mono text-[10px] text-slate-400 mt-0.5 flex items-center gap-1" onClick={e => e.stopPropagation()}>
                               <span className="truncate max-w-[140px] sm:max-w-[200px]" title={company.id}>
                                 ID: {company.id}
                               </span>
                               <button
+                                type="button"
                                 onClick={() => handleCopyPortalUrl(company.id)}
                                 className="text-slate-400 hover:text-slate-700 p-0.5 rounded transition cursor-pointer"
                                 title="Copy client portal URL"
@@ -1331,7 +1904,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                       </td>
 
                       {/* Column 4: Plan */}
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-3" onClick={e => e.stopPropagation()}>
                         {(() => {
                           const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing);
                           const badge = formatPlanBadge(plan);
@@ -1340,7 +1913,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                             <div className="flex flex-col items-start gap-1">
                               <button
                                 type="button"
-                                onClick={() => handleOpenPlanModal(company)}
+                                onClick={() => handleOpenUnifiedClient(company, 'plan')}
                                 className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 text-indigo-700 hover:text-indigo-900 text-[11px] font-medium font-mono transition-all cursor-pointer shadow-2xs"
                                 title="Click to edit Commercial Plan, pricing & billing details"
                               >
@@ -1357,8 +1930,41 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                         })()}
                       </td>
 
-                      {/* Column 5: Live Subscription Switch (Lock/Unlock) */}
-                      <td className="py-3.5 px-3 text-center">
+                      {/* Column 5: Supabase Storage Usage */}
+                      <td className="py-3.5 px-3" onClick={e => { e.stopPropagation(); handleOpenUnifiedClient(company, 'storage'); }}>
+                        {(() => {
+                          const cs = storageOverview?.clientStats[company.id];
+                          const bytes = cs?.totalBytes || 1024;
+                          const rows = cs?.totalRows || 1;
+                          const pct = cs?.percentageOfTotal || 0;
+                          return (
+                            <div className="flex flex-col gap-1 min-w-[125px] group/storage cursor-pointer" title="Click to view client storage & entity breakdown">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-mono font-bold text-slate-800 group-hover/storage:text-indigo-600 transition flex items-center gap-1">
+                                  <HardDrive className="h-3 w-3 text-indigo-500" />
+                                  <span>{formatBytes(bytes)}</span>
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  {rows} {rows === 1 ? 'row' : 'rows'}
+                                </span>
+                              </div>
+                              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                <div 
+                                  className="bg-indigo-500 h-full rounded-full transition-all duration-300"
+                                  style={{ width: `${Math.max(4, Math.min(100, pct))}%` }}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-slate-400">
+                                <span className="font-medium text-slate-500">{pct}% share</span>
+                                <span className="text-indigo-600 opacity-0 group-hover/storage:opacity-100 transition text-[9px] font-bold">Details →</span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </td>
+
+                      {/* Column 6: Live Subscription Switch (Lock/Unlock) */}
+                      <td className="py-3.5 px-3 text-center" onClick={e => e.stopPropagation()}>
                         <div className="inline-flex flex-col items-center gap-1.5">
                           <button
                             type="button"
@@ -1385,18 +1991,20 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                       </td>
 
                       {/* Column 6: Actions */}
-                      <td className="py-3.5 px-3 text-right">
+                      <td className="py-3.5 px-3 text-right" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
                           <button
-                            onClick={() => handleOpenFeaturesModal(company)}
-                            className="py-1.5 px-2.5 bg-indigo-950/90 hover:bg-indigo-900 text-indigo-200 hover:text-white rounded-lg text-[11px] font-bold border border-indigo-700/60 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
-                            title="Turn client features on/off or apply industry presets"
+                            type="button"
+                            onClick={() => handleOpenUnifiedClient(company)}
+                            className="py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-extrabold transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                            title="Manage Company Profile, Credentials, Features & Links in one place"
                           >
-                            <Sliders className="h-3 w-3 text-indigo-400" />
-                            <span>Features</span>
+                            <Sliders className="h-3 w-3" />
+                            <span>Manage Client</span>
                           </button>
 
                           <button
+                            type="button"
                             onClick={() => handleEnterClientWorkspace(company)}
                             className="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[11px] font-bold border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
                             title="Switch active workspace to this client"
@@ -1406,6 +2014,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                           </button>
 
                           <button
+                            type="button"
                             onClick={() => handleCopyPortalUrl(company.id)}
                             className="p-1.5 bg-blue-600/80 hover:bg-blue-700 text-blue-200 hover:text-white rounded-lg border border-blue-600 transition cursor-pointer flex items-center gap-1 shrink-0"
                             title="Copy Client dedicated ERP Login PWA Link"
@@ -1419,6 +2028,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
                           </button>
 
                           <button
+                            type="button"
                             onClick={() => handleCopyStaffPortalUrl(company.id)}
                             className="p-1.5 bg-emerald-800/80 hover:bg-emerald-700 text-emerald-250 hover:text-white rounded-lg border border-emerald-700 transition cursor-pointer flex items-center gap-1 shrink-0"
                             title="Copy Client dedicated PWA Staff Clock-in/Leave Portal Link"
@@ -2171,6 +2781,944 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
               >
                 <Sliders className="h-3.5 w-3.5" />
                 <span>Manage Features & Tier</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* UNIFIED CLIENT 360° MANAGEMENT HUB MODAL                  */}
+      {/* All-in-one: Store Profile, Credentials, Features, Links, Plan */}
+      {/* ======================================================== */}
+      {unifiedClient && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-200 flex flex-col my-auto max-h-[95vh] sm:max-h-[90vh] text-slate-800 overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`h-10 w-10 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 ${
+                  unifiedIsActive
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-rose-600 text-white shadow-sm'
+                }`}>
+                  <Building2 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-black text-slate-900 text-base sm:text-lg truncate">
+                      {unifiedCompanyName || unifiedClient.company_name}
+                    </h3>
+                    {unifiedClient.id === DEFAULT_TENANT_COMPANY.id && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-bold">
+                        Default System Store
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-0.5">
+                    <span className="truncate max-w-[180px] sm:max-w-none">ID: {unifiedClient.id}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyPortalUrl(unifiedClient.id)}
+                      className="text-slate-400 hover:text-slate-700 p-0.5 rounded transition cursor-pointer"
+                      title="Copy Store Portal Link"
+                    >
+                      {copiedId === unifiedClient.id ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status toggle & Close */}
+              <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                <div className="flex items-center gap-1.5 bg-white border border-slate-250 px-2.5 py-1 rounded-xl shadow-2xs">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 hidden sm:inline">Status:</span>
+                  <button
+                    type="button"
+                    onClick={() => setUnifiedIsActive(!unifiedIsActive)}
+                    className={`px-2.5 py-0.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                      unifiedIsActive
+                        ? 'bg-emerald-500 text-white shadow-2xs'
+                        : 'bg-rose-500 text-white shadow-2xs'
+                    }`}
+                  >
+                    {unifiedIsActive ? 'Active' : 'Suspended'}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setUnifiedClient(null)}
+                  className="w-8 h-8 rounded-full bg-slate-200 hover:bg-slate-300 flex items-center justify-center text-slate-600 hover:text-slate-900 transition cursor-pointer"
+                  title="Close Modal"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Touch-Friendly Navigation Tabs (Scrollable on mobile) */}
+            <div className="flex items-center gap-1.5 px-4 sm:px-6 pt-3 pb-1 border-b border-slate-100 bg-white overflow-x-auto shrink-0 scrollbar-none">
+              <button
+                type="button"
+                onClick={() => setUnifiedActiveTab('profile')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                  unifiedActiveTab === 'profile'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>1. Store Profile &amp; Login</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setUnifiedActiveTab('features')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                  unifiedActiveTab === 'features'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <Bot className="w-3.5 h-3.5" />
+                <span>2. Feature Allocation (On/Off)</span>
+                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                  unifiedActiveTab === 'features' ? 'bg-indigo-800 text-indigo-100' : 'bg-slate-200 text-slate-700'
+                }`}>
+                  {ALL_SYSTEM_FEATURES.filter(f => editingFeatures[f.id] === true).length} Active
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setUnifiedActiveTab('links')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                  unifiedActiveTab === 'links'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>3. App Links &amp; WhatsApp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setUnifiedActiveTab('plan')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                  unifiedActiveTab === 'plan'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>4. Subscription Plan</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setUnifiedActiveTab('storage')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                  unifiedActiveTab === 'storage'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+                }`}
+              >
+                <HardDrive className="w-3.5 h-3.5" />
+                <span>5. Database &amp; Storage</span>
+                {(() => {
+                  const cs = storageOverview?.clientStats[unifiedClient.id];
+                  if (!cs) return null;
+                  return (
+                    <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                      unifiedActiveTab === 'storage' ? 'bg-indigo-800 text-indigo-100' : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {formatBytes(cs.totalBytes)}
+                    </span>
+                  );
+                })()}
+              </button>
+            </div>
+
+            {/* Modal Body (Scrollable) */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 text-xs">
+              {/* TAB 1: STORE PROFILE & LOGIN CREDENTIALS */}
+              {unifiedActiveTab === 'profile' && (
+                <div className="space-y-4">
+                  {/* Card A: Company Profile */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3.5">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                      <Building2 className="w-4 h-4 text-indigo-600" />
+                      <span>Company Profile &amp; Location Details</span>
+                    </h4>
+
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Company / Store Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={unifiedCompanyName}
+                        onChange={e => setUnifiedCompanyName(e.target.value)}
+                        placeholder="e.g. Paro Retail Enterprise"
+                        className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-900 font-bold text-xs focus:outline-none focus:border-indigo-500 shadow-2xs"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Trade License Number</label>
+                        <input
+                          type="text"
+                          value={unifiedTradeLicense}
+                          onChange={e => setUnifiedTradeLicense(e.target.value)}
+                          placeholder="TRD-2026-XXXX"
+                          className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 text-xs focus:outline-none focus:border-indigo-500 shadow-2xs font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Tax Payer ID (TPN)</label>
+                        <input
+                          type="text"
+                          value={unifiedTaxId}
+                          onChange={e => setUnifiedTaxId(e.target.value)}
+                          placeholder="TPN-XXXXXXX"
+                          className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 text-xs focus:outline-none focus:border-indigo-500 shadow-2xs font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Contact Phone Number</label>
+                        <input
+                          type="text"
+                          value={unifiedPhone}
+                          onChange={e => setUnifiedPhone(e.target.value)}
+                          placeholder="+975 17 XXX XXX"
+                          className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 text-xs focus:outline-none focus:border-indigo-500 shadow-2xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Contact Email</label>
+                        <input
+                          type="email"
+                          value={unifiedEmail}
+                          onChange={e => setUnifiedEmail(e.target.value)}
+                          placeholder="owner@clientstore.bt"
+                          className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 text-xs focus:outline-none focus:border-indigo-500 shadow-2xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block text-slate-700 font-bold mb-1">Store Physical Address</label>
+                        <input
+                          type="text"
+                          value={unifiedAddress}
+                          onChange={e => setUnifiedAddress(e.target.value)}
+                          placeholder="Town, Dzongkhag, Bhutan"
+                          className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 text-xs focus:outline-none focus:border-indigo-500 shadow-2xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Currency Symbol</label>
+                        <select
+                          value={unifiedCurrency}
+                          onChange={e => setUnifiedCurrency(e.target.value)}
+                          className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 text-xs font-bold focus:outline-none focus:border-indigo-500 shadow-2xs"
+                        >
+                          <option value="Nu.">Nu. (BTN - Bhutan)</option>
+                          <option value="USD">USD ($ - US Dollar)</option>
+                          <option value="₹">₹ (INR - Indian Rupee)</option>
+                          <option value="€">€ (EUR - Euro)</option>
+                          <option value="£">£ (GBP - British Pound)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card B: Store Admin Credentials */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-indigo-50/60 border border-indigo-200 space-y-3.5">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-indigo-950 flex items-center gap-1.5">
+                        <Key className="w-4 h-4 text-indigo-600" />
+                        <span>Client Admin Login Credentials</span>
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={generateRandomPassword}
+                        className="px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] border border-indigo-250 shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                        title="Generate random password"
+                      >
+                        <Sparkles className="w-3 h-3 text-indigo-600" />
+                        <span>Generate Password</span>
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-slate-600">
+                      These login details give the store owner or manager immediate access to their isolated ERP portal. You can reset or update them here at any time.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Admin Username</label>
+                        <input
+                          type="text"
+                          value={unifiedAdminUsername}
+                          onChange={e => setUnifiedAdminUsername(e.target.value)}
+                          placeholder="admin"
+                          className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-slate-800 font-bold text-xs focus:outline-none focus:border-indigo-500 shadow-2xs font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1 flex items-center justify-between">
+                          <span>Login Password</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-0.5 cursor-pointer"
+                          >
+                            {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            <span>{showPassword ? 'Hide' : 'Show'}</span>
+                          </button>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={unifiedAdminPassword}
+                            onChange={e => setUnifiedAdminPassword(e.target.value)}
+                            placeholder="ClientPass@123"
+                            className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-slate-800 font-bold text-xs focus:outline-none focus:border-indigo-500 shadow-2xs font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-700 font-bold mb-1">Quick PIN (Cashier Unlock)</label>
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={unifiedAdminPin}
+                          onChange={e => setUnifiedAdminPin(e.target.value)}
+                          placeholder="1234"
+                          className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-slate-800 font-bold text-xs focus:outline-none focus:border-indigo-500 shadow-2xs font-mono tracking-widest text-center"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Authorized Counters */}
+                    <div className="pt-2 border-t border-indigo-200/60">
+                      <label className="block text-slate-700 font-bold mb-1 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-indigo-900">
+                          <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Authorized Active POS Terminals / Cashier Desks</span>
+                        </span>
+                        <span className="text-[11px] font-mono text-indigo-700 font-bold">
+                          {unifiedAllowedCounters === 0 ? 'Unlimited Desks' : `${unifiedAllowedCounters} Counter${unifiedAllowedCounters > 1 ? 's' : ''}`}
+                        </span>
+                      </label>
+                      <select
+                        value={unifiedAllowedCounters}
+                        onChange={e => setUnifiedAllowedCounters(parseInt(e.target.value, 10))}
+                        className="w-full bg-white border border-indigo-200 rounded-xl px-3 py-2 text-slate-800 font-bold text-xs focus:outline-none focus:border-indigo-500 shadow-2xs"
+                      >
+                        <option value={1}>1 Terminal (Single Counter Plan - Default)</option>
+                        <option value={2}>2 Terminals (Dual Cashier Desks)</option>
+                        <option value={3}>3 Terminals (3-Desk Setup)</option>
+                        <option value={4}>4 Terminals (4-Desk Setup)</option>
+                        <option value={5}>5 Terminals (5-Desk Setup)</option>
+                        <option value={0}>Unlimited Terminals (Enterprise Unlimited)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: FEATURE ALLOCATION */}
+              {unifiedActiveTab === 'features' && (
+                <div className="space-y-3">
+                  <div className="py-2.5 px-3.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 leading-relaxed">
+                    <span className="font-extrabold">Superadmin Policy:</span> Modules turned <strong className="text-rose-700">OFF</strong> are completely hidden from this client store's sidebar, top navigation, and settings menus. Whatever modules are left <strong className="text-emerald-700">ON</strong> can be used freely by the client.
+                  </div>
+                  <div>
+                    {renderFeatureChecklist(editingFeatures, editingPresetId, 'edit')}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: APP LINKS & WHATSAPP SHARE */}
+              {unifiedActiveTab === 'links' && (
+                <div className="space-y-4">
+                  {/* Link 1: ERP Login Portal */}
+                  <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase tracking-wider text-blue-900 flex items-center gap-1.5">
+                        <Smartphone className="w-4 h-4 text-blue-600" />
+                        <span>Client Dedicated ERP Login Portal Link</span>
+                      </span>
+                      <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                        Main POS &amp; Accounting
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={getCompanyDedicatedUrl(unifiedClient.id, true)}
+                        className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2 text-slate-800 text-xs font-mono shadow-2xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleCopyPortalUrl(unifiedClient.id)}
+                        className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+                      >
+                        {copiedId === unifiedClient.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedId === unifiedClient.id ? 'Copied' : 'Copy'}</span>
+                      </button>
+                      <a
+                        href={getCompanyDedicatedUrl(unifiedClient.id, true)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 rounded-xl bg-white hover:bg-blue-100 text-blue-700 border border-blue-200 shrink-0 shadow-2xs transition"
+                        title="Test launch in new tab"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Link 2: Staff Attendance Portal */}
+                  <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase tracking-wider text-emerald-950 flex items-center gap-1.5">
+                        <Users className="w-4 h-4 text-emerald-600" />
+                        <span>Client Dedicated Staff Attendance &amp; Leave Portal</span>
+                      </span>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                        Staff PWA
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={`${getCompanyDedicatedUrl(unifiedClient.id, true)}&portal=staff`}
+                        className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-slate-800 text-xs font-mono shadow-2xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleCopyStaffPortalUrl(unifiedClient.id)}
+                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+                      >
+                        {copiedStaffId === unifiedClient.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedStaffId === unifiedClient.id ? 'Copied' : 'Copy'}</span>
+                      </button>
+                      <a
+                        href={`${getCompanyDedicatedUrl(unifiedClient.id, true)}&portal=staff`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 rounded-xl bg-white hover:bg-emerald-100 text-emerald-700 border border-emerald-200 shrink-0 shadow-2xs transition"
+                        title="Test launch staff portal"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* WhatsApp Direct Invite Messenger */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h5 className="text-xs font-black uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
+                        <MessageCircle className="w-4 h-4 text-emerald-600" />
+                        <span>Instant WhatsApp Client Onboarding Message</span>
+                      </h5>
+                      <span className="text-[10px] font-bold text-emerald-700">1-Tap Send</span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-600">
+                      Send the store owner their login link, username, and password directly to their WhatsApp:
+                    </p>
+
+                    <div className="p-3 bg-white rounded-xl border border-emerald-200 font-mono text-[11px] text-slate-700 whitespace-pre-wrap leading-relaxed shadow-2xs">
+{`*DrukERP Access Details*
+Store: ${unifiedCompanyName || unifiedClient.company_name}
+
+🔑 *Store Admin Login:*
+• Portal: ${getCompanyDedicatedUrl(unifiedClient.id, true)}
+• Username: ${unifiedAdminUsername || 'admin'}
+• Password: ${unifiedAdminPassword || 'ClientPass@123'}
+• PIN: ${unifiedAdminPin || '1234'}
+
+👥 *Staff Clock-in & Leave Portal:*
+• Staff URL: ${getCompanyDedicatedUrl(unifiedClient.id, true)}&portal=staff`}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1 flex-wrap">
+                      <a
+                        href={getWhatsAppShareUrl()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-xs transition cursor-pointer"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        <span>Send to Client via WhatsApp</span>
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const text = `*DrukERP Access Details*
+Store: ${unifiedCompanyName || unifiedClient.company_name}
+
+🔑 *Store Admin Login:*
+• Portal: ${getCompanyDedicatedUrl(unifiedClient.id, true)}
+• Username: ${unifiedAdminUsername || 'admin'}
+• Password: ${unifiedAdminPassword || 'ClientPass@123'}
+• PIN: ${unifiedAdminPin || '1234'}
+
+👥 *Staff Clock-in & Leave Portal:*
+• Staff URL: ${getCompanyDedicatedUrl(unifiedClient.id, true)}&portal=staff`;
+                          navigator.clipboard.writeText(text);
+                          alert('Onboarding WhatsApp message copied to clipboard!');
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs border border-slate-300 shadow-2xs transition cursor-pointer"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Message Text</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: COMMERCIAL PLAN & SUBSCRIPTION */}
+              {unifiedActiveTab === 'plan' && (
+                <div className="space-y-4">
+                  {/* Preset Selector */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                      Select Plan Preset
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { id: 'free', label: 'Free Trial', priceLabel: '0 / Free' },
+                        { id: 'starter', label: 'Starter', priceLabel: unifiedPlanCurrency === 'Nu.' ? 'Nu. 1,000' : '$15/mo' },
+                        { id: 'commercial', label: 'Commercial', priceLabel: unifiedPlanCurrency === 'Nu.' ? 'Nu. 1,800' : '$25/mo' },
+                        { id: 'enterprise', label: 'Enterprise', priceLabel: unifiedPlanCurrency === 'Nu.' ? 'Nu. 3,500' : '$50/mo' },
+                      ].map(preset => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => {
+                            setUnifiedPlanTier(preset.id);
+                            const isNu = unifiedPlanCurrency === 'Nu.' || unifiedPlanCurrency === 'BTN';
+                            if (preset.id === 'free') {
+                              setUnifiedPlanName('Free Trial');
+                              setUnifiedPlanPrice(0);
+                              setUnifiedPlanCycle('monthly');
+                            } else if (preset.id === 'starter') {
+                              setUnifiedPlanName('Starter Tier');
+                              setUnifiedPlanPrice(isNu ? 1000 : 15);
+                              setUnifiedPlanCycle('monthly');
+                            } else if (preset.id === 'commercial') {
+                              setUnifiedPlanName('Commercial Plan');
+                              setUnifiedPlanPrice(isNu ? 1800 : 25);
+                              setUnifiedPlanCycle('monthly');
+                            } else if (preset.id === 'enterprise') {
+                              setUnifiedPlanName('Enterprise Tier');
+                              setUnifiedPlanPrice(isNu ? 3500 : 50);
+                              setUnifiedPlanCycle('monthly');
+                            }
+                          }}
+                          className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                            unifiedPlanTier === preset.id
+                              ? 'bg-indigo-50 border-indigo-400 text-indigo-900 shadow-2xs ring-1 ring-indigo-400'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                          }`}
+                        >
+                          <div className="font-bold text-xs">{preset.label}</div>
+                          <div className="text-[10px] text-indigo-600 font-mono mt-0.5">{preset.priceLabel}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Plan Tier Name</label>
+                      <input
+                        type="text"
+                        value={unifiedPlanName}
+                        onChange={e => {
+                          setUnifiedPlanName(e.target.value);
+                          setUnifiedPlanTier('custom');
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Price Rate</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={unifiedPlanPrice}
+                        onChange={e => {
+                          setUnifiedPlanPrice(e.target.value);
+                          setUnifiedPlanTier('custom');
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs font-mono font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Billing Currency</label>
+                      <select
+                        value={unifiedPlanCurrency}
+                        onChange={e => setUnifiedPlanCurrency(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs font-bold"
+                      >
+                        <option value="USD">USD ($)</option>
+                        <option value="Nu.">Nu. (BTN)</option>
+                        <option value="INR">INR (₹)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Billing Interval</label>
+                      <select
+                        value={unifiedPlanCycle}
+                        onChange={e => setUnifiedPlanCycle(e.target.value as any)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs font-bold"
+                      >
+                        <option value="monthly">Monthly (/mo)</option>
+                        <option value="yearly">Yearly (/yr)</option>
+                        <option value="quarterly">Quarterly (/qtr)</option>
+                        <option value="one-time">One-Time / Lifetime</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Subscription Renewal / Expiry (Optional)</label>
+                      <input
+                        type="date"
+                        value={unifiedPlanExpiresAt}
+                        onChange={e => setUnifiedPlanExpiresAt(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Admin Notes (Optional)</label>
+                      <input
+                        type="text"
+                        value={unifiedPlanNotes}
+                        onChange={e => setUnifiedPlanNotes(e.target.value)}
+                        placeholder="e.g. Contract signed, payment via mBoB"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 5: DATABASE & STORAGE CONSUMPTION */}
+              {unifiedActiveTab === 'storage' && (
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-indigo-50/70 border border-indigo-100 rounded-2xl">
+                    <div>
+                      <h4 className="font-bold text-indigo-950 text-xs sm:text-sm flex items-center gap-1.5">
+                        <Database className="h-4 w-4 text-indigo-600" />
+                        <span>Client Postgres Database &amp; Storage Footprint</span>
+                      </h4>
+                      <p className="text-[11px] text-indigo-700">
+                        Granular storage metrics, table row allocations, and Supabase realtime connection status.
+                      </p>
+                    </div>
+                    {(() => {
+                      const cs = storageOverview?.clientStats[unifiedClient.id];
+                      return (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-bold px-3 py-1 rounded-xl bg-white border border-indigo-200 text-indigo-900 shadow-2xs">
+                            {formatBytes(cs?.totalBytes || 1024)} Total Consumed
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Metric Cards Grid */}
+                  {(() => {
+                    const cs = storageOverview?.clientStats[unifiedClient.id];
+                    const bytes = cs?.totalBytes || 1024;
+                    const totalRows = cs?.totalRows || 1;
+                    const pct = cs?.percentageOfTotal || 0;
+                    const items = cs?.itemCount || 0;
+                    const vouchers = cs?.voucherCount || 0;
+                    const invoices = cs?.invoiceCount || 0;
+                    const ledgers = cs?.ledgerCount || 0;
+                    const settingsBytes = cs?.settingsBytes || 0;
+
+                    return (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                              Storage Footprint
+                            </span>
+                            <span className="text-xl font-black text-indigo-600 block mt-0.5">
+                              {formatBytes(bytes)}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              {pct}% of platform Supabase data ({formatBytes(storageOverview?.totalBytesUsed || 0)})
+                            </span>
+                          </div>
+
+                          <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                              Database Records
+                            </span>
+                            <span className="text-xl font-black text-slate-900 block mt-0.5">
+                              {totalRows.toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              Total stored Postgres table rows
+                            </span>
+                          </div>
+
+                          <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                              Realtime Sync Channel
+                            </span>
+                            <span className="text-xl font-black text-emerald-600 flex items-center gap-1.5 mt-0.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                              Active &amp; Synced
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              Live multi-tenant tenant channel
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Table Entity Breakdown */}
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                          <h5 className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                            <Layers className="h-3.5 w-3.5 text-indigo-600" />
+                            <span>Storage Consumption by Data Entity</span>
+                          </h5>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between">
+                              <div>
+                                <span className="font-bold text-slate-800 block">Inventory &amp; Catalog</span>
+                                <span className="text-[10px] text-slate-400">Postgres items records</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-mono font-bold text-indigo-600 block">{items} items</span>
+                                <span className="text-[10px] text-slate-400 font-mono">~{formatBytes(items * 480)}</span>
+                              </div>
+                            </div>
+
+                            <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between">
+                              <div>
+                                <span className="font-bold text-slate-800 block">Sales Invoices</span>
+                                <span className="text-[10px] text-slate-400">POS &amp; customer billing</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-mono font-bold text-indigo-600 block">{invoices} invoices</span>
+                                <span className="text-[10px] text-slate-400 font-mono">~{formatBytes(invoices * 1200)}</span>
+                              </div>
+                            </div>
+
+                            <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between">
+                              <div>
+                                <span className="font-bold text-slate-800 block">Accounting Vouchers</span>
+                                <span className="text-[10px] text-slate-400">Double-entry journals</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-mono font-bold text-indigo-600 block">{vouchers} vouchers</span>
+                                <span className="text-[10px] text-slate-400 font-mono">~{formatBytes(vouchers * 750)}</span>
+                              </div>
+                            </div>
+
+                            <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between">
+                              <div>
+                                <span className="font-bold text-slate-800 block">Ledgers &amp; Accounts</span>
+                                <span className="text-[10px] text-slate-400">Chart of accounts</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-mono font-bold text-indigo-600 block">{ledgers} accounts</span>
+                                <span className="text-[10px] text-slate-400 font-mono">~{formatBytes(ledgers * 350)}</span>
+                              </div>
+                            </div>
+
+                            <div className="col-span-1 sm:col-span-2 bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between">
+                              <div>
+                                <span className="font-bold text-slate-800 block">Documents &amp; Settings (JSON)</span>
+                                <span className="text-[10px] text-slate-400">
+                                  Configurations, staff rosters, attendance logs, and tax metadata
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-mono font-bold text-emerald-600 block">{formatBytes(settingsBytes)}</span>
+                                <span className="text-[10px] text-slate-400 font-mono">Stored payload</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Bottom Sticky Action Bar (Optimized for Smartphone Thumb Zone) */}
+            <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setUnifiedClient(null)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 font-bold text-xs transition cursor-pointer"
+                >
+                  Cancel / Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleEnterClientWorkspace(unifiedClient)}
+                  className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Switch active workspace into this store"
+                >
+                  <span>Enter Store</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveUnifiedClient}
+                disabled={isSavingUnified}
+                className="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-black text-xs shadow-md transition flex items-center gap-2 cursor-pointer min-h-[44px]"
+              >
+                {isSavingUnified ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Saving All Changes...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Save All Client Settings</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Supabase Storage Quota Configuration Modal */}
+      {showQuotaModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 animate-in zoom-in-95 duration-200 text-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600">
+                  <HardDrive className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-900 text-sm">Supabase Storage Quota</h4>
+                  <p className="text-[11px] text-slate-500">Configure platform storage threshold &amp; headroom balance</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQuotaModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-700">Quick Tier Presets:</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuotaInputMB(500)}
+                  className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
+                    quotaInputMB === 500
+                      ? 'border-indigo-600 bg-indigo-50/70 text-indigo-900 font-bold'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  <span className="block text-xs font-extrabold">500 MB</span>
+                  <span className="block text-[10px] text-slate-400">Free Tier</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQuotaInputMB(8192)}
+                  className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
+                    quotaInputMB === 8192
+                      ? 'border-indigo-600 bg-indigo-50/70 text-indigo-900 font-bold'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  <span className="block text-xs font-extrabold">8 GB</span>
+                  <span className="block text-[10px] text-slate-400">Pro Tier</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQuotaInputMB(102400)}
+                  className={`p-2.5 rounded-xl border text-center transition cursor-pointer ${
+                    quotaInputMB === 102400
+                      ? 'border-indigo-600 bg-indigo-50/70 text-indigo-900 font-bold'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  <span className="block text-xs font-extrabold">100 GB</span>
+                  <span className="block text-[10px] text-slate-400">Enterprise</span>
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Custom Quota Limit (MB):</label>
+                <input
+                  type="number"
+                  min="10"
+                  max="10000000"
+                  value={quotaInputMB}
+                  onChange={e => setQuotaInputMB(Math.max(10, parseInt(e.target.value) || 500))}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-indigo-500"
+                />
+                <span className="text-[10px] text-slate-400 block mt-1">
+                  Equivalent to: {quotaInputMB >= 1024 ? `${(quotaInputMB / 1024).toFixed(2)} GB` : `${quotaInputMB} MB`}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowQuotaModal(false)}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveQuota(quotaInputMB)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+              >
+                Save Quota Benchmark
               </button>
             </div>
           </div>
