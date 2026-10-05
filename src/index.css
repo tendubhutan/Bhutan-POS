@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
 @media print {
+  @page {
+    size: A4 landscape !important;
+    margin: 6mm !important;
+  }
+
   /* Hide all app chrome, sidebars, headers, navigation, modals backdrop, and buttons */
   body, html {
     background: #ffffff !important;
@@ -16,12 +21,66 @@
   header,
   nav,
   button,
+  input,
+  select,
   .no-print,
   .print-hide,
   .print-controls,
   [data-print-hide="true"] {
     display: none !important;
     visibility: hidden !important;
+  }
+
+  /* Ensure Salary Register table fits 100% width in landscape mode with zero right-side clipping */
+  .printable-salary-register {
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .printable-salary-register .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  .printable-salary-register table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: auto !important;
+    border-collapse: collapse !important;
+    font-size: 8pt !important;
+  }
+
+  .printable-salary-register th,
+  .printable-salary-register td {
+    padding: 4px 4px !important;
+    border: 1px solid #94a3b8 !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .printable-salary-register th {
+    background-color: #1e3a8a !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    text-transform: uppercase !important;
+    font-size: 7.5pt !important;
+    line-height: 1.1 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .printable-salary-register tfoot td {
+    background-color: #e2e8f0 !important;
+    color: #0f172a !important;
+    font-weight: 900 !important;
+    border-top: 2px solid #1e293b !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   /* Modal Backdrop Reset for Clean Report Print */

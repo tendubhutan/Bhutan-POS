@@ -875,7 +875,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     if (!currentPayroll) return;
     const entries = displayedRegisterEntries.length > 0 ? displayedRegisterEntries : currentPayroll.entries;
 
-    const titleRow = [`${config.CompanyName} - SALARY REGISTER SHEET FOR ${currentPayroll.monthYear.toUpperCase()}`];
+    const titleRow = [`${config.CompanyName.toUpperCase()} - SALARY REGISTER REPORT FOR ${currentPayroll.monthYear.toUpperCase()}`];
+    const subTitleRow = [`Generated Date: ${new Date().toLocaleDateString('en-GB')} | Total Staff: ${entries.length} | Currency: Bhutanese Ngultrum (Nu.)`];
+
     const headerRow = [
       'ID No',
       'Employee Name',
@@ -929,8 +931,89 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       displayedTotalNet
     ];
 
-    const sheetData = [titleRow, [], headerRow, ...dataRows, totalRow];
+    const sheetData = [titleRow, subTitleRow, [], headerRow, ...dataRows, totalRow];
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+    // Dynamic & generous Column Widths so no column is truncated
+    const colWidths = headerRow.map((header, colIdx) => {
+      if (colIdx === 0) return { wch: 14 }; // ID No
+      if (colIdx === 1) return { wch: 25 }; // Employee Name
+      if (colIdx === 2) return { wch: 22 }; // Designation
+      if (colIdx === 3) return { wch: 14 }; // Days Worked
+
+      let maxLen = header.length;
+      dataRows.forEach(row => {
+        const val = row[colIdx];
+        if (val !== null && val !== undefined) {
+          const str = typeof val === 'number' ? val.toLocaleString('en-IN') : String(val);
+          if (str.length > maxLen) maxLen = str.length;
+        }
+      });
+      return { wch: Math.max(maxLen + 5, 14) };
+    });
+
+    ws['!cols'] = colWidths;
+
+    // Row Heights
+    ws['!rows'] = [
+      { hpt: 30 }, // Title row 1
+      { hpt: 18 }, // Subtitle row 2
+      { hpt: 10 }, // Blank row 3
+      { hpt: 28 }, // Header row 4
+      ...dataRows.map(() => ({ hpt: 22 })),
+      { hpt: 26 }  // Total row
+    ];
+
+    // Merged Cells for Title & Subtitle Banner
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: headerRow.length - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: headerRow.length - 1 } }
+    ];
+
+    // Style Header Cells (Bright Blue fill, white bold text, wrap text) and Data Cells
+    const headerRowIdx = 3;
+    for (let R = headerRowIdx; R < sheetData.length; R++) {
+      const isHeader = R === headerRowIdx;
+      const isTotalRow = R === sheetData.length - 1;
+
+      for (let C = 0; C < headerRow.length; C++) {
+        const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!ws[cellRef]) continue;
+
+        if (isHeader) {
+          ws[cellRef].s = {
+            font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 11 },
+            fill: { fgColor: { rgb: "1E40AF" } }, // Bright Royal Blue
+            alignment: { vertical: "center", horizontal: C >= 3 ? "right" : "left", wrapText: true },
+            border: {
+              top: { style: "medium", color: { rgb: "1E3A8A" } },
+              bottom: { style: "medium", color: { rgb: "1E3A8A" } },
+              left: { style: "thin", color: { rgb: "3B82F6" } },
+              right: { style: "thin", color: { rgb: "3B82F6" } }
+            }
+          };
+        } else {
+          const val = ws[cellRef].v;
+          if (typeof val === 'number' && C >= 4) {
+            ws[cellRef].z = '#,##0.00';
+          } else if (typeof val === 'number' && C === 3) {
+            ws[cellRef].z = '0';
+          }
+
+          ws[cellRef].s = {
+            font: { bold: isTotalRow, color: { rgb: isTotalRow ? "0F172A" : "334155" }, name: "Calibri", sz: 10 },
+            fill: isTotalRow ? { fgColor: { rgb: "E2E8F0" } } : (R % 2 === 0 ? { fgColor: { rgb: "F8FAFC" } } : { fgColor: { rgb: "FFFFFF" } }),
+            alignment: { vertical: "center", horizontal: C >= 3 ? "right" : "left", wrapText: true },
+            border: {
+              top: { style: isTotalRow ? "double" : "thin", color: { rgb: "CBD5E1" } },
+              bottom: { style: isTotalRow ? "double" : "thin", color: { rgb: "CBD5E1" } },
+              left: { style: "thin", color: { rgb: "E2E8F0" } },
+              right: { style: "thin", color: { rgb: "E2E8F0" } }
+            }
+          };
+        }
+      }
+    }
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Salary Register");
@@ -943,7 +1026,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     link.download = `Salary_Register_${currentPayroll.monthYear.replace(/\s+/g, '_')}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
-    showToast('Salary Register exported to Excel successfully!');
+    showToast('Salary Register exported to Excel with bright blue header styling!');
   };
 
   const handleShareSalaryRegisterWhatsApp = () => {
@@ -1823,8 +1906,20 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
           {/* Salary Register - Dynamic Height without blank space */}
           {currentPayroll && (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-              <div className="px-3.5 py-2.5 bg-slate-800 text-white flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+            <div className="printable-salary-register bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+              {/* Print-only Header Banner for Landscape PDF / Print */}
+              <div className="hidden print:block p-4 text-center border-b border-slate-300 bg-white">
+                <h1 className="text-xl font-black text-slate-900 uppercase tracking-wide">{config.CompanyName}</h1>
+                <p className="text-xs text-slate-600 font-bold">{config.Address}</p>
+                <div className="mt-2 inline-block px-4 py-1 bg-slate-100 rounded-full font-black text-xs uppercase tracking-wider text-indigo-900 border border-slate-300">
+                  SALARY REGISTER REPORT - {currentPayroll.monthYear.toUpperCase()}
+                </div>
+                <div className="mt-1 text-[10px] text-slate-500 font-mono">
+                  Generated Date: {new Date().toLocaleDateString('en-GB')} | Total Staff: {displayedRegisterEntries.length} | Currency: Nu. (Ngultrum)
+                </div>
+              </div>
+
+              <div className="px-3.5 py-2.5 bg-slate-800 text-white flex flex-wrap items-center justify-between gap-2.5 shrink-0 no-print">
                 <div className="font-bold text-xs sm:text-sm flex items-center gap-2">
                   <FileText className="h-4 w-4 text-indigo-400" />
                   <span>Salary Register - {currentPayroll.monthYear}</span>
