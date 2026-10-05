@@ -843,13 +843,13 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
       {viewMode === 'table' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
           <div className="overflow-x-auto w-full">
-            <table className="w-full min-w-[1100px] text-left text-xs border-separate border-spacing-0">
+            <table className="w-full text-left text-xs border-separate border-spacing-0">
             <thead className="sticky z-20 shadow-xs bg-white" style={{ top: `${effectiveStickyTop}px` }}>
                 <tr className="bg-white">
-                  <th colSpan={10} className="px-5 py-3.5 text-left bg-white border-b border-slate-100">
+                  <th colSpan={10} className="px-4 py-2.5 text-left bg-white border-b border-slate-100">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className="h-7 w-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                        <div className="h-6 w-6 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
                           <CheckSquare className="h-3.5 w-3.5" />
                         </div>
                         <h3 className="font-black text-slate-900 text-xs sm:text-sm">
@@ -888,9 +888,9 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                   </th>
                 </tr>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase tracking-wider text-[10px] font-bold select-none">
-                  <th className="py-3 px-3.5 w-12 text-center bg-slate-50 border-b border-slate-200">Sl</th>
+                  <th className="py-2.5 px-2 w-8 text-center bg-slate-50 border-b border-slate-200">#</th>
                   <th 
-                    className="py-3 px-3 cursor-pointer hover:text-slate-900"
+                    className="py-2.5 px-2 cursor-pointer hover:text-slate-900 whitespace-nowrap"
                     onClick={() => {
                       if (sortBy === 'taskNo') setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
                       else { setSortBy('taskNo'); setSortOrder('asc'); }
@@ -901,11 +901,11 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                       <ArrowUpDown className="h-3 w-3 text-slate-400" />
                     </div>
                   </th>
-                  <th className="py-3 px-4">Assignment & Category</th>
-                  <th className="py-3 px-4">Assigned Staff</th>
-                  <th className="py-3 px-3">Assigned By</th>
+                  <th className="py-2.5 px-2.5">Task & Category</th>
+                  <th className="py-2.5 px-2 whitespace-nowrap">Assigned Staff</th>
+                  <th className="py-2.5 px-2 whitespace-nowrap">Assigned By</th>
                   <th 
-                    className="py-3 px-3 cursor-pointer hover:text-slate-900"
+                    className="py-2.5 px-2 cursor-pointer hover:text-slate-900 whitespace-nowrap"
                     onClick={() => {
                       if (sortBy === 'priority') setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
                       else { setSortBy('priority'); setSortOrder('desc'); }
@@ -917,7 +917,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                     </div>
                   </th>
                   <th 
-                    className="py-3 px-3 cursor-pointer hover:text-slate-900"
+                    className="py-2.5 px-2 cursor-pointer hover:text-slate-900 whitespace-nowrap"
                     onClick={() => {
                       if (sortBy === 'dueDate') setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
                       else { setSortBy('dueDate'); setSortOrder('asc'); }
@@ -929,7 +929,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                     </div>
                   </th>
                   <th 
-                    className="py-3 px-3 cursor-pointer hover:text-slate-900"
+                    className="py-2.5 px-2 cursor-pointer hover:text-slate-900 whitespace-nowrap"
                     onClick={() => {
                       if (sortBy === 'status') setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
                       else { setSortBy('status'); setSortOrder('asc'); }
@@ -940,8 +940,8 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                       <ArrowUpDown className="h-3 w-3 text-slate-400" />
                     </div>
                   </th>
-                  <th className="py-3 px-3 text-center">Notes / Chat</th>
-                  <th className="py-3 px-3 text-right pr-4 print:hidden">Actions</th>
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap">Chat</th>
+                  <th className="py-2.5 px-2 text-right pr-3 whitespace-nowrap print:hidden">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -957,68 +957,73 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                       }`}
                     >
                       {/* Sl */}
-                      <td className="py-3 px-3.5 text-center font-mono text-slate-400 tabular-nums">
+                      <td className="py-2 px-2 text-center font-mono text-slate-400 tabular-nums text-[11px]">
                         {idx + 1}
                       </td>
 
                       {/* Task # & Created Date */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      <td className="py-2 px-2 whitespace-nowrap">
                         <button
                           type="button"
                           onClick={() => setSelectedTaskDetail(task)}
-                          className="font-bold font-mono text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer block"
+                          className="font-bold font-mono text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer block text-xs"
                         >
                           {task.taskNo}
                         </button>
-                        <span className="text-[10px] text-slate-400 font-mono">
+                        <span className="text-[10px] text-slate-400 font-mono block">
                           {task.createdAt ? formatDateDMY(task.createdAt) : ''}
                         </span>
                       </td>
 
                       {/* Title & Category */}
-                      <td className="py-3 px-4 max-w-sm">
-                        <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mb-0.5">
-                          <span className="font-semibold text-slate-600">{task.category || 'General'}</span>
+                      <td className="py-2 px-2.5 min-w-0 max-w-[240px]">
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <span className="text-[9px] font-bold text-slate-600 bg-slate-100 border border-slate-200/60 px-1 py-0.2 rounded uppercase tracking-wide">
+                            {task.category || 'General'}
+                          </span>
                         </div>
                         <p 
                           onClick={() => setSelectedTaskDetail(task)}
-                          className="font-bold text-slate-900 hover:text-indigo-600 transition cursor-pointer leading-snug line-clamp-2"
+                          className="font-bold text-slate-900 hover:text-indigo-600 transition cursor-pointer leading-snug text-xs truncate"
+                          title={task.title}
                         >
                           {task.title}
                         </p>
                         {task.description && (
-                          <p className="text-[11px] text-slate-500 truncate mt-0.5 max-w-xs">
+                          <p className="text-[10px] text-slate-400 truncate mt-0.5 leading-snug" title={task.description}>
                             {task.description}
                           </p>
                         )}
                       </td>
 
                       {/* Assigned Staff */}
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <div className="h-7 w-7 rounded-full bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center font-bold text-[10px] shrink-0">
+                      <td className="py-2 px-2 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <div className="h-6 w-6 rounded-full bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center font-bold text-[9px] shrink-0">
                             {task.assignedToEmpName ? task.assignedToEmpName.charAt(0).toUpperCase() : 'U'}
                           </div>
-                          <div>
-                            <span className="font-bold text-slate-800 block text-xs leading-tight">
+                          <div className="min-w-0">
+                            <span className="font-bold text-slate-800 block text-xs leading-tight truncate max-w-[115px]" title={task.assignedToEmpName}>
                               {task.assignedToEmpName}
                             </span>
-                            <span className="text-[10px] text-slate-400">
-                              Staff ID: {task.assignedToEmpId}
+                            <span className="text-[9px] text-slate-400 font-mono block leading-none">
+                              ID: {task.assignedToEmpId}
                             </span>
                           </div>
                         </div>
                       </td>
 
                       {/* Assigned By */}
-                      <td className="py-3 px-3 whitespace-nowrap text-slate-600">
-                        <span className="font-medium block text-xs">{task.assignedByName}</span>
-                        <span className="text-[10px] text-slate-400">{task.assignedByRole}</span>
+                      <td className="py-2 px-2 whitespace-nowrap text-slate-600">
+                        <span className="font-medium block text-xs leading-tight truncate max-w-[95px]" title={task.assignedByName}>
+                          {task.assignedByName}
+                        </span>
+                        <span className="text-[9px] text-slate-400 block leading-none">{task.assignedByRole}</span>
                       </td>
 
                       {/* Priority (Zero-Pill: Clean unboxed text) */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-1 text-xs font-semibold ${
+                      <td className="py-2 px-2 whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${
                           task.priority === 'Urgent' ? 'text-rose-600' :
                           task.priority === 'High' ? 'text-amber-600' :
                           task.priority === 'Medium' ? 'text-blue-600' : 'text-slate-500'
@@ -1033,26 +1038,26 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                       </td>
 
                       {/* Due Date */}
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className={`font-mono text-xs font-medium tabular-nums ${
+                      <td className="py-2 px-2 whitespace-nowrap">
+                        <span className={`font-mono text-xs font-semibold tabular-nums block ${
                           isOverdue ? 'text-rose-600 font-bold' : 'text-slate-700'
                         }`}>
                           {formatDateDMY(task.dueDate)}
                         </span>
                         {isOverdue && (
-                          <span className="block text-[10px] text-rose-600 font-bold uppercase tracking-wider">
+                          <span className="inline-block text-[9px] text-rose-600 font-bold uppercase tracking-wider leading-none">
                             Overdue
                           </span>
                         )}
                       </td>
 
                       {/* Status */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      <td className="py-2 px-2 whitespace-nowrap">
                         <div className="relative inline-block">
                           <select
                             value={task.status}
                             onChange={e => handleStatusChange(task.id, e.target.value as TaskStatus)}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer outline-none ${
+                            className={`px-2 py-0.5 rounded-md text-[11px] font-bold border transition cursor-pointer outline-none ${
                               task.status === 'Completed' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' :
                               task.status === 'In Progress' ? 'bg-blue-50 text-blue-800 border-blue-200' :
                               task.status === 'Under Review' ? 'bg-amber-50 text-amber-800 border-amber-200' :
@@ -1068,11 +1073,12 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                       </td>
 
                       {/* Notes / Chat */}
-                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                      <td className="py-2 px-1.5 text-center whitespace-nowrap">
                         <button
                           type="button"
                           onClick={() => setSelectedTaskDetail(task)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 font-mono text-xs transition cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 font-mono text-[11px] transition cursor-pointer"
+                          title="View comments & conversation"
                         >
                           <MessageSquare className="h-3 w-3" />
                           <span>{task.comments ? task.comments.length : 0}</span>
@@ -1080,8 +1086,8 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3 px-3 text-right pr-4 whitespace-nowrap print:hidden">
-                        <div className="flex items-center justify-end gap-1">
+                      <td className="py-2 px-2 text-right pr-3 whitespace-nowrap print:hidden">
+                        <div className="flex items-center justify-end gap-0.5">
                           <button
                             type="button"
                             onClick={() => {
@@ -1089,7 +1095,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                               const waUrl = generateTaskWhatsAppUrl(task, emp?.contactNo, config?.CompanyName || (config as any)?.companyName);
                               window.open(waUrl, '_blank');
                             }}
-                            className="p-1 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition cursor-pointer"
+                            className="p-1 rounded text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition cursor-pointer"
                             title="Send WhatsApp assignment notification to staff"
                           >
                             <Smartphone className="h-3.5 w-3.5" />
@@ -1098,7 +1104,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                           <button
                             type="button"
                             onClick={() => setSelectedTaskDetail(task)}
-                            className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
+                            className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
                             title="View full task & conversation"
                           >
                             <Eye className="h-3.5 w-3.5" />
@@ -1107,7 +1113,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                           <button
                             type="button"
                             onClick={() => setEditingTask(task)}
-                            className="p-1 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
+                            className="p-1 rounded text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
                             title="Edit task parameters"
                           >
                             <Edit3 className="h-3.5 w-3.5" />
@@ -1116,7 +1122,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
                           <button
                             type="button"
                             onClick={() => setDeleteConfirmId(task.id)}
-                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
                             title="Delete task"
                           >
                             <Trash2 className="h-3.5 w-3.5" />

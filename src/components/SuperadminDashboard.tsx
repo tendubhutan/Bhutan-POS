@@ -1214,7 +1214,7 @@ Please save this link to your phone or desktop.`;
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-200 text-slate-800">
+    <div className="w-full max-w-full space-y-6 animate-in fade-in duration-200 text-slate-800">
       {/* Top Banner Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 border border-indigo-700 p-6 rounded-3xl shadow-xl shadow-indigo-600/10 text-white">
         <div>
@@ -1548,18 +1548,23 @@ Please save this link to your phone or desktop.`;
       <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
         {/* Table Filters & Search Bar */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="relative w-full md:w-80">
-            <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search by name, license, email, ID..."
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
-            />
+          <div className="flex items-center gap-3 w-full md:w-auto flex-1 min-w-0">
+            <div className="relative w-full md:w-80">
+              <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search clients by name, ID, license..."
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
+              />
+            </div>
+            <span className="hidden xl:inline text-[11px] text-slate-400 font-medium truncate">
+              💡 Tip: Click any client row to view &amp; edit full business details, passwords &amp; features
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5 self-start md:self-auto w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+          <div className="flex items-center gap-1.5 self-start md:self-auto w-full md:w-auto overflow-x-auto pb-1 md:pb-0 shrink-0">
             <button
               onClick={() => setStatusFilter('all')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
@@ -1776,34 +1781,28 @@ Please save this link to your phone or desktop.`;
 
         {/* ======================================================== */}
         {/* DESKTOP CLIENT TABLE VIEW (hidden md:block)              */}
+        {/* Clean, spacious & executive: full details in 360° modal   */}
         {/* ======================================================== */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-                <th className="py-3 px-3">Commercial Client</th>
-                <th className="py-3 px-3">License &amp; Tax ID</th>
-                <th className="py-3 px-3">Contact Details</th>
-                <th className="py-3 px-3">
-                  <div className="flex items-center gap-1.5">
-                    <span>Commercial Plan</span>
-                    <span className="text-[9px] text-indigo-400 font-normal font-sans lowercase tracking-normal">(click to edit)</span>
-                  </div>
-                </th>
-                <th className="py-3 px-3">
+                <th className="py-3.5 px-4 w-[35%]">Commercial Client</th>
+                <th className="py-3.5 px-3 w-[18%]">Commercial Plan</th>
+                <th className="py-3.5 px-3 w-[18%]">
                   <div className="flex items-center gap-1.5">
                     <HardDrive className="h-3.5 w-3.5 text-indigo-500" />
                     <span>Supabase Storage</span>
                   </div>
                 </th>
-                <th className="py-3 px-3 text-center">Account Status</th>
-                <th className="py-3 px-3 text-right">Actions</th>
+                <th className="py-3.5 px-3 w-[12%] text-center">Status</th>
+                <th className="py-3.5 px-4 w-[17%] text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                  <td colSpan={5} className="py-12 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <RefreshCw className="h-6 w-6 animate-spin text-indigo-600" />
                       <span>Fetching client database records...</span>
@@ -1812,7 +1811,7 @@ Please save this link to your phone or desktop.`;
                 </tr>
               ) : filteredCompanies.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-500">
+                  <td colSpan={5} className="py-12 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <Building2 className="h-8 w-8 text-slate-400" />
                       <span className="font-black text-slate-900 text-sm">No clients matched your filter</span>
@@ -1824,159 +1823,119 @@ Please save this link to your phone or desktop.`;
                 filteredCompanies.map(company => {
                   const isActive = company.is_active !== false;
                   const isToggling = togglingId === company.id;
+                  const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing);
+                  const badge = formatPlanBadge(plan);
+                  const limit = company.allowed_counters !== undefined ? company.allowed_counters : getMaxTerminalLimit(company.id);
+                  const cs = storageOverview?.clientStats[company.id];
+                  const bytes = cs?.totalBytes || 1024;
+                  const rows = cs?.totalRows || 1;
+                  const pct = cs?.percentageOfTotal || 0;
 
                   return (
                     <tr
                       key={company.id}
-                      className="hover:bg-slate-50/70 transition group cursor-pointer"
+                      className="hover:bg-indigo-50/40 transition group cursor-pointer"
                       onClick={() => handleOpenUnifiedClient(company)}
                     >
-                      {/* Column 1: Client Name & UUID */}
-                      <td className="py-3.5 px-3">
-                        <div className="flex items-start gap-2.5">
-                          <div className={`h-8 w-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                      {/* Column 1: Client Name, Avatar & Clean Subtitle */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-10 w-10 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 transition ${
                             isActive
-                              ? 'bg-blue-50 border border-blue-100 text-blue-600'
-                              : 'bg-rose-50 border border-rose-100 text-rose-600'
+                              ? 'bg-blue-50 border border-blue-200/80 text-blue-600 group-hover:bg-blue-600 group-hover:text-white'
+                              : 'bg-rose-50 border border-rose-200/80 text-rose-600 group-hover:bg-rose-600 group-hover:text-white'
                           }`}>
-                            <Building2 className="h-4 w-4" />
+                            <Building2 className="h-5 w-5" />
                           </div>
-                          <div>
-                            <div className="font-black text-slate-900 text-xs sm:text-sm flex items-center gap-1.5">
-                              <span className="hover:text-indigo-600 transition">{company.company_name}</span>
+                          <div className="min-w-0">
+                            <div className="font-black text-slate-900 text-sm flex items-center gap-2 flex-wrap">
+                              <span className="group-hover:text-indigo-600 transition truncate max-w-[260px] lg:max-w-[340px]">
+                                {company.company_name}
+                              </span>
                               {company.id === DEFAULT_TENANT_COMPANY.id && (
-                                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                  Default
+                                <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold shrink-0">
+                                  Default Store
                                 </span>
                               )}
                             </div>
-                            <div className="font-mono text-[10px] text-slate-400 mt-0.5 flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                              <span className="truncate max-w-[140px] sm:max-w-[200px]" title={company.id}>
-                                ID: {company.id}
+                            <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5 truncate">
+                              <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                                ID: {company.id.slice(0, 8)}...
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => handleCopyPortalUrl(company.id)}
-                                className="text-slate-400 hover:text-slate-700 p-0.5 rounded transition cursor-pointer"
-                                title="Copy client portal URL"
-                              >
-                                {copiedId === company.id ? (
-                                  <Check className="h-3 w-3 text-emerald-600" />
-                                ) : (
-                                  <Copy className="h-3 w-3" />
-                                )}
-                              </button>
+                              {(company.email || company.phone || company.address) && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-slate-500 truncate max-w-[220px]">
+                                    {company.email || company.phone || company.address}
+                                  </span>
+                                </>
+                              )}
+                              <span className="text-indigo-500 font-bold opacity-0 group-hover:opacity-100 transition text-[10px] ml-1">
+                                Click to edit →
+                              </span>
                             </div>
                           </div>
                         </div>
                       </td>
 
-                      {/* Column 2: License & TPN */}
-                      <td className="py-3.5 px-3 font-mono text-[11px]">
-                        <div className="text-slate-700 font-bold">
-                          <span className="text-slate-400 text-[10px] block">Trade License:</span>
-                          {company.trade_license_no || '—'}
-                        </div>
-                        {company.tax_payer_id && (
-                          <div className="text-slate-500 text-[10px] mt-0.5">
-                            <span className="text-slate-400">TPN: </span>
-                            {company.tax_payer_id}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Column 3: Contact */}
-                      <td className="py-3.5 px-3 text-[11px] text-slate-600">
-                        {company.email ? (
-                          <div className="flex items-center gap-1 text-slate-600">
-                            <Mail className="h-3 w-3 text-slate-400 shrink-0" />
-                            <span className="truncate max-w-[150px] font-medium">{company.email}</span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                        {company.phone && (
-                          <div className="flex items-center gap-1 text-slate-500 text-[10px] mt-0.5">
-                            <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-                            <span>{company.phone}</span>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Column 4: Plan */}
+                      {/* Column 2: Commercial Plan */}
                       <td className="py-3.5 px-3" onClick={e => e.stopPropagation()}>
-                        {(() => {
-                          const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing);
-                          const badge = formatPlanBadge(plan);
-                          const limit = company.allowed_counters !== undefined ? company.allowed_counters : getMaxTerminalLimit(company.id);
-                          return (
-                            <div className="flex flex-col items-start gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenUnifiedClient(company, 'plan')}
-                                className="group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 text-indigo-700 hover:text-indigo-900 text-[11px] font-medium font-mono transition-all cursor-pointer shadow-2xs"
-                                title="Click to edit Commercial Plan, pricing & billing details"
-                              >
-                                <CreditCard className="h-3 w-3 text-indigo-500 shrink-0" />
-                                <span className="font-semibold">{badge.label}</span>
-                                <Pencil className="h-2.5 w-2.5 text-indigo-500/60 ml-0.5" />
-                              </button>
-                              <span className="text-[10px] bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.2 rounded font-mono flex items-center gap-1">
-                                <Sliders className="h-2.5 w-2.5 text-indigo-500" />
-                                <span>{limit === 0 ? 'Unlimited Counters' : `${limit} Counter${limit > 1 ? 's' : ''}`}</span>
-                              </span>
-                            </div>
-                          );
-                        })()}
+                        <div className="flex flex-col items-start gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenUnifiedClient(company, 'plan')}
+                            className="group/plan inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-slate-800 hover:text-indigo-700 text-[11px] font-medium font-mono transition cursor-pointer shadow-2xs"
+                            title="Click to edit Commercial Plan & pricing"
+                          >
+                            <CreditCard className="h-3 w-3 text-indigo-500 shrink-0" />
+                            <span className="font-bold">{badge.label}</span>
+                            <Pencil className="h-2.5 w-2.5 text-slate-400 group-hover/plan:text-indigo-600 ml-0.5" />
+                          </button>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            {limit === 0 ? 'Unlimited Desks' : `${limit} Desk${limit > 1 ? 's' : ''}`}
+                          </span>
+                        </div>
                       </td>
 
-                      {/* Column 5: Supabase Storage Usage */}
+                      {/* Column 3: Supabase Storage */}
                       <td className="py-3.5 px-3" onClick={e => { e.stopPropagation(); handleOpenUnifiedClient(company, 'storage'); }}>
-                        {(() => {
-                          const cs = storageOverview?.clientStats[company.id];
-                          const bytes = cs?.totalBytes || 1024;
-                          const rows = cs?.totalRows || 1;
-                          const pct = cs?.percentageOfTotal || 0;
-                          return (
-                            <div className="flex flex-col gap-1 min-w-[125px] group/storage cursor-pointer" title="Click to view client storage & entity breakdown">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="font-mono font-bold text-slate-800 group-hover/storage:text-indigo-600 transition flex items-center gap-1">
-                                  <HardDrive className="h-3 w-3 text-indigo-500" />
-                                  <span>{formatBytes(bytes)}</span>
-                                </span>
-                                <span className="text-[10px] text-slate-400 font-mono">
-                                  {rows} {rows === 1 ? 'row' : 'rows'}
-                                </span>
-                              </div>
-                              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                <div 
-                                  className="bg-indigo-500 h-full rounded-full transition-all duration-300"
-                                  style={{ width: `${Math.max(4, Math.min(100, pct))}%` }}
-                                />
-                              </div>
-                              <div className="flex items-center justify-between text-[10px] text-slate-400">
-                                <span className="font-medium text-slate-500">{pct}% share</span>
-                                <span className="text-indigo-600 opacity-0 group-hover/storage:opacity-100 transition text-[9px] font-bold">Details →</span>
-                              </div>
-                            </div>
-                          );
-                        })()}
+                        <div className="flex flex-col gap-1 min-w-[125px] group/storage cursor-pointer" title="Click to view full client database & entity breakdown">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-mono font-bold text-slate-800 group-hover/storage:text-indigo-600 transition flex items-center gap-1">
+                              <HardDrive className="h-3 w-3 text-indigo-500" />
+                              <span>{formatBytes(bytes)}</span>
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {rows} rows
+                            </span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div 
+                              className="bg-indigo-500 h-full rounded-full transition-all duration-300"
+                              style={{ width: `${Math.max(4, Math.min(100, pct))}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-slate-400">
+                            <span className="font-medium text-slate-500">{pct}% share</span>
+                            <span className="text-indigo-600 opacity-0 group-hover/storage:opacity-100 transition text-[9px] font-bold">Details →</span>
+                          </div>
+                        </div>
                       </td>
 
-                      {/* Column 6: Live Subscription Switch (Lock/Unlock) */}
+                      {/* Column 4: Account Status */}
                       <td className="py-3.5 px-3 text-center" onClick={e => e.stopPropagation()}>
-                        <div className="inline-flex flex-col items-center gap-1.5">
+                        <div className="inline-flex flex-col items-center gap-1">
                           <button
                             type="button"
                             onClick={() => handleToggleStatus(company)}
                             disabled={isToggling}
-                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 ${
-                              isActive ? 'bg-emerald-500' : 'bg-slate-250'
+                            className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 ${
+                              isActive ? 'bg-emerald-500' : 'bg-slate-300'
                             }`}
-                            title={isActive ? 'Click to deactivate / lock tenant out' : 'Click to activate / unlock tenant'}
+                            title={isActive ? 'Click to suspend / lock tenant' : 'Click to activate / unlock tenant'}
                           >
                             <span
-                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
                                 isActive ? 'translate-x-5' : 'translate-x-0'
                               }`}
                             />
@@ -1985,61 +1944,52 @@ Please save this link to your phone or desktop.`;
                           <span className={`text-[10px] font-bold ${
                             isActive ? 'text-emerald-600' : 'text-rose-600'
                           }`}>
-                            {isToggling ? 'Updating...' : isActive ? 'Active / Unlocked' : 'Suspended / Locked'}
+                            {isToggling ? 'Updating...' : isActive ? 'Active' : 'Suspended'}
                           </span>
                         </div>
                       </td>
 
-                      {/* Column 6: Actions */}
-                      <td className="py-3.5 px-3 text-right" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1.5">
+                      {/* Column 5: Clean Actions */}
+                      <td className="py-3.5 px-4 text-right" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
                             onClick={() => handleOpenUnifiedClient(company)}
-                            className="py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-extrabold transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                            title="Manage Company Profile, Credentials, Features & Links in one place"
+                            className="py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                            title="Open Client 360 Hub to edit Profile, Credentials, Features, Plan & Storage"
                           >
-                            <Sliders className="h-3 w-3" />
+                            <Sliders className="h-3.5 w-3.5" />
                             <span>Manage Client</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={() => handleEnterClientWorkspace(company)}
-                            className="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[11px] font-bold border border-slate-700 transition cursor-pointer flex items-center gap-1.5"
-                            title="Switch active workspace to this client"
+                            className="py-1.5 px-2.5 bg-slate-850 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                            title="Switch active workspace into this store"
                           >
                             <span>Enter Store</span>
-                            <ArrowRight className="h-3 w-3" />
+                            <ArrowRight className="h-3.5 w-3.5" />
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleCopyPortalUrl(company.id)}
-                            className="p-1.5 bg-blue-600/80 hover:bg-blue-700 text-blue-200 hover:text-white rounded-lg border border-blue-600 transition cursor-pointer flex items-center gap-1 shrink-0"
-                            title="Copy Client dedicated ERP Login PWA Link"
-                          >
-                            {copiedId === company.id ? (
-                              <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                            ) : (
-                              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                            )}
-                            <span className="text-[9px] font-bold">ERP</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleCopyStaffPortalUrl(company.id)}
-                            className="p-1.5 bg-emerald-800/80 hover:bg-emerald-700 text-emerald-250 hover:text-white rounded-lg border border-emerald-700 transition cursor-pointer flex items-center gap-1 shrink-0"
-                            title="Copy Client dedicated PWA Staff Clock-in/Leave Portal Link"
-                          >
-                            {copiedStaffId === company.id ? (
-                              <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                            ) : (
-                              <Users className="h-3.5 w-3.5 shrink-0" />
-                            )}
-                            <span className="text-[9px] font-bold">Staff</span>
-                          </button>
+                          <div className="flex items-center gap-1 pl-1 border-l border-slate-200">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyPortalUrl(company.id)}
+                              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 rounded-lg transition cursor-pointer"
+                              title="Copy Store ERP Link"
+                            >
+                              {copiedId === company.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <ExternalLink className="h-3.5 w-3.5" />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyStaffPortalUrl(company.id)}
+                              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 rounded-lg transition cursor-pointer"
+                              title="Copy Staff Portal Link"
+                            >
+                              {copiedStaffId === company.id ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Users className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
                         </div>
                       </td>
                     </tr>
