@@ -142,7 +142,8 @@ export const DEFAULT_TENANT_COMPANY: SupabaseCompany = {
   phone: '+975 17 654 321',
   email: 'accounts@bhutanretail.bt',
   address: 'Norzin Lam, Sector 2, Thimphu, Bhutan',
-  currency_symbol: 'Nu.'
+  currency_symbol: 'Nu.',
+  subscription_plan: '{"planName":"Commercial Plan","price":1800,"currency":"Nu.","billingCycle":"monthly"}'
 };
 
 export const DEFAULT_TENANT_FY: SupabaseFinancialYear = {
@@ -243,7 +244,7 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
             });
           }
 
-          let settingsQuery = supabase.from('tenant_settings').select('company_id, record_id, data').in('record_id', ['admin_credentials', 'main_config']);
+          let settingsQuery = supabase.from('tenant_settings').select('company_id, record_id, data').in('record_id', ['admin_credentials', 'commercial_plan', 'main_config']);
           if (!includeAll && !isSuperadmin && (dedicatedId || assignedCompanyId)) {
             settingsQuery = settingsQuery.eq('company_id', dedicatedId || assignedCompanyId);
           }
@@ -258,6 +259,8 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
                 };
 
                 if (row.record_id === 'admin_credentials') {
+                  const rawCurr = row.data.currency_symbol || existing.currency_symbol;
+                  const safeCurr = (rawCurr && rawCurr !== 'USD' && rawCurr !== '$') ? rawCurr : 'Nu.';
                   mergedMap.set(row.company_id, {
                     ...existing,
                     company_name: existing.company_name || row.data.company_name || 'Client Company',
@@ -266,16 +269,36 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
                     trade_license_no: existing.trade_license_no || row.data.trade_license_no || '',
                     tax_payer_id: existing.tax_payer_id || row.data.tax_payer_id || '',
                     address: existing.address || row.data.address || '',
+                    currency_symbol: safeCurr,
+                    subscription_plan: row.data.subscription_plan || existing.subscription_plan,
+                    subscription_expires_at: row.data.subscription_expires_at || existing.subscription_expires_at,
+                    allowed_counters: row.data.allowed_counters !== undefined ? row.data.allowed_counters : existing.allowed_counters,
                     admin_username: row.data.admin_username || existing.admin_username || 'admin',
                     admin_name: row.data.admin_name || existing.admin_name,
                     admin_pin: row.data.admin_pin || existing.admin_pin || '1234',
                     admin_password: row.data.admin_password || existing.admin_password || 'ClientPass@123',
                     is_active: row.data.is_active !== undefined ? row.data.is_active : (existing.is_active ?? true)
                   });
-                } else if (row.record_id === 'main_config') {
-                  const supportAccess = row.data.AllowSupportAccess === 'true' || row.data.AllowSupportAccess === true || row.data.allow_support_access === true;
+                } else if (row.record_id === 'commercial_plan') {
+                  const planData = typeof row.data.subscription_plan === 'string'
+                    ? row.data.subscription_plan
+                    : (row.data.subscription_plan ? JSON.stringify(row.data.subscription_plan) : undefined);
+                  const rawCurr = row.data.currency_symbol || existing.currency_symbol;
+                  const safeCurr = (rawCurr && rawCurr !== 'USD' && rawCurr !== '$') ? rawCurr : 'Nu.';
                   mergedMap.set(row.company_id, {
                     ...existing,
+                    subscription_plan: planData || existing.subscription_plan,
+                    subscription_expires_at: row.data.subscription_expires_at || existing.subscription_expires_at,
+                    allowed_counters: row.data.allowed_counters !== undefined ? row.data.allowed_counters : existing.allowed_counters,
+                    currency_symbol: safeCurr
+                  });
+                } else if (row.record_id === 'main_config') {
+                  const supportAccess = row.data.AllowSupportAccess === 'true' || row.data.AllowSupportAccess === true || row.data.allow_support_access === true;
+                  const rawCurr = row.data.Currency || row.data.CurrencySymbol || existing.currency_symbol;
+                  const safeCurr = (rawCurr && rawCurr !== 'USD' && rawCurr !== '$') ? rawCurr : 'Nu.';
+                  mergedMap.set(row.company_id, {
+                    ...existing,
+                    currency_symbol: safeCurr,
                     allow_support_access: supportAccess || existing.allow_support_access || false
                   });
                 }
@@ -398,21 +421,32 @@ export async function fetchUserCompanies(includeAll: boolean = false): Promise<{
           if (c && c.id) {
             const existing = mergedMap.get(c.id);
             if (existing) {
+              // Ensure subscription_plan, expiry, and allowed_counters are never erased
+              const planToKeep = existing.subscription_plan || c.subscription_plan;
+              const expiryToKeep = existing.subscription_expires_at || c.subscription_expires_at;
+              const countersToKeep = existing.allowed_counters !== undefined ? existing.allowed_counters : c.allowed_counters;
+              const rawCurr = existing.currency_symbol || c.currency_symbol;
+              const safeCurr = (rawCurr && rawCurr !== 'USD' && rawCurr !== '$') ? rawCurr : 'Nu.';
+
               // Supabase cloud data is authoritative! Do NOT let empty or stale local fields overwrite real Supabase data.
               mergedMap.set(c.id, {
                 ...c,
                 ...existing,
+                subscription_plan: planToKeep,
+                subscription_expires_at: expiryToKeep,
+                allowed_counters: countersToKeep,
+                currency_symbol: safeCurr,
                 // Supabase fields take precedence, but if Supabase is empty while local has value, retain local non-empty value
                 email: (existing.email && existing.email.trim()) ? existing.email.trim() : (c.email && c.email.trim() ? c.email.trim() : ''),
                 phone: (existing.phone && existing.phone.trim()) ? existing.phone.trim() : (c.phone && c.phone.trim() ? c.phone.trim() : ''),
                 address: (existing.address && existing.address.trim()) ? existing.address.trim() : (c.address && c.address.trim() ? c.address.trim() : ''),
                 trade_license_no: (existing.trade_license_no && existing.trade_license_no.trim()) ? existing.trade_license_no.trim() : (c.trade_license_no && c.trade_license_no.trim() ? c.trade_license_no.trim() : ''),
                 tax_payer_id: (existing.tax_payer_id && existing.tax_payer_id.trim()) ? existing.tax_payer_id.trim() : (c.tax_payer_id && c.tax_payer_id.trim() ? c.tax_payer_id.trim() : ''),
-                currency_symbol: existing.currency_symbol || c.currency_symbol || 'Nu.',
                 company_name: (existing.company_name && existing.company_name.trim()) ? existing.company_name.trim() : (c.company_name || 'Company')
               });
             } else {
-              mergedMap.set(c.id, c);
+              const safeCurr = (c.currency_symbol && c.currency_symbol !== 'USD' && c.currency_symbol !== '$') ? c.currency_symbol : 'Nu.';
+              mergedMap.set(c.id, { ...c, currency_symbol: safeCurr });
             }
           }
         }
@@ -1030,6 +1064,10 @@ export async function updateCompany(
     if (cleanedUpdates.tax_payer_id !== undefined) {
       cleanedUpdates.tax_payer_id = cleanedUpdates.tax_payer_id.trim();
     }
+    if (cleanedUpdates.currency_symbol !== undefined) {
+      const trimmedCurr = cleanedUpdates.currency_symbol.trim();
+      cleanedUpdates.currency_symbol = (trimmedCurr && trimmedCurr !== 'USD' && trimmedCurr !== '$') ? trimmedCurr : 'Nu.';
+    }
 
     // 2. Update in Supabase
     if (isSupabaseConfigured) {
@@ -1076,12 +1114,31 @@ export async function updateCompany(
         if (cleanedUpdates.trade_license_no !== undefined) credsPayload.trade_license_no = cleanedUpdates.trade_license_no;
         if (cleanedUpdates.tax_payer_id !== undefined) credsPayload.tax_payer_id = cleanedUpdates.tax_payer_id;
         if (cleanedUpdates.address !== undefined) credsPayload.address = cleanedUpdates.address;
+        if (cleanedUpdates.currency_symbol !== undefined) credsPayload.currency_symbol = cleanedUpdates.currency_symbol;
+        if (cleanedUpdates.subscription_plan !== undefined) credsPayload.subscription_plan = cleanedUpdates.subscription_plan;
+        if (cleanedUpdates.subscription_expires_at !== undefined) credsPayload.subscription_expires_at = cleanedUpdates.subscription_expires_at;
+        if (cleanedUpdates.allowed_counters !== undefined) credsPayload.allowed_counters = cleanedUpdates.allowed_counters;
 
         await supabase.from('tenant_settings').upsert({
           company_id: companyId,
           record_id: 'admin_credentials',
           data: credsPayload
         }, { onConflict: 'company_id,record_id' });
+
+        // Also persist commercial plan to dedicated cloud setting
+        if (cleanedUpdates.subscription_plan !== undefined || cleanedUpdates.currency_symbol !== undefined) {
+          await supabase.from('tenant_settings').upsert({
+            company_id: companyId,
+            record_id: 'commercial_plan',
+            data: {
+              subscription_plan: cleanedUpdates.subscription_plan || credsPayload.subscription_plan,
+              subscription_expires_at: cleanedUpdates.subscription_expires_at,
+              currency_symbol: cleanedUpdates.currency_symbol || 'Nu.',
+              allowed_counters: cleanedUpdates.allowed_counters,
+              updated_at: new Date().toISOString()
+            }
+          }, { onConflict: 'company_id,record_id' });
+        }
       } catch (sbE: any) {
         console.warn('Supabase exception on updateCompany:', sbE);
       }

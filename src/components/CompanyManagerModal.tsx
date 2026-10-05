@@ -302,7 +302,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         phone: newPhone.trim(),
         email: newEmail.trim(),
         address: newAddress.trim(),
-        currency_symbol: newCurrency.trim() || 'Nu.',
+        currency_symbol: (newCurrency.trim() && newCurrency.trim() !== 'USD' && newCurrency.trim() !== '$') ? newCurrency.trim() : 'Nu.',
         allowed_counters: newAllowedCounters,
         admin_username: newAdminUsername.trim().toLowerCase() || 'admin',
         admin_name: newAdminName.trim() || 'Administrator',
@@ -354,7 +354,8 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
     setNewPhone(comp.phone || '');
     setNewEmail(comp.email || '');
     setNewAddress(comp.address || '');
-    setNewCurrency(comp.currency_symbol || 'Nu.');
+    const safeCompCurr = (comp.currency_symbol && comp.currency_symbol !== 'USD' && comp.currency_symbol !== '$') ? comp.currency_symbol : 'Nu.';
+    setNewCurrency(safeCompCurr);
     setNewAllowedCounters(typeof comp.allowed_counters === 'number' ? comp.allowed_counters : (getMaxTerminalLimit(comp.id) || 1));
     setNewAdminUsername(comp.admin_username || 'admin');
     setNewAdminName(comp.admin_name || 'Administrator');
@@ -379,7 +380,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         phone: newPhone.trim(),
         email: trimmedEmail,
         address: newAddress.trim(),
-        currency_symbol: newCurrency.trim() || 'Nu.',
+        currency_symbol: (newCurrency.trim() && newCurrency.trim() !== 'USD' && newCurrency.trim() !== '$') ? newCurrency.trim() : 'Nu.',
         allowed_counters: newAllowedCounters,
         admin_username: newAdminUsername.trim().toLowerCase() || 'admin',
         admin_name: newAdminName.trim() || 'Administrator',
@@ -396,6 +397,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
       // Persist terminal limit to company storage
       setMaxTerminalLimit(newAllowedCounters, editingCompany.id);
 
+      const safeSavedCurrency = (newCurrency.trim() && newCurrency.trim() !== 'USD' && newCurrency.trim() !== '$') ? newCurrency.trim() : 'Nu.';
       setCompanies(prev => prev.map(c => c.id === editingCompany.id ? {
         ...c,
         company_name: newCompanyName.trim(),
@@ -404,7 +406,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
         phone: newPhone.trim(),
         email: trimmedEmail,
         address: newAddress.trim(),
-        currency_symbol: newCurrency.trim() || 'Nu.',
+        currency_symbol: safeSavedCurrency,
         allowed_counters: newAllowedCounters,
         admin_username: newAdminUsername.trim().toLowerCase() || 'admin',
         admin_name: newAdminName.trim() || 'Administrator',

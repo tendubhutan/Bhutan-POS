@@ -111,33 +111,62 @@ export function getGlobalPricingSettings(): GlobalPricingSettings {
       const saved = localStorage.getItem(GLOBAL_PRICING_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        return {
-          defaultPrice: typeof parsed.defaultPrice === 'number' ? parsed.defaultPrice : 25,
-          defaultCurrency: parsed.defaultCurrency || 'USD',
+        // Ensure default currency is strictly Nu. unless user explicitly selected another valid non-USD currency
+        const rawCurr = parsed.defaultCurrency;
+        const curr = (!rawCurr || rawCurr === 'USD' || rawCurr === '$') ? 'Nu.' : rawCurr;
+        const price = (typeof parsed.defaultPrice === 'number' && parsed.defaultPrice !== 25) ? parsed.defaultPrice : 1800;
+        const normalized: GlobalPricingSettings = {
+          defaultPrice: price,
+          defaultCurrency: curr,
           defaultTierName: parsed.defaultTierName || 'Commercial'
         };
+        // Auto-heal legacy USD in localStorage so it never reloads USD
+        if (parsed.defaultCurrency === 'USD' || parsed.defaultCurrency === '$' || !parsed.defaultCurrency || parsed.defaultPrice === 25) {
+          try {
+            localStorage.setItem(GLOBAL_PRICING_STORAGE_KEY, JSON.stringify(normalized));
+          } catch {}
+        }
+        return normalized;
       }
     } catch {}
   }
-  return {
-    defaultPrice: 25,
-    defaultCurrency: 'USD',
+  const defaultSettings: GlobalPricingSettings = {
+    defaultPrice: 1800,
+    defaultCurrency: 'Nu.',
     defaultTierName: 'Commercial'
   };
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(GLOBAL_PRICING_STORAGE_KEY, JSON.stringify(defaultSettings));
+    } catch {}
+  }
+  return defaultSettings;
 }
 
 export function saveGlobalPricingSettings(settings: GlobalPricingSettings): void {
+  const safeCurr = (settings.defaultCurrency && settings.defaultCurrency !== 'USD' && settings.defaultCurrency !== '$') ? settings.defaultCurrency : 'Nu.';
+  const safeSettings = {
+    ...settings,
+    defaultCurrency: safeCurr,
+    defaultPrice: settings.defaultPrice === 25 && safeCurr === 'Nu.' ? 1800 : settings.defaultPrice
+  };
   if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(GLOBAL_PRICING_STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem(GLOBAL_PRICING_STORAGE_KEY, JSON.stringify(safeSettings));
   }
 }
 
 export function parseSubscriptionPlan(
   rawPlan?: string,
-  globalPricing?: GlobalPricingSettings
+  globalPricing?: GlobalPricingSettings,
+  companyCurrency: string = 'Nu.'
 ): SubscriptionPlanDetails {
-  const gPrice = globalPricing?.defaultPrice ?? 25;
-  const gCurrency = globalPricing?.defaultCurrency ?? 'USD';
+  const safeCompCurr = (companyCurrency && companyCurrency !== 'USD' && companyCurrency !== '$') ? companyCurrency : 'Nu.';
+  const gCurrency = (globalPricing?.defaultCurrency && globalPricing.defaultCurrency !== 'USD' && globalPricing.defaultCurrency !== '$')
+    ? globalPricing.defaultCurrency
+    : safeCompCurr;
+  const gPrice = (globalPricing?.defaultPrice && globalPricing.defaultPrice !== 25)
+    ? globalPricing.defaultPrice
+    : 1800;
   const gTier = globalPricing?.defaultTierName ?? 'Commercial';
 
   if (!rawPlan || !rawPlan.trim()) {
@@ -154,10 +183,17 @@ export function parseSubscriptionPlan(
   if (rawPlan.startsWith('{') && rawPlan.endsWith('}')) {
     try {
       const parsed = JSON.parse(rawPlan);
+      // Permanently normalize USD / $ to Nu.
+      const rawCurr = parsed.currency;
+      const parsedCurr = (!rawCurr || rawCurr === 'USD' || rawCurr === '$') ? gCurrency : rawCurr;
+      let parsedPrice = typeof parsed.price === 'number' ? parsed.price : (parseFloat(parsed.price) || gPrice);
+      if (parsedPrice === 25 && parsedCurr === 'Nu.') {
+        parsedPrice = gPrice;
+      }
       return {
         planName: parsed.planName || parsed.name || gTier,
-        price: typeof parsed.price === 'number' ? parsed.price : (parseFloat(parsed.price) || 0),
-        currency: parsed.currency || gCurrency,
+        price: parsedPrice,
+        currency: parsedCurr,
         billingCycle: parsed.billingCycle || parsed.interval || 'monthly',
         expiresAt: parsed.expiresAt,
         notes: parsed.notes
@@ -167,15 +203,24 @@ export function parseSubscriptionPlan(
 
   // 2. Parse string format like "$25/mo Commercial" or "Nu. 1800/mo"
   let currency = gCurrency;
-  if (/nu\.?|btn/i.test(rawPlan)) currency = 'Nu.';
-  else if (/\$|usd/i.test(rawPlan)) currency = 'USD';
-  else if (/₹|inr/i.test(rawPlan)) currency = '₹';
+  if (/nu\.?|btn/i.test(rawPlan)) {
+    currency = 'Nu.';
+  } else if (/₹|inr/i.test(rawPlan)) {
+    currency = '₹';
+  } else if (/\$|usd/i.test(rawPlan)) {
+    // Legacy $ / USD defaults permanently normalize to Nu.
+    currency = 'Nu.';
+  }
 
   let billingCycle: 'monthly' | 'yearly' = 'monthly';
   if (/yr|year|annual/i.test(rawPlan)) billingCycle = 'yearly';
 
   const numMatch = rawPlan.match(/[\d,]+(?:\.\d+)?/);
-  const price = numMatch ? parseFloat(numMatch[0].replace(/,/g, '')) : gPrice;
+  let price = numMatch ? parseFloat(numMatch[0].replace(/,/g, '')) : gPrice;
+  // If price was the old $25 template and currency is Nu., convert to standard Nu. rate
+  if (price === 25 && currency === 'Nu.') {
+    price = gPrice;
+  }
 
   let cleanName = rawPlan
     .replace(/[\$\d,\.\/]+(mo|month|yr|year|qtr)?/gi, '')
@@ -195,7 +240,12 @@ export function parseSubscriptionPlan(
 }
 
 export function formatPlanBadge(plan: SubscriptionPlanDetails): { label: string; currencySymbol: string } {
-  const symbol = plan.currency === 'USD' ? '$' : plan.currency === 'INR' ? '₹' : plan.currency === 'Nu.' ? 'Nu. ' : `${plan.currency} `;
+  const isNu = plan.currency === 'Nu.' || !plan.currency || plan.currency === 'BTN' || plan.currency === 'USD' || plan.currency === '$';
+  const symbol = isNu
+    ? 'Nu. '
+    : plan.currency === 'INR' || plan.currency === '₹'
+    ? '₹'
+    : `${plan.currency} `;
   const cycleSuffix = plan.billingCycle === 'monthly' ? '/mo' : plan.billingCycle === 'yearly' ? '/yr' : plan.billingCycle === 'quarterly' ? '/qtr' : '';
 
   if (plan.price === 0) {
@@ -218,7 +268,7 @@ interface SuperadminDashboardProps {
 }
 
 const RECOMMENDED_TENANT_QUOTA = 50;
-const PLAN_PRICE_PER_TENANT_USD = 25;
+const DEFAULT_PLAN_PRICE_PER_TENANT_NU = 1800;
 
 export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   currentUser,
@@ -290,8 +340,8 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   // Unified Plan details
   const [unifiedPlanTier, setUnifiedPlanTier] = useState<string>('commercial');
   const [unifiedPlanName, setUnifiedPlanName] = useState<string>('Commercial Plan');
-  const [unifiedPlanPrice, setUnifiedPlanPrice] = useState<number | string>(25);
-  const [unifiedPlanCurrency, setUnifiedPlanCurrency] = useState<string>('USD');
+  const [unifiedPlanPrice, setUnifiedPlanPrice] = useState<number | string>(1800);
+  const [unifiedPlanCurrency, setUnifiedPlanCurrency] = useState<string>('Nu.');
   const [unifiedPlanCycle, setUnifiedPlanCycle] = useState<'monthly' | 'yearly' | 'quarterly' | 'one-time'>('monthly');
   const [unifiedPlanExpiresAt, setUnifiedPlanExpiresAt] = useState<string>('');
   const [unifiedPlanNotes, setUnifiedPlanNotes] = useState<string>('');
@@ -300,7 +350,7 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   const [globalPricing, setGlobalPricing] = useState<GlobalPricingSettings>(getGlobalPricingSettings);
   const [showGlobalPricingModal, setShowGlobalPricingModal] = useState<boolean>(false);
   const [editGlobalPrice, setEditGlobalPrice] = useState<number | string>(globalPricing.defaultPrice);
-  const [editGlobalCurrency, setEditGlobalCurrency] = useState<string>(globalPricing.defaultCurrency);
+  const [editGlobalCurrency, setEditGlobalCurrency] = useState<string>(globalPricing.defaultCurrency || 'Nu.');
   const [editGlobalTierName, setEditGlobalTierName] = useState<string>(globalPricing.defaultTierName);
 
   // Tenant Plan Edit Modal state
@@ -309,8 +359,8 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
   const [planFormAllowedCounters, setPlanFormAllowedCounters] = useState<number>(1);
   const [planFormTier, setPlanFormTier] = useState<string>('commercial');
   const [planFormName, setPlanFormName] = useState<string>('Commercial');
-  const [planFormPrice, setPlanFormPrice] = useState<number | string>(25);
-  const [planFormCurrency, setPlanFormCurrency] = useState<string>('USD');
+  const [planFormPrice, setPlanFormPrice] = useState<number | string>(1800);
+  const [planFormCurrency, setPlanFormCurrency] = useState<string>('Nu.');
   const [planFormCycle, setPlanFormCycle] = useState<'monthly' | 'yearly' | 'quarterly' | 'one-time'>('monthly');
   const [planFormExpiresAt, setPlanFormExpiresAt] = useState<string>('');
 
@@ -369,11 +419,35 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
     setIsLoading(true);
     setFeedbackMsg(null);
     try {
+      // Helper to migrate legacy USD plan templates to Nu. permanently
+      const healCompanyPlans = (rawCompanies: SupabaseCompany[]): SupabaseCompany[] => {
+        return rawCompanies.map(c => {
+          const safeCompCurr = (c.currency_symbol && c.currency_symbol !== 'USD' && c.currency_symbol !== '$') ? c.currency_symbol : 'Nu.';
+          const plan = parseSubscriptionPlan(c.subscription_plan, globalPricing, safeCompCurr);
+          const isLegacy = !c.subscription_plan || c.subscription_plan.includes('$') || c.subscription_plan.includes('USD') || plan.currency === 'USD' || plan.currency === '$' || c.currency_symbol === 'USD' || c.currency_symbol === '$';
+          if (isLegacy) {
+            const healed: SubscriptionPlanDetails = {
+              planName: plan.planName || 'Commercial Plan',
+              price: (plan.price === 25 || !plan.price) ? (globalPricing.defaultPrice || 1800) : plan.price,
+              currency: 'Nu.',
+              billingCycle: plan.billingCycle || 'monthly',
+              expiresAt: c.subscription_expires_at || plan.expiresAt,
+              notes: plan.notes
+            };
+            const serialized = JSON.stringify(healed);
+            updateCompany(c.id, { subscription_plan: serialized, currency_symbol: 'Nu.' }).catch(() => {});
+            return { ...c, subscription_plan: serialized, currency_symbol: 'Nu.' };
+          }
+          return { ...c, currency_symbol: safeCompCurr };
+        });
+      };
+
       // 1. Primary: fetchUserCompanies with includeAll=true loads both companies and credentials from tenant_settings
       const { companies: list } = await fetchUserCompanies(true);
       if (list && list.length > 0) {
-        setCompanies(list);
-        loadStorageTelemetry(list);
+        const healedList = healCompanyPlans(list);
+        setCompanies(healedList);
+        loadStorageTelemetry(healedList);
         setIsLoading(false);
         return;
       }
@@ -389,8 +463,9 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
           if (sbComps && sbComps.length > 0 && !sbErr) {
             const hasDefault = sbComps.some(c => c.id === DEFAULT_TENANT_COMPANY.id);
             const fallbackList = hasDefault ? sbComps : [DEFAULT_TENANT_COMPANY, ...sbComps];
-            setCompanies(fallbackList);
-            loadStorageTelemetry(fallbackList);
+            const healedFallback = healCompanyPlans(fallbackList);
+            setCompanies(healedFallback);
+            loadStorageTelemetry(healedFallback);
             setIsLoading(false);
             return;
           }
@@ -399,8 +474,9 @@ export const SuperadminDashboard: React.FC<SuperadminDashboardProps> = ({
         }
       }
 
-      setCompanies([DEFAULT_TENANT_COMPANY]);
-      loadStorageTelemetry([DEFAULT_TENANT_COMPANY]);
+      const defaultList = healCompanyPlans([DEFAULT_TENANT_COMPANY]);
+      setCompanies(defaultList);
+      loadStorageTelemetry(defaultList);
     } catch (err: any) {
       setFeedbackMsg({ type: 'error', text: err?.message || 'Failed to load companies' });
     } finally {
@@ -527,7 +603,8 @@ Please save this link to your phone or desktop.`;
     setUnifiedPhone(company.phone || '');
     setUnifiedEmail(company.email || '');
     setUnifiedAddress(company.address || '');
-    setUnifiedCurrency(company.currency_symbol || 'Nu.');
+    const compCurrency = (company.currency_symbol && company.currency_symbol !== 'USD' && company.currency_symbol !== '$') ? company.currency_symbol : 'Nu.';
+    setUnifiedCurrency(compCurrency);
     setUnifiedIsActive(company.is_active !== false);
 
     const limit = company.allowed_counters !== undefined ? company.allowed_counters : getMaxTerminalLimit(company.id);
@@ -539,10 +616,11 @@ Please save this link to your phone or desktop.`;
     setShowPassword(false);
 
     // Plan
-    const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing);
+    const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing, compCurrency);
     setUnifiedPlanName(plan.planName);
-    setUnifiedPlanPrice(plan.price);
-    setUnifiedPlanCurrency(plan.currency);
+    setUnifiedPlanPrice(plan.price === 25 ? 1800 : plan.price);
+    const planCurr = (plan.currency && plan.currency !== 'USD' && plan.currency !== '$') ? plan.currency : compCurrency;
+    setUnifiedPlanCurrency(planCurr);
     setUnifiedPlanCycle(plan.billingCycle);
     setUnifiedPlanExpiresAt(company.subscription_expires_at || plan.expiresAt || '');
     setUnifiedPlanNotes(plan.notes || '');
@@ -606,10 +684,16 @@ Please save this link to your phone or desktop.`;
     setIsSavingUnified(true);
     try {
       const numPrice = typeof unifiedPlanPrice === 'string' ? (parseFloat(unifiedPlanPrice) || 0) : unifiedPlanPrice;
+      const safeCurr = (unifiedPlanCurrency && unifiedPlanCurrency !== 'USD' && unifiedPlanCurrency !== '$') 
+        ? unifiedPlanCurrency 
+        : (unifiedCurrency.trim() && unifiedCurrency.trim() !== 'USD' && unifiedCurrency.trim() !== '$')
+        ? unifiedCurrency.trim()
+        : 'Nu.';
+      const finalPrice = (numPrice === 25 && safeCurr === 'Nu.') ? 1800 : numPrice;
       const planDetails: SubscriptionPlanDetails = {
         planName: unifiedPlanName.trim() || 'Commercial Plan',
-        price: numPrice,
-        currency: unifiedPlanCurrency,
+        price: finalPrice,
+        currency: safeCurr,
         billingCycle: unifiedPlanCycle,
         expiresAt: unifiedPlanExpiresAt || undefined,
         notes: unifiedPlanNotes.trim() || undefined
@@ -623,7 +707,7 @@ Please save this link to your phone or desktop.`;
         phone: unifiedPhone.trim() || undefined,
         email: unifiedEmail.trim() || undefined,
         address: unifiedAddress.trim() || undefined,
-        currency_symbol: unifiedCurrency.trim() || 'Nu.',
+        currency_symbol: safeCurr,
         is_active: unifiedIsActive,
         allowed_counters: unifiedAllowedCounters,
         admin_username: unifiedAdminUsername.trim() || 'admin',
@@ -863,7 +947,7 @@ Please save this link to your phone or desktop.`;
   // Quick Preset Selector for Plan Modal
   const applyPlanPreset = (presetKey: string) => {
     setPlanFormTier(presetKey);
-    const isNu = planFormCurrency === 'Nu.' || planFormCurrency === 'BTN';
+    setPlanFormCurrency('Nu.');
     if (presetKey === 'free') {
       setPlanFormName('Free Trial');
       setPlanFormPrice(0);
@@ -871,17 +955,17 @@ Please save this link to your phone or desktop.`;
       setPlanFormAllowedCounters(1);
     } else if (presetKey === 'starter') {
       setPlanFormName('Starter Tier');
-      setPlanFormPrice(isNu ? 1000 : 15);
+      setPlanFormPrice(1000);
       setPlanFormCycle('monthly');
       setPlanFormAllowedCounters(1);
     } else if (presetKey === 'commercial') {
       setPlanFormName('Commercial Plan');
-      setPlanFormPrice(isNu ? 1800 : 25);
+      setPlanFormPrice(1800);
       setPlanFormCycle('monthly');
       setPlanFormAllowedCounters(2);
     } else if (presetKey === 'enterprise') {
       setPlanFormName('Enterprise Tier');
-      setPlanFormPrice(isNu ? 3500 : 50);
+      setPlanFormPrice(3500);
       setPlanFormCycle('monthly');
       setPlanFormAllowedCounters(0);
     }
@@ -895,10 +979,12 @@ Please save this link to your phone or desktop.`;
     setIsSavingPlan(true);
     try {
       const numPrice = typeof planFormPrice === 'string' ? (parseFloat(planFormPrice) || 0) : planFormPrice;
+      const safePlanCurr = (planFormCurrency && planFormCurrency !== 'USD' && planFormCurrency !== '$') ? planFormCurrency : 'Nu.';
+      const finalPrice = (numPrice === 25 && safePlanCurr === 'Nu.') ? 1800 : numPrice;
       const planDetails: SubscriptionPlanDetails = {
         planName: planFormName.trim() || 'Commercial Plan',
-        price: numPrice,
-        currency: planFormCurrency,
+        price: finalPrice,
+        currency: safePlanCurr,
         billingCycle: planFormCycle,
         expiresAt: planFormExpiresAt || undefined,
         notes: planFormNotes.trim() || undefined
@@ -906,6 +992,7 @@ Please save this link to your phone or desktop.`;
 
       const serializedPlan = JSON.stringify(planDetails);
       const updates: Partial<SupabaseCompany> = {
+        currency_symbol: safePlanCurr,
         subscription_plan: serializedPlan,
         subscription_expires_at: planFormExpiresAt || undefined,
         allowed_counters: planFormAllowedCounters
@@ -919,7 +1006,7 @@ Please save this link to your phone or desktop.`;
         setCompanies(prev =>
           prev.map(c =>
             c.id === editingPlanCompany.id
-              ? { ...c, subscription_plan: serializedPlan, subscription_expires_at: planFormExpiresAt || undefined, allowed_counters: planFormAllowedCounters }
+              ? { ...c, currency_symbol: safePlanCurr, subscription_plan: serializedPlan, subscription_expires_at: planFormExpiresAt || undefined, allowed_counters: planFormAllowedCounters }
               : c
           )
         );
@@ -941,9 +1028,11 @@ Please save this link to your phone or desktop.`;
   const handleSaveGlobalPricing = (e: React.FormEvent) => {
     e.preventDefault();
     const numPrice = typeof editGlobalPrice === 'string' ? (parseFloat(editGlobalPrice) || 0) : editGlobalPrice;
+    const safeCurr = (editGlobalCurrency && editGlobalCurrency !== 'USD' && editGlobalCurrency !== '$') ? editGlobalCurrency : 'Nu.';
+    const finalPrice = (numPrice === 25 && safeCurr === 'Nu.') ? 1800 : numPrice;
     const newSettings: GlobalPricingSettings = {
-      defaultPrice: numPrice,
-      defaultCurrency: editGlobalCurrency,
+      defaultPrice: finalPrice,
+      defaultCurrency: safeCurr,
       defaultTierName: editGlobalTierName.trim() || 'Commercial'
     };
     saveGlobalPricingSettings(newSettings);
@@ -951,7 +1040,7 @@ Please save this link to your phone or desktop.`;
     setShowGlobalPricingModal(false);
     setFeedbackMsg({
       type: 'success',
-      text: `Updated global default platform pricing benchmark to ${newSettings.defaultCurrency === 'USD' ? '$' : newSettings.defaultCurrency === 'Nu.' ? 'Nu. ' : `${newSettings.defaultCurrency} `}${newSettings.defaultPrice}/mo (${newSettings.defaultTierName}).`
+      text: `Updated global default platform pricing benchmark to ${safeCurr === 'Nu.' ? 'Nu. ' : `${safeCurr} `}${newSettings.defaultPrice}/mo (${newSettings.defaultTierName}).`
     });
   };
 
@@ -967,23 +1056,27 @@ Please save this link to your phone or desktop.`;
     const totalsByCurrency: Record<string, number> = {};
 
     activeCompanies.forEach(c => {
-      const plan = parseSubscriptionPlan(c.subscription_plan, globalPricing);
+      const safeCompCurr = (c.currency_symbol && c.currency_symbol !== 'USD' && c.currency_symbol !== '$') ? c.currency_symbol : 'Nu.';
+      const plan = parseSubscriptionPlan(c.subscription_plan, globalPricing, safeCompCurr);
       const monthlyPrice = plan.billingCycle === 'yearly'
         ? Math.round(plan.price / 12)
         : plan.billingCycle === 'quarterly'
         ? Math.round(plan.price / 3)
         : plan.price;
 
-      const curr = plan.currency || globalPricing.defaultCurrency;
+      const rawCurr = plan.currency || globalPricing.defaultCurrency || 'Nu.';
+      const curr = (rawCurr && rawCurr !== 'USD' && rawCurr !== '$') ? rawCurr : 'Nu.';
       totalsByCurrency[curr] = (totalsByCurrency[curr] || 0) + monthlyPrice;
     });
 
     const entries = Object.entries(totalsByCurrency);
     if (entries.length === 0) {
-      const currSymbol = globalPricing.defaultCurrency === 'USD' ? '$' : globalPricing.defaultCurrency === 'Nu.' ? 'Nu. ' : `${globalPricing.defaultCurrency} `;
+      const rawCurr = globalPricing.defaultCurrency || 'Nu.';
+      const curr = (rawCurr && rawCurr !== 'USD' && rawCurr !== '$') ? rawCurr : 'Nu.';
+      const currSymbol = curr === 'Nu.' || curr === 'BTN' ? 'Nu. ' : curr === 'INR' ? '₹' : `${curr} `;
       return {
         displayValue: `${currSymbol}0`,
-        suffix: `${globalPricing.defaultCurrency} / Month`,
+        suffix: `${curr === 'Nu.' ? 'BTN' : curr} / Month`,
         subtitle: `${currSymbol}${globalPricing.defaultPrice}/mo default benchmark rate`,
         totalCount: 0
       };
@@ -991,7 +1084,7 @@ Please save this link to your phone or desktop.`;
 
     if (entries.length === 1) {
       const [curr, total] = entries[0];
-      const symbol = curr === 'USD' ? '$' : curr === 'Nu.' ? 'Nu. ' : curr === 'INR' ? '₹' : `${curr} `;
+      const symbol = curr === 'Nu.' || curr === 'BTN' ? 'Nu. ' : curr === 'INR' ? '₹' : `${curr} `;
       return {
         displayValue: `${symbol}${total.toLocaleString()}`,
         suffix: `${curr === 'Nu.' ? 'BTN' : curr} / Month`,
@@ -1002,7 +1095,7 @@ Please save this link to your phone or desktop.`;
 
     // Multi-currency display
     const formattedParts = entries.map(([curr, total]) => {
-      const symbol = curr === 'USD' ? '$' : curr === 'Nu.' ? 'Nu. ' : curr === 'INR' ? '₹' : `${curr} `;
+      const symbol = curr === 'Nu.' || curr === 'BTN' ? 'Nu. ' : curr === 'INR' ? '₹' : `${curr} `;
       return `${symbol}${total.toLocaleString()}`;
     });
 
@@ -1214,43 +1307,43 @@ Please save this link to your phone or desktop.`;
   }
 
   return (
-    <div className="w-full max-w-full space-y-6 animate-in fade-in duration-200 text-slate-800">
-      {/* Top Banner Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 border border-indigo-700 p-6 rounded-3xl shadow-xl shadow-indigo-600/10 text-white">
+    <div className="w-full max-w-full space-y-4 animate-in fade-in duration-200 text-slate-800">
+      {/* Top Banner Header - Compact Height */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-gradient-to-r from-indigo-600 via-indigo-600 to-blue-600 border border-indigo-700 py-3 px-4 sm:py-3.5 sm:px-6 rounded-2xl shadow-lg shadow-indigo-600/10 text-white">
         <div>
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="px-2.5 py-0.5 rounded-full bg-white/20 border border-white/10 text-white text-[11px] font-mono font-bold flex items-center gap-1.5">
-              <ShieldCheck className="h-3.5 w-3.5 text-white" />
+          <div className="flex items-center gap-2 mb-1">
+            <span className="px-2 py-0.2 rounded-full bg-white/20 border border-white/10 text-white text-[10px] font-mono font-bold flex items-center gap-1">
+              <ShieldCheck className="h-3 w-3 text-white" />
               <span>SUPERADMIN ACCESS RESTRICTED</span>
             </span>
-            <span className="px-2 py-0.5 rounded-md bg-emerald-500 border border-emerald-400 text-white text-[10px] font-bold font-mono">
+            <span className="px-1.5 py-0.2 rounded bg-emerald-500 border border-emerald-400 text-white text-[9px] font-bold font-mono">
               Live RLS Sync
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center gap-3">
+          <h1 className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2">
             <span>Tenant Control Panel</span>
           </h1>
-          <p className="text-xs sm:text-sm text-indigo-100 mt-1">
+          <p className="text-xs text-indigo-100 mt-0.5">
             Master multi-tenant registry, commercial subscription status, and tenant isolation controls.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={loadMasterCompanies}
             disabled={isLoading}
-            className="py-2.5 px-3.5 bg-white/10 hover:bg-white/20 border border-white/10 rounded-xl text-xs font-bold text-white transition flex items-center gap-2 cursor-pointer disabled:opacity-50 shadow-sm"
+            className="py-1.5 px-3 bg-white/10 hover:bg-white/20 border border-white/10 rounded-lg text-xs font-bold text-white transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
             title="Refresh tenants list"
           >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Refresh</span>
           </button>
 
           <button
             onClick={() => setShowAddModal(true)}
-            className="py-2.5 px-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white rounded-xl text-xs font-bold shadow-lg shadow-amber-500/20 transition flex items-center gap-2 cursor-pointer active:scale-[0.98] border border-amber-600"
+            className="py-1.5 px-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white rounded-lg text-xs font-bold shadow-md shadow-amber-500/20 transition flex items-center gap-1.5 cursor-pointer active:scale-[0.98] border border-amber-600"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             <span>Provision Client Tenant</span>
           </button>
         </div>
@@ -1259,13 +1352,13 @@ Please save this link to your phone or desktop.`;
       {/* Feedback Messages */}
       {feedbackMsg && (
         <div
-          className={`p-3.5 rounded-2xl text-xs font-medium flex items-center justify-between gap-3 border ${
+          className={`p-3 rounded-xl text-xs font-medium flex items-center justify-between gap-3 border ${
             feedbackMsg.type === 'success'
               ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-300'
               : 'bg-rose-950/50 border-rose-500/40 text-rose-300'
           }`}
         >
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             {feedbackMsg.type === 'success' ? (
               <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
             ) : (
@@ -1282,45 +1375,47 @@ Please save this link to your phone or desktop.`;
         </div>
       )}
 
-      {/* KPI Cards & Plan Quota Tracker */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Tenants */}
-        <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Total Tenants</span>
-            <Building2 className="h-4 w-4 text-blue-500" />
+      {/* ====================================================================== */}
+      {/* UNIFIED COMPACT COMMAND BAR (ONE SINGLE ROW)                            */}
+      {/* Combines Total Tenants & Subscriptions with Supabase Storage Telemetry */}
+      {/* ====================================================================== */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl px-4 py-2.5 shadow-2xs flex flex-wrap items-center justify-between gap-x-3 sm:gap-x-4 gap-y-2">
+        {/* 1. Total Tenants */}
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-blue-50 border border-blue-100 rounded-lg text-blue-600 shrink-0">
+            <Building2 className="h-3.5 w-3.5" />
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-slate-900">{totalTenants}</span>
-            <span className="text-[11px] text-slate-500 font-medium">Registered Companies</span>
-          </div>
-          <div className="mt-2 text-[10px] text-slate-400 flex items-center gap-1 font-mono border-t border-slate-100 pt-2">
-            <ShieldCheck className="h-3 w-3 text-emerald-500" />
-            <span>Isolated PostgreSQL RLS</span>
-          </div>
-        </div>
-
-        {/* Card 2: Active Subscriptions */}
-        <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Active Subscriptions</span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-emerald-600">{activeTenants}</span>
-            <span className="text-[11px] text-slate-500 font-medium">Unlocked Clients</span>
-          </div>
-          <div className="mt-2 text-[10px] text-slate-400 flex items-center gap-1 border-t border-slate-100 pt-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>{inactiveTenants} Suspended / Locked Out</span>
+          <div>
+            <span className="text-[10px] uppercase font-bold text-slate-400 block leading-none">Tenants</span>
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <span className="text-sm font-black text-slate-900 leading-none">{totalTenants}</span>
+              <span className="text-[9px] text-slate-400 font-mono">RLS</span>
+            </div>
           </div>
         </div>
 
-        {/* Card 3: Estimated MRR */}
-        <div className="p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl flex flex-col justify-between shadow-sm relative group">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Estimated MRR</span>
-            <div className="flex items-center gap-1">
+        {/* 2. Active Subscriptions */}
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-600 shrink-0">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+          </div>
+          <div>
+            <span className="text-[10px] uppercase font-bold text-slate-400 block leading-none">Active</span>
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <span className="text-sm font-black text-emerald-600 leading-none">{activeTenants}</span>
+              <span className="text-[9px] text-slate-400 font-medium">({inactiveTenants} off)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Estimated MRR */}
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-600 shrink-0">
+            <CreditCard className="h-3.5 w-3.5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-1 leading-none">
+              <span className="text-[10px] uppercase font-bold text-slate-400">MRR</span>
               <button
                 type="button"
                 onClick={() => {
@@ -1329,218 +1424,135 @@ Please save this link to your phone or desktop.`;
                   setEditGlobalTierName(globalPricing.defaultTierName);
                   setShowGlobalPricingModal(true);
                 }}
-                className="p-1 hover:bg-slate-100 text-slate-400 hover:text-indigo-600 rounded-lg transition cursor-pointer"
-                title="Configure platform benchmark pricing & default currency"
+                className="text-slate-400 hover:text-indigo-600 transition cursor-pointer"
+                title="Configure platform benchmark pricing"
               >
-                <Settings2 className="h-3.5 w-3.5" />
+                <Settings2 className="h-2.5 w-2.5" />
               </button>
-              <DollarSign className="h-4 w-4 text-indigo-500" />
             </div>
-          </div>
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-2xl sm:text-3xl font-black text-indigo-600">{mrrData.displayValue}</span>
-            <span className="text-[11px] text-slate-500 font-medium">{mrrData.suffix}</span>
-          </div>
-          <div className="mt-2 text-[10px] text-slate-400 font-mono flex items-center justify-between border-t border-slate-100 pt-2">
-            <span className="truncate mr-1">{mrrData.subtitle}</span>
-            <button
-              type="button"
-              onClick={() => {
-                setEditGlobalPrice(globalPricing.defaultPrice);
-                setEditGlobalCurrency(globalPricing.defaultCurrency);
-                setEditGlobalTierName(globalPricing.defaultTierName);
-                setShowGlobalPricingModal(true);
-              }}
-              className="text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer text-[10px] shrink-0 font-bold"
-            >
-              Configure
-            </button>
+            <div className="flex items-baseline gap-0.5 mt-0.5">
+              <span className="text-sm font-black text-indigo-600 leading-none">{mrrData.displayValue}</span>
+              <span className="text-[9px] text-slate-400 font-medium">{mrrData.suffix}</span>
+            </div>
           </div>
         </div>
 
-        {/* Card 4: Plan Limits Tracker ($25/mo Quota) */}
-        <div className="p-4 sm:p-5 bg-gradient-to-br from-indigo-50 to-blue-50/50 border border-indigo-100 rounded-2xl flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between text-indigo-800 mb-1.5">
-            <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 text-indigo-700">
-              <Sparkles className="h-3.5 w-3.5 text-indigo-600" />
-              <span>Plan Limits Tracker</span>
-            </span>
-            <span className="text-[10px] font-mono font-bold text-indigo-600">
-              {totalTenants}/{RECOMMENDED_TENANT_QUOTA}
-            </span>
+        {/* 4. Plan Limits Tracker */}
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-amber-50 border border-amber-100 rounded-lg text-amber-600 shrink-0">
+            <Sparkles className="h-3.5 w-3.5" />
           </div>
-          
           <div>
-            <div className="flex items-center justify-between text-[11px] font-medium text-indigo-700 mb-1">
-              <span>Tenant Quota Usage</span>
-              <span className="text-indigo-950 font-bold">{quotaPercent}%</span>
-            </div>
-            <div className="w-full bg-indigo-100/50 rounded-full h-2 overflow-hidden border border-indigo-200/30">
-              <div 
-                className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full rounded-full transition-all duration-500"
-                style={{ width: `${quotaPercent}%` }}
+            <span className="text-[10px] uppercase font-bold text-slate-400 block leading-none">Limit</span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-sm font-black text-slate-800 leading-none">{totalTenants}/{RECOMMENDED_TENANT_QUOTA}</span>
+              <div className="w-10 sm:w-12 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200">
+                <div 
+                  className="bg-indigo-600 h-full rounded-full transition-all"
+                  style={{ width: `${quotaPercent}%` }}
                 />
-            </div>
-          </div>
-
-          <div className="mt-2 text-[10px] text-indigo-600 flex items-center justify-between border-t border-indigo-100/50 pt-2">
-            <span>Quota: {RECOMMENDED_TENANT_QUOTA} Recommended</span>
-            <span className="text-emerald-600 font-bold">Good Capacity</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ======================================================== */}
-      {/* SUPABASE CLOUD STORAGE & REALTIME TELEMETRY CONSOLE      */}
-      {/* Realtime tracking: consumption, row counts & balance     */}
-      {/* ======================================================== */}
-      <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-xl border border-slate-800 space-y-4">
-        {/* Header with Live Status & Controls */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-500/20 border border-indigo-500/30 rounded-2xl text-indigo-400">
-              <Database className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-black text-sm sm:text-base tracking-tight text-white">
-                  Supabase Cloud Storage &amp; Realtime Telemetry
-                </h3>
-                <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  {storageOverview?.realtimeStatus === 'connected' ? 'Live Connected' : 'Checking'}
-                </span>
               </div>
-              <p className="text-[11px] text-slate-400">
-                Multi-tenant Postgres database consumption, table records, and active realtime synchronization
-              </p>
+              <span className="text-[9px] font-bold text-emerald-600 leading-none">{quotaPercent}%</span>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <button
-              type="button"
-              onClick={() => {
-                setQuotaInputMB(getStorageQuotaMB());
-                setShowQuotaModal(true);
-              }}
-              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/10 transition cursor-pointer flex items-center gap-1.5"
-              title="Configure platform storage quota limit (e.g. Free Tier 500MB vs Pro Tier 8GB)"
-            >
-              <Settings2 className="h-3.5 w-3.5 text-indigo-300" />
-              <span>Quota: {getStorageQuotaMB() >= 1024 ? `${(getStorageQuotaMB() / 1024).toFixed(1)} GB` : `${getStorageQuotaMB()} MB`}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => loadStorageTelemetry(companies)}
-              disabled={isLoadingStorage}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
-              title="Re-scan Supabase storage & latency"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isLoadingStorage ? 'animate-spin' : ''}`} />
-              <span>{isLoadingStorage ? 'Scanning...' : 'Scan DB'}</span>
-            </button>
           </div>
         </div>
 
-        {/* Metrics Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-          {/* Total Storage Used */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4 hover:border-indigo-400/30 transition">
-            <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1">
-              <HardDrive className="h-3.5 w-3.5 text-indigo-400" />
-              <span>Total Consumed</span>
-            </div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-xl sm:text-2xl font-black text-white">
+        {/* Vertical Divider */}
+        <div className="hidden xl:block h-6 w-px bg-slate-200 shrink-0" />
+
+        {/* 5. Consumed Storage */}
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-slate-900 text-indigo-400 rounded-lg shrink-0">
+            <HardDrive className="h-3.5 w-3.5" />
+          </div>
+          <div>
+            <span className="text-[10px] uppercase font-bold text-slate-400 block leading-none">Storage</span>
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <span className="text-sm font-black text-slate-900 leading-none">
                 {formatBytes(storageOverview?.totalBytesUsed || 0)}
               </span>
-              <span className="text-[10px] sm:text-xs text-indigo-300 font-mono">
+              <span className="text-[9px] text-indigo-600 font-mono font-bold">
                 ({storageOverview?.usagePercentage || 0}%)
               </span>
             </div>
-            <div className="mt-2 text-[10px] text-slate-400">
-              Across all {companies.length} client{companies.length === 1 ? '' : 's'}
-            </div>
           </div>
+        </div>
 
-          {/* Balance Left */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4 hover:border-emerald-400/30 transition">
-            <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5 mb-1">
-              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-              <span>Balance Remaining</span>
-            </div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-xl sm:text-2xl font-black text-emerald-400">
+        {/* 6. Storage Headroom */}
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-600 shrink-0">
+            <ShieldCheck className="h-3.5 w-3.5" />
+          </div>
+          <div>
+            <span className="text-[10px] uppercase font-bold text-slate-400 block leading-none">Headroom</span>
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <span className="text-sm font-black text-emerald-600 leading-none">
                 {formatBytes(storageOverview?.balanceBytesRemaining || 0)}
               </span>
-            </div>
-            <div className="mt-2 text-[10px] text-emerald-300/80 font-medium">
-              Storage headroom available
-            </div>
-          </div>
-
-          {/* Total Table Rows */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4 hover:border-blue-400/30 transition">
-            <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1">
-              <Layers className="h-3.5 w-3.5 text-blue-400" />
-              <span>Total Records</span>
-            </div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-xl sm:text-2xl font-black text-white">
-                {(storageOverview?.totalRowsCount || 0).toLocaleString()}
-              </span>
-              <span className="text-[10px] sm:text-xs text-slate-400">rows</span>
-            </div>
-            <div className="mt-2 text-[10px] text-slate-400">
-              Items, invoices, vouchers &amp; settings
-            </div>
-          </div>
-
-          {/* Realtime Connections */}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-3 sm:p-4 hover:border-amber-400/30 transition">
-            <div className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1">
-              <Activity className="h-3.5 w-3.5 text-amber-400" />
-              <span>Realtime Connections</span>
-            </div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-xl sm:text-2xl font-black text-amber-300">
-                {storageOverview?.activeRealtimeConnections || companies.length}
-              </span>
-              <span className="text-[10px] sm:text-xs text-slate-400 font-mono">
-                /{storageOverview?.realtimeQuota || 200}
-              </span>
-            </div>
-            <div className="mt-2 text-[10px] text-slate-400 flex items-center gap-1.5">
-              <span className="text-emerald-400 font-mono font-bold">~{storageOverview?.pingMs || 24}ms</span>
-              <span>Supabase ping</span>
             </div>
           </div>
         </div>
 
-        {/* Overall Storage Capacity Bar */}
-        <div className="bg-black/30 rounded-2xl p-3 border border-white/5">
-          <div className="flex flex-wrap items-center justify-between text-[11px] mb-1.5 font-medium gap-1">
-            <span className="text-slate-300">
-              Platform Storage Allocation ({formatBytes(storageOverview?.totalBytesUsed || 0)} of {formatBytes(storageOverview?.quotaBytes || 500 * 1024 * 1024)})
-            </span>
-            <span className="font-mono font-bold text-indigo-300">
-              {storageOverview?.usagePercentage || 0}% Consumed • {formatBytes(storageOverview?.balanceBytesRemaining || 0)} Balance Left
-            </span>
+        {/* 7. Total Records */}
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-blue-50 border border-blue-100 rounded-lg text-blue-600 shrink-0">
+            <Layers className="h-3.5 w-3.5" />
           </div>
-          <div className="w-full bg-white/10 rounded-full h-2.5 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                (storageOverview?.usagePercentage || 0) > 85
-                  ? 'bg-rose-500'
-                  : (storageOverview?.usagePercentage || 0) > 60
-                  ? 'bg-amber-500'
-                  : 'bg-gradient-to-r from-emerald-500 via-indigo-500 to-blue-500'
-              }`}
-              style={{ width: `${Math.max(1, Math.min(100, storageOverview?.usagePercentage || 0))}%` }}
-            />
+          <div>
+            <span className="text-[10px] uppercase font-bold text-slate-400 block leading-none">Records</span>
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <span className="text-sm font-black text-slate-900 leading-none">
+                {(storageOverview?.totalRowsCount || 0).toLocaleString()}
+              </span>
+              <span className="text-[9px] text-slate-400 font-medium">rows</span>
+            </div>
           </div>
+        </div>
+
+        {/* 8. Realtime Sockets & Latency */}
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-amber-50 border border-amber-100 rounded-lg text-amber-600 shrink-0 relative">
+            <Activity className="h-3.5 w-3.5" />
+            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" />
+          </div>
+          <div>
+            <span className="text-[10px] uppercase font-bold text-slate-400 block leading-none">Realtime</span>
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <span className="text-sm font-black text-slate-900 leading-none">
+                {storageOverview?.activeRealtimeConnections || companies.length}/{storageOverview?.realtimeQuota || 200}
+              </span>
+              <span className="text-[9px] text-emerald-600 font-mono font-bold">
+                ~{storageOverview?.pingMs || 24}ms
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 9. Action Buttons */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+          <button
+            type="button"
+            onClick={() => {
+              setQuotaInputMB(getStorageQuotaMB());
+              setShowQuotaModal(true);
+            }}
+            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold border border-slate-200 transition cursor-pointer flex items-center gap-1"
+            title="Configure platform storage quota limit (e.g. Free Tier 500MB vs Pro Tier 8GB)"
+          >
+            <Settings2 className="h-3 w-3 text-slate-500" />
+            <span>Quota: {getStorageQuotaMB() >= 1024 ? `${(getStorageQuotaMB() / 1024).toFixed(1)} GB` : `${getStorageQuotaMB()} MB`}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => loadStorageTelemetry(companies)}
+            disabled={isLoadingStorage}
+            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-[10px] font-bold transition cursor-pointer flex items-center gap-1 shadow-xs"
+            title="Re-scan Supabase storage & latency"
+          >
+            <RefreshCw className={`h-3 w-3 ${isLoadingStorage ? 'animate-spin' : ''}`} />
+            <span>{isLoadingStorage ? 'Scanning...' : 'Scan DB'}</span>
+          </button>
         </div>
       </div>
 
@@ -1620,7 +1632,7 @@ Please save this link to your phone or desktop.`;
             filteredCompanies.map(company => {
               const isActive = company.is_active !== false;
               const isToggling = togglingId === company.id;
-              const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing);
+              const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing, company.currency_symbol || 'Nu.');
               const badge = formatPlanBadge(plan);
               const limit = company.allowed_counters !== undefined ? company.allowed_counters : getMaxTerminalLimit(company.id);
 
@@ -1823,7 +1835,7 @@ Please save this link to your phone or desktop.`;
                 filteredCompanies.map(company => {
                   const isActive = company.is_active !== false;
                   const isToggling = togglingId === company.id;
-                  const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing);
+                  const plan = parseSubscriptionPlan(company.subscription_plan, globalPricing, company.currency_symbol || 'Nu.');
                   const badge = formatPlanBadge(plan);
                   const limit = company.allowed_counters !== undefined ? company.allowed_counters : getMaxTerminalLimit(company.id);
                   const cs = storageOverview?.clientStats[company.id];
@@ -2381,9 +2393,9 @@ Please save this link to your phone or desktop.`;
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
                     { id: 'free', label: 'Free Trial', priceLabel: '0 / Free' },
-                    { id: 'starter', label: 'Starter', priceLabel: planFormCurrency === 'Nu.' ? 'Nu. 1,000' : '$15/mo' },
-                    { id: 'commercial', label: 'Commercial', priceLabel: planFormCurrency === 'Nu.' ? 'Nu. 1,800' : '$25/mo' },
-                    { id: 'enterprise', label: 'Enterprise', priceLabel: planFormCurrency === 'Nu.' ? 'Nu. 3,500' : '$50/mo' },
+                    { id: 'starter', label: 'Starter', priceLabel: 'Nu. 1,000/mo' },
+                    { id: 'commercial', label: 'Commercial', priceLabel: 'Nu. 1,800/mo' },
+                    { id: 'enterprise', label: 'Enterprise', priceLabel: 'Nu. 3,500/mo' },
                   ].map(preset => (
                     <button
                       key={preset.id}
@@ -2431,7 +2443,7 @@ Please save this link to your phone or desktop.`;
                       setPlanFormPrice(e.target.value);
                       setPlanFormTier('custom');
                     }}
-                    placeholder="25"
+                    placeholder="1800"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                   />
                 </div>
@@ -2444,11 +2456,11 @@ Please save this link to your phone or desktop.`;
                   <select
                     value={planFormCurrency}
                     onChange={e => setPlanFormCurrency(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition font-bold"
                   >
-                    <option value="USD">USD ($ - US Dollar)</option>
                     <option value="Nu.">Nu. (BTN - Bhutanese Ngultrum)</option>
                     <option value="INR">INR (₹ - Indian Rupee)</option>
+                    <option value="USD">USD ($ - US Dollar)</option>
                   </select>
                 </div>
 
@@ -2546,7 +2558,7 @@ Please save this link to your phone or desktop.`;
                   <span className="text-sm font-black text-emerald-600 font-mono">
                     {(() => {
                       const numP = typeof planFormPrice === 'string' ? (parseFloat(planFormPrice) || 0) : planFormPrice;
-                      const sym = planFormCurrency === 'USD' ? '$' : planFormCurrency === 'Nu.' ? 'Nu. ' : '₹';
+                      const sym = (planFormCurrency === 'INR' || planFormCurrency === '₹') ? '₹' : 'Nu. ';
                       const monthly = planFormCycle === 'yearly' ? Math.round(numP / 12) : planFormCycle === 'quarterly' ? Math.round(numP / 3) : numP;
                       return `${sym}${monthly.toLocaleString()}/mo`;
                     })()}
@@ -2636,7 +2648,7 @@ Please save this link to your phone or desktop.`;
                     required
                     value={editGlobalPrice}
                     onChange={e => setEditGlobalPrice(e.target.value)}
-                    placeholder="25"
+                    placeholder="1800"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-mono placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
                   />
                 </div>
@@ -2646,11 +2658,11 @@ Please save this link to your phone or desktop.`;
                   <select
                     value={editGlobalCurrency}
                     onChange={e => setEditGlobalCurrency(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 focus:outline-none focus:border-indigo-500 focus:bg-white transition font-bold"
                   >
-                    <option value="USD">USD ($)</option>
                     <option value="Nu.">Nu. (BTN)</option>
                     <option value="INR">INR (₹)</option>
+                    <option value="USD">USD ($)</option>
                   </select>
                 </div>
               </div>
@@ -2976,12 +2988,16 @@ Please save this link to your phone or desktop.`;
                         <label className="block text-slate-700 font-bold mb-1">Currency Symbol</label>
                         <select
                           value={unifiedCurrency}
-                          onChange={e => setUnifiedCurrency(e.target.value)}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setUnifiedCurrency(val);
+                            setUnifiedPlanCurrency(val);
+                          }}
                           className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-slate-800 text-xs font-bold focus:outline-none focus:border-indigo-500 shadow-2xs"
                         >
                           <option value="Nu.">Nu. (BTN - Bhutan)</option>
-                          <option value="USD">USD ($ - US Dollar)</option>
                           <option value="₹">₹ (INR - Indian Rupee)</option>
+                          <option value="USD">USD ($ - US Dollar)</option>
                           <option value="€">€ (EUR - Euro)</option>
                           <option value="£">£ (GBP - British Pound)</option>
                         </select>
@@ -3257,31 +3273,36 @@ Store: ${unifiedCompanyName || unifiedClient.company_name}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {[
                         { id: 'free', label: 'Free Trial', priceLabel: '0 / Free' },
-                        { id: 'starter', label: 'Starter', priceLabel: unifiedPlanCurrency === 'Nu.' ? 'Nu. 1,000' : '$15/mo' },
-                        { id: 'commercial', label: 'Commercial', priceLabel: unifiedPlanCurrency === 'Nu.' ? 'Nu. 1,800' : '$25/mo' },
-                        { id: 'enterprise', label: 'Enterprise', priceLabel: unifiedPlanCurrency === 'Nu.' ? 'Nu. 3,500' : '$50/mo' },
+                        { id: 'starter', label: 'Starter', priceLabel: 'Nu. 1,000/mo' },
+                        { id: 'commercial', label: 'Commercial', priceLabel: 'Nu. 1,800/mo' },
+                        { id: 'enterprise', label: 'Enterprise', priceLabel: 'Nu. 3,500/mo' },
                       ].map(preset => (
                         <button
                           key={preset.id}
                           type="button"
                           onClick={() => {
                             setUnifiedPlanTier(preset.id);
-                            const isNu = unifiedPlanCurrency === 'Nu.' || unifiedPlanCurrency === 'BTN';
                             if (preset.id === 'free') {
                               setUnifiedPlanName('Free Trial');
                               setUnifiedPlanPrice(0);
                               setUnifiedPlanCycle('monthly');
                             } else if (preset.id === 'starter') {
                               setUnifiedPlanName('Starter Tier');
-                              setUnifiedPlanPrice(isNu ? 1000 : 15);
+                              setUnifiedPlanPrice(1000);
+                              setUnifiedPlanCurrency('Nu.');
+                              setUnifiedCurrency('Nu.');
                               setUnifiedPlanCycle('monthly');
                             } else if (preset.id === 'commercial') {
                               setUnifiedPlanName('Commercial Plan');
-                              setUnifiedPlanPrice(isNu ? 1800 : 25);
+                              setUnifiedPlanPrice(1800);
+                              setUnifiedPlanCurrency('Nu.');
+                              setUnifiedCurrency('Nu.');
                               setUnifiedPlanCycle('monthly');
                             } else if (preset.id === 'enterprise') {
                               setUnifiedPlanName('Enterprise Tier');
-                              setUnifiedPlanPrice(isNu ? 3500 : 50);
+                              setUnifiedPlanPrice(3500);
+                              setUnifiedPlanCurrency('Nu.');
+                              setUnifiedCurrency('Nu.');
                               setUnifiedPlanCycle('monthly');
                             }
                           }}
@@ -3331,12 +3352,16 @@ Store: ${unifiedCompanyName || unifiedClient.company_name}
                       <label className="block text-slate-700 font-bold mb-1">Billing Currency</label>
                       <select
                         value={unifiedPlanCurrency}
-                        onChange={e => setUnifiedPlanCurrency(e.target.value)}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setUnifiedPlanCurrency(val);
+                          setUnifiedCurrency(val);
+                        }}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 text-xs font-bold"
                       >
-                        <option value="USD">USD ($)</option>
                         <option value="Nu.">Nu. (BTN)</option>
                         <option value="INR">INR (₹)</option>
+                        <option value="USD">USD ($)</option>
                       </select>
                     </div>
                     <div>
