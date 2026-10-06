@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo } from 'react';
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   Users,
   DollarSign,
@@ -32,7 +34,8 @@ import {
   Mail,
   MessageSquare,
   Share2,
-  Send
+  Send,
+  Eye
 } from 'lucide-react';
 import { EmployeeAdvances } from './payroll/EmployeeAdvances';
 import { StaffManagementView } from './employee/StaffManagementView';
@@ -207,6 +210,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
   // DRC Form IT-1(a) Monthly Salary Schedule Modal
   const [showDrcFormModal, setShowDrcFormModal] = useState(false);
+
+  // Full Printable Salary Register Sheet Modal
+  const [showSalarySheetPrintModal, setShowSalarySheetPrintModal] = useState(false);
 
   // Notification Toast
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -541,6 +547,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
         empCode: emp.empCode,
         fullName: emp.fullName,
         cidNo: emp.cidNo,
+        tpnNo: emp.tpnNo || '',
         designation: emp.designation,
         department: emp.department,
         bankName: emp.bankName,
@@ -871,24 +878,234 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
   };
 
   // Salary Register Export & Share Handlers
+  const handleExportSalaryRegisterPDF = () => {
+    if (!currentPayroll) return;
+    const entries = displayedRegisterEntries.length > 0 ? displayedRegisterEntries : currentPayroll.entries;
+
+    // A4 Landscape is 297mm width x 210mm height
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 6;
+
+    // Header Corporate Card Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(margin, 6, pageWidth - margin * 2, 22, 2, 2, 'FD');
+
+    // Company Name
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(15, 23, 42);
+    doc.text((config.CompanyName || 'BHUTAN ENTERPRISE').toUpperCase(), pageWidth / 2, 12, { align: 'center' });
+
+    // Address
+    if (config.Address) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(config.Address, pageWidth / 2, 16.5, { align: 'center' });
+    }
+
+    // Report Title Badge
+    const titleText = `MONTHLY SALARY REGISTER - ${currentPayroll.monthYear.toUpperCase()}`;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(30, 64, 175);
+    doc.text(titleText, pageWidth / 2, 21.5, { align: 'center' });
+
+    // Metadata Subtext
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    const metaText = `Generated: ${new Date().toLocaleDateString('en-GB')}  |  Total Staff: ${entries.length}  |  Currency: Bhutanese Ngultrum (Nu.)`;
+    doc.text(metaText, pageWidth / 2, 25.5, { align: 'center' });
+
+    // Table Headers
+    const tableHeaders = [
+      'ID No',
+      'Employee Name',
+      'Designation',
+      'Days',
+      ...activeEarningsHeads.map(h => formatPayHeadDisplayName(h.name, h.id)),
+      'Gross Pay',
+      ...activeDeductionsHeads.map(h => formatPayHeadDisplayName(h.name, h.id)),
+      'Total Ded.',
+      'Net Payable'
+    ];
+
+    // Table Body
+    const tableBody = entries.map(entry => {
+      const mDays = entry.monthTotalDays || 30;
+      const wDays = entry.workingDays !== undefined ? entry.workingDays : mDays;
+      const earningsVals = activeEarningsHeads.map(h => {
+        const amt = h.id === 'ph_basic'
+          ? (entry.earnings.find(e => e.payHeadId === 'ph_basic')?.amount ?? entry.basicSalary)
+          : (entry.earnings.find(e => e.payHeadId === h.id)?.amount ?? 0);
+        return amt ? amt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
+      });
+
+      const deductionsVals = activeDeductionsHeads.map(h => {
+        const amt = entry.deductions.find(d => d.payHeadId === h.id)?.amount ?? 0;
+        return amt ? amt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
+      });
+
+      return [
+        entry.empCode,
+        entry.fullName,
+        entry.designation,
+        String(wDays),
+        ...earningsVals,
+        entry.grossPay.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        ...deductionsVals,
+        entry.totalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        entry.netPay.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      ];
+    });
+
+    // Total Footer Row
+    const totalEarningsVals = activeEarningsHeads.map(h => {
+      const amt = earningTotals[h.id] || 0;
+      return amt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    });
+
+    const totalDeductionsVals = activeDeductionsHeads.map(h => {
+      const amt = deductionTotals[h.id] || 0;
+      return amt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    });
+
+    const tableFoot = [[
+      'TOTAL',
+      `${entries.length} Staff`,
+      '',
+      '',
+      ...totalEarningsVals,
+      displayedTotalGross.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      ...totalDeductionsVals,
+      displayedTotalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      displayedTotalNet.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    ]];
+
+    autoTable(doc, {
+      startY: 30,
+      margin: { left: margin, right: margin, top: 6, bottom: 8 },
+      head: [tableHeaders],
+      body: tableBody,
+      foot: tableFoot,
+      theme: 'grid',
+      styles: {
+        fontSize: 7,
+        cellPadding: 1.5,
+        overflow: 'linebreak',
+        valign: 'middle',
+        lineColor: [203, 213, 225],
+        lineWidth: 0.15
+      },
+      headStyles: {
+        fillColor: [30, 64, 175], // Bright Royal Blue (#1E40AF)
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 7.2,
+        halign: 'center',
+        valign: 'middle',
+        cellPadding: 2
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252]
+      },
+      footStyles: {
+        fillColor: [226, 232, 240],
+        textColor: [15, 23, 42],
+        fontStyle: 'bold',
+        fontSize: 7.2,
+        halign: 'right',
+        lineWidth: { top: 0.3, bottom: 0.5 },
+        lineColor: [15, 23, 42]
+      },
+      didParseCell: (data) => {
+        if (data.column.index >= 3) {
+          data.cell.styles.halign = 'right';
+        }
+        if (data.column.index === 0 || data.column.index === 3) {
+          data.cell.styles.halign = 'center';
+        }
+        if (data.column.index === 1 && data.section === 'body') {
+          data.cell.styles.fontStyle = 'bold';
+        }
+        const totalEarningsColIndex = 4 + activeEarningsHeads.length - 1;
+        const totalDedColIndex = totalEarningsColIndex + activeDeductionsHeads.length + 1;
+        const netPayColIndex = tableHeaders.length - 1;
+
+        if (data.column.index === totalEarningsColIndex && data.section === 'body') {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.textColor = [30, 58, 138];
+          data.cell.styles.fillColor = [238, 242, 255];
+        }
+        if (data.column.index === totalDedColIndex && data.section === 'body') {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.textColor = [159, 18, 57];
+          data.cell.styles.fillColor = [255, 241, 242];
+        }
+        if (data.column.index === netPayColIndex && data.section === 'body') {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.textColor = [6, 95, 70];
+          data.cell.styles.fillColor = [236, 253, 245];
+        }
+        if (data.section === 'foot' && data.column.index === 0) {
+          data.cell.styles.halign = 'left';
+        }
+      }
+    });
+
+    const finalY = (doc as any).lastAutoTable?.finalY || 150;
+    const signatureY = Math.min(finalY + 14, pageHeight - 14);
+
+    if (signatureY < pageHeight - 6) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(71, 85, 105);
+      doc.setDrawColor(148, 163, 184);
+      doc.setLineWidth(0.3);
+
+      const sigColWidth = (pageWidth - margin * 2) / 3;
+      
+      doc.line(margin + 8, signatureY, margin + sigColWidth - 8, signatureY);
+      doc.text('Prepared By (Accountant)', margin + sigColWidth / 2, signatureY + 4, { align: 'center' });
+
+      doc.line(margin + sigColWidth + 8, signatureY, margin + sigColWidth * 2 - 8, signatureY);
+      doc.text('Verified By (HR / Admin)', margin + sigColWidth * 1.5, signatureY + 4, { align: 'center' });
+
+      doc.line(margin + sigColWidth * 2 + 8, signatureY, pageWidth - margin - 8, signatureY);
+      doc.text('Approved By (Managing Director)', margin + sigColWidth * 2.5, signatureY + 4, { align: 'center' });
+    }
+
+    const filename = `Salary_Register_${currentPayroll.monthYear.replace(/\s+/g, '_')}.pdf`;
+    doc.save(filename);
+    showToast('Salary Register PDF generated and downloaded successfully!');
+  };
+
   const handleExportSalaryRegisterExcel = () => {
     if (!currentPayroll) return;
     const entries = displayedRegisterEntries.length > 0 ? displayedRegisterEntries : currentPayroll.entries;
 
-    const titleRow = [`${config.CompanyName.toUpperCase()} - SALARY REGISTER REPORT FOR ${currentPayroll.monthYear.toUpperCase()}`];
-    const subTitleRow = [`Generated Date: ${new Date().toLocaleDateString('en-GB')} | Total Staff: ${entries.length} | Currency: Bhutanese Ngultrum (Nu.)`];
+    const companyTitle = `${(config.CompanyName || 'BHUTAN ENTERPRISE').toUpperCase()} - MONTHLY SALARY REGISTER`;
+    const subTitle = `Payroll Period: ${currentPayroll.monthYear.toUpperCase()}  |  Generated Date: ${new Date().toLocaleDateString('en-GB')}  |  Total Staff: ${entries.length}  |  Currency: Bhutanese Ngultrum (Nu.)`;
 
     const headerRow = [
       'ID No',
       'Employee Name',
       'Designation',
       'Days Worked',
-      ...activeEarningsHeads.map(h => h.name),
+      ...activeEarningsHeads.map(h => formatPayHeadDisplayName(h.name, h.id)),
       'Gross Pay',
-      ...activeDeductionsHeads.map(h => h.name),
+      ...activeDeductionsHeads.map(h => formatPayHeadDisplayName(h.name, h.id)),
       'Total Deductions',
       'Net Payable'
     ];
+
+    const titleRow = [companyTitle, ...Array(headerRow.length - 1).fill('')];
+    const subTitleRow = [subTitle, ...Array(headerRow.length - 1).fill('')];
 
     const dataRows = entries.map(entry => {
       const mDays = entry.monthTotalDays || 30;
@@ -934,11 +1151,11 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     const sheetData = [titleRow, subTitleRow, [], headerRow, ...dataRows, totalRow];
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
 
-    // Dynamic & generous Column Widths so no column is truncated
+    // Optimized column widths with plenty of margin
     const colWidths = headerRow.map((header, colIdx) => {
       if (colIdx === 0) return { wch: 14 }; // ID No
-      if (colIdx === 1) return { wch: 25 }; // Employee Name
-      if (colIdx === 2) return { wch: 22 }; // Designation
+      if (colIdx === 1) return { wch: 28 }; // Employee Name
+      if (colIdx === 2) return { wch: 24 }; // Designation
       if (colIdx === 3) return { wch: 14 }; // Days Worked
 
       let maxLen = header.length;
@@ -949,19 +1166,19 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
           if (str.length > maxLen) maxLen = str.length;
         }
       });
-      return { wch: Math.max(maxLen + 5, 14) };
+      return { wch: Math.max(maxLen + 6, 16) };
     });
 
     ws['!cols'] = colWidths;
 
     // Row Heights
     ws['!rows'] = [
-      { hpt: 30 }, // Title row 1
-      { hpt: 18 }, // Subtitle row 2
-      { hpt: 10 }, // Blank row 3
-      { hpt: 28 }, // Header row 4
-      ...dataRows.map(() => ({ hpt: 22 })),
-      { hpt: 26 }  // Total row
+      { hpt: 34 }, // Title row 0
+      { hpt: 22 }, // Subtitle row 1
+      { hpt: 8 },  // Blank row 2
+      { hpt: 32 }, // Header row 3
+      ...dataRows.map(() => ({ hpt: 24 })),
+      { hpt: 28 }  // Total row
     ];
 
     // Merged Cells for Title & Subtitle Banner
@@ -970,7 +1187,43 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       { s: { r: 1, c: 0 }, e: { r: 1, c: headerRow.length - 1 } }
     ];
 
-    // Style Header Cells (Bright Blue fill, white bold text, wrap text) and Data Cells
+    // Total earnings, deductions, and net pay column indexes
+    const grossPayColIdx = 4 + activeEarningsHeads.length - 1;
+    const totalDedColIdx = grossPayColIdx + activeDeductionsHeads.length + 1;
+    const netPayColIdx = headerRow.length - 1;
+
+    // Style Title Row (Row 0)
+    for (let C = 0; C < headerRow.length; C++) {
+      const cellRef0 = XLSX.utils.encode_cell({ r: 0, c: C });
+      if (!ws[cellRef0]) ws[cellRef0] = { v: '', t: 's' };
+      ws[cellRef0].s = {
+        font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 14 },
+        fill: { fgColor: { rgb: "1E3A8A" } }, // Dark Royal Navy Blue
+        alignment: { vertical: "center", horizontal: "center", wrapText: true },
+        border: {
+          top: { style: "medium", color: { rgb: "1E3A8A" } },
+          bottom: { style: "thin", color: { rgb: "2563EB" } },
+          left: { style: "medium", color: { rgb: "1E3A8A" } },
+          right: { style: "medium", color: { rgb: "1E3A8A" } }
+        }
+      };
+
+      const cellRef1 = XLSX.utils.encode_cell({ r: 1, c: C });
+      if (!ws[cellRef1]) ws[cellRef1] = { v: '', t: 's' };
+      ws[cellRef1].s = {
+        font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 10 },
+        fill: { fgColor: { rgb: "2563EB" } }, // Royal Blue
+        alignment: { vertical: "center", horizontal: "center", wrapText: true },
+        border: {
+          top: { style: "thin", color: { rgb: "2563EB" } },
+          bottom: { style: "medium", color: { rgb: "1E3A8A" } },
+          left: { style: "medium", color: { rgb: "1E3A8A" } },
+          right: { style: "medium", color: { rgb: "1E3A8A" } }
+        }
+      };
+    }
+
+    // Style Header Row (Row 3), Data Rows (Row 4 to N), and Total Row
     const headerRowIdx = 3;
     for (let R = headerRowIdx; R < sheetData.length; R++) {
       const isHeader = R === headerRowIdx;
@@ -983,13 +1236,17 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
         if (isHeader) {
           ws[cellRef].s = {
             font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 11 },
-            fill: { fgColor: { rgb: "1E40AF" } }, // Bright Royal Blue
-            alignment: { vertical: "center", horizontal: C >= 3 ? "right" : "left", wrapText: true },
+            fill: { fgColor: { rgb: "1E40AF" } }, // Bright Royal Blue (#1E40AF)
+            alignment: {
+              vertical: "center",
+              horizontal: C === 0 || C === 3 ? "center" : (C < 3 ? "left" : "right"),
+              wrapText: true
+            },
             border: {
               top: { style: "medium", color: { rgb: "1E3A8A" } },
               bottom: { style: "medium", color: { rgb: "1E3A8A" } },
-              left: { style: "thin", color: { rgb: "3B82F6" } },
-              right: { style: "thin", color: { rgb: "3B82F6" } }
+              left: { style: "thin", color: { rgb: "60A5FA" } },
+              right: { style: "thin", color: { rgb: "60A5FA" } }
             }
           };
         } else {
@@ -1000,15 +1257,47 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
             ws[cellRef].z = '0';
           }
 
+          let cellFillRgb = R % 2 === 0 ? "F8FAFC" : "FFFFFF";
+          let cellFontColor = "334155";
+          let cellBold = isTotalRow;
+
+          if (isTotalRow) {
+            cellFillRgb = "E2E8F0";
+            cellFontColor = "0F172A";
+            cellBold = true;
+          } else {
+            if (C === 1) {
+              cellBold = true;
+              cellFontColor = "0F172A";
+            }
+            if (C === grossPayColIdx) {
+              cellFillRgb = "EEF2FF"; // Soft indigo
+              cellFontColor = "312E81";
+              cellBold = true;
+            } else if (C === totalDedColIdx) {
+              cellFillRgb = "FFE4E6"; // Soft rose
+              cellFontColor = "9F1239";
+              cellBold = true;
+            } else if (C === netPayColIdx) {
+              cellFillRgb = "ECFDF5"; // Soft emerald
+              cellFontColor = "065F46";
+              cellBold = true;
+            }
+          }
+
           ws[cellRef].s = {
-            font: { bold: isTotalRow, color: { rgb: isTotalRow ? "0F172A" : "334155" }, name: "Calibri", sz: 10 },
-            fill: isTotalRow ? { fgColor: { rgb: "E2E8F0" } } : (R % 2 === 0 ? { fgColor: { rgb: "F8FAFC" } } : { fgColor: { rgb: "FFFFFF" } }),
-            alignment: { vertical: "center", horizontal: C >= 3 ? "right" : "left", wrapText: true },
+            font: { bold: cellBold, color: { rgb: cellFontColor }, name: "Calibri", sz: isTotalRow ? 10.5 : 10 },
+            fill: { fgColor: { rgb: cellFillRgb } },
+            alignment: {
+              vertical: "center",
+              horizontal: C === 0 || C === 3 ? "center" : (C < 3 ? "left" : "right"),
+              wrapText: true
+            },
             border: {
-              top: { style: isTotalRow ? "double" : "thin", color: { rgb: "CBD5E1" } },
-              bottom: { style: isTotalRow ? "double" : "thin", color: { rgb: "CBD5E1" } },
-              left: { style: "thin", color: { rgb: "E2E8F0" } },
-              right: { style: "thin", color: { rgb: "E2E8F0" } }
+              top: { style: isTotalRow ? "medium" : "thin", color: { rgb: isTotalRow ? "64748B" : "CBD5E1" } },
+              bottom: { style: isTotalRow ? "double" : "thin", color: { rgb: isTotalRow ? "0F172A" : "CBD5E1" } },
+              left: { style: "thin", color: { rgb: "CBD5E1" } },
+              right: { style: "thin", color: { rgb: "CBD5E1" } }
             }
           };
         }
@@ -1060,36 +1349,405 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
   };
 
   // Payslip Export & Share Handlers
+  const handleExportPayslipPDF = (entry: PayrollEntry) => {
+    if (!currentPayroll) return;
+
+    const empTpn = entry.tpnNo || employees.find(e => e.empCode === entry.empCode || e.id === entry.empId)?.tpnNo || '-';
+
+    // A4 Portrait is 210mm width x 297mm height
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 12;
+
+    // Header Corporate Card Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(margin, 10, pageWidth - margin * 2, 22, 2, 2, 'FD');
+
+    // Company Name
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(15, 23, 42);
+    doc.text((config.CompanyName || 'BHUTAN ENTERPRISE').toUpperCase(), pageWidth / 2, 16, { align: 'center' });
+
+    // Address
+    if (config.Address) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(config.Address, pageWidth / 2, 20.5, { align: 'center' });
+    }
+
+    // Report Title Badge
+    const titleText = `SALARY PAYSLIP - ${currentPayroll.monthYear.toUpperCase()}`;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.setTextColor(30, 64, 175);
+    doc.text(titleText, pageWidth / 2, 26, { align: 'center' });
+
+    // Employee Information Box
+    const infoY = 35;
+    doc.setFillColor(241, 245, 249);
+    doc.setDrawColor(203, 213, 225);
+    doc.roundedRect(margin, infoY, pageWidth - margin * 2, 28, 2, 2, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(71, 85, 105);
+
+    // Left Column Info
+    doc.text('Employee Name:', margin + 4, infoY + 5.5);
+    doc.text('ID No:', margin + 4, infoY + 11.5);
+    doc.text('CID Number:', margin + 4, infoY + 17.5);
+    doc.text('TPN Number:', margin + 4, infoY + 23.5);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(entry.fullName, margin + 28, infoY + 5.5);
+    doc.setFont('courier', 'bold');
+    doc.text(entry.empCode, margin + 28, infoY + 11.5);
+    doc.text(entry.cidNo || '-', margin + 28, infoY + 17.5);
+    doc.text(empTpn, margin + 28, infoY + 23.5);
+
+    // Right Column Info
+    const rightColX = pageWidth / 2 + 4;
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(71, 85, 105);
+    doc.text('Designation:', rightColX, infoY + 5.5);
+    doc.text('Department:', rightColX, infoY + 11.5);
+    doc.text('Bank Name:', rightColX, infoY + 17.5);
+    doc.text('Bank A/C:', rightColX, infoY + 23.5);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(entry.designation, rightColX + 24, infoY + 5.5);
+    doc.text(entry.department || '-', rightColX + 24, infoY + 11.5);
+    doc.text(entry.bankName || '-', rightColX + 24, infoY + 17.5);
+    doc.setFont('courier', 'bold');
+    doc.text(entry.accountNo || '-', rightColX + 24, infoY + 23.5);
+
+    // Prepare Earnings & Deductions Grid Data
+    const earningsData = entry.earnings.map(item => [
+      formatPayHeadDisplayName(item.payHeadName, item.payHeadId),
+      item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    ]);
+    const deductionsData = entry.deductions.map(item => [
+      formatPayHeadDisplayName(item.payHeadName, item.payHeadId),
+      item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    ]);
+
+    const maxRows = Math.max(earningsData.length, deductionsData.length);
+    const tableBody = Array.from({ length: maxRows }).map((_, i) => [
+      earningsData[i]?.[0] || '',
+      earningsData[i]?.[1] || '',
+      deductionsData[i]?.[0] || '',
+      deductionsData[i]?.[1] || ''
+    ]);
+
+    const tableFoot = [[
+      'TOTAL GROSS PAY',
+      `Nu. ${entry.grossPay.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      'TOTAL DEDUCTIONS',
+      `Nu. ${entry.totalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    ]];
+
+    autoTable(doc, {
+      startY: infoY + 32,
+      margin: { left: margin, right: margin },
+      head: [['EARNINGS (PAY HEADS)', 'AMOUNT (Nu.)', 'DEDUCTIONS (PAY HEADS)', 'AMOUNT (Nu.)']],
+      body: tableBody,
+      foot: tableFoot,
+      theme: 'grid',
+      styles: {
+        fontSize: 7.5,
+        cellPadding: 2,
+        valign: 'middle',
+        lineColor: [203, 213, 225],
+        lineWidth: 0.15
+      },
+      headStyles: {
+        fillColor: [30, 64, 175], // Bright Royal Blue (#1E40AF)
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8,
+        halign: 'center',
+        cellPadding: 2.5
+      },
+      columnStyles: {
+        0: { cellWidth: 50, halign: 'left' },
+        1: { cellWidth: 43, halign: 'right', font: 'courier' },
+        2: { cellWidth: 50, halign: 'left' },
+        3: { cellWidth: 43, halign: 'right', font: 'courier' }
+      },
+      footStyles: {
+        fillColor: [226, 232, 240],
+        textColor: [15, 23, 42],
+        fontStyle: 'bold',
+        fontSize: 8,
+        lineWidth: { top: 0.3, bottom: 0.5 },
+        lineColor: [15, 23, 42]
+      },
+      didParseCell: (data) => {
+        if (data.section === 'head') {
+          if (data.column.index <= 1) {
+            data.cell.styles.fillColor = [6, 95, 70]; // Emerald for Earnings
+          } else {
+            data.cell.styles.fillColor = [159, 18, 57]; // Rose for Deductions
+          }
+        }
+        if (data.section === 'foot') {
+          if (data.column.index === 1) {
+            data.cell.styles.textColor = [6, 95, 70];
+            data.cell.styles.fillColor = [236, 253, 245];
+          } else if (data.column.index === 3) {
+            data.cell.styles.textColor = [159, 18, 57];
+            data.cell.styles.fillColor = [255, 241, 242];
+          }
+        }
+      }
+    });
+
+    const finalY = (doc as any).lastAutoTable?.finalY || 140;
+
+    // Net Salary Payable Corporate Banner
+    const netY = finalY + 6;
+    doc.setFillColor(15, 23, 42); // Dark Navy Slate
+    doc.roundedRect(margin, netY, pageWidth - margin * 2, 18, 2, 2, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text('NET SALARY PAYABLE:', margin + 6, netY + 7);
+
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7.5);
+    doc.setTextColor(226, 232, 240);
+    const inWords = numberToWordsBhutan(entry.netPay);
+    doc.text(inWords, margin + 6, netY + 13);
+
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(52, 211, 153); // Bright emerald green
+    const netFormatted = `Nu. ${entry.netPay.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    doc.text(netFormatted, pageWidth - margin - 6, netY + 11, { align: 'right' });
+
+    // Authorization Signatures
+    const sigY = netY + 36;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(71, 85, 105);
+    doc.setDrawColor(148, 163, 184);
+    doc.setLineWidth(0.3);
+
+    const sigWidth = (pageWidth - margin * 2) / 2;
+
+    doc.line(margin + 8, sigY, margin + sigWidth - 8, sigY);
+    doc.text('Employer / Authorized Signature', margin + sigWidth / 2, sigY + 4, { align: 'center' });
+
+    doc.line(margin + sigWidth + 8, sigY, pageWidth - margin - 8, sigY);
+    doc.text('Employee Signature', margin + sigWidth * 1.5, sigY + 4, { align: 'center' });
+
+    const filename = `Payslip_${entry.fullName.replace(/\s+/g, '_')}_${currentPayroll.monthYear.replace(/\s+/g, '_')}.pdf`;
+    doc.save(filename);
+    showToast(`Payslip PDF for ${entry.fullName} downloaded successfully!`);
+  };
+
   const handleExportPayslipExcel = (entry: PayrollEntry) => {
     if (!currentPayroll) return;
-    const titleRow = [`${config.CompanyName} - PAYSLIP FOR ${currentPayroll.monthYear.toUpperCase()}`];
+
+    const empTpn = entry.tpnNo || employees.find(e => e.empCode === entry.empCode || e.id === entry.empId)?.tpnNo || '-';
+
+    const companyTitle = `${(config.CompanyName || 'BHUTAN ENTERPRISE').toUpperCase()} - SALARY PAYSLIP`;
+    const subTitle = `Payroll Period: ${currentPayroll.monthYear.toUpperCase()}  |  Generated: ${new Date().toLocaleDateString('en-GB')}  |  Currency: Bhutanese Ngultrum (Nu.)`;
+
+    const titleRow = [companyTitle, '', '', ''];
+    const subTitleRow = [subTitle, '', '', ''];
+
     const infoRows = [
-      [`Employee Name:`, entry.fullName, `ID No:`, entry.empCode],
-      [`CID Number:`, entry.cidNo || '-', `Designation:`, entry.designation],
-      [`Department:`, entry.department || '-', `Bank A/C:`, `${entry.bankName} (${entry.accountNo})`]
+      ['Employee Name:', entry.fullName, 'ID No:', entry.empCode],
+      ['CID Number:', entry.cidNo || '-', 'TPN Number:', empTpn],
+      ['Designation:', entry.designation, 'Department:', entry.department || '-'],
+      ['Bank Name:', entry.bankName || '-', 'Bank A/C:', entry.accountNo || '-']
     ];
 
     const earningsData = entry.earnings.map(item => [formatPayHeadDisplayName(item.payHeadName, item.payHeadId), item.amount]);
     const deductionsData = entry.deductions.map(item => [formatPayHeadDisplayName(item.payHeadName, item.payHeadId), item.amount]);
 
+    const maxRows = Math.max(earningsData.length, deductionsData.length);
+    const itemsRows = Array.from({ length: maxRows }).map((_, i) => [
+      earningsData[i]?.[0] || '',
+      earningsData[i]?.[1] || '',
+      deductionsData[i]?.[0] || '',
+      deductionsData[i]?.[1] || ''
+    ]);
+
+    const subTotalRow = ['TOTAL GROSS PAY', entry.grossPay, 'TOTAL DEDUCTIONS', entry.totalDeductions];
+    const netPayBannerRow = [`NET SALARY PAYABLE: Nu. ${entry.netPay.toLocaleString('en-IN', { minimumFractionDigits: 2 })} (${numberToWordsBhutan(entry.netPay)})`, '', '', ''];
+    const sigRow = ['Employer / Authorized Signature', '', 'Employee Signature', ''];
+
     const sheetData = [
       titleRow,
+      subTitleRow,
       [],
       ...infoRows,
       [],
-      [`EARNINGS`, `AMOUNT (${config.CurrencySymbol || 'Nu.'})`, `DEDUCTIONS`, `AMOUNT (${config.CurrencySymbol || 'Nu.'})`],
-      ...Array.from({ length: Math.max(earningsData.length, deductionsData.length) }).map((_, i) => [
-        earningsData[i]?.[0] || '',
-        earningsData[i]?.[1] || '',
-        deductionsData[i]?.[0] || '',
-        deductionsData[i]?.[1] || ''
-      ]),
-      [`TOTAL GROSS PAY`, entry.grossPay, `TOTAL DEDUCTIONS`, entry.totalDeductions],
+      ['EARNINGS (PAY HEADS)', 'AMOUNT (Nu.)', 'DEDUCTIONS (PAY HEADS)', 'AMOUNT (Nu.)'],
+      ...itemsRows,
+      subTotalRow,
       [],
-      [`NET SALARY PAYABLE`, entry.netPay, `(${numberToWordsBhutan(entry.netPay)})`]
+      netPayBannerRow,
+      [],
+      sigRow
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+    ws['!cols'] = [
+      { wch: 28 }, // Earnings name
+      { wch: 18 }, // Earnings amt
+      { wch: 28 }, // Deductions name
+      { wch: 18 }  // Deductions amt
+    ];
+
+    const totalRowsCount = sheetData.length;
+    const headerRowIdx = 3 + infoRows.length + 1; // Row index of ['EARNINGS', 'AMOUNT', 'DEDUCTIONS', 'AMOUNT']
+
+    ws['!rows'] = Array.from({ length: totalRowsCount }).map((_, r) => {
+      if (r === 0) return { hpt: 34 };
+      if (r === 1) return { hpt: 22 };
+      if (r === 2 || r === 3 + infoRows.length || r === totalRowsCount - 4 || r === totalRowsCount - 2) return { hpt: 8 };
+      if (r === headerRowIdx) return { hpt: 30 }; // Table header
+      if (r === totalRowsCount - 3) return { hpt: 32 }; // Net Pay Banner
+      return { hpt: 22 };
+    });
+
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
+      { s: { r: totalRowsCount - 3, c: 0 }, e: { r: totalRowsCount - 3, c: 3 } }
+    ];
+
+    // Style Title Row & Subtitle Row
+    for (let C = 0; C < 4; C++) {
+      const cellRef0 = XLSX.utils.encode_cell({ r: 0, c: C });
+      if (!ws[cellRef0]) ws[cellRef0] = { v: '', t: 's' };
+      ws[cellRef0].s = {
+        font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 14 },
+        fill: { fgColor: { rgb: "1E3A8A" } },
+        alignment: { vertical: "center", horizontal: "center", wrapText: true }
+      };
+
+      const cellRef1 = XLSX.utils.encode_cell({ r: 1, c: C });
+      if (!ws[cellRef1]) ws[cellRef1] = { v: '', t: 's' };
+      ws[cellRef1].s = {
+        font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 10 },
+        fill: { fgColor: { rgb: "2563EB" } },
+        alignment: { vertical: "center", horizontal: "center", wrapText: true }
+      };
+    }
+
+    // Style Employee Info Rows (Rows 3 to 3 + infoRows.length - 1)
+    for (let R = 3; R < 3 + infoRows.length; R++) {
+      for (let C = 0; C < 4; C++) {
+        const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!ws[cellRef]) continue;
+        const isLabel = C === 0 || C === 2;
+        ws[cellRef].s = {
+          font: { bold: isLabel, color: { rgb: isLabel ? "475569" : "0F172A" }, name: "Calibri", sz: 10 },
+          fill: { fgColor: { rgb: isLabel ? "F1F5F9" : "FFFFFF" } },
+          alignment: { vertical: "center", horizontal: "left" },
+          border: {
+            top: { style: "thin", color: { rgb: "CBD5E1" } },
+            bottom: { style: "thin", color: { rgb: "CBD5E1" } },
+            left: { style: "thin", color: { rgb: "CBD5E1" } },
+            right: { style: "thin", color: { rgb: "CBD5E1" } }
+          }
+        };
+      }
+    }
+
+    // Style Table Headers
+    for (let C = 0; C < 4; C++) {
+      const cellRef = XLSX.utils.encode_cell({ r: headerRowIdx, c: C });
+      if (!ws[cellRef]) continue;
+      const isEarnings = C <= 1;
+      ws[cellRef].s = {
+        font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 11 },
+        fill: { fgColor: { rgb: isEarnings ? "065F46" : "9F1239" } },
+        alignment: { vertical: "center", horizontal: C % 2 === 0 ? "left" : "right", wrapText: true },
+        border: {
+          top: { style: "medium", color: { rgb: "0F172A" } },
+          bottom: { style: "medium", color: { rgb: "0F172A" } },
+          left: { style: "thin", color: { rgb: "CBD5E1" } },
+          right: { style: "thin", color: { rgb: "CBD5E1" } }
+        }
+      };
+    }
+
+    // Style Item Rows
+    const firstItemRowIdx = headerRowIdx + 1;
+    for (let R = firstItemRowIdx; R < firstItemRowIdx + maxRows; R++) {
+      for (let C = 0; C < 4; C++) {
+        const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!ws[cellRef]) continue;
+        const val = ws[cellRef].v;
+        if (typeof val === 'number') {
+          ws[cellRef].z = '#,##0.00';
+        }
+        ws[cellRef].s = {
+          font: { bold: false, color: { rgb: "1E293B" }, name: "Calibri", sz: 10 },
+          fill: { fgColor: { rgb: R % 2 === 0 ? "F8FAFC" : "FFFFFF" } },
+          alignment: { vertical: "center", horizontal: C % 2 === 0 ? "left" : "right" },
+          border: {
+            top: { style: "thin", color: { rgb: "CBD5E1" } },
+            bottom: { style: "thin", color: { rgb: "CBD5E1" } },
+            left: { style: "thin", color: { rgb: "CBD5E1" } },
+            right: { style: "thin", color: { rgb: "CBD5E1" } }
+          }
+        };
+      }
+    }
+
+    // Style Subtotal Row
+    const subtotalRowIdx = firstItemRowIdx + maxRows;
+    for (let C = 0; C < 4; C++) {
+      const cellRef = XLSX.utils.encode_cell({ r: subtotalRowIdx, c: C });
+      if (!ws[cellRef]) continue;
+      const isEarnings = C <= 1;
+      const val = ws[cellRef].v;
+      if (typeof val === 'number') {
+        ws[cellRef].z = '#,##0.00';
+      }
+      ws[cellRef].s = {
+        font: { bold: true, color: { rgb: isEarnings ? "065F46" : "9F1239" }, name: "Calibri", sz: 10.5 },
+        fill: { fgColor: { rgb: isEarnings ? "ECFDF5" : "FFE4E6" } },
+        alignment: { vertical: "center", horizontal: C % 2 === 0 ? "left" : "right" },
+        border: {
+          top: { style: "medium", color: { rgb: "64748B" } },
+          bottom: { style: "medium", color: { rgb: "64748B" } },
+          left: { style: "thin", color: { rgb: "CBD5E1" } },
+          right: { style: "thin", color: { rgb: "CBD5E1" } }
+        }
+      };
+    }
+
+    // Style Net Pay Banner (Row totalRowsCount - 3)
+    const netBannerRowIdx = totalRowsCount - 3;
+    for (let C = 0; C < 4; C++) {
+      const cellRef = XLSX.utils.encode_cell({ r: netBannerRowIdx, c: C });
+      if (!ws[cellRef]) ws[cellRef] = { v: '', t: 's' };
+      ws[cellRef].s = {
+        font: { bold: true, color: { rgb: "34D399" }, name: "Calibri", sz: 11 },
+        fill: { fgColor: { rgb: "0F172A" } },
+        alignment: { vertical: "center", horizontal: "center", wrapText: true },
+        border: {
+          top: { style: "medium", color: { rgb: "0F172A" } },
+          bottom: { style: "medium", color: { rgb: "0F172A" } }
+        }
+      };
+    }
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Payslip");
 
@@ -1101,18 +1759,19 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     link.download = `Payslip_${entry.fullName.replace(/\s+/g, '_')}_${currentPayroll.monthYear.replace(/\s+/g, '_')}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
-    showToast(`Payslip for ${entry.fullName} exported to Excel!`);
+    showToast(`Payslip for ${entry.fullName} exported to Excel with rich styling!`);
   };
 
   const handleSharePayslipWhatsApp = (entry: PayrollEntry) => {
     if (!currentPayroll) return;
+    const empTpn = entry.tpnNo || employees.find(e => e.empCode === entry.empCode || e.id === entry.empId)?.tpnNo || '-';
     const earningsList = entry.earnings.map(e => `• ${formatPayHeadDisplayName(e.payHeadName, e.payHeadId)}: ${config.CurrencySymbol || 'Nu.'} ${e.amount.toLocaleString('en-IN')}`).join('\n');
     const deductionsList = entry.deductions.map(d => `• ${formatPayHeadDisplayName(d.payHeadName, d.payHeadId)}: ${config.CurrencySymbol || 'Nu.'} ${d.amount.toLocaleString('en-IN')}`).join('\n');
 
     const text = `*PAYSLIP FOR ${currentPayroll.monthYear.toUpperCase()}*\n` +
       `Company: *${config.CompanyName}*\n` +
       `Employee: *${entry.fullName}*\n` +
-      `ID No: *${entry.empCode}* | CID: *${entry.cidNo || '-'}*\n` +
+      `ID No: *${entry.empCode}* | CID: *${entry.cidNo || '-'}* | TPN: *${empTpn}*\n` +
       `Designation: ${entry.designation}\n\n` +
       `*EARNINGS:*\n${earningsList}\n` +
       `*Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${entry.grossPay.toLocaleString('en-IN')}*\n\n` +
@@ -1127,6 +1786,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
   const handleSharePayslipEmail = (entry: PayrollEntry) => {
     if (!currentPayroll) return;
+    const empTpn = entry.tpnNo || employees.find(e => e.empCode === entry.empCode || e.id === entry.empId)?.tpnNo || '-';
     const subject = `Pay Slip for ${currentPayroll.monthYear} - ${entry.fullName}`;
     const earningsList = entry.earnings.map(e => `  - ${formatPayHeadDisplayName(e.payHeadName, e.payHeadId)}: ${config.CurrencySymbol || 'Nu.'} ${e.amount.toLocaleString('en-IN')}`).join('\n');
     const deductionsList = entry.deductions.map(d => `  - ${formatPayHeadDisplayName(d.payHeadName, d.payHeadId)}: ${config.CurrencySymbol || 'Nu.'} ${d.amount.toLocaleString('en-IN')}`).join('\n');
@@ -1137,6 +1797,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       `Employee Name: ${entry.fullName}\n` +
       `ID No: ${entry.empCode}\n` +
       `CID Card Number: ${entry.cidNo || '-'}\n` +
+      `TPN Number: ${empTpn}\n` +
       `Designation: ${entry.designation}\n` +
       `Bank Account: ${entry.bankName} (${entry.accountNo})\n\n` +
       `EARNINGS BREAKDOWN:\n${earningsList}\n` +
@@ -1153,11 +1814,159 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
   };
 
   // Bank Advice Sheet Export & Share Handlers
+  const handleExportBankSheetPDF = () => {
+    if (!currentPayroll) return;
+
+    // A4 Portrait is 210mm width x 297mm height
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 8;
+
+    // Header Corporate Card Box
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(margin, 8, pageWidth - margin * 2, 22, 2, 2, 'FD');
+
+    // Company Name
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(15, 23, 42);
+    doc.text((config.CompanyName || 'BHUTAN ENTERPRISE').toUpperCase(), pageWidth / 2, 14, { align: 'center' });
+
+    // Address
+    if (config.Address) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(config.Address, pageWidth / 2, 18.5, { align: 'center' });
+    }
+
+    // Report Title Badge
+    const titleText = `BANK SALARY TRANSFER ADVICE SCHEDULE - ${currentPayroll.monthYear.toUpperCase()}`;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(30, 64, 175);
+    doc.text(titleText, pageWidth / 2, 23.5, { align: 'center' });
+
+    // Metadata Subtext
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    const metaText = `Generated: ${new Date().toLocaleDateString('en-GB')}  |  Total Staff: ${currentPayroll.entries.length}  |  Currency: Bhutanese Ngultrum (Nu.)`;
+    doc.text(metaText, pageWidth / 2, 27.5, { align: 'center' });
+
+    const tableHeaders = ['SL No', 'ID No', 'Employee Name', 'Bank Name', 'Account Number', 'Net Payable (Nu.)'];
+
+    let totalNet = 0;
+    const tableBody = currentPayroll.entries.map((entry, idx) => {
+      totalNet += entry.netPay;
+      return [
+        String(idx + 1),
+        entry.empCode,
+        entry.fullName,
+        entry.bankName || '-',
+        entry.accountNo || '-',
+        entry.netPay.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      ];
+    });
+
+    const tableFoot = [[
+      'TOTAL',
+      '',
+      `${currentPayroll.entries.length} Staff`,
+      '',
+      'Total Disbursal Amount:',
+      `Nu. ${totalNet.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    ]];
+
+    autoTable(doc, {
+      startY: 33,
+      margin: { left: margin, right: margin, top: 6, bottom: 8 },
+      head: [tableHeaders],
+      body: tableBody,
+      foot: tableFoot,
+      theme: 'grid',
+      styles: {
+        fontSize: 7.5,
+        cellPadding: 2,
+        valign: 'middle',
+        lineColor: [203, 213, 225],
+        lineWidth: 0.15
+      },
+      headStyles: {
+        fillColor: [30, 64, 175], // Bright Royal Blue (#1E40AF)
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 8,
+        halign: 'center',
+        valign: 'middle',
+        cellPadding: 2.5
+      },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 12 },
+        1: { halign: 'center', cellWidth: 18, font: 'courier' },
+        2: { halign: 'left', fontStyle: 'bold', cellWidth: 46 },
+        3: { halign: 'left', cellWidth: 38 },
+        4: { halign: 'center', font: 'courier', fontStyle: 'bold', cellWidth: 40 },
+        5: { halign: 'right', font: 'courier', fontStyle: 'bold', textColor: [6, 95, 70], fillColor: [236, 253, 245], cellWidth: 40 }
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252]
+      },
+      footStyles: {
+        fillColor: [226, 232, 240],
+        textColor: [15, 23, 42],
+        fontStyle: 'bold',
+        fontSize: 8,
+        halign: 'right',
+        lineWidth: { top: 0.3, bottom: 0.5 },
+        lineColor: [15, 23, 42]
+      },
+      didParseCell: (data) => {
+        if (data.section === 'foot' && data.column.index === 5) {
+          data.cell.styles.textColor = [6, 95, 70];
+          data.cell.styles.fontSize = 8.5;
+        }
+      }
+    });
+
+    const finalY = (doc as any).lastAutoTable?.finalY || 150;
+    const signatureY = Math.min(finalY + 16, pageHeight - 16);
+
+    if (signatureY < pageHeight - 6) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(71, 85, 105);
+      doc.setDrawColor(148, 163, 184);
+      doc.setLineWidth(0.3);
+
+      const sigColWidth = (pageWidth - margin * 2) / 3;
+
+      doc.line(margin + 8, signatureY, margin + sigColWidth - 8, signatureY);
+      doc.text('Prepared By (Accountant)', margin + sigColWidth / 2, signatureY + 4, { align: 'center' });
+
+      doc.line(margin + sigColWidth + 8, signatureY, margin + sigColWidth * 2 - 8, signatureY);
+      doc.text('Verified By (HR / Admin)', margin + sigColWidth * 1.5, signatureY + 4, { align: 'center' });
+
+      doc.line(margin + sigColWidth * 2 + 8, signatureY, pageWidth - margin - 8, signatureY);
+      doc.text('Approved By (Managing Director)', margin + sigColWidth * 2.5, signatureY + 4, { align: 'center' });
+    }
+
+    const filename = `Bank_Salary_Advice_${currentPayroll.monthYear.replace(/\s+/g, '_')}.pdf`;
+    doc.save(filename);
+    showToast('Bank Advice Schedule PDF downloaded successfully!');
+  };
+
   const handleExportBankSheetExcel = () => {
     if (!currentPayroll) return;
-    const titleRow = [`${config.CompanyName} - BANK SALARY TRANSFER ADVICE SCHEDULE`];
-    const subRow = [`Month/Year: ${currentPayroll.monthYear}`];
-    const headerRow = ['S.No', 'ID No', 'Employee Name', 'Bank Name', 'Account Number', 'Net Payable Amount (Nu.)'];
+    const companyTitle = `${(config.CompanyName || 'BHUTAN ENTERPRISE').toUpperCase()} - BANK SALARY TRANSFER ADVICE SCHEDULE`;
+    const subTitle = `Payroll Period: ${currentPayroll.monthYear.toUpperCase()}  |  Generated: ${new Date().toLocaleDateString('en-GB')}  |  Total Staff: ${currentPayroll.entries.length}  |  Currency: Bhutanese Ngultrum (Nu.)`;
+
+    const headerRow = ['SL No', 'ID No', 'Employee Name', 'Bank Name', 'Account Number', 'Net Payable Amount (Nu.)'];
+    const titleRow = [companyTitle, ...Array(headerRow.length - 1).fill('')];
+    const subTitleRow = [subTitle, ...Array(headerRow.length - 1).fill('')];
 
     let totalNet = 0;
     const dataRows = currentPayroll.entries.map((entry, idx) => {
@@ -1174,8 +1983,132 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
     const totalRow = ['TOTAL', '', `${currentPayroll.entries.length} Staff`, '', '', totalNet];
 
-    const sheetData = [titleRow, subRow, [], headerRow, ...dataRows, totalRow];
+    const sheetData = [titleRow, subTitleRow, [], headerRow, ...dataRows, totalRow];
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
+
+    ws['!cols'] = [
+      { wch: 10 }, // SL No
+      { wch: 16 }, // ID No
+      { wch: 28 }, // Employee Name
+      { wch: 24 }, // Bank Name
+      { wch: 24 }, // Account Number
+      { wch: 24 }  // Net Amount
+    ];
+
+    ws['!rows'] = [
+      { hpt: 34 }, // Title row 0
+      { hpt: 22 }, // Subtitle row 1
+      { hpt: 8 },  // Blank row 2
+      { hpt: 32 }, // Header row 3
+      ...dataRows.map(() => ({ hpt: 24 })),
+      { hpt: 28 }  // Total row
+    ];
+
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: headerRow.length - 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: headerRow.length - 1 } }
+    ];
+
+    // Style Title Row & Subtitle Row
+    for (let C = 0; C < headerRow.length; C++) {
+      const cellRef0 = XLSX.utils.encode_cell({ r: 0, c: C });
+      if (!ws[cellRef0]) ws[cellRef0] = { v: '', t: 's' };
+      ws[cellRef0].s = {
+        font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 14 },
+        fill: { fgColor: { rgb: "1E3A8A" } },
+        alignment: { vertical: "center", horizontal: "center", wrapText: true },
+        border: {
+          top: { style: "medium", color: { rgb: "1E3A8A" } },
+          bottom: { style: "thin", color: { rgb: "2563EB" } },
+          left: { style: "medium", color: { rgb: "1E3A8A" } },
+          right: { style: "medium", color: { rgb: "1E3A8A" } }
+        }
+      };
+
+      const cellRef1 = XLSX.utils.encode_cell({ r: 1, c: C });
+      if (!ws[cellRef1]) ws[cellRef1] = { v: '', t: 's' };
+      ws[cellRef1].s = {
+        font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 10 },
+        fill: { fgColor: { rgb: "2563EB" } },
+        alignment: { vertical: "center", horizontal: "center", wrapText: true },
+        border: {
+          top: { style: "thin", color: { rgb: "2563EB" } },
+          bottom: { style: "medium", color: { rgb: "1E3A8A" } },
+          left: { style: "medium", color: { rgb: "1E3A8A" } },
+          right: { style: "medium", color: { rgb: "1E3A8A" } }
+        }
+      };
+    }
+
+    // Style Header Row (Row 3) and Data Rows
+    const headerRowIdx = 3;
+    for (let R = headerRowIdx; R < sheetData.length; R++) {
+      const isHeader = R === headerRowIdx;
+      const isTotalRow = R === sheetData.length - 1;
+
+      for (let C = 0; C < headerRow.length; C++) {
+        const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!ws[cellRef]) continue;
+
+        if (isHeader) {
+          ws[cellRef].s = {
+            font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 11 },
+            fill: { fgColor: { rgb: "1E40AF" } }, // Bright Royal Blue (#1E40AF)
+            alignment: {
+              vertical: "center",
+              horizontal: C === 0 || C === 1 || C === 4 ? "center" : (C === 5 ? "right" : "left"),
+              wrapText: true
+            },
+            border: {
+              top: { style: "medium", color: { rgb: "1E3A8A" } },
+              bottom: { style: "medium", color: { rgb: "1E3A8A" } },
+              left: { style: "thin", color: { rgb: "60A5FA" } },
+              right: { style: "thin", color: { rgb: "60A5FA" } }
+            }
+          };
+        } else {
+          const val = ws[cellRef].v;
+          if (typeof val === 'number' && C === 5) {
+            ws[cellRef].z = '#,##0.00';
+          }
+
+          let cellFillRgb = R % 2 === 0 ? "F8FAFC" : "FFFFFF";
+          let cellFontColor = "334155";
+          let cellBold = isTotalRow;
+
+          if (isTotalRow) {
+            cellFillRgb = "E2E8F0";
+            cellFontColor = "0F172A";
+            cellBold = true;
+          } else {
+            if (C === 2) {
+              cellBold = true;
+              cellFontColor = "0F172A";
+            } else if (C === 5) {
+              cellFillRgb = "ECFDF5"; // Soft emerald
+              cellFontColor = "065F46";
+              cellBold = true;
+            }
+          }
+
+          ws[cellRef].s = {
+            font: { bold: cellBold, color: { rgb: cellFontColor }, name: "Calibri", sz: isTotalRow ? 10.5 : 10 },
+            fill: { fgColor: { rgb: cellFillRgb } },
+            alignment: {
+              vertical: "center",
+              horizontal: C === 0 || C === 1 || C === 4 ? "center" : (C === 5 ? "right" : "left"),
+              wrapText: true
+            },
+            border: {
+              top: { style: isTotalRow ? "medium" : "thin", color: { rgb: isTotalRow ? "64748B" : "CBD5E1" } },
+              bottom: { style: isTotalRow ? "double" : "thin", color: { rgb: isTotalRow ? "0F172A" : "CBD5E1" } },
+              left: { style: "thin", color: { rgb: "CBD5E1" } },
+              right: { style: "thin", color: { rgb: "CBD5E1" } }
+            }
+          };
+        }
+      }
+    }
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Bank Advice");
@@ -1188,7 +2121,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     link.download = `Bank_Salary_Advice_${currentPayroll.monthYear.replace(/\s+/g, '_')}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
-    showToast('Bank Advice Schedule exported to Excel!');
+    showToast('Bank Advice Schedule exported to Excel with bright blue header styling!');
   };
 
   const handleShareBankSheetWhatsApp = () => {
@@ -1666,14 +2599,18 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     if (!currentPayroll?.entries) return [];
     if (!payslipSearchQuery.trim()) return currentPayroll.entries;
     const q = payslipSearchQuery.toLowerCase().trim();
-    return currentPayroll.entries.filter(e =>
-      e.fullName.toLowerCase().includes(q) ||
-      e.empCode.toLowerCase().includes(q) ||
-      (e.cidNo && e.cidNo.toLowerCase().includes(q)) ||
-      (e.designation && e.designation.toLowerCase().includes(q)) ||
-      (e.department && e.department.toLowerCase().includes(q))
-    );
-  }, [currentPayroll, payslipSearchQuery]);
+    return currentPayroll.entries.filter(e => {
+      const empTpn = e.tpnNo || employees.find(emp => emp.empCode === e.empCode || emp.id === e.empId)?.tpnNo || '';
+      return (
+        e.fullName.toLowerCase().includes(q) ||
+        e.empCode.toLowerCase().includes(q) ||
+        (e.cidNo && e.cidNo.toLowerCase().includes(q)) ||
+        (empTpn && empTpn.toLowerCase().includes(q)) ||
+        (e.designation && e.designation.toLowerCase().includes(q)) ||
+        (e.department && e.department.toLowerCase().includes(q))
+      );
+    });
+  }, [currentPayroll, payslipSearchQuery, employees]);
 
   return (
     <div className={`min-h-full flex flex-col ${activeTab === 'attendance' ? 'space-y-0 p-0' : 'space-y-3 p-3 sm:p-4 pb-2'}`}>
@@ -1958,7 +2895,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     <button
                       type="button"
                       onClick={handleExportSalaryRegisterExcel}
-                      className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
                       title="Export Salary Register to Excel (.xlsx)"
                     >
                       <FileSpreadsheet className="h-3.5 w-3.5" />
@@ -1966,17 +2903,26 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     </button>
                     <button
                       type="button"
-                      onClick={() => window.print()}
-                      className="h-7 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
-                      title="Print or Export PDF"
+                      onClick={handleExportSalaryRegisterPDF}
+                      className="h-7 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
+                      title="Download Formatted PDF Report (.pdf)"
                     >
-                      <Printer className="h-3.5 w-3.5" />
+                      <Download className="h-3.5 w-3.5" />
                       <span>PDF</span>
                     </button>
                     <button
                       type="button"
+                      onClick={() => window.print()}
+                      className="h-7 px-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
+                      title="Print Salary Register"
+                    >
+                      <Printer className="h-3.5 w-3.5" />
+                      <span>Print</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleShareSalaryRegisterWhatsApp}
-                      className="h-7 px-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      className="h-7 px-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
                       title="Share Summary via WhatsApp"
                     >
                       <MessageSquare className="h-3.5 w-3.5" />
@@ -1985,7 +2931,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     <button
                       type="button"
                       onClick={handleShareSalaryRegisterEmail}
-                      className="h-7 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      className="h-7 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
                       title="Send Summary via Email"
                     >
                       <Mail className="h-3.5 w-3.5" />
@@ -2038,7 +2984,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                       ))}
                       <th className="py-2.5 px-2.5 text-right bg-rose-50/70 text-rose-900 border-b border-rose-200 whitespace-nowrap font-black">Total Ded.</th>
                       <th className="py-2.5 px-3 text-right bg-emerald-50 text-emerald-950 border-b border-emerald-200 whitespace-nowrap font-black">Net Payable</th>
-                      <th className="py-2.5 px-3 text-center bg-slate-100 border-b border-slate-200 whitespace-nowrap">Actions</th>
+                      <th className="action-header no-print py-2.5 px-3 text-center bg-slate-100 border-b border-slate-200 whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
@@ -2048,7 +2994,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
                       return (
                         <tr key={entry.id} className="hover:bg-slate-50/80 transition">
-                          <td className="py-2.5 px-3 font-mono font-bold text-slate-800 whitespace-nowrap">{entry.empCode}</td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-slate-800 whitespace-nowrap text-center">{entry.empCode}</td>
                           <td className="py-2.5 px-3 whitespace-nowrap font-bold text-slate-900">{entry.fullName}</td>
                           <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap text-xs">{entry.designation}</td>
                           <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800 whitespace-nowrap">
@@ -2059,29 +3005,29 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                               ? (entry.earnings.find(e => e.payHeadId === 'ph_basic')?.amount ?? entry.basicSalary)
                               : (entry.earnings.find(e => e.payHeadId === h.id)?.amount ?? 0);
                             return (
-                              <td key={h.id} className="py-2.5 px-2.5 text-right font-mono font-semibold text-slate-700 whitespace-nowrap">
+                              <td key={h.id} className="amt-col py-2.5 px-2.5 text-right font-mono font-semibold text-slate-700 whitespace-nowrap">
                                 {amt ? amt.toLocaleString('en-IN') : '-'}
                               </td>
                             );
                           })}
-                          <td className="py-2.5 px-2.5 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30 whitespace-nowrap">
+                          <td className="amt-col py-2.5 px-2.5 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30 whitespace-nowrap">
                             {entry.grossPay.toLocaleString('en-IN')}
                           </td>
                           {activeDeductionsHeads.map(h => {
                             const amt = entry.deductions.find(d => d.payHeadId === h.id)?.amount ?? 0;
                             return (
-                              <td key={h.id} className="py-2.5 px-2.5 text-right font-mono font-medium text-slate-700 whitespace-nowrap">
+                              <td key={h.id} className="amt-col py-2.5 px-2.5 text-right font-mono font-medium text-slate-700 whitespace-nowrap">
                                 {amt ? amt.toLocaleString('en-IN') : '-'}
                               </td>
                             );
                           })}
-                          <td className="py-2.5 px-2.5 text-right font-mono font-bold text-rose-600 bg-rose-50/30 whitespace-nowrap">
+                          <td className="amt-col py-2.5 px-2.5 text-right font-mono font-bold text-rose-600 bg-rose-50/30 whitespace-nowrap">
                             {entry.totalDeductions.toLocaleString('en-IN')}
                           </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-black text-emerald-700 bg-emerald-50/40 text-sm whitespace-nowrap">
+                          <td className="amt-col py-2.5 px-3 text-right font-mono font-black text-emerald-700 bg-emerald-50/40 text-sm whitespace-nowrap">
                             {config.CurrencySymbol || 'Nu.'} {entry.netPay.toLocaleString('en-IN')}
                           </td>
-                          <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <td className="action-cell no-print py-2.5 px-3 text-center whitespace-nowrap">
                             <div className="flex items-center justify-center gap-1.5">
                               <button
                                 onClick={() => setEditingEntry({ ...entry })}
@@ -2124,28 +3070,49 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                         TOTAL ({displayedRegisterEntries.length} Staff)
                       </td>
                       {activeEarningsHeads.map(h => (
-                        <td key={h.id} className="py-2.5 px-2.5 text-right font-mono font-bold text-slate-900 border-t-2 border-slate-300 whitespace-nowrap">
+                        <td key={h.id} className="amt-col py-2.5 px-2.5 text-right font-mono font-bold text-slate-900 border-t-2 border-slate-300 whitespace-nowrap">
                           {(earningTotals[h.id] || 0).toLocaleString('en-IN')}
                         </td>
                       ))}
-                      <td className="py-2.5 px-2.5 text-right font-mono font-black text-indigo-700 border-t-2 border-slate-300 bg-indigo-50/40 whitespace-nowrap">
+                      <td className="amt-col py-2.5 px-2.5 text-right font-mono font-black text-indigo-700 border-t-2 border-slate-300 bg-indigo-50/40 whitespace-nowrap">
                         {displayedTotalGross.toLocaleString('en-IN')}
                       </td>
                       {activeDeductionsHeads.map(h => (
-                        <td key={h.id} className="py-2.5 px-2.5 text-right font-mono font-bold text-slate-900 border-t-2 border-slate-300 whitespace-nowrap">
+                        <td key={h.id} className="amt-col py-2.5 px-2.5 text-right font-mono font-bold text-slate-900 border-t-2 border-slate-300 whitespace-nowrap">
                           {(deductionTotals[h.id] || 0).toLocaleString('en-IN')}
                         </td>
                       ))}
-                      <td className="py-2.5 px-2.5 text-right font-mono font-black text-rose-600 border-t-2 border-slate-300 bg-rose-50/40 whitespace-nowrap">
+                      <td className="amt-col py-2.5 px-2.5 text-right font-mono font-black text-rose-600 border-t-2 border-slate-300 bg-rose-50/40 whitespace-nowrap">
                         {displayedTotalDeductions.toLocaleString('en-IN')}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-black text-emerald-700 text-sm border-t-2 border-slate-300 bg-emerald-50/60 whitespace-nowrap">
+                      <td className="amt-col py-2.5 px-3 text-right font-mono font-black text-emerald-700 text-sm border-t-2 border-slate-300 bg-emerald-50/60 whitespace-nowrap">
                         {config.CurrencySymbol || 'Nu.'} {displayedTotalNet.toLocaleString('en-IN')}
                       </td>
-                      <td className="py-2.5 px-3 border-t-2 border-slate-300"></td>
+                      <td className="action-footer no-print py-2.5 px-3 border-t-2 border-slate-300"></td>
                     </tr>
                   </tfoot>
                 </table>
+              </div>
+
+              {/* Print-only 3-Tier Authorization Signatures Banner */}
+              <div className="hidden print:block p-6 mt-4 border-t border-slate-300 bg-white">
+                <div className="grid grid-cols-3 gap-8 text-center">
+                  <div className="space-y-1">
+                    <div className="border-b border-slate-400 pb-10"></div>
+                    <p className="text-[10px] font-bold text-slate-800">Prepared By (Accountant)</p>
+                    <p className="text-[8px] text-slate-500">Signature & Date</p>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="border-b border-slate-400 pb-10"></div>
+                    <p className="text-[10px] font-bold text-slate-800">Verified By (HR / Admin)</p>
+                    <p className="text-[8px] text-slate-500">Signature & Date</p>
+                  </div>
+                  <div className="space-y-1">
+                    <div className="border-b border-slate-400 pb-10"></div>
+                    <p className="text-[10px] font-bold text-slate-800">Approved By (Managing Director)</p>
+                    <p className="text-[8px] text-slate-500">Signature & Date</p>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -3324,15 +4291,31 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
                     <button
                       onClick={() => handleExportPayslipExcel(payslipModalEntry)}
-                      className="px-2.5 h-7.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      className="px-2.5 h-7.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
                       title="Export Payslip to Excel (.xlsx)"
                     >
                       <FileSpreadsheet className="h-3.5 w-3.5" />
                       <span>Excel</span>
                     </button>
                     <button
+                      onClick={() => handleExportPayslipPDF(payslipModalEntry)}
+                      className="px-2.5 h-7.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
+                      title="Download Formatted Payslip PDF (.pdf)"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span>PDF</span>
+                    </button>
+                    <button
+                      onClick={() => window.print()}
+                      className="px-2.5 h-7.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
+                      title="Print Payslip"
+                    >
+                      <Printer className="h-3.5 w-3.5" />
+                      <span>Print</span>
+                    </button>
+                    <button
                       onClick={() => handleSharePayslipWhatsApp(payslipModalEntry)}
-                      className="px-2.5 h-7.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      className="px-2.5 h-7.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
                       title="Share Payslip via WhatsApp"
                     >
                       <MessageSquare className="h-3.5 w-3.5" />
@@ -3340,19 +4323,11 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     </button>
                     <button
                       onClick={() => handleSharePayslipEmail(payslipModalEntry)}
-                      className="px-2.5 h-7.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                      className="px-2.5 h-7.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
                       title="Send Payslip via Email"
                     >
                       <Mail className="h-3.5 w-3.5" />
                       <span>Email</span>
-                    </button>
-                    <button
-                      onClick={() => window.print()}
-                      className="px-3 h-7.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] shadow-xs transition flex items-center gap-1 cursor-pointer ml-1"
-                      title="Print or Save PDF"
-                    >
-                      <Printer className="h-3.5 w-3.5" />
-                      <span>PDF</span>
                     </button>
                   </div>
                 )}
@@ -3378,7 +4353,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     <Search className="h-4 w-4 absolute left-3 top-2.5 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="Search Name, ID No, CID Card..."
+                      placeholder="Search Name, ID No, CID, TPN..."
                       value={payslipSearchQuery}
                       onChange={e => setPayslipSearchQuery(e.target.value)}
                       className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-300 text-xs font-semibold focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 outline-none bg-slate-50 focus:bg-white"
@@ -3405,6 +4380,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                 <div className="flex-1 overflow-y-auto p-2 space-y-1.5 min-h-0">
                   {filteredPayslipEntries.map(entry => {
                     const isSelected = payslipModalEntry?.id === entry.id;
+                    const empTpn = entry.tpnNo || employees.find(e => e.empCode === entry.empCode || e.id === entry.empId)?.tpnNo;
                     return (
                       <button
                         key={entry.id}
@@ -3424,9 +4400,10 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                             {config.CurrencySymbol || 'Nu.'} {entry.netPay.toLocaleString('en-IN')}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono">
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono flex-wrap">
                           <span className="font-bold text-slate-700">ID No: {entry.empCode}</span>
                           {entry.cidNo && <span>• CID: {entry.cidNo}</span>}
+                          {empTpn && <span>• TPN: {empTpn}</span>}
                         </div>
                         <div className="text-[10px] text-slate-400 truncate">
                           {entry.designation} {entry.department ? `• ${entry.department}` : ''}
@@ -3438,7 +4415,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     <div className="p-8 text-center text-slate-400 text-xs">
                       <Search className="h-6 w-6 mx-auto mb-2 opacity-50" />
                       <div>No matching staff found</div>
-                      <div className="text-[11px] text-slate-400 mt-1">Try searching by name, ID No, or CID Card number</div>
+                      <div className="text-[11px] text-slate-400 mt-1">Try searching by name, ID No, CID, or TPN number</div>
                     </div>
                   )}
                 </div>
@@ -3459,15 +4436,17 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
                     {/* Employee Info Box */}
                     <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px]">
-                      <div>
-                        <div><span className="font-bold text-slate-500">Employee Name:</span> <strong className="text-slate-900">{payslipModalEntry.fullName}</strong></div>
-                        <div><span className="font-bold text-slate-500">ID No:</span> <span className="font-mono font-bold">{payslipModalEntry.empCode}</span></div>
-                        <div><span className="font-bold text-slate-500">CID Number:</span> <span className="font-mono">{payslipModalEntry.cidNo || '-'}</span></div>
+                      <div className="space-y-1">
+                        <div><span className="font-bold text-slate-500">Employee Name:</span> <strong className="text-slate-900 ml-1">{payslipModalEntry.fullName}</strong></div>
+                        <div><span className="font-bold text-slate-500">ID No:</span> <span className="font-mono font-bold text-slate-800 ml-1">{payslipModalEntry.empCode}</span></div>
+                        <div><span className="font-bold text-slate-500">CID Number:</span> <span className="font-mono text-slate-800 ml-1">{payslipModalEntry.cidNo || '-'}</span></div>
+                        <div><span className="font-bold text-slate-500">TPN Number:</span> <span className="font-mono font-semibold text-slate-800 ml-1">{payslipModalEntry.tpnNo || employees.find(e => e.empCode === payslipModalEntry.empCode || e.id === payslipModalEntry.empId)?.tpnNo || '-'}</span></div>
                       </div>
-                      <div>
-                        <div><span className="font-bold text-slate-500">Designation:</span> <span>{payslipModalEntry.designation}</span></div>
-                        <div><span className="font-bold text-slate-500">Department:</span> <span>{payslipModalEntry.department || '-'}</span></div>
-                        <div><span className="font-bold text-slate-500">Bank A/C:</span> <span className="font-mono">{payslipModalEntry.bankName} ({payslipModalEntry.accountNo})</span></div>
+                      <div className="space-y-1">
+                        <div><span className="font-bold text-slate-500">Designation:</span> <span className="text-slate-800 ml-1">{payslipModalEntry.designation}</span></div>
+                        <div><span className="font-bold text-slate-500">Department:</span> <span className="text-slate-800 ml-1">{payslipModalEntry.department || '-'}</span></div>
+                        <div><span className="font-bold text-slate-500">Bank Name:</span> <span className="text-slate-800 ml-1">{payslipModalEntry.bankName || '-'}</span></div>
+                        <div><span className="font-bold text-slate-500">Bank A/C:</span> <span className="font-mono text-slate-800 ml-1">{payslipModalEntry.accountNo || '-'}</span></div>
                       </div>
                     </div>
 
@@ -3540,7 +4519,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     <Search className="h-10 w-10 mx-auto text-indigo-500 opacity-80" />
                     <div className="font-bold text-slate-900 text-sm">Employee Pay Slip Search</div>
                     <p className="text-xs text-slate-500 leading-relaxed">
-                      Search by <strong className="text-slate-800">Employee Name</strong>, <strong className="text-slate-800">ID No</strong>, or <strong className="text-slate-800">CID Card number</strong> in the left search bar to instantly generate and print official employee payslips.
+                      Search by <strong className="text-slate-800">Employee Name</strong>, <strong className="text-slate-800">ID No</strong>, <strong className="text-slate-800">CID Card number</strong>, or <strong className="text-slate-800">TPN</strong> in the left search bar to instantly generate and print official employee payslips.
                     </p>
                     {filteredPayslipEntries.length > 0 && (
                       <button
@@ -3563,113 +4542,127 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       {showBankSheetModal && currentPayroll && (
         <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full p-6 border border-slate-200 space-y-4 my-8">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <span className="font-bold text-slate-800 text-sm">Bank Salary Advice Letter</span>
-              <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3 no-print">
+              <span className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-indigo-600" />
+                <span>Bank Salary Advice Letter</span>
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <button
                   onClick={handleExportBankSheetExcel}
-                  className="px-3 h-8.5 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-2.5 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 cursor-pointer transition"
                   title="Export Bank Schedule to Excel (.xlsx)"
                 >
-                  <FileSpreadsheet className="h-4 w-4" />
+                  <FileSpreadsheet className="h-3.5 w-3.5" />
                   <span>Excel</span>
                 </button>
                 <button
+                  onClick={handleExportBankSheetPDF}
+                  className="px-2.5 h-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 cursor-pointer transition"
+                  title="Download Bank Advice PDF Report (.pdf)"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>PDF</span>
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="px-2.5 h-8 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs shadow-xs flex items-center gap-1 cursor-pointer transition"
+                  title="Print Bank Advice"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span>Print</span>
+                </button>
+                <button
                   onClick={handleShareBankSheetWhatsApp}
-                  className="px-3 h-8.5 rounded-xl bg-emerald-500 text-white font-bold text-xs hover:bg-emerald-600 shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-2.5 h-8 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs flex items-center gap-1 cursor-pointer transition"
                   title="Share Bank Advice via WhatsApp"
                 >
-                  <MessageSquare className="h-4 w-4" />
+                  <MessageSquare className="h-3.5 w-3.5" />
                   <span>WhatsApp</span>
                 </button>
                 <button
                   onClick={handleShareBankSheetEmail}
-                  className="px-3 h-8.5 rounded-xl bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-2.5 h-8 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 cursor-pointer transition"
                   title="Send Bank Advice via Email"
                 >
-                  <Mail className="h-4 w-4" />
+                  <Mail className="h-3.5 w-3.5" />
                   <span>Email</span>
                 </button>
                 <button
-                  onClick={() => window.print()}
-                  className="px-3 h-8.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 shadow-xs flex items-center gap-1.5 cursor-pointer"
-                  title="Print or Save as PDF"
-                >
-                  <Printer className="h-4 w-4" />
-                  <span>PDF / Print</span>
-                </button>
-                <button
                   onClick={() => setShowBankSheetModal(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
-      
             </div>
 
             <div className="printable-area border border-slate-300 p-6 rounded-xl space-y-4 text-xs font-sans text-slate-900 bg-white">
               <div className="text-center border-b border-slate-200 pb-3">
-                <h2 className="text-lg font-black tracking-wide text-slate-900">{config.CompanyName}</h2>
-                <p className="text-[11px] text-slate-500">{config.Address}</p>
-                <div className="mt-2 text-xs font-extrabold text-indigo-900 uppercase">
+                <h2 className="text-lg font-black tracking-wide text-slate-900">{(config.CompanyName || 'BHUTAN ENTERPRISE').toUpperCase()}</h2>
+                <p className="text-[11px] text-slate-500 font-medium">{config.Address}</p>
+                <div className="mt-2 inline-block px-3 py-1 bg-slate-100 rounded-full font-black text-xs text-indigo-900 uppercase tracking-wider border border-slate-200">
                   SALARY DISBURSAL BANK ADVICE SHEET - {currentPayroll.monthYear.toUpperCase()}
-      
                 </div>
-      
+                <div className="mt-1 text-[10px] text-slate-400 font-mono">
+                  Generated: {new Date().toLocaleDateString('en-GB')} | Total Staff: {currentPayroll.entries.length} | Currency: Nu. (Ngultrum)
+                </div>
               </div>
 
               <div className="overflow-auto max-h-[calc(100vh-280px)] min-h-[300px]">
                 <table className="w-full border-separate border-spacing-0 text-xs border border-slate-300">
                   <thead className="sticky top-0 z-20 shadow-xs">
-                    <tr className="bg-slate-100 font-bold uppercase text-[10px]">
-                      <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">#</th>
-                      <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">ID No</th>
-                      <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">Employee Name</th>
-                      <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">Bank Name</th>
-                      <th className="p-2 border-r border-b border-slate-300 text-left bg-slate-100">Account Number</th>
-                      <th className="p-2 border-b border-slate-300 text-right bg-slate-100">Net Amount (Nu.)</th>
+                    <tr className="bg-blue-700 text-white font-bold uppercase text-[10px] tracking-wider">
+                      <th className="p-2 border-r border-b border-blue-800 text-center bg-blue-700 w-12">#</th>
+                      <th className="p-2 border-r border-b border-blue-800 text-center bg-blue-700 w-20">ID No</th>
+                      <th className="p-2 border-r border-b border-blue-800 text-left bg-blue-700">Employee Name</th>
+                      <th className="p-2 border-r border-b border-blue-800 text-left bg-blue-700">Bank Name</th>
+                      <th className="p-2 border-r border-b border-blue-800 text-center bg-blue-700">Account Number</th>
+                      <th className="p-2 border-b border-blue-800 text-right bg-blue-700 w-36">Net Amount (Nu.)</th>
                     </tr>
                   </thead>
-                <tbody className="divide-y divide-slate-200 font-medium">
-                  {currentPayroll.entries.map((item, idx) => (
-                    <tr key={item.id}>
-                      <td className="p-2 border-r border-slate-200">{idx + 1}</td>
-                      <td className="p-2 border-r border-slate-200 font-mono font-bold">{item.empCode}</td>
-                      <td className="p-2 border-r border-slate-200 font-bold">{item.fullName}</td>
-                      <td className="p-2 border-r border-slate-200">{item.bankName}</td>
-                      <td className="p-2 border-r border-slate-200 font-mono font-bold">{item.accountNo}</td>
-                      <td className="p-2 text-right font-mono font-black">{item.netPay.toLocaleString('en-IN')}</td>
+                  <tbody className="divide-y divide-slate-200 font-medium">
+                    {currentPayroll.entries.map((item, idx) => (
+                      <tr key={item.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
+                        <td className="p-2 border-r border-slate-200 text-center text-slate-500">{idx + 1}</td>
+                        <td className="p-2 border-r border-slate-200 font-mono font-bold text-center text-slate-800">{item.empCode}</td>
+                        <td className="p-2 border-r border-slate-200 font-bold text-slate-900">{item.fullName}</td>
+                        <td className="p-2 border-r border-slate-200 text-slate-700">{item.bankName || '-'}</td>
+                        <td className="p-2 border-r border-slate-200 font-mono font-bold text-center text-slate-800">{item.accountNo || '-'}</td>
+                        <td className="p-2 text-right font-mono font-black text-emerald-700 bg-emerald-50/40">{item.netPay.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-400">
+                      <td colSpan={5} className="p-2.5 border-r border-slate-300 text-right uppercase text-xs tracking-wider">
+                        Total Disbursal Amount ({currentPayroll.entries.length} Staff):
+                      </td>
+                      <td className="p-2.5 text-right font-mono text-emerald-800 text-sm bg-emerald-100/60 font-black">
+                        {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalNetPay.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </td>
                     </tr>
-                  ))}
-                  <tr className="bg-slate-100 font-black text-slate-900">
-                    <td colSpan={5} className="p-2 border-r border-slate-300 text-right uppercase">
-                      Total Disbursal Amount:
-                    </td>
-                    <td className="p-2 text-right font-mono text-emerald-700">
-                      {config.CurrencySymbol || 'Nu.'} {currentPayroll.totalNetPay.toLocaleString('en-IN')}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
               </div>
 
-              <div className="pt-6 grid grid-cols-2 gap-8 text-center text-[10px] text-slate-500 font-bold">
-                <div>
-                  <div className="border-t border-slate-400 pt-1">Prepared By (Accountant)</div>
-      
+              <div className="pt-6 grid grid-cols-3 gap-6 text-center text-[10px] text-slate-600 font-bold">
+                <div className="space-y-1">
+                  <div className="border-t border-slate-400 pt-8"></div>
+                  <p className="text-[10px] font-bold text-slate-800">Prepared By (Accountant)</p>
+                  <p className="text-[8px] text-slate-400 font-normal">Signature & Date</p>
                 </div>
-                <div>
-                  <div className="border-t border-slate-400 pt-1">Approved By (Managing Director)</div>
-      
+                <div className="space-y-1">
+                  <div className="border-t border-slate-400 pt-8"></div>
+                  <p className="text-[10px] font-bold text-slate-800">Verified By (HR / Admin)</p>
+                  <p className="text-[8px] text-slate-400 font-normal">Signature & Date</p>
                 </div>
-      
+                <div className="space-y-1">
+                  <div className="border-t border-slate-400 pt-8"></div>
+                  <p className="text-[10px] font-bold text-slate-800">Approved By (Managing Director)</p>
+                  <p className="text-[8px] text-slate-400 font-normal">Signature & Date</p>
+                </div>
               </div>
-      
             </div>
-      
           </div>
-      
         </div>
       )}
 

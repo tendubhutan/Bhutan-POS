@@ -1007,6 +1007,7 @@ export interface PayrollEntry {
   empCode: string;
   fullName: string;
   cidNo: string;
+  tpnNo?: string;
   designation: string;
   department: string;
   bankName: string;

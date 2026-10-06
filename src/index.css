@@ -3,7 +3,7 @@
 @media print {
   @page {
     size: A4 landscape !important;
-    margin: 6mm !important;
+    margin: 5mm !important;
   }
 
   /* Hide all app chrome, sidebars, headers, navigation, modals backdrop, and buttons */
@@ -26,6 +26,9 @@
   .no-print,
   .print-hide,
   .print-controls,
+  .action-col,
+  th:last-child.action-header,
+  td:last-child.action-cell,
   [data-print-hide="true"] {
     display: none !important;
     visibility: hidden !important;
@@ -51,34 +54,42 @@
     max-width: 100% !important;
     table-layout: auto !important;
     border-collapse: collapse !important;
-    font-size: 8pt !important;
+    font-size: 7pt !important;
   }
 
   .printable-salary-register th,
   .printable-salary-register td {
-    padding: 4px 4px !important;
-    border: 1px solid #94a3b8 !important;
+    padding: 3px 2.5px !important;
+    border: 0.5pt solid #94a3b8 !important;
     white-space: normal !important;
     word-break: break-word !important;
     overflow-wrap: break-word !important;
+    font-size: 7pt !important;
+    line-height: 1.15 !important;
   }
 
   .printable-salary-register th {
-    background-color: #1e3a8a !important;
+    background-color: #1e40af !important;
     color: #ffffff !important;
     font-weight: 800 !important;
     text-transform: uppercase !important;
-    font-size: 7.5pt !important;
-    line-height: 1.1 !important;
+    font-size: 7pt !important;
+    text-align: center !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  .printable-salary-register td.amt-col {
+    text-align: right !important;
+    font-family: monospace !important;
   }
 
   .printable-salary-register tfoot td {
     background-color: #e2e8f0 !important;
     color: #0f172a !important;
     font-weight: 900 !important;
-    border-top: 2px solid #1e293b !important;
+    font-size: 7pt !important;
+    border-top: 1.5pt solid #0f172a !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
