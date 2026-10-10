@@ -169,8 +169,9 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
       `🧾 *TAX INVOICE: ${invoice.invoiceNo || 'INV'}*`,
       `🏪 *${config.CompanyName || (isRestaurant ? 'Restaurant & Dining' : 'Retail Store')}*`,
       config.Address ? `📍 ${config.Address}` : '',
-      showGst && config.CompanyGSTNo ? `🏛 GSTIN: ${config.CompanyGSTNo}` : '',
-      `📅 Date: ${invoice.date ? new Date(invoice.date).toLocaleString() : new Date().toLocaleString()}`,
+      showGst && config.CompanyGSTNo ? `🏛 GST No: ${config.CompanyGSTNo}` : '',
+      config.CompanyTPNNo ? `🏛 TPN: ${config.CompanyTPNNo}` : '',
+      `📅 Date: ${invoice.date ? new Date(invoice.date).toLocaleDateString() : new Date().toLocaleDateString()}`,
       invoice.tableName ? `🍽️ Table: ${invoice.tableName}` : '',
       `👤 Customer: ${partyName}`,
       partyPhone ? `📞 Phone: ${partyPhone}` : '',
@@ -376,7 +377,8 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
             ${config.ReceiptHeaderImage ? `<div style="margin-bottom: 6px;"><img src="${config.ReceiptHeaderImage}" style="max-width: 100%; max-height: 50px; object-fit: contain;" /></div>` : ''}
             <div style="font-size: 14px; font-weight: bold; text-transform: uppercase;">${config.CompanyName || 'My Retail Store'}</div>
             <div>${config.Address || ''}</div>
-            ${showGst ? `<div>GSTIN: ${config.CompanyGSTNo || '-'}</div>` : ''}
+            ${showGst && config.CompanyGSTNo ? `<div>GST No: ${config.CompanyGSTNo}</div>` : ''}
+            ${config.CompanyTPNNo ? `<div>TPN: ${config.CompanyTPNNo}</div>` : ''}
           </div>
 
           <div class="dashed-line"></div>
@@ -385,11 +387,12 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
 
           <div>
             <div><b>Inv #:</b> ${invoice.invoiceNo}</div>
-            <div><b>Date:</b> ${formatDateTimeDMY(invoice.date)}</div>
+            <div><b>Date:</b> ${formatDateDMY(invoice.date)}</div>
             <div><b>Customer:</b> ${invoice.customer?.name || 'Cash Customer'}</div>
             ${invoice.customer?.phone ? `<div><b>Ph:</b> ${invoice.customer.phone}</div>` : ''}
             ${invoice.customer?.address ? `<div><b>Addr:</b> ${invoice.customer.address}</div>` : ''}
-            ${showGst ? `<div><b>Cust GST:</b> ${invoice.customer?.gstNo || '-'}</div>` : ''}
+            ${showGst && (invoice.customer?.gstNo || (invoice.customer as any)?.gstin) ? `<div><b>Cust GST No:</b> ${invoice.customer?.gstNo || (invoice.customer as any)?.gstin}</div>` : ''}
+            ${(invoice.customer?.tpnNo || (invoice.customer as any)?.tpn) ? `<div><b>Cust TPN:</b> ${invoice.customer?.tpnNo || (invoice.customer as any)?.tpn}</div>` : ''}
           </div>
 
           <div class="dashed-line"></div>
@@ -741,7 +744,8 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               <div class="store-meta">
                 ${config.Address ? `<span>${config.Address}</span><br>` : ''}
                 ${config.CompanyPhone ? `<span>Contact: ${config.CompanyPhone}</span>` : ''}
-                ${showGst ? `<span> | GSTIN: ${config.CompanyGSTNo || '-'}</span>` : ''}
+                ${showGst && config.CompanyGSTNo ? `<span> | GST No: ${config.CompanyGSTNo}</span>` : ''}
+                ${config.CompanyTPNNo ? `<span> | TPN: ${config.CompanyTPNNo}</span>` : ''}
               </div>
             </div>
             <div class="badge-title">
@@ -764,14 +768,14 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; color: #64748b; margin-bottom: 3px;">Billed To (Customer):</div>
               <div style="font-size: 13px; font-weight: 800; color: #0f172a;">${invoice.customer?.name || 'Walk-in Cash Customer'}</div>
               ${invoice.customer?.phone ? `<div>Phone: ${invoice.customer.phone}</div>` : ''}
-              ${showGst ? `<div>GSTIN: ${invoice.customer?.gstNo || '-'}</div>` : ''}
+              ${showGst && (invoice.customer?.gstNo || (invoice.customer as any)?.gstin) ? `<div>GST No: ${invoice.customer?.gstNo || (invoice.customer as any)?.gstin}</div>` : ''}
+              ${(invoice.customer?.tpnNo || (invoice.customer as any)?.tpn) ? `<div>TPN: ${invoice.customer?.tpnNo || (invoice.customer as any)?.tpn}</div>` : ''}
               ${invoice.customer?.address ? `<div>Address: ${invoice.customer.address}</div>` : ''}
             </div>
             <div class="meta-col" style="text-align: right;">
               <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; color: #64748b; margin-bottom: 3px;">Invoice Details:</div>
               <div><b>Invoice No:</b> ${invoice.invoiceNo}</div>
               <div><b>Invoice Date:</b> ${new Date(invoice.date).toLocaleDateString()}</div>
-              <div><b>Time:</b> ${new Date(invoice.date).toLocaleTimeString()}</div>
               <div><b>Payment Mode:</b> ${invoice.credit > 0 ? 'Credit / Partial' : 'Cash / Digital Paid'}</div>
             </div>
           </div>

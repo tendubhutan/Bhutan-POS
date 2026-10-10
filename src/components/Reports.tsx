@@ -5620,18 +5620,19 @@ export const Reports: React.FC<ReportsProps> = ({
                                   // 1. Sales Invoice items
                                   sales.forEach((inv: any, sIdx: number) => {
                                     if (inv.isCancelled) return;
-                                    (inv.items || []).forEach((it: any, iIdx: number) => {
-                                      const q = Number(it.Qty || it.qty) || 0;
-                                      const r = Number(it.Rate || it.rate || it.price) || 0;
-                                      const d = Number(it.Discount || it.discount) || 0;
-                                      const lineTot = (q * r) - d;
+                                    const itemsList = (inv.items && inv.items.length > 0) ? inv.items : ((inv.cart && inv.cart.length > 0) ? inv.cart : []);
+                                    itemsList.forEach((it: any, iIdx: number) => {
+                                      const q = Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : (it.quantity !== undefined ? it.quantity : 1))) || 0;
+                                      const r = Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : (it.price !== undefined ? it.price : (q > 0 ? ((it.amount || it.taxable || 0) / q) : 0)))) || 0;
+                                      const d = Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0)) || 0;
+                                      const lineTot = Number(it.total || it['Line Total'] || ((q * r) - d)) || 0;
 
                                       itemRows.push(
                                         <tr key={`s-${sIdx}-${iIdx}`} className="hover:bg-indigo-50/40 transition cursor-pointer" onClick={() => inv.invoiceNo && onDrillVoucher(inv.invoiceNo, fromDate, toDate)}>
                                           <td className="py-2.5 px-3 text-slate-600">{formatDateStr(inv.date)}</td>
                                           <td className="py-2.5 px-3 font-semibold text-slate-800">{inv.invoiceNo}</td>
-                                          <td className="py-2.5 px-3 text-slate-600">{inv.customer?.name || 'Walk-in'}</td>
-                                          <td className="py-2.5 px-3 font-medium text-slate-900">{it['Item Name'] || it.itemName || it.name || '-'}</td>
+                                          <td className="py-2.5 px-3 text-slate-600">{typeof inv.customer === 'object' ? (inv.customer?.name || inv.customer?.ledger) : (inv.customer || 'Walk-in')}</td>
+                                          <td className="py-2.5 px-3 font-medium text-slate-900">{it['Item Name'] || it.itemName || it.name || it.itemCode || '-'}</td>
                                           <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800">{q}</td>
                                           <td className="py-2.5 px-3 text-center text-slate-500">{it.Unit || it.unit || 'Pcs'}</td>
                                           <td className="py-2.5 px-3 text-right font-mono text-slate-600">{fmt(r)}</td>
@@ -5807,18 +5808,19 @@ export const Reports: React.FC<ReportsProps> = ({
                                   // 1. Purchase Bill items
                                   purchases.forEach((inv: any, pIdx: number) => {
                                     if (inv.isCancelled) return;
-                                    (inv.items || []).forEach((it: any, iIdx: number) => {
-                                      const q = Number(it.Qty || it.qty) || 0;
-                                      const r = Number(it.Rate || it.rate || it.price) || 0;
-                                      const d = Number(it.Discount || it.discount) || 0;
-                                      const lineTot = (q * r) - d;
+                                    const itemsList = (inv.items && inv.items.length > 0) ? inv.items : ((inv.cart && inv.cart.length > 0) ? inv.cart : []);
+                                    itemsList.forEach((it: any, iIdx: number) => {
+                                      const q = Number(it.Qty !== undefined ? it.Qty : (it.qty !== undefined ? it.qty : (it.quantity !== undefined ? it.quantity : 1))) || 0;
+                                      const r = Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : (it.price !== undefined ? it.price : (q > 0 ? ((it.amount || it.taxable || 0) / q) : 0)))) || 0;
+                                      const d = Number(it.Discount !== undefined ? it.Discount : (it.discount !== undefined ? it.discount : 0)) || 0;
+                                      const lineTot = Number(it.total || it['Line Total'] || ((q * r) - d)) || 0;
 
                                       itemRows.push(
                                         <tr key={`p-${pIdx}-${iIdx}`} className="hover:bg-indigo-50/40 transition cursor-pointer" onClick={() => (inv.supplierBillNo || inv.billNo) && onDrillVoucher(inv.supplierBillNo || inv.billNo, fromDate, toDate)}>
                                           <td className="py-2.5 px-3 text-slate-600">{formatDateStr(inv.date)}</td>
                                           <td className="py-2.5 px-3 font-semibold text-slate-800">{inv.supplierBillNo || inv.billNo}</td>
-                                          <td className="py-2.5 px-3 text-slate-600">{inv.supplier?.name || 'Supplier'}</td>
-                                          <td className="py-2.5 px-3 font-medium text-slate-900">{it['Item Name'] || it.itemName || it.name || '-'}</td>
+                                          <td className="py-2.5 px-3 text-slate-600">{typeof inv.supplier === 'object' ? (inv.supplier?.name || inv.supplier?.ledger) : (inv.supplier || 'Supplier')}</td>
+                                          <td className="py-2.5 px-3 font-medium text-slate-900">{it['Item Name'] || it.itemName || it.name || it.itemCode || '-'}</td>
                                           <td className="py-2.5 px-3 text-center font-mono font-bold text-slate-800">{q}</td>
                                           <td className="py-2.5 px-3 text-center text-slate-500">{it.Unit || it.unit || 'Pcs'}</td>
                                           <td className="py-2.5 px-3 text-right font-mono text-slate-600">{fmt(r)}</td>

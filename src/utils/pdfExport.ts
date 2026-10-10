@@ -167,7 +167,8 @@ function drawReportHeaderBox(
   
   const addr = config.Address || (config as any).CompanyAddress || '';
   const gstin = config.CompanyGSTNo || (config as any).GSTIN || '';
-  const metaStr = [addr, gstin ? `GSTIN: ${gstin}` : ''].filter(Boolean).join(' • ');
+  const tpn = config.CompanyTPNNo || (config as any).CompanyTPN || '';
+  const metaStr = [addr, gstin ? `GST No: ${gstin}` : '', tpn ? `TPN: ${tpn}` : ''].filter(Boolean).join(' • ');
   if (metaStr) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
@@ -233,10 +234,15 @@ export function drawVoucherHeader(doc: jsPDF, config: Config, title: string, met
     currentY += 4.2;
   }
   
-  const gst = config.CompanyGSTNo || config.CompanyTPNNo || (config as any).GSTIN;
+  const gst = config.CompanyGSTNo || (config as any).GSTIN;
+  const tpn = config.CompanyTPNNo || (config as any).CompanyTPN || (config as any).TPNNo;
   const showGst = String(config.EnableGST) !== 'false';
   if (showGst && gst) {
-    doc.text(`GSTIN / TPN: ${gst}`, startX, currentY);
+    doc.text(`GST No: ${gst}`, startX, currentY);
+    currentY += 4.2;
+  }
+  if (tpn) {
+    doc.text(`TPN: ${tpn}`, startX, currentY);
     currentY += 4.2;
   }
   if (config.CompanyPhone) {
@@ -1363,16 +1369,22 @@ function buildGenericVoucherPdf(
 export function generateInvoicePDF(invoice: SalesInvoice | any, config: Config, options?: any): jsPDF {
   const meta = [
     { label: 'Invoice No', value: invoice.invoiceNo || invoice.billNo || 'INV' },
-    { label: 'Date', value: invoice.date ? new Date(invoice.date).toLocaleDateString() : new Date().toLocaleDateString() },
-    { label: 'Time', value: invoice.date ? new Date(invoice.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '' }
+    { label: 'Date', value: invoice.date ? new Date(invoice.date).toLocaleDateString() : new Date().toLocaleDateString() }
   ];
   const entName = typeof invoice.customer === 'object'
     ? (invoice.customer?.name || invoice.customer?.ledger || 'Walk-in Customer')
     : (invoice.customer || 'Walk-in Customer');
+  
+  const entGst = (typeof invoice.customer === 'object' && (invoice.customer?.gstNo || invoice.customer?.gstin))
+    ? (invoice.customer.gstNo || invoice.customer.gstin) : '';
+  const entTpn = (typeof invoice.customer === 'object' && (invoice.customer?.tpnNo || invoice.customer?.tpn))
+    ? (invoice.customer.tpnNo || invoice.customer.tpn) : '';
+
   const entDetails = [
     (typeof invoice.customer === 'object' && invoice.customer?.phone) ? `Contact: ${invoice.customer.phone}` : '',
     (typeof invoice.customer === 'object' && invoice.customer?.address) ? `Address: ${invoice.customer.address}` : '',
-    (typeof invoice.customer === 'object' && invoice.customer?.gstNo) ? `GSTIN: ${invoice.customer.gstNo}` : ''
+    entGst ? `GST No: ${entGst}` : '',
+    entTpn ? `TPN: ${entTpn}` : ''
   ];
   
   const items = Array.isArray(invoice.items) ? invoice.items : [];
@@ -1536,11 +1548,14 @@ export function generatePurchaseBillPDF(purchase: PurchaseInvoice | any, config:
     { label: 'Supplier Ref', value: purchase.supplierInvoiceNo || '' }
   ];
   const supp = purchase.supplier || {};
-  const entName = typeof supp === 'object' ? (supp.name || supp.ledger || 'Vendor') : supp;
+  const entName = typeof supp === 'object' ? (supp.name || supp.ledger || 'Vendor') : (supp || 'Vendor');
+  const suppGst = typeof supp === 'object' ? (supp.gstNo || supp.gstin) : '';
+  const suppTpn = typeof supp === 'object' ? (supp.tpnNo || supp.tpn) : '';
   const entDetails = [
     supp.phone ? `Contact: ${supp.phone}` : '',
     supp.address ? `Address: ${supp.address}` : '',
-    supp.gstNo ? `GSTIN: ${supp.gstNo}` : ''
+    suppGst ? `GST No: ${suppGst}` : '',
+    suppTpn ? `TPN: ${suppTpn}` : ''
   ];
   
   const cols = [
@@ -1564,9 +1579,12 @@ export function generateQuotationPDF(quote: Quotation | any, config: Config): js
   ];
   const cust = quote.customer || {};
   const entName = typeof cust === 'object' ? (cust.name || cust.ledger || 'Customer') : (cust || 'Customer');
+  const custGst = typeof cust === 'object' ? (cust.gstNo || cust.gstin) : '';
+  const custTpn = typeof cust === 'object' ? (cust.tpnNo || cust.tpn) : '';
   const entDetails = [
     (typeof cust === 'object' && cust.address) ? `Address: ${cust.address}` : '',
-    (typeof cust === 'object' && (cust.gstNo || cust.tpnNo)) ? `GSTIN: ${cust.gstNo || cust.tpnNo}` : '',
+    custGst ? `GST No: ${custGst}` : '',
+    custTpn ? `TPN: ${custTpn}` : '',
     (typeof cust === 'object' && cust.phone) ? `Contact: ${cust.phone}` : ''
   ];
   
@@ -1618,9 +1636,12 @@ export function generateSalesOrderPDF(order: any, config: Config): jsPDF {
   ];
   const cust = order.customer || {};
   const entName = typeof cust === 'object' ? (cust.name || cust.ledger || 'Customer') : (cust || 'Customer');
+  const custGst = typeof cust === 'object' ? (cust.gstNo || cust.gstin) : '';
+  const custTpn = typeof cust === 'object' ? (cust.tpnNo || cust.tpn) : '';
   const entDetails = [
     (typeof cust === 'object' && cust.address) ? `Address: ${cust.address}` : '',
-    (typeof cust === 'object' && (cust.gstNo || cust.tpnNo)) ? `GSTIN: ${cust.gstNo || cust.tpnNo}` : '',
+    custGst ? `GST No: ${custGst}` : '',
+    custTpn ? `TPN: ${custTpn}` : '',
     (typeof cust === 'object' && cust.phone) ? `Contact: ${cust.phone}` : ''
   ];
   
@@ -1646,9 +1667,12 @@ export function generatePurchaseOrderPDF(order: any, config: Config): jsPDF {
   ];
   const supp = order.supplier || {};
   const entName = typeof supp === 'object' ? (supp.name || supp.ledger || 'Supplier') : (supp || 'Supplier');
+  const suppGst = typeof supp === 'object' ? (supp.gstNo || supp.gstin) : '';
+  const suppTpn = typeof supp === 'object' ? (supp.tpnNo || supp.tpn) : '';
   const entDetails = [
     (typeof supp === 'object' && supp.address) ? `Address: ${supp.address}` : '',
-    (typeof supp === 'object' && (supp.gstNo || supp.tpnNo)) ? `GSTIN: ${supp.gstNo || supp.tpnNo}` : '',
+    suppGst ? `GST No: ${suppGst}` : '',
+    suppTpn ? `TPN: ${suppTpn}` : '',
     (typeof supp === 'object' && supp.phone) ? `Contact: ${supp.phone}` : ''
   ];
   

@@ -11,14 +11,14 @@ export function exportInvoiceToExcel(invoice: SalesInvoice, config: Config) {
   const header = [
     [config.CompanyName || "RETAIL STORE"],
     [config.Address || ""],
-    [(config.CompanyGSTNo || config.CompanyTPNNo) ? `GSTIN / TPN: ${config.CompanyGSTNo || config.CompanyTPNNo}` : ""],
+    [config.CompanyGSTNo ? `GST No: ${config.CompanyGSTNo}` : (config.CompanyTPNNo ? `TPN: ${config.CompanyTPNNo}` : "")],
     [""],
     ["TAX INVOICE"],
     [""],
     ["Bill To:", invoice.customer?.name || "Cash Customer"],
     ["Contact:", invoice.customer?.phone || ""],
     ["Address:", invoice.customer?.address || ""],
-    ["GSTIN / TPN:", invoice.customer?.gstNo || invoice.customer?.tpnNo || ""],
+    [invoice.customer?.gstNo ? `GST No: ${invoice.customer.gstNo}` : (invoice.customer?.tpnNo ? `TPN: ${invoice.customer.tpnNo}` : "")],
     [""],
     ["Invoice No:", invoice.invoiceNo, "Date:", new Date(invoice.date).toLocaleDateString()],
     [""]

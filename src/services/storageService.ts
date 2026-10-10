@@ -7703,14 +7703,23 @@ export function getDailyColumnarReport(from: string, to: string, flt?: { itemWis
     
     // Add positive sales items
     rows.filter(r => (r.status as string) !== 'Cancelled').forEach(inv => {
-      if (inv.items) {
-        inv.items.forEach(si => {
-          const k = si['Item Name'];
+      const itemsList = (inv.items && inv.items.length > 0) ? inv.items : ((inv as any).cart && (inv as any).cart.length > 0 ? (inv as any).cart : []);
+      if (itemsList.length > 0) {
+        itemsList.forEach((si: any) => {
+          const k = (si['Item Name'] || si.itemName || si.name || si.itemCode || si['Item Code'] || 'General Item').trim();
+          if (!k) return;
           if (!map[k]) map[k] = { itemName: k, qty: 0, taxable: 0, gst: 0, total: 0 };
-          map[k].qty += Number(si.Qty) || 0;
-          map[k].taxable += Number(si['Taxable Value']) || 0;
-          map[k].gst += Number(si['GST Amount']) || 0;
-          map[k].total += Number(si['Line Total']) || 0;
+
+          const qty = Number(si.Qty !== undefined ? si.Qty : (si.qty !== undefined ? si.qty : (si.quantity !== undefined ? si.quantity : 1))) || 0;
+          const rate = Number(si.Rate !== undefined ? si.Rate : (si.rate !== undefined ? si.rate : (si.price !== undefined ? si.price : (qty > 0 ? (si.amount / qty) : 0)))) || 0;
+          const taxable = Number(si['Taxable Value'] !== undefined ? si['Taxable Value'] : (si.taxable !== undefined ? si.taxable : (si.amount !== undefined ? si.amount : (qty * rate)))) || 0;
+          const gst = Number(si['GST Amount'] !== undefined ? si['GST Amount'] : (si.gstAmt !== undefined ? si.gstAmt : (si.taxAmount !== undefined ? si.taxAmount : (si.gst !== undefined ? si.gst : 0)))) || 0;
+          const total = Number(si['Line Total'] !== undefined ? si['Line Total'] : (si.total !== undefined ? si.total : (taxable + gst))) || 0;
+
+          map[k].qty += qty;
+          map[k].taxable += taxable;
+          map[k].gst += gst;
+          map[k].total += total;
         });
       }
     });
