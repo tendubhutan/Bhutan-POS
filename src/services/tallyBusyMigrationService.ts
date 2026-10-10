@@ -1597,12 +1597,15 @@ export async function execute1ClickMigration(
               calcSubtotal += taxable;
               calcGstTotal += gstAmt;
 
+              const resolvedItemCode = (master && master['Item Code']) ? master['Item Code'] : (it.itemCode || iName);
+              const resolvedItemName = (master && master['Item Name']) ? master['Item Name'] : iName;
+
               return {
                 ...it,
-                itemCode: it.itemCode || iName,
-                code: it.code || it.itemCode || iName,
-                name: iName,
-                itemName: iName,
+                itemCode: resolvedItemCode,
+                code: resolvedItemCode,
+                name: resolvedItemName,
+                itemName: resolvedItemName,
                 qty,
                 rate,
                 amount: taxable,
@@ -1695,12 +1698,15 @@ export async function execute1ClickMigration(
               calcSubtotal += taxable;
               calcGstTotal += gstAmt;
 
+              const resolvedItemCode = (master && master['Item Code']) ? master['Item Code'] : (it.itemCode || iName);
+              const resolvedItemName = (master && master['Item Name']) ? master['Item Name'] : iName;
+
               return {
                 ...it,
-                itemCode: it.itemCode || iName,
-                code: it.code || it.itemCode || iName,
-                name: iName,
-                itemName: iName,
+                itemCode: resolvedItemCode,
+                code: resolvedItemCode,
+                name: resolvedItemName,
+                itemName: resolvedItemName,
                 qty,
                 rate,
                 amount: taxable,

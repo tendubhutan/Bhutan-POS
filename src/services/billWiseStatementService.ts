@@ -107,6 +107,10 @@ export function getPartyBillWiseStatement(
 
   // 1. Gather settlements from Vouchers
   vouchers.forEach(v => {
+    // Ignore primary sales/purchase vouchers so they are not counted as payment settlements
+    const vTypeNorm = (v.type || '').toString().toLowerCase();
+    if (['s', 'sales', 'pos_bill', 'inv', 'sales_invoice', 'p', 'purchase', 'purchase_invoice'].includes(vTypeNorm)) return;
+
     // Check if this voucher belongs to or affects this party
     const vParty = ((v as any).party || '').trim().toLowerCase();
     const affectsParty = vParty === cleanParty || (v.lines && v.lines.some(l => (l.ledger || '').trim().toLowerCase() === cleanParty));

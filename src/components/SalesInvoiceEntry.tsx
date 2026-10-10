@@ -457,8 +457,8 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
             }
 
             return {
-              itemCode: it["Item Code"] || it.itemCode || '',
-              itemName: it["Item Name"] || it.itemName || '',
+              itemCode: itemMatch?.["Item Code"] || it["Item Code"] || it.itemCode || '',
+              itemName: itemMatch?.["Item Name"] || it["Item Name"] || it.itemName || '',
               description: it.description || it["Item Description"] || "",
               lineDescription: it.lineDescription || "",
               qty: rawQty,

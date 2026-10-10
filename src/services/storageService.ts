@@ -5070,6 +5070,12 @@ export function recalculateLedgerBalances() {
       if (cancelledVouchers.has(ref)) return false;
       if (ref.startsWith('REV-') && cancelledVouchers.has(ref.substring(4))) return false;
       if (ref.startsWith('DEL-') && cancelledVouchers.has(ref.substring(4))) return false;
+      // Drop duplicate log entries for vouchers that are mirrored as Sales/Purchase Invoices
+      if (activeSaleNos.has(ref) || activePurchNos.has(ref)) {
+        const isMirrored = sales.some(s => (s.invoiceNo || (s as any).voucherNo || '').trim().toLowerCase() === ref.toLowerCase()) ||
+                          purchases.some(p => (p.billNo || p.invoiceNo || (p as any).voucherNo || '').trim().toLowerCase() === ref.toLowerCase());
+        if (isMirrored) return false;
+      }
       // If voucher no longer exists at all, drop orphaned phantom log!
       if (!activeVoucherNos.has(ref) && !ref.startsWith('REV-') && !ref.startsWith('DEL-') && !ref.startsWith('PR-') && !ref.startsWith('ADV-')) return false;
     }
@@ -5136,6 +5142,17 @@ export function recalculateLedgerBalances() {
     if (v.status === 'Cancelled') return;
     const no = (v.voucherNo || '').trim();
     if (!no || existingVouchRefs.has(no)) return;
+
+    const vTypeNorm = (v.type || '').toString().toLowerCase();
+    const isSalesVch = vTypeNorm === 's' || vTypeNorm === 'sales' || vTypeNorm === 'pos_bill' || vTypeNorm === 'inv' || vTypeNorm === 'sales_invoice';
+    const isPurchVch = vTypeNorm === 'p' || vTypeNorm === 'purchase' || vTypeNorm === 'purchase_invoice';
+
+    if (isSalesVch && sales.some(s => (s.invoiceNo || (s as any).voucherNo || '').trim().toLowerCase() === no.toLowerCase())) {
+      return;
+    }
+    if (isPurchVch && purchases.some(p => (p.billNo || p.invoiceNo || (p as any).voucherNo || '').trim().toLowerCase() === no.toLowerCase())) {
+      return;
+    }
 
     const tType = getVoucherTypeName(v.type);
 
@@ -10966,6 +10983,17 @@ export function rebuildAccountingLogs() {
     if (v.status === 'Cancelled') return;
     const no = (v.voucherNo || '').trim();
     if (!no) return;
+
+    const vTypeNorm = (v.type || '').toString().toLowerCase();
+    const isSalesVch = vTypeNorm === 's' || vTypeNorm === 'sales' || vTypeNorm === 'pos_bill' || vTypeNorm === 'inv' || vTypeNorm === 'sales_invoice';
+    const isPurchVch = vTypeNorm === 'p' || vTypeNorm === 'purchase' || vTypeNorm === 'purchase_invoice';
+
+    if (isSalesVch && sales.some(s => (s.invoiceNo || (s as any).voucherNo || '').trim().toLowerCase() === no.toLowerCase())) {
+      return;
+    }
+    if (isPurchVch && purchases.some(p => (p.billNo || p.invoiceNo || (p as any).voucherNo || '').trim().toLowerCase() === no.toLowerCase())) {
+      return;
+    }
 
     const tType = getVoucherTypeName(v.type);
 

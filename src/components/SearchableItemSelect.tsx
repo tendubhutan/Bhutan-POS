@@ -136,9 +136,14 @@ export const SearchableItemSelect: React.FC<SearchableItemSelectProps> = ({
     }
   }, [isOpen, dropdownPosition]);
 
-  const selectedItem = useMemo(() => 
-    items.find(i => i['Item Code'] === valueCode),
-  [items, valueCode]);
+  const selectedItem = useMemo(() => {
+    if (!valueCode) return undefined;
+    const codeStr = String(valueCode).trim().toLowerCase();
+    return items.find(i => 
+      String(i['Item Code'] || '').trim().toLowerCase() === codeStr ||
+      String(i['Item Name'] || '').trim().toLowerCase() === codeStr
+    );
+  }, [items, valueCode]);
 
   const shouldClearOnSelect = clearOnSelect || autoClearAfterSelect;
 
