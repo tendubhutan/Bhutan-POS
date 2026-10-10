@@ -4,17 +4,14 @@ import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './index.css';
 
-// Instant Service Worker auto-update & reload logic
+// Service worker registration check without forced page reload
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    window.location.reload();
-  });
-  // Check for updates when page becomes visible or focused
+  // Silent service worker update check without disruptive auto-reload
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       navigator.serviceWorker.getRegistration().then(reg => {
         reg?.update();
-      });
+      }).catch(() => {});
     }
   });
 }

@@ -1098,11 +1098,101 @@ export function getTenantStorageKey(key: string, customCompanyId?: string): stri
   return `${key}_${cId}`;
 }
 
+const memoryCache: Record<string, any> = {};
+
+const IDB_NAME = 'DrukErp_PersistentDB_v1';
+const IDB_STORE = 'app_state';
+
+function openIDB(): Promise<IDBDatabase | null> {
+  if (typeof window === 'undefined' || !window.indexedDB) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const req = window.indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = (e: any) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains(IDB_STORE)) {
+          db.createObjectStore(IDB_STORE);
+        }
+      };
+      req.onsuccess = (e: any) => resolve(e.target.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+export async function saveIDB(key: string, val: any): Promise<void> {
+  try {
+    const db = await openIDB();
+    if (!db) return;
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    const store = tx.objectStore(IDB_STORE);
+    store.put(val, key);
+  } catch (e) {
+    console.warn('IndexedDB write warning:', key, e);
+  }
+}
+
+export async function loadIDB<T>(key: string): Promise<T | null> {
+  try {
+    const db = await openIDB();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const store = tx.objectStore(IDB_STORE);
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result !== undefined ? req.result : null);
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function initStoragePersistence(): Promise<void> {
+  if (typeof window === 'undefined' || !window.indexedDB) return;
+  try {
+    const db = await openIDB();
+    if (!db) return;
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const store = tx.objectStore(IDB_STORE);
+    const req = store.getAllKeys();
+    req.onsuccess = () => {
+      const keys = req.result as string[];
+      keys.forEach(k => {
+        const getReq = store.get(k);
+        getReq.onsuccess = () => {
+          if (getReq.result !== undefined && getReq.result !== null) {
+            memoryCache[k] = getReq.result;
+            if (typeof localStorage !== 'undefined') {
+              try {
+                if (!localStorage.getItem(k)) {
+                  localStorage.setItem(k, JSON.stringify(getReq.result));
+                }
+              } catch {}
+            }
+          }
+        };
+      });
+    };
+  } catch (e) {
+    console.warn('IndexedDB storage hydration skipped:', e);
+  }
+}
+
+// Auto-run persistence hydration on module import
+initStoragePersistence();
+
 export function loadJson<T>(key: string, fallback: T, customCompanyId?: string): T {
   try {
     const cId = customCompanyId || getActiveCompanyId();
     const isDemo = cId === DEFAULT_TENANT_COMPANY.id;
     const effectiveKey = getTenantStorageKey(key, customCompanyId);
+
+    if (memoryCache[effectiveKey] !== undefined && memoryCache[effectiveKey] !== null) {
+      return memoryCache[effectiveKey] as T;
+    }
 
     // One-time legacy migration for Demo Company: if demo company key is empty but un-prefixed key exists, migrate it
     if (isDemo && typeof localStorage !== 'undefined' && !localStorage.getItem(effectiveKey)) {
@@ -1130,44 +1220,16 @@ export function loadJson<T>(key: string, fallback: T, customCompanyId?: string):
           });
 
           if (filtered.length !== parsed.length) {
+            memoryCache[effectiveKey] = filtered;
             if (typeof localStorage !== 'undefined') {
-              localStorage.setItem(effectiveKey, JSON.stringify(filtered));
+              try { localStorage.setItem(effectiveKey, JSON.stringify(filtered)); } catch {}
             }
             return filtered as unknown as T;
           }
         }
-
-        if (key === STORAGE_KEYS.LEDGERS) {
-          const sKey = getTenantStorageKey(STORAGE_KEYS.SALES_INVOICES, cId);
-          const pKey = getTenantStorageKey(STORAGE_KEYS.PURCHASE_INVOICES, cId);
-          const vKey = getTenantStorageKey(STORAGE_KEYS.VOUCHERS, cId);
-          const sRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(sKey) : null;
-          const pRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(pKey) : null;
-          const vRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(vKey) : null;
-          const hasTransactions = 
-            (sRaw && sRaw !== '[]' && JSON.parse(sRaw).length > 0) ||
-            (pRaw && pRaw !== '[]' && JSON.parse(pRaw).length > 0) ||
-            (vRaw && vRaw !== '[]' && JSON.parse(vRaw).length > 0);
-
-          if (!hasTransactions) {
-            let sanitized = false;
-            parsed.forEach((l: any) => {
-              const cur = Number(l['Current Balance']) || 0;
-              const op = Number(l['Opening Balance']) || 0;
-              // Any non-zero current balance or opening balance without transactions in a client workspace is phantom
-              if (cur !== 0 || op !== 0) {
-                l['Opening Balance'] = 0;
-                l['Current Balance'] = 0;
-                sanitized = true;
-              }
-            });
-            if (sanitized && typeof localStorage !== 'undefined') {
-              localStorage.setItem(effectiveKey, JSON.stringify(parsed));
-            }
-          }
-        }
       }
 
+      memoryCache[effectiveKey] = parsed;
       return parsed;
     }
 
@@ -1481,9 +1543,18 @@ export function migrateExistingItemsOpeningAmount() {
 export function saveJson<T>(key: string, val: T, targetCompanyId?: string): void {
   try {
     const effectiveKey = getTenantStorageKey(key, targetCompanyId);
-    localStorage.setItem(effectiveKey, JSON.stringify(val));
+    memoryCache[effectiveKey] = val;
+    saveIDB(effectiveKey, val);
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(effectiveKey, JSON.stringify(val));
+      } catch (quotaErr) {
+        console.warn('localStorage write warning (e.g. quota exceeded), persisted in memoryCache and IndexedDB:', effectiveKey, quotaErr);
+      }
+    }
   } catch (e) {
-    console.error('Failed to save to localStorage:', key, e);
+    console.error('Failed to save to storage:', key, e);
   }
 }
 

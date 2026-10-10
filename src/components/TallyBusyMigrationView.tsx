@@ -718,7 +718,7 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
               </span>
             </div>
 
-            {parsedData.salesVoucherSeries && parsedData.salesVoucherSeries.length > 0 ? (
+            {parsedData.salesVoucherSeries && parsedData.salesVoucherSeries.length > 0 && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 {parsedData.salesVoucherSeries.map((series) => (
                   <div key={series} className="bg-white p-3 rounded-xl border border-indigo-100 shadow-2xs space-y-1.5">
@@ -729,29 +729,29 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
                       </span>
                     </div>
                     <select
-                      value={salesTypeMappings[series] || 'normalsale'}
+                      value={salesTypeMappings[series] || defaultSalesType || 'normalsale'}
                       onChange={(e) => setSalesTypeMappings(prev => ({ ...prev, [series]: e.target.value as 'normalsale' | 'pos' }))}
                       className="w-full text-xs font-bold py-1.5 px-2.5 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:border-indigo-600 outline-none cursor-pointer text-slate-800"
                     >
-                      <option value="normalsale">Sales Invoice (B2B Credit Sale) - Recommended Default</option>
+                      <option value="normalsale">Sales Invoice (Credit Sale) - Default</option>
                       <option value="pos">POS Bill (Retail Cash POS)</option>
                     </select>
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white p-3 rounded-xl border border-indigo-100">
-                <span className="text-xs font-bold text-slate-800">Default Entry Screen for All Sales Vouchers:</span>
-                <select
-                  value={defaultSalesType}
-                  onChange={(e) => setDefaultSalesType(e.target.value as 'normalsale' | 'pos')}
-                  className="text-xs font-bold py-1.5 px-3 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:border-indigo-600 outline-none cursor-pointer text-slate-800"
-                >
-                  <option value="normalsale">Sales Invoice (B2B Credit Sale) - Recommended Default</option>
-                  <option value="pos">POS Bill (Retail Cash POS)</option>
-                </select>
-              </div>
             )}
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white p-3 rounded-xl border border-indigo-100">
+              <span className="text-xs font-bold text-slate-800">Default Target Screen for All Other / Unmapped Sales Vouchers:</span>
+              <select
+                value={defaultSalesType}
+                onChange={(e) => setDefaultSalesType(e.target.value as 'normalsale' | 'pos')}
+                className="text-xs font-bold py-1.5 px-3 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:border-indigo-600 outline-none cursor-pointer text-slate-800"
+              >
+                <option value="normalsale">Sales Invoice (Credit Sale) - Recommended Default</option>
+                <option value="pos">POS Bill (Retail Cash POS)</option>
+              </select>
+            </div>
           </div>
 
           {/* Action Button: Execute 1-Click Import */}

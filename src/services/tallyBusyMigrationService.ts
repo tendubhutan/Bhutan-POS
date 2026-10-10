@@ -420,6 +420,7 @@ function parseTallyXmlRegexFallback(xmlString: string, mode: MigrationMode, file
   }
 
   // Regex for <VOUCHER\b[^>]*>...</VOUCHER>
+  const salesSeriesSet = new Set<string>();
   const voucherRegex = /<VOUCHER\b([^>]*)>([\s\S]*?)<\/VOUCHER>/gi;
   let vIdx = 0;
   while ((match = voucherRegex.exec(xmlString)) !== null) {
@@ -454,6 +455,10 @@ function parseTallyXmlRegexFallback(xmlString: string, mode: MigrationMode, file
     else if (vTypeLower.includes('purchase')) grpType = 'PUR';
     else if (vTypeLower.includes('delivery')) grpType = 'DEL_NOTE';
     else grpType = 'J';
+
+    if (grpType === 'S') {
+      salesSeriesSet.add(vTypeName);
+    }
 
     const entryRegex = /<(?:ALLLEDGERENTRIES\.LIST|LEDGERENTRIES\.LIST|ALLINVENTORYENTRIES\.LIST|INVENTORYENTRIES\.LIST|LEDGERENTRIES)\b[^>]*>([\s\S]*?)<\/(?:ALLLEDGERENTRIES\.LIST|LEDGERENTRIES\.LIST|ALLINVENTORYENTRIES\.LIST|INVENTORYENTRIES\.LIST|LEDGERENTRIES)>/gi;
     let entryMatch: RegExpExecArray | null;
@@ -522,6 +527,7 @@ function parseTallyXmlRegexFallback(xmlString: string, mode: MigrationMode, file
     units: [],
     openingBills,
     vouchers,
+    salesVoucherSeries: Array.from(salesSeriesSet),
     stats: {
       totalLedgers: ledgers.length,
       totalDebtors: ledgers.filter(l => l.Group === 'Sundry Debtors').length,
@@ -809,13 +815,28 @@ export function parseTallyXml(rawXmlString: string, mode: MigrationMode = 'cutof
       .concat(querySelectorAllTags(node, 'SELLINGPRICELIST.LIST'))
       .concat(querySelectorAllTags(node, 'SELLINGRATEDETAILS.LIST'))
       .concat(querySelectorAllTags(node, 'FULLPRICELIST.LIST'))
-      .concat(querySelectorAllTags(node, 'PRICELIST.LIST'));
+      .concat(querySelectorAllTags(node, 'PRICELEVELLIST.LIST'))
+      .concat(querySelectorAllTags(node, 'PRICELEVELEDITEDLIST.LIST'))
+      .concat(querySelectorAllTags(node, 'PRICELIST.LIST'))
+      .concat(querySelectorAllTags(node, 'RATEDETAILS.LIST'));
 
     let stdPriceText = '';
     if (stdRateNodes.length > 0) {
       for (const srNode of stdRateNodes) {
+        const rateEl = srNode.querySelector('RATE, BASICPRICE, PRICE, rate, basicprice, price');
+        if (rateEl && rateEl.textContent?.trim()) {
+          stdPriceText = rateEl.textContent.trim();
+          break;
+        }
         const rateVal = getTagText(srNode, 'RATE') || getTagText(srNode, 'BASICPRICE') || getTagText(srNode, 'PRICE');
         if (rateVal) { stdPriceText = rateVal; break; }
+      }
+    }
+
+    if (!stdPriceText) {
+      const deepRateEl = node.querySelector('STANDARDRATES RATE, STANDARDPRICELIST RATE, FULLPRICELIST RATE, PRICELEVELLIST RATE, RATEDETAILS RATE, STDRATE, STANDARDRATE, SELLINGRATE, SALESRATE, BASICPRICE');
+      if (deepRateEl && deepRateEl.textContent?.trim()) {
+        stdPriceText = deepRateEl.textContent.trim();
       }
     }
 
