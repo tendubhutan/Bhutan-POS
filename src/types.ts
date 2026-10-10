@@ -135,6 +135,8 @@ export interface Config {
   TransferChallanPrefix?: string;
   ActiveBranchId?: string;
   ActiveBranchName?: string;
+  DashboardDateRangeMode?: 'fytd' | 'this_month' | 'last_30_days' | 'today' | 'calendar_year';
+  FinancialYearStartMonth?: '1' | '4' | '7' | '10' | string;
   superadminFeatures?: Record<string, boolean>;
 }
 

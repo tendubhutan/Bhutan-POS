@@ -1084,6 +1084,7 @@ export default function App() {
               config={config}
               items={items}
               ledgers={ledgers}
+              activeFY={activeFY}
               onNavigate={view => navigateTo(view)}
               onDrillStock={(code, from, to) => setDrillModal({ type: 'stock', targetId: code, fromDate: from, toDate: to })}
               onDrillLedger={(name, from, to) => setDrillModal({ type: 'ledger', targetId: name, fromDate: from, toDate: to })}

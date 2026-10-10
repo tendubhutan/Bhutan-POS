@@ -15,7 +15,8 @@ import {
   Save, CheckCircle2, Shield, FileText, Image as ImageIcon, PenTool, Plus, Lock, UserCheck, RefreshCw, 
   ShoppingCart, Zap, SlidersHorizontal, AlertTriangle, Keyboard, Percent, CreditCard, RotateCcw,
   Building2, Hash, Layers, Store, Check, Sparkles, Sliders, ShieldCheck, Trash2, History, Eye, Settings as SettingsIcon, CheckSquare,
-  Cloud, CloudUpload, Database, Wrench, Shirt, HardDrive, ArrowDownToLine, ShieldAlert, QrCode, Upload
+  Cloud, CloudUpload, Database, Wrench, Shirt, HardDrive, ArrowDownToLine, ShieldAlert, QrCode, Upload,
+  LayoutDashboard, Calendar
 } from 'lucide-react';
 import { BackupManagerView } from './BackupManagerView';
 import { handleMasterCloudSync, MasterSyncResult } from '../services/supabaseSyncService';
@@ -1592,6 +1593,52 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <p className="text-[11px] text-slate-500">
                   Configure core business modules, banking preferences, accounting reconciliation, and data management.
                 </p>
+              </div>
+            </div>
+
+            {/* Dashboard Default Period & Financial Year Rules Section */}
+            <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2 text-slate-900 font-extrabold text-xs">
+                <LayoutDashboard className="h-4 w-4 text-indigo-600" />
+                <span>Dashboard Default Period & Financial Year Rules</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* Default Dashboard Date Range */}
+                <div className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2">
+                  <span className="font-extrabold text-slate-900 text-xs block">Dashboard Default Date Filter</span>
+                  <p className="text-[10px] text-slate-500 leading-snug">
+                    Default date period automatically loaded when opening the Dashboard Overview.
+                  </p>
+                  <select
+                    value={form.DashboardDateRangeMode || 'fytd'}
+                    onChange={e => setForm({ ...form, DashboardDateRangeMode: e.target.value as any })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-white outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    <option value="fytd">Current Financial Year To Date (FYTD) [Recommended]</option>
+                    <option value="this_month">Current Month To Date (MTD)</option>
+                    <option value="last_30_days">Last 30 Days</option>
+                    <option value="today">Today Only</option>
+                    <option value="calendar_year">Calendar Year (Jan 1 - Today)</option>
+                  </select>
+                </div>
+
+                {/* Financial Year Start Month */}
+                <div className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2">
+                  <span className="font-extrabold text-slate-900 text-xs block">Financial Year Start Month</span>
+                  <p className="text-[10px] text-slate-500 leading-snug">
+                    Month when financial year begins for reporting and FYTD date range calculations.
+                  </p>
+                  <select
+                    value={form.FinancialYearStartMonth || '4'}
+                    onChange={e => setForm({ ...form, FinancialYearStartMonth: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 bg-white outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    <option value="4">April (Apr - Mar) [Standard India / Bhutan / Nepal]</option>
+                    <option value="1">January (Jan - Dec) [Calendar Year]</option>
+                    <option value="7">July (Jul - Jun)</option>
+                    <option value="10">October (Oct - Sep)</option>
+                  </select>
+                </div>
               </div>
             </div>
 

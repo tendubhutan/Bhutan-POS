@@ -83,6 +83,8 @@ export interface ChangePeriodModalProps {
   isOpen: boolean;
   fromDate: string;
   toDate: string;
+  config?: any;
+  activeFY?: any;
   onApply: (from: string, to: string) => void;
   onClose: () => void;
   title?: string;
@@ -92,6 +94,8 @@ export const ChangePeriodModal: React.FC<ChangePeriodModalProps> = ({
   isOpen,
   fromDate,
   toDate,
+  config,
+  activeFY,
   onApply,
   onClose,
   title = 'Change Period'
@@ -174,10 +178,17 @@ export const ChangePeriodModal: React.FC<ChangePeriodModalProps> = ({
       f = toIso(firstDay);
       t = toIso(lastDay);
     } else if (preset === 'this_fy') {
-      // Financial Year (FY) is January 1 to December 31
-      const currentYear = now.getFullYear();
-      f = `${currentYear}-01-01`;
-      t = `${currentYear}-12-31`;
+      if (activeFY && activeFY.start_date) {
+        f = String(activeFY.start_date).slice(0, 10);
+      } else {
+        const fyMonth = parseInt(config?.FinancialYearStartMonth || '4', 10) || 4;
+        const curYear = now.getFullYear();
+        const curMonth = now.getMonth() + 1;
+        let fyStartYear = curYear;
+        if (curMonth < fyMonth) fyStartYear = curYear - 1;
+        f = `${fyStartYear}-${pad(fyMonth)}-01`;
+      }
+      t = toIso(now);
     }
 
     onApply(f, t);

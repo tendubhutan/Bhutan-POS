@@ -3,6 +3,7 @@ import { Config, Item, Ledger } from '../types';
 import { getAdvancedDashboardData, getTerminalBranchId } from '../services/storageService';
 import { ReportTarget } from './Reports';
 import { ChangePeriodModal, formatDisplayDate } from './ChangePeriodModal';
+import { getDashboardDefaultDates } from '../utils/dateUtils';
 import {
   TrendingUp,
   Package,
@@ -26,6 +27,7 @@ interface DashboardProps {
   config: Config;
   items: Item[];
   ledgers?: Ledger[];
+  activeFY?: any;
   onNavigate: (view: string) => void;
   onDrillStock: (code: string, fromDate?: string, toDate?: string) => void;
   onDrillLedger?: (name: string, fromDate?: string, toDate?: string) => void;
@@ -39,6 +41,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   config,
   items,
   ledgers = [],
+  activeFY,
   onNavigate,
   onDrillStock,
   onDrillLedger,
@@ -47,9 +50,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onDrillReport,
   isActive = true
 }) => {
-  const [fromDate, setFromDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [toDate, setToDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [fromDate, setFromDate] = useState(() => {
+    const defaults = getDashboardDefaultDates(config, activeFY);
+    return defaults.fromDate;
+  });
+  const [toDate, setToDate] = useState(() => {
+    const defaults = getDashboardDefaultDates(config, activeFY);
+    return defaults.toDate;
+  });
   const [showPeriodModal, setShowPeriodModal] = useState(false);
+
+  // Sync dates whenever dashboard configuration or active financial year changes
+  useEffect(() => {
+    const defaults = getDashboardDefaultDates(config, activeFY);
+    setFromDate(defaults.fromDate);
+    setToDate(defaults.toDate);
+  }, [config?.DashboardDateRangeMode, config?.FinancialYearStartMonth, activeFY?.start_date, activeFY?.id]);
 
   const [dashData, setDashData] = useState<{
     sale: number;
@@ -527,6 +543,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         isOpen={showPeriodModal}
         fromDate={fromDate}
         toDate={toDate}
+        config={config}
+        activeFY={activeFY}
         onApply={(f, t) => {
           setFromDate(f);
           setToDate(t);

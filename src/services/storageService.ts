@@ -291,6 +291,8 @@ export const DEFAULT_CONFIG: Config = {
   EnableAuditTrail: 'true',
   PrintAuditStamp: 'false',
   AllowSupportAccess: 'false',
+  DashboardDateRangeMode: 'fytd',
+  FinancialYearStartMonth: '4',
   BarcodePrefix: '20',
   ReceiptHeaderImage: '',
   ReceiptSignatureImage: '',
