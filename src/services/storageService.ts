@@ -133,7 +133,8 @@ export const STORAGE_KEYS = {
   TASK_ASSIGNMENTS: 'deep_pos_task_assignments',
   STAFF_NOTIFICATIONS: 'deep_pos_staff_notifications',
   OFFICE_NETWORK_CONFIG: 'deep_pos_office_network_config',
-  HOLIDAY_POLICY: 'deep_pos_holiday_policy'
+  HOLIDAY_POLICY: 'deep_pos_holiday_policy',
+  SHIFT_HANDOVERS: 'deep_pos_shift_handovers'
 };
 
 export const DEFAULT_BRANCHES: Branch[] = [
@@ -4097,6 +4098,10 @@ export function saveSalesInvoice(payload: {
   const finalBranchId = (payload as any).branchId || oldInv?.branchId || activeBr.id;
   const finalBranchName = (payload as any).branchName || oldInv?.branchName || activeBr.name;
 
+  const activeUsr = getActiveUser();
+  const finalUserId = (payload as any).userId || oldInv?.userId || activeUsr?.id || '';
+  const finalUserName = (payload as any).userName || (payload as any).cashierName || oldInv?.userName || oldInv?.cashierName || activeUsr?.fullName || activeUsr?.username || 'Store Cashier';
+  const finalTerminalId = (payload as any).terminalId || (payload as any).counterId || oldInv?.terminalId || oldInv?.counterId || getDeviceCounterId() || 'C1';
   const currentActiveCompanyId = getActiveCompanyId();
 
   const invoice: SalesInvoice = {
@@ -4129,6 +4134,11 @@ export function saveSalesInvoice(payload: {
     status: st,
     branchId: finalBranchId,
     branchName: finalBranchName,
+    userId: finalUserId,
+    userName: finalUserName,
+    cashierName: finalUserName,
+    terminalId: finalTerminalId,
+    counterId: finalTerminalId,
     additionalExpenses,
     termsAndConditions: finalTerms || (cfg.FooterTerms || ''),
     voucherTypeId: matchedVt?.id || voucherTypeId,
@@ -7686,7 +7696,7 @@ export function getDeduplicatedPurchases(targetCompanyId?: string): PurchaseInvo
   return Array.from(map.values());
 }
 
-export function getDailyColumnarReport(from: string, to: string, flt?: { itemWise?: boolean; gstOnly?: boolean; includeSalesReturn?: boolean }, branchId?: string) {
+export function getDailyColumnarReport(from: string, to: string, flt?: { itemWise?: boolean; gstOnly?: boolean; includeSalesReturn?: boolean; userName?: string }, branchId?: string) {
   const fr = new Date(from).setHours(0, 0, 0, 0);
   const toDt = new Date(to).setHours(23, 59, 59, 999);
   const sales = getDeduplicatedSales();
@@ -7695,11 +7705,28 @@ export function getDailyColumnarReport(from: string, to: string, flt?: { itemWis
 
   const isBranchFilter = Boolean(branchId && branchId !== 'ALL' && branchId !== 'all');
 
+  // Extract all unique cashiers who have billed
+  const availableCashiers = Array.from(
+    new Set(
+      sales
+        .map(s => (s.userName || s.cashierName || (s as any).waiterName || (s as any).createdBy || 'Store Cashier').trim())
+        .filter(Boolean)
+    )
+  );
+
   let rows = sales.filter(r => {
     const d = new Date(r.date).getTime();
     const branchMatch = !isBranchFilter || r.branchId === branchId || (!r.branchId && branchId === 'branch_ho');
     return d >= fr && d <= toDt && branchMatch;
   });
+
+  if (flt && flt.userName && flt.userName !== 'ALL' && flt.userName !== 'all') {
+    const targetUser = flt.userName.trim().toLowerCase();
+    rows = rows.filter(r => {
+      const u = (r.userName || r.cashierName || (r as any).waiterName || (r as any).createdBy || 'Store Cashier').trim().toLowerCase();
+      return u === targetUser;
+    });
+  }
 
   if (flt && flt.gstOnly) {
     rows = rows.filter(r => Number(r.gstAmt) > 0);
@@ -7714,7 +7741,15 @@ export function getDailyColumnarReport(from: string, to: string, flt?: { itemWis
     if (!rawDate) return false;
     const d = new Date(rawDate).getTime();
     const branchMatch = !isBranchFilter || v.branchId === branchId || (!v.branchId && branchId === 'branch_ho');
-    return !isNaN(d) && d >= fr && d <= toDt && branchMatch;
+    if (!isNaN(d) && d >= fr && d <= toDt && branchMatch) {
+      if (flt && flt.userName && flt.userName !== 'ALL' && flt.userName !== 'all') {
+        const targetUser = flt.userName.trim().toLowerCase();
+        const u = ((v as any).userName || (v as any).createdBy || 'Store Cashier').trim().toLowerCase();
+        return u === targetUser;
+      }
+      return true;
+    }
+    return false;
   }) : [];
 
   if (flt && flt.itemWise) {
@@ -7793,6 +7828,7 @@ export function getDailyColumnarReport(from: string, to: string, flt?: { itemWis
     return {
       mode: 'itemwise' as const,
       rows: ir,
+      availableCashiers,
       totals: {
         ...totals,
         grossQty,
@@ -7817,10 +7853,17 @@ export function getDailyColumnarReport(from: string, to: string, flt?: { itemWis
     const totalVal = isCancelled ? 0 : (Number(r.total) || 0);
     if (!isCancelled) grossSales += totalVal;
 
+    const cashierUser = r.userName || r.cashierName || (r as any).waiterName || (r as any).createdBy || 'Store Cashier';
+    const counterId = r.terminalId || r.counterId || 'C1';
+
     return {
       date: r.date,
       invoiceNo: r.invoiceNo,
       customer: cust,
+      cashier: cashierUser,
+      userName: cashierUser,
+      terminalId: counterId,
+      counterId,
       cash: isCancelled ? 0 : (Number(r.cash) || 0),
       bank1: isCancelled ? 0 : (Number(r.bank1) || 0),
       bank2: isCancelled ? 0 : (Number(r.bank2) || 0),
@@ -7862,6 +7905,10 @@ export function getDailyColumnarReport(from: string, to: string, flt?: { itemWis
       date: (v as any).DateIso || v.date,
       invoiceNo: v.voucherNo || 'CN',
       customer: `${party} (Sales Return)`,
+      cashier: (v as any).userName || (v as any).createdBy || 'Store Cashier',
+      userName: (v as any).userName || (v as any).createdBy || 'Store Cashier',
+      terminalId: (v as any).terminalId || 'C1',
+      counterId: (v as any).terminalId || 'C1',
       cash,
       bank1,
       bank2,
@@ -7885,6 +7932,7 @@ export function getDailyColumnarReport(from: string, to: string, flt?: { itemWis
   return {
     mode: 'daily' as const,
     rows: data,
+    availableCashiers,
     totals: {
       ...totals,
       grossSales,
@@ -7892,6 +7940,16 @@ export function getDailyColumnarReport(from: string, to: string, flt?: { itemWis
       netSales: grossSales - salesReturns
     }
   };
+}
+
+export function getShiftHandoverRecords(): any[] {
+  return loadJson<any[]>(STORAGE_KEYS.SHIFT_HANDOVERS, []);
+}
+
+export function saveShiftHandoverRecord(record: any): void {
+  const records = getShiftHandoverRecords();
+  records.unshift(record);
+  saveJson(STORAGE_KEYS.SHIFT_HANDOVERS, records);
 }
 
 export function getGSTReport(from: string, to: string) {

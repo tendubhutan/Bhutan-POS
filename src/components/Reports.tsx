@@ -2,14 +2,15 @@ import React, { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffe
 import { Config, Item, Ledger } from '../types';
 import {
   getDailyColumnarReport, getGSTReport, getGSTInputDomReport, getGSTInputImpReport, getGSTSummaryReport, getTDS2Report, getAdvancedReports, getFinancialReports, getFullLedgerStatement, saveConfig,
-  getPartyOutstandingBills, saveVoucher, canUserViewAuditTrail, getActiveUser, getBranches, getGodowns, getEmployees, getTerminalBranchId
+  getPartyOutstandingBills, saveVoucher, canUserViewAuditTrail, getActiveUser, getUsers, getBranches, getGodowns, getEmployees, getTerminalBranchId
 } from '../services/storageService';
 import { AssignmentReportView } from './employee/AssignmentReportView';
 import XLSX from 'xlsx-js-style';
 import {
-  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, Warehouse, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History, Plus, Minus, Eye, ZoomIn, ZoomOut, Utensils
+  Printer, Calendar, FileSpreadsheet, Receipt, Package, CircleDollarSign, TrendingUp, Scale, Search, CheckCircle2, AlertCircle, ShieldCheck, Building2, Warehouse, PieChart, Layers, BookOpen, Wallet, CreditCard, ArrowRightLeft, LayoutGrid, ChevronDown, X, SlidersHorizontal, MessageCircle, Mail, FileDown, Share2, ChevronUp, Settings, Check, Columns, FileText, ListFilter, Sparkles, Maximize2, Minimize2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, History, Plus, Minus, Eye, ZoomIn, ZoomOut, Utensils, UserCheck
 } from 'lucide-react';
 import { PrintReportModal } from './PrintReportModal';
+import { ShiftHandoverModal } from './ShiftHandoverModal';
 import { generateReportPDF, shareOrDownloadPDF } from '../utils/pdfExport';
 import { formatDateDMY } from '../utils/dateUtils';
 import { TallyPrimeView, ReportDetailDepth } from './TallyPrimeView';
@@ -535,6 +536,20 @@ export const Reports: React.FC<ReportsProps> = ({
   const [loading, setLoading] = useState(false);
   const [stockFilters, setStockFilters] = useState({ group: 'ALL', category: 'ALL', supplier: '', serial: '', user: '', item: '', status: 'ALL', color: 'ALL', size: 'ALL', godownId: 'ALL' });
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [selectedCashier, setSelectedCashier] = useState<string>('ALL');
+  const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+
+  const availableCashiersList = useMemo(() => {
+    try {
+      const fromUsers = getUsers().map(u => (u.fullName || u.username || '').trim()).filter(Boolean);
+      const fromReport = (reportData?.availableCashiers || []).map((c: string) => c.trim()).filter(Boolean);
+      const combined = Array.from(new Set([...fromUsers, ...fromReport]));
+      return combined.sort((a, b) => a.localeCompare(b));
+    } catch {
+      return (reportData?.availableCashiers || []);
+    }
+  }, [reportData?.availableCashiers]);
+
   const [showReportCatalog, setShowReportCatalog] = useState(false);
 
   // Searchable Vertical Collapsible Accordion Report Menu State
@@ -605,7 +620,8 @@ export const Reports: React.FC<ReportsProps> = ({
         color: 'indigo',
         items: [
           { id: 'daily-bill', name: 'Daily Sales (Bill-wise)', group: 'Daily Sales', desc: 'Columnar cash, bank & credit breakdown', keywords: ['bill', 'sales', 'cash', 'credit', 'bank', 'daily', 'pos', 'columnar'] },
-          { id: 'daily-item', name: 'Daily Sales (Item-wise)', group: 'Daily Sales', desc: 'Item-by-item sales quantity & revenue', keywords: ['item', 'products', 'sold', 'itemwise', 'quantity'] }
+          { id: 'daily-item', name: 'Daily Sales (Item-wise)', group: 'Daily Sales', desc: 'Item-by-item sales quantity & revenue', keywords: ['item', 'products', 'sold', 'itemwise', 'quantity'] },
+          { id: 'daily-shift', name: 'Shift Handover & Day-End Closing', group: 'Daily Sales', desc: 'Reconcile drawer cash, verify cashier closing & print handover slip', keywords: ['shift', 'handover', 'closing', 'day end', 'cashier', 'reconciliation'] }
         ]
       },
       ...(showRestaurant ? [{
@@ -837,6 +853,10 @@ export const Reports: React.FC<ReportsProps> = ({
       setMainCategory('daily');
       setItemWise(true);
       setIsRestaurantReport(false);
+    } else if (val === 'daily-shift') {
+      setMainCategory('daily');
+      setIsRestaurantReport(false);
+      setIsShiftModalOpen(true);
     } else if (val === 'resto-bill') {
       setMainCategory('daily');
       setItemWise(false);
@@ -869,6 +889,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const allReportsList = useMemo(() => [
     { cat: 'daily', itemWise: false, isResto: false, label: 'Daily Sales (Bill-wise)' },
     { cat: 'daily', itemWise: true, isResto: false, label: 'Daily Sales (Item-wise)' },
+    { cat: 'daily', itemWise: false, isResto: false, label: 'Shift Handover & Day-End Closing', isShift: true },
     ...(config.EnableRestaurantMode === 'true' ? [
       { cat: 'daily', itemWise: false, isResto: true, label: 'Table Sales & Billing Summary' },
       { cat: 'daily', itemWise: true, isResto: true, label: 'Kitchen Order (KOT) & Dish Item Sales' }
@@ -1171,7 +1192,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
   useEffect(() => {
     runReport();
-  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, includeSalesReturn, selectedLedger, selectedBranchId]);
+  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, includeSalesReturn, selectedLedger, selectedBranchId, selectedCashier]);
 
   useEffect(() => {
     const handleRefresh = () => {
@@ -1186,14 +1207,14 @@ export const Reports: React.FC<ReportsProps> = ({
       window.removeEventListener('voucher:cancelled', handleRefresh);
       window.removeEventListener('voucher:deleted', handleRefresh);
     };
-  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, includeSalesReturn, selectedLedger, selectedBranchId]);
+  }, [mainCategory, invSubTab, finSubTab, regSubTab, fromDate, toDate, itemWise, gstOnly, includeSalesReturn, selectedLedger, selectedBranchId, selectedCashier]);
 
   const runReport = () => {
     setLoading(true);
     try {
       const activeBranchArg = selectedBranchId === 'ALL' ? undefined : selectedBranchId;
       if (mainCategory === 'daily') {
-        const data = getDailyColumnarReport(fromDate, toDate, { itemWise, gstOnly, includeSalesReturn }, activeBranchArg);
+        const data = getDailyColumnarReport(fromDate, toDate, { itemWise, gstOnly, includeSalesReturn, userName: selectedCashier }, activeBranchArg);
         setReportData(data);
       } else if (mainCategory === 'gst') {
         const data = getGSTReport(fromDate, toDate);
@@ -1273,14 +1294,17 @@ export const Reports: React.FC<ReportsProps> = ({
           ];
         }
       } else {
-        reportTitle = 'Daily Sales Columnar Statement';
-        headers = ['Date', 'Invoice No', 'Customer', 'Cash (Nu.)', `${config.Bank1Ledger || 'Bank 1'} (Nu.)`, `${config.Bank2Ledger || 'Bank 2'} (Nu.)`, 'Credit (Nu.)', 'Total (Nu.)'];
+        reportTitle = selectedCashier && selectedCashier !== 'ALL'
+          ? `Daily Sales Columnar Statement - Cashier: ${selectedCashier}`
+          : 'Daily Sales Columnar Statement';
+        headers = ['Date', 'Invoice No', 'Customer', 'Cashier', 'Cash (Nu.)', `${config.Bank1Ledger || 'Bank 1'} (Nu.)`, `${config.Bank2Ledger || 'Bank 2'} (Nu.)`, 'Credit (Nu.)', 'Total (Nu.)'];
         (reportData.rows || []).forEach((r: any) => {
-          rows.push([formatDateStr(r.date), r.invoiceNo, typeof r.customer === 'object' ? (r.customer.name || r.customer.ledger || 'Cash Customer') : r.customer, fmt(r.cash), fmt(r.bank1), fmt(r.bank2), fmt(r.credit), fmt(r.total)]);
+          rows.push([formatDateStr(r.date), r.invoiceNo, typeof r.customer === 'object' ? (r.customer.name || r.customer.ledger || 'Cash Customer') : r.customer, r.cashier || r.userName || 'Store Cashier', fmt(r.cash), fmt(r.bank1), fmt(r.bank2), fmt(r.credit), fmt(r.total)]);
         });
         if (reportData.totals) {
-          totalsRow = ['TOTAL SUMMARY', '', '', fmt(reportData.totals.cash), fmt(reportData.totals.bank1), fmt(reportData.totals.bank2), fmt(reportData.totals.credit), fmt(reportData.totals.total)];
+          totalsRow = ['TOTAL SUMMARY', '', '', '', fmt(reportData.totals.cash), fmt(reportData.totals.bank1), fmt(reportData.totals.bank2), fmt(reportData.totals.credit), fmt(reportData.totals.total)];
           summaryCards = [
+            ...(selectedCashier && selectedCashier !== 'ALL' ? [{ label: 'Cashier / Shift', value: selectedCashier }] : []),
             { label: 'Total Invoices', value: reportData.rows?.length || 0 },
             { label: 'Cash Collection', value: `Nu. ${fmt(reportData.totals.cash)}` },
             { label: 'Net Sales Revenue', value: `Nu. ${fmt(reportData.totals.total)}` }
@@ -2913,6 +2937,19 @@ export const Reports: React.FC<ReportsProps> = ({
         />
       )}
 
+      {/* Cashier Shift Handover & Day-End Closing Modal */}
+      <ShiftHandoverModal
+        isOpen={isShiftModalOpen}
+        onClose={() => {
+          setIsShiftModalOpen(false);
+          runReport();
+        }}
+        config={config}
+        fromDate={fromDate}
+        toDate={toDate}
+        initialCashier={selectedCashier !== 'ALL' ? selectedCashier : undefined}
+      />
+
       {/* Universal Report Navigation & Filter Bar */}
       <div className={`transition-all duration-300 ${isControlsCollapsed ? 'hidden' : 'block'} -mx-3 sm:-mx-6 px-3 sm:px-6 pt-2 relative z-40`}>
         <div className="rounded-xl border border-slate-200 bg-white p-2 sm:p-2.5 shadow-xs flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -3210,6 +3247,36 @@ export const Reports: React.FC<ReportsProps> = ({
                   />
                   GST Only
                 </label>
+              )}
+              {mainCategory === 'daily' && (
+                <div className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-lg px-2 py-0.5 shadow-2xs">
+                  <UserCheck className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+                  <span className="text-[11px] font-semibold text-slate-600 hidden sm:inline">Cashier:</span>
+                  <select
+                    value={selectedCashier}
+                    onChange={e => setSelectedCashier(e.target.value)}
+                    className="bg-transparent font-bold text-xs text-slate-800 outline-none cursor-pointer max-w-[130px] truncate"
+                    title="Filter Daily Sales by User / Cashier (Shift Closing & Handover)"
+                  >
+                    <option value="ALL">All Users / Cashiers</option>
+                    {availableCashiersList.map((usr: string) => (
+                      <option key={usr} value={usr}>
+                        {usr}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {mainCategory === 'daily' && (
+                <button
+                  type="button"
+                  onClick={() => setIsShiftModalOpen(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer shrink-0"
+                  title="Open Cashier Shift Handover & Day-End Closing Statement (Print Shift Slip / Handover)"
+                >
+                  <ArrowRightLeft className="h-3.5 w-3.5" />
+                  <span>Shift Handover / Day End</span>
+                </button>
               )}
             </div>
           )}
@@ -3726,6 +3793,7 @@ export const Reports: React.FC<ReportsProps> = ({
                           <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-center">Date</th>
                           <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Invoice No</th>
                           <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Customer</th>
+                          <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-left">Cashier / User</th>
                           <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">Cash</th>
                           <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{config.Bank1Ledger || 'Bank 1'}</th>
                           <th className="bg-slate-100 bg-clip-padding py-2.5 px-3 text-right">{config.Bank2Ledger || 'Bank 2'}</th>
@@ -3779,6 +3847,11 @@ export const Reports: React.FC<ReportsProps> = ({
                                   return cName;
                                 })()}
                               </td>
+                              <td className="py-2 px-3 text-left text-slate-600 font-medium whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 text-[11px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono font-semibold">
+                                  {r.cashier || r.userName || 'Store Cashier'}
+                                </span>
+                              </td>
                               <td className={`py-2 px-3 text-right font-mono ${isCN && Number(r.cash) !== 0 ? 'text-rose-700 font-bold' : ''}`}>{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.cash)}</td>
                               <td className={`py-2 px-3 text-right font-mono ${isCN && Number(r.bank1) !== 0 ? 'text-rose-700 font-bold' : ''}`}>{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.bank1)}</td>
                               <td className={`py-2 px-3 text-right font-mono ${isCN && Number(r.bank2) !== 0 ? 'text-rose-700 font-bold' : ''}`}>{r.isCancelled ? <span className="text-red-600 font-bold">0.00</span> : fmt(r.bank2)}</td>
@@ -3800,7 +3873,7 @@ export const Reports: React.FC<ReportsProps> = ({
                         </>
                       ) : (
                         <>
-                          <td colSpan={3} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left">NET TOTAL SUMMARY</td>
+                          <td colSpan={4} className="bg-slate-100 bg-clip-padding py-3 px-3 text-left">NET TOTAL SUMMARY</td>
                           <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.cash)}</td>
                           <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.bank1)}</td>
                           <td className="bg-slate-100 bg-clip-padding py-3 px-3 text-right font-mono">{fmt(reportData.totals?.bank2)}</td>

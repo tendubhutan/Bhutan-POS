@@ -564,6 +564,11 @@ export interface SalesInvoice {
   branchName?: string;
   godownId?: string;
   godownName?: string;
+  userId?: string;
+  userName?: string;
+  cashierName?: string;
+  terminalId?: string;
+  counterId?: string;
   items: Array<{
     'Invoice No'?: string;
     'Item Code': string;
@@ -1178,6 +1183,35 @@ export interface ReceiptNote {
   voucherTypeId?: string;
   voucherTypeName?: string;
   items: ReceiptNoteItem[];
+}
+
+export interface ShiftHandoverRecord {
+  id: string;
+  companyId?: string;
+  timestamp: string;
+  date: string;
+  time: string;
+  terminalId: string;
+  outgoingCashierId?: string;
+  outgoingCashierName: string;
+  incomingCashierId?: string;
+  incomingCashierName: string;
+  shiftName?: string;
+  openingCashFloat: number;
+  cashSales: number;
+  bank1Sales: number;
+  bank2Sales: number;
+  creditSales: number;
+  totalSales: number;
+  cashReturns: number;
+  netCashExpected: number;
+  actualCashCounted: number;
+  cashDifference: number;
+  denominations: Record<string, number>;
+  totalBills: number;
+  firstInvoiceNo?: string;
+  lastInvoiceNo?: string;
+  remarks?: string;
 }
 
 export * from './types/assetManagement';
