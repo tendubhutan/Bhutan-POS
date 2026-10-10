@@ -713,12 +713,13 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
               color: #0f172a;
             }
             .sig-section {
-              margin-top: 40px;
+              margin-top: 20px;
               display: flex;
               justify-content: space-between;
               align-items: flex-end;
-              padding-top: 10px;
+              padding-top: 8px;
               border-top: 1px solid #e2e8f0;
+              page-break-inside: avoid;
             }
             .sig-block {
               text-align: center;

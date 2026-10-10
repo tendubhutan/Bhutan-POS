@@ -1339,10 +1339,14 @@ function buildGenericVoucherPdf(
       doc.setTextColor(71, 85, 105);
       const splitNotes = doc.splitTextToSize(remarksFields.join('\n'), pageWidth - margin * 2);
       doc.text(splitNotes, margin, finalY + 9);
+      finalY += 12 + (splitNotes.length * 3.5);
     }
   }
 
-  const footerY = pageHeight - 14;
+  const desiredFooterY = finalY + 22;
+  const maxFooterY = pageHeight - 14;
+  const footerY = Math.min(desiredFooterY, maxFooterY);
+
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4);
   addSignatureToPdf(doc, config, pageWidth - margin, footerY);

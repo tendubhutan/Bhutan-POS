@@ -17,7 +17,7 @@ import {
   recalculateLedgerBalances,
   rebuildAccountingLogs
 } from './storageService';
-import { syncLedgerToSupabase, syncItemToSupabase, syncVoucherToSupabase } from './supabaseSyncService';
+import { syncLedgerToSupabase, syncItemToSupabase, syncVoucherToSupabase, syncSalesInvoiceToSupabase, syncPurchaseInvoiceToSupabase } from './supabaseSyncService';
 
 export type MigrationSource = 'tally' | 'busy';
 export type MigrationMode = 'cutoff_opening' | 'full_historical';
@@ -1525,6 +1525,12 @@ export async function execute1ClickMigration(
         )
       );
 
+      const itemMasterMap = new Map<string, Item>();
+      finalItems.forEach(it => {
+        if (it['Item Name']) itemMasterMap.set(it['Item Name'].trim().toLowerCase(), it);
+        if (it['Item Code']) itemMasterMap.set(it['Item Code'].trim().toLowerCase(), it);
+      });
+
       parsed.vouchers.forEach((v, idx) => {
         const vNo = (v.voucherNo || '').trim() || `VCH-MIG-${idx + 1}`;
         const key = `${(v.type || '').toLowerCase()}_${vNo.toLowerCase()}_${v.date || ''}_${v.amount || 0}_${((v as any).party || v.debitLedger || '').toLowerCase()}`;
@@ -1549,10 +1555,72 @@ export async function execute1ClickMigration(
           existingSet.add(key);
           importedVouchersCount++;
 
-          // Mirror Sales Vouchers to Sales Invoices so Sales Entry & Sales Reports are fully loaded
+          // Mirror Sales Vouchers to Sales Invoices so Sales Entry & Sales Reports are fully loaded with itemwise GST
           if ((v.type === 'S' || (v.type as string) === 'INV') && !existingSaleNos.has(vNo.toLowerCase())) {
             const partyName = (v as any).party || (v as any).partyLedger || 'Customer';
-            const itemsList = (v as any).items && (v as any).items.length > 0 ? (v as any).items : ((v as any).cart && (v as any).cart.length > 0 ? (v as any).cart : []);
+            const rawItemsList = (v as any).items && (v as any).items.length > 0 ? (v as any).items : ((v as any).cart && (v as any).cart.length > 0 ? (v as any).cart : []);
+            
+            let taxLedgerTotal = 0;
+            const vLines = (v as any).lines || [];
+            vLines.forEach((l: any) => {
+              const lName = (l.ledger || '').toLowerCase();
+              if (/cgst|sgst|igst|vat|output\s*gst|tax\b|gst\s*\d+/i.test(lName)) {
+                const amt = Math.abs(parseFloat(l.credit || l.debit || l.amount) || 0);
+                taxLedgerTotal += amt;
+              }
+            });
+
+            let calcSubtotal = 0;
+            let calcGstTotal = 0;
+
+            const processedCart = rawItemsList.map((it: any) => {
+              const iName = (it.itemName || it.name || it.itemCode || '').trim();
+              const master = itemMasterMap.get(iName.toLowerCase());
+              
+              const qty = Number(it.qty) || 1;
+              const rate = Number(it.rate) || (qty > 0 ? (Number(it.amount) / qty) : 0);
+              const lineAmount = Number(it.amount) || (qty * rate);
+
+              let gstPct = 0;
+              if (master && master['GST %'] !== undefined && !isNaN(Number(master['GST %'])) && Number(master['GST %']) > 0) {
+                gstPct = Number(master['GST %']);
+              } else if (it.gstPct || it.gstRate || it['GST %']) {
+                gstPct = Number(it.gstPct || it.gstRate || it['GST %']) || 0;
+              } else if (taxLedgerTotal > 0) {
+                gstPct = 18;
+              }
+
+              const taxable = lineAmount;
+              const gstAmt = Math.round((taxable * (gstPct / 100)) * 100) / 100;
+              const lineTotal = taxable + gstAmt;
+
+              calcSubtotal += taxable;
+              calcGstTotal += gstAmt;
+
+              return {
+                ...it,
+                itemCode: it.itemCode || iName,
+                code: it.code || it.itemCode || iName,
+                name: iName,
+                itemName: iName,
+                qty,
+                rate,
+                amount: taxable,
+                taxable,
+                gstPct,
+                gstRate: gstPct,
+                'GST %': gstPct,
+                gstAmt,
+                taxAmount: gstAmt,
+                total: lineTotal,
+                unit: it.unit || 'Pcs'
+              };
+            });
+
+            let invSubtotal = calcSubtotal > 0 ? calcSubtotal : Math.max(0, (v.amount || 0) - taxLedgerTotal);
+            let invGstAmt = calcGstTotal > 0 ? calcGstTotal : taxLedgerTotal;
+            let invTotal = (processedCart.length > 0) ? (invSubtotal + invGstAmt) : (v.amount || 0);
+
             existingSales.push({
               invoiceNo: vNo,
               voucherNo: vNo,
@@ -1568,16 +1636,16 @@ export async function execute1ClickMigration(
                 phone: '',
                 address: ''
               },
-              items: itemsList,
-              cart: itemsList,
-              subtotal: v.amount || 0,
-              taxable: v.amount || 0,
+              items: processedCart,
+              cart: processedCart,
+              subtotal: invSubtotal,
+              taxable: invSubtotal,
               zeroRated: 0,
-              gstAmt: 0,
+              gstAmt: invGstAmt,
               discount: 0,
-              total: v.amount || 0,
-              credit: isPOS ? 0 : (v.amount || 0),
-              cash: isPOS ? (v.amount || 0) : 0,
+              total: invTotal,
+              credit: isPOS ? 0 : invTotal,
+              cash: isPOS ? invTotal : 0,
               paymentMode: isPOS ? 'Cash' : 'Credit',
               status: isPOS ? ('Paid' as any) : ('Credit' as any),
               notes: v.narration || `Migrated Sales Voucher ${vNo} (${seriesName}) from ${parsed.source.toUpperCase()}`
@@ -1588,7 +1656,69 @@ export async function execute1ClickMigration(
           // Mirror Purchase Vouchers to Purchase Invoices
           if (v.type === 'PUR' && !existingPurchNos.has(vNo.toLowerCase())) {
             const partyName = (v as any).party || (v as any).partyLedger || 'Supplier';
-            const itemsList = (v as any).items && (v as any).items.length > 0 ? (v as any).items : ((v as any).cart && (v as any).cart.length > 0 ? (v as any).cart : []);
+            const rawItemsList = (v as any).items && (v as any).items.length > 0 ? (v as any).items : ((v as any).cart && (v as any).cart.length > 0 ? (v as any).cart : []);
+            
+            let taxLedgerTotal = 0;
+            const vLines = (v as any).lines || [];
+            vLines.forEach((l: any) => {
+              const lName = (l.ledger || '').toLowerCase();
+              if (/cgst|sgst|igst|vat|input\s*gst|tax\b|gst\s*\d+/i.test(lName)) {
+                const amt = Math.abs(parseFloat(l.credit || l.debit || l.amount) || 0);
+                taxLedgerTotal += amt;
+              }
+            });
+
+            let calcSubtotal = 0;
+            let calcGstTotal = 0;
+
+            const processedItems = rawItemsList.map((it: any) => {
+              const iName = (it.itemName || it.name || it.itemCode || '').trim();
+              const master = itemMasterMap.get(iName.toLowerCase());
+              
+              const qty = Number(it.qty) || 1;
+              const rate = Number(it.rate) || (qty > 0 ? (Number(it.amount) / qty) : 0);
+              const lineAmount = Number(it.amount) || (qty * rate);
+
+              let gstPct = 0;
+              if (master && master['GST %'] !== undefined && !isNaN(Number(master['GST %'])) && Number(master['GST %']) > 0) {
+                gstPct = Number(master['GST %']);
+              } else if (it.gstPct || it.gstRate || it['GST %']) {
+                gstPct = Number(it.gstPct || it.gstRate || it['GST %']) || 0;
+              } else if (taxLedgerTotal > 0) {
+                gstPct = 18;
+              }
+
+              const taxable = lineAmount;
+              const gstAmt = Math.round((taxable * (gstPct / 100)) * 100) / 100;
+              const lineTotal = taxable + gstAmt;
+
+              calcSubtotal += taxable;
+              calcGstTotal += gstAmt;
+
+              return {
+                ...it,
+                itemCode: it.itemCode || iName,
+                code: it.code || it.itemCode || iName,
+                name: iName,
+                itemName: iName,
+                qty,
+                rate,
+                amount: taxable,
+                taxable,
+                gstPct,
+                gstRate: gstPct,
+                'GST %': gstPct,
+                gstAmt,
+                taxAmount: gstAmt,
+                total: lineTotal,
+                unit: it.unit || 'Pcs'
+              };
+            });
+
+            let invSubtotal = calcSubtotal > 0 ? calcSubtotal : Math.max(0, (v.amount || 0) - taxLedgerTotal);
+            let invGstAmt = calcGstTotal > 0 ? calcGstTotal : taxLedgerTotal;
+            let invTotal = (processedItems.length > 0) ? (invSubtotal + invGstAmt) : (v.amount || 0);
+
             existingPurchases.push({
               id: (v as any).id || `pur-vch-${idx + 1}`,
               billNo: vNo,
@@ -1602,11 +1732,11 @@ export async function execute1ClickMigration(
                 phone: '',
                 address: ''
               },
-              items: itemsList,
-              subtotal: v.amount || 0,
-              taxable: v.amount || 0,
-              total: v.amount || 0,
-              credit: v.amount || 0,
+              items: processedItems,
+              subtotal: invSubtotal,
+              taxable: invSubtotal,
+              total: invTotal,
+              credit: invTotal,
               paymentMode: 'Credit',
               status: 'Credit' as any,
               notes: v.narration || `Migrated Purchase Voucher ${vNo} from ${parsed.source.toUpperCase()}`
@@ -1624,6 +1754,10 @@ export async function execute1ClickMigration(
       saveJson(STORAGE_KEYS.VOUCHERS, existingVouchers, targetCompanyId);
       saveJson(STORAGE_KEYS.SALES_INVOICES, existingSales, targetCompanyId);
       saveJson(STORAGE_KEYS.PURCHASE_INVOICES, existingPurchases, targetCompanyId);
+
+      // Cloud database sync if Supabase is connected
+      existingSales.forEach(s => { try { syncSalesInvoiceToSupabase(s, targetCompanyId); } catch (e) {} });
+      existingPurchases.forEach(p => { try { syncPurchaseInvoiceToSupabase(p, targetCompanyId); } catch (e) {} });
     }
 
     // 6. Recalculate all balances & trial balance
