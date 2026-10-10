@@ -170,14 +170,22 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           {/* Company & Financial Year Selector Pill */}
-          {isSuperAdmin && onOpenCompanyManager ? (
+          {onOpenCompanyManager ? (
             <button
               type="button"
               onClick={onOpenCompanyManager}
-              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 bg-blue-800/80 hover:bg-blue-900 border border-blue-500/50 hover:border-purple-400/60 rounded-xl transition text-left cursor-pointer group shadow-xs shrink min-w-0"
-              title="System Administrator: Manage & Switch Companies (Alt+C)"
+              className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 bg-blue-800/80 hover:bg-blue-900 border ${
+                isSuperAdmin 
+                  ? 'border-blue-500/50 hover:border-purple-400/60' 
+                  : 'border-blue-500/50 hover:border-emerald-400/60'
+              } rounded-xl transition text-left cursor-pointer group shadow-xs shrink min-w-0`}
+              title={isSuperAdmin ? "System Administrator: Manage & Switch Companies (Alt+C)" : "Click to Change / Split Financial Year or Manage Company (Alt+C)"}
             >
-              <div className="h-6 w-6 sm:h-7 sm:w-7 rounded-lg bg-purple-600/40 border border-purple-400/40 flex items-center justify-center text-purple-200 group-hover:text-white transition shrink-0">
+              <div className={`h-6 w-6 sm:h-7 sm:w-7 rounded-lg ${
+                isSuperAdmin 
+                  ? 'bg-purple-600/40 border-purple-400/40 text-purple-200' 
+                  : 'bg-emerald-600/30 border-emerald-400/40 text-emerald-300'
+              } border flex items-center justify-center group-hover:text-white transition shrink-0`}>
                 <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </div>
               <div className="flex flex-col min-w-0">
@@ -185,10 +193,10 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="font-extrabold text-xs text-white tracking-wide leading-tight truncate max-w-[100px] sm:max-w-[130px] lg:max-w-[160px] xl:max-w-[200px]">
                     {activeCompanyName || config.CompanyName || 'Druk ERP'}
                   </span>
-                  <ChevronDown className="h-3 w-3 text-purple-300 group-hover:text-white transition shrink-0" />
+                  <ChevronDown className={`h-3 w-3 ${isSuperAdmin ? 'text-purple-300' : 'text-emerald-300'} group-hover:text-white transition shrink-0`} />
                 </div>
                 <span className="text-[10px] text-emerald-300 font-medium font-mono leading-tight truncate">
-                  {activeFYName || 'FY 2026'} • <span className="text-purple-300 font-bold">SUPERADMIN</span>
+                  {activeFYName || 'FY 2026'} • <span className={isSuperAdmin ? "text-purple-300 font-bold" : "text-blue-200 font-bold"}>{isSuperAdmin ? "SUPERADMIN" : "FINANCIAL YEAR"}</span>
                 </span>
               </div>
             </button>

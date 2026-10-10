@@ -947,6 +947,9 @@ export default function App() {
         } else if (key === 's' || e.code === 'KeyS' || key === 'ß') {
           e.preventDefault();
           navigateTo('settings');
+        } else if (key === 'c' || e.code === 'KeyC' || key === 'ç') {
+          e.preventDefault();
+          setShowCompanyModal(true);
         } else if (key === '0' || e.code === 'Digit0' || e.code === 'Numpad0' || key === 'º' || key === '§') {
           e.preventDefault();
           navigateTo('superadmin');
@@ -1297,6 +1300,8 @@ export default function App() {
             <SettingsView
               config={config}
               ledgers={ledgers}
+              activeFY={activeFY}
+              onOpenCompanyManager={() => setShowCompanyModal(true)}
               onDataRefresh={refreshData}
               isActive={currentView === 'settings' && !isAnyModalOpen}
             />

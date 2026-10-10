@@ -27,6 +27,8 @@ import { MODULE_LABELS, ALL_MODULE_IDS, getDefaultPermissionsForRole } from '../
 interface SettingsViewProps {
   config: Config;
   ledgers: Ledger[];
+  activeFY?: any;
+  onOpenCompanyManager?: () => void;
   onDataRefresh: () => void;
   isActive?: boolean;
 }
@@ -34,6 +36,8 @@ interface SettingsViewProps {
 export const SettingsView: React.FC<SettingsViewProps> = ({
   config,
   ledgers,
+  activeFY,
+  onOpenCompanyManager,
   onDataRefresh,
   isActive = true
 }) => {
@@ -739,6 +743,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   These details will appear on tax invoices, thermal slips, and official statements.
                 </p>
               </div>
+            </div>
+
+            {/* Financial Year & Year-End Closing (Split FY) Card */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 via-indigo-50/40 to-slate-50 border border-blue-200/90 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-blue-600/10 border border-blue-500/20 text-blue-700 flex items-center justify-center shrink-0">
+                  <Calendar className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-extrabold text-xs sm:text-sm text-slate-900">Active Accounting Financial Year:</span>
+                    <span className="px-2.5 py-0.5 rounded-lg bg-emerald-600 text-white font-mono font-bold text-xs shadow-2xs">
+                      {activeFY?.fy_name || 'FY 2026'}
+                    </span>
+                    {activeFY?.start_date && activeFY?.end_date && (
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        ({activeFY.start_date} → {activeFY.end_date})
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Need to close the financial year, carry forward opening balances into the next year, or add/switch accounting periods?
+                  </p>
+                </div>
+              </div>
+              {onOpenCompanyManager && (
+                <button
+                  type="button"
+                  onClick={onOpenCompanyManager}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition shrink-0 cursor-pointer"
+                  title="Open Year-End Closing, Balance Carry-Forward & Split FY Manager"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  <span>Change / Split Financial Year</span>
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

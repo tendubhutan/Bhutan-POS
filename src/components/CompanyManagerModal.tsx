@@ -505,7 +505,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                Multi-Tenant Company Workspaces
+                {isSuperAdmin ? 'Multi-Tenant Company Workspaces' : 'Company & Financial Year Manager'}
                 {isSupabaseConfigured ? (
                   <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono px-2 py-0.5 rounded-full flex items-center gap-1">
                     <ShieldCheck className="h-3 w-3" /> Supabase RLS Active
@@ -517,7 +517,9 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                 )}
               </h2>
               <p className="text-xs text-slate-400">
-                Manage separate company profiles, share dedicated client URLs, and maintain clean tenant data.
+                {isSuperAdmin 
+                  ? 'Manage separate company profiles, share dedicated client URLs, and maintain clean tenant data.'
+                  : 'Manage your organization profile, switch active financial years, or perform year-end closing & split.'}
               </p>
             </div>
           </div>
@@ -554,7 +556,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                   <div className="flex items-center gap-3">
                     <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                       <Building2 className="h-4 w-4 text-blue-400" />
-                      Registered Companies ({companies.length})
+                      {isSuperAdmin ? `Registered Companies (${companies.length})` : 'Your Organization'}
                     </span>
                     
                     {/* Hide / Show Demo Company Toggle (Superadmin only) */}
@@ -679,7 +681,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
 
                             <div className="flex items-center gap-2">
                               {/* Edit Company & Login Info Button */}
-                              {isSuperAdmin && !isDemo && (
+                              {(!isDemo) && (isSuperAdmin || comp.id === session?.assignedCompanyId) && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -687,7 +689,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
                                     handleStartEditCompany(comp);
                                   }}
                                   className="text-slate-400 hover:text-blue-400 p-1 rounded hover:bg-slate-700/50 transition cursor-pointer flex items-center gap-1 text-[11px]"
-                                  title="Edit Company Profile & Login Credentials"
+                                  title="Edit Company Profile & Contact Info"
                                 >
                                   <Edit3 className="h-3.5 w-3.5" />
                                   <span>Edit</span>
