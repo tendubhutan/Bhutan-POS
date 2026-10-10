@@ -526,18 +526,18 @@ export const BranchMaster: React.FC<BranchMasterProps> = ({ config, onUpdated })
       )}
 
       {/* Branches Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-600 text-[11px] font-bold">
-              <th className="py-2.5 px-3 w-16">Code</th>
-              <th className="py-2.5 px-3">Branch Name</th>
-              <th className="py-2.5 px-3">Dzongkhag / Location</th>
-              <th className="py-2.5 px-3">Contact</th>
-              <th className="py-2.5 px-3 text-center w-36">Voucher Identities</th>
-              <th className="py-2.5 px-3 text-center w-28">HQ Status</th>
-              <th className="py-2.5 px-3 text-center w-20">Status</th>
-              <th className="py-2.5 px-3 text-right w-24">Actions</th>
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs">
+        <table className="w-full text-left border-separate border-spacing-0">
+          <thead className="sticky top-0 z-30 bg-slate-100 shadow-xs border-b border-slate-200">
+            <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 text-[11px] font-bold uppercase">
+              <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 w-16 border-b border-slate-200">Code</th>
+              <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 border-b border-slate-200">Branch Name</th>
+              <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 border-b border-slate-200">Dzongkhag / Location</th>
+              <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 border-b border-slate-200">Contact</th>
+              <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-center w-36 border-b border-slate-200">Voucher Identities</th>
+              <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-center w-28 border-b border-slate-200">HQ Status</th>
+              <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-center w-20 border-b border-slate-200">Status</th>
+              <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-right w-24 border-b border-slate-200">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">

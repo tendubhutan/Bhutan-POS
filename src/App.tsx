@@ -1072,7 +1072,7 @@ export default function App() {
         />
 
         <main className={`flex-1 min-w-0 max-w-full ${
-          (currentView === 'reports' || currentView === 'staff' || currentView === 'attendance' || currentView === 'payroll')
+          (currentView === 'reports' || currentView === 'staff' || currentView === 'attendance' || currentView === 'payroll' || currentView === 'masters')
             ? 'overflow-auto p-0' 
             : isHighDensityView 
               ? 'p-1.5 sm:p-2 pb-1.5 overflow-hidden flex flex-col min-h-0' 

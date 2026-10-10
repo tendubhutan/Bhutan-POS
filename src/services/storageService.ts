@@ -268,7 +268,7 @@ export const DEFAULT_CONFIG: Config = {
   CurrencySymbol: 'Nu.',
   Bank1Ledger: 'BOB Account',
   Bank2Ledger: 'BNBL Account',
-  CompanyBankDetails: 'Bank of Bhutan\nA/C: 1029384756\nBranch: Phuntsholing',
+  CompanyBankDetails: '',
   SelectedBankLedgerForPrint: 'BOB Account',
   PrintBankDetailsOnInvoice: 'true',
   EnableGST: 'true',
@@ -517,8 +517,8 @@ const DEFAULT_LEDGER_GROUPS: LedgerGroup[] = [
 
 export const DEFAULT_LEDGERS: Ledger[] = [
   { 'Ledger Name': 'Cash', Group: 'Cash-in-Hand', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
-  { 'Ledger Name': 'BOB Account', Group: 'Bank Accounts', 'Bank Name': 'Bank of Bhutan', Branch: 'Main Branch', 'Account No': '1029384756', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
-  { 'Ledger Name': 'BNBL Account', Group: 'Bank Accounts', 'Bank Name': 'Bhutan National Bank', Branch: 'Phuntsholing', 'Account No': '9876543210', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'BOB Account', Group: 'Bank Accounts', 'Bank Name': 'Bank of Bhutan', Branch: '', 'Account No': '', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
+  { 'Ledger Name': 'BNBL Account', Group: 'Bank Accounts', 'Bank Name': 'Bhutan National Bank', Branch: '', 'Account No': '', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
   { 'Ledger Name': 'Capital Account', Group: 'Capital Account', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Cr', 'Current Balance': 0 },
   { 'Ledger Name': 'Cash Customer', Group: 'Sundry Debtors', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
   { 'Ledger Name': 'Walk-in Customer', Group: 'Sundry Debtors', 'Opening Balance': 0, 'Balance Type (Dr/Cr)': 'Dr', 'Current Balance': 0 },
@@ -1646,8 +1646,24 @@ export function getLedgers(targetCompanyId?: string): Ledger[] {
     }
   });
 
-  // Non-demo tenant safety: ensure zero starting balance if no transactions exist
+  // Non-demo tenant safety: strip sample bank account numbers & ensure zero starting balance if no transactions exist
   if (!isDefaultDemoCompany) {
+    leds.forEach(l => {
+      const acct = String(l['Account No'] || '').trim();
+      if (acct === '1029384756' || acct === '9876543210') {
+        l['Account No'] = '';
+        if (l['Branch'] === 'Main Branch' || l['Branch'] === 'Phuntsholing') {
+          l['Branch'] = '';
+        }
+        ledgersUpdated = true;
+      }
+    });
+
+    const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG, cId);
+    if (cfg && cfg.CompanyBankDetails && (cfg.CompanyBankDetails.includes('1029384756') || cfg.CompanyBankDetails.includes('9876543210'))) {
+      saveJson(STORAGE_KEYS.CONFIG, { ...cfg, CompanyBankDetails: '' }, cId);
+    }
+
     const sList = loadJson<any[]>(STORAGE_KEYS.SALES_INVOICES, []);
     const pList = loadJson<any[]>(STORAGE_KEYS.PURCHASE_INVOICES, []);
     const vList = loadJson<any[]>(STORAGE_KEYS.VOUCHERS, []);

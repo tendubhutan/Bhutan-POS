@@ -861,7 +861,7 @@ export const Masters: React.FC<MastersProps> = ({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="p-3 sm:p-6 pb-6 lg:pb-8 space-y-4">
       {/* Header */}
       <div>
         <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900">Masters Directory</h1>
@@ -895,8 +895,9 @@ export const Masters: React.FC<MastersProps> = ({
 
       {/* ITEMS MASTER */}
       {activeTab === 'items' && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3">
-          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
@@ -1048,32 +1049,33 @@ export const Masters: React.FC<MastersProps> = ({
               </button>
             </div>
           </div>
+        </div>
 
-          <div className="overflow-auto max-h-[calc(100vh-230px)] rounded-xl border border-slate-200 bg-white shadow-2xs">
-            <table className="w-full border-collapse text-xs sm:text-sm">
-              <thead className="sticky top-0 z-20 bg-slate-100 shadow-2xs border-b border-slate-200">
-                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
-                  {visibleColumns.code !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Code</th>}
-                  {visibleColumns.barcode !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Barcode</th>}
-                  {config.EnableSpareParts === 'true' && visibleColumns.partNumber !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Part No. / OEM</th>}
-                  {visibleColumns.itemName !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Item Name</th>}
-                  {visibleColumns.group !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Group</th>}
-                  {showCategory && visibleColumns.category !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Category</th>}
-                  {config.EnableSpareParts === 'true' && config.EnableRackBin !== 'false' && visibleColumns.rackBin !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Rack / Bin</th>}
-                  {config.EnableSpareParts === 'true' && config.EnableCompatibility !== 'false' && visibleColumns.compatibility !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Compatibility</th>}
-                  {config.EnableGarmentsAndFootwear === 'true' && config.EnableSize !== 'false' && visibleColumns.size !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Size</th>}
-                  {config.EnableGarmentsAndFootwear === 'true' && config.EnableColor !== 'false' && visibleColumns.color !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Color</th>}
-                  {visibleColumns.saleRate !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-right whitespace-nowrap">Sale Rate</th>}
-                  {showGst && visibleColumns.gst !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-right whitespace-nowrap">GST %</th>}
-                  {visibleColumns.stock !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-right whitespace-nowrap">Current Stock</th>}
-                  {visibleColumns.actions !== false && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-center whitespace-nowrap">Actions</th>}
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-xs">
+            <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+              <thead className="sticky top-0 z-30 bg-slate-100 shadow-xs border-b border-slate-200">
+                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px]">
+                  {visibleColumns.code !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200 first:rounded-tl-2xl">Code</th>}
+                  {visibleColumns.barcode !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Barcode</th>}
+                  {config.EnableSpareParts === 'true' && visibleColumns.partNumber !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Part No. / OEM</th>}
+                  {visibleColumns.itemName !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Item Name</th>}
+                  {visibleColumns.group !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Group</th>}
+                  {showCategory && visibleColumns.category !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Category</th>}
+                  {config.EnableSpareParts === 'true' && config.EnableRackBin !== 'false' && visibleColumns.rackBin !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Rack / Bin</th>}
+                  {config.EnableSpareParts === 'true' && config.EnableCompatibility !== 'false' && visibleColumns.compatibility !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Compatibility</th>}
+                  {config.EnableGarmentsAndFootwear === 'true' && config.EnableSize !== 'false' && visibleColumns.size !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Size</th>}
+                  {config.EnableGarmentsAndFootwear === 'true' && config.EnableColor !== 'false' && visibleColumns.color !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Color</th>}
+                  {visibleColumns.saleRate !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-right whitespace-nowrap border-b border-slate-200">Sale Rate</th>}
+                  {showGst && visibleColumns.gst !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-right whitespace-nowrap border-b border-slate-200">GST %</th>}
+                  {visibleColumns.stock !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-right whitespace-nowrap border-b border-slate-200">Current Stock</th>}
+                  {visibleColumns.actions !== false && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-center whitespace-nowrap border-b border-slate-200 last:rounded-tr-2xl">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {items
                   .filter(i => !itemSearch || i['Item Name'].toLowerCase().includes(itemSearch.toLowerCase()) || i.Barcode.includes(itemSearch) || (i.Category && i.Category.toLowerCase().includes(itemSearch.toLowerCase())))
                   .map((item, idx) => (
-                    <tr key={`${item['Item Code']}_${idx}`} className="hover:bg-slate-50 transition">
+                    <tr key={`${item['Item Code']}_${idx}`} className="hover:bg-slate-50 transition border-b border-slate-100">
                       {visibleColumns.code !== false && <td className="py-2 px-3 font-mono text-slate-500 whitespace-nowrap">{item['Item Code']}</td>}
                       {visibleColumns.barcode !== false && <td className="py-2 px-3 font-mono text-slate-800 whitespace-nowrap">{item.Barcode}</td>}
                       {config.EnableSpareParts === 'true' && visibleColumns.partNumber !== false && (
@@ -1196,43 +1198,45 @@ export const Masters: React.FC<MastersProps> = ({
 
       {/* LEDGERS MASTER */}
       {activeTab === 'ledgers' && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3">
-          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search ledgers..."
-                value={ledgerSearch}
-                onChange={e => setLedgerSearch(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none"
-              />
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search ledgers..."
+                  value={ledgerSearch}
+                  onChange={e => setLedgerSearch(e.target.value)}
+                  className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none"
+                />
+              </div>
+              <button
+                onClick={() => openNewLedger()}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700"
+              >
+                <Plus className="h-4 w-4" />
+                + New Ledger
+              </button>
             </div>
-            <button
-              onClick={() => openNewLedger()}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700"
-            >
-              <Plus className="h-4 w-4" />
-              + New Ledger
-            </button>
           </div>
 
-          <div className="overflow-auto max-h-[calc(100vh-230px)] rounded-xl border border-slate-200 bg-white shadow-2xs">
-            <table className="w-full border-collapse text-xs sm:text-sm">
-              <thead className="sticky top-0 z-20 bg-slate-100 shadow-2xs border-b border-slate-200">
-                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Ledger Name</th>
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Group</th>
-                  {showGst && <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">GSTIN</th>}
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-right whitespace-nowrap">Current Balance</th>
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-center whitespace-nowrap">Actions</th>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-xs">
+            <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+              <thead className="sticky top-0 z-30 bg-slate-100 shadow-xs border-b border-slate-200">
+                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px]">
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200 first:rounded-tl-2xl">Ledger Name</th>
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Group</th>
+                  {showGst && <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">GSTIN</th>}
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-right whitespace-nowrap border-b border-slate-200">Current Balance</th>
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-center whitespace-nowrap border-b border-slate-200 last:rounded-tr-2xl">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {ledgers
                   .filter(l => !ledgerSearch || l['Ledger Name'].toLowerCase().includes(ledgerSearch.toLowerCase()))
                   .map(l => (
-                    <tr key={l['Ledger Name']} className="hover:bg-slate-50 transition">
+                    <tr key={l['Ledger Name']} className="hover:bg-slate-50 transition border-b border-slate-100">
                       <td className="py-2 px-3 font-bold text-slate-900">{l['Ledger Name']}</td>
                       <td className="py-2 px-3 text-slate-600">{l.Group}</td>
                       {showGst && <td className="py-2 px-3 font-mono text-slate-500">{l['GST No'] || '-'}</td>}
@@ -1271,53 +1275,51 @@ export const Masters: React.FC<MastersProps> = ({
 
       {/* VOUCHER TYPES MASTER */}
       {activeTab === 'vouchertypes' && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <VoucherTypeManager onUpdated={onDataRefresh} />
-        </div>
+        <VoucherTypeManager onUpdated={onDataRefresh} />
       )}
 
       {activeTab === 'units' && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
-          <UnitMaster units={units} onUpdated={onDataRefresh} />
-        </div>
+        <UnitMaster units={units} onUpdated={onDataRefresh} />
       )}
 
       {/* ITEM GROUPS MASTER */}
       {activeTab === 'itemgroups' && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3">
-          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search item groups & sub-groups..."
-                value={itemGroupSearch}
-                onChange={e => setItemGroupSearch(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none"
-              />
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search item groups & sub-groups..."
+                  value={itemGroupSearch}
+                  onChange={e => setItemGroupSearch(e.target.value)}
+                  className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  setEditingItemGroupOldName(null);
+                  setQuickGroupName('');
+                  setQuickGroupParent('');
+                  setShowQuickGroupModal(true);
+                }}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer"
+              >
+                <FolderPlus className="h-4 w-4" />
+                + New Item Group / Sub-Group
+              </button>
             </div>
-            <button
-              onClick={() => {
-                setEditingItemGroupOldName(null);
-                setQuickGroupName('');
-                setQuickGroupParent('');
-                setShowQuickGroupModal(true);
-              }}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer"
-            >
-              <FolderPlus className="h-4 w-4" />
-              + New Item Group / Sub-Group
-            </button>
           </div>
 
-          <div className="overflow-auto max-h-[calc(100vh-230px)] rounded-xl border border-slate-200 bg-white shadow-2xs">
-            <table className="w-full border-collapse text-xs sm:text-sm">
-              <thead className="sticky top-0 z-20 bg-slate-100 shadow-2xs border-b border-slate-200">
-                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Group Name</th>
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Parent Group</th>
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-center whitespace-nowrap">Items Count</th>
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-center whitespace-nowrap">Actions</th>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-xs">
+            <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+              <thead className="sticky top-0 z-30 bg-slate-100 shadow-xs border-b border-slate-200">
+                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px]">
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200 first:rounded-tl-2xl">Group Name</th>
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Parent Group</th>
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-center whitespace-nowrap border-b border-slate-200">Items Count</th>
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-center whitespace-nowrap border-b border-slate-200 last:rounded-tr-2xl">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1331,7 +1333,7 @@ export const Masters: React.FC<MastersProps> = ({
                     .map(g => {
                       const count = items.filter(i => i.Group === g['Group Name']).length;
                       return (
-                        <tr key={g['Group Name']} className="hover:bg-slate-50 transition">
+                        <tr key={g['Group Name']} className="hover:bg-slate-50 transition border-b border-slate-100">
                           <td className="py-2.5 px-3 font-bold text-slate-900">{g['Group Name']}</td>
                           <td className="py-2.5 px-3 text-slate-600 font-medium">
                             {g['Parent Group'] ? (
@@ -1387,39 +1389,41 @@ export const Masters: React.FC<MastersProps> = ({
 
       {/* UNIT GROUPS MASTER */}
       {activeTab === 'unitgroups' && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3">
-          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search unit groups..."
-                value={unitGroupSearch}
-                onChange={e => setUnitGroupSearch(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none"
-              />
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search unit groups..."
+                  value={unitGroupSearch}
+                  onChange={e => setUnitGroupSearch(e.target.value)}
+                  className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  setEditingUnitGroupOldName(null);
+                  setQuickUnitGroupName('');
+                  setQuickUnitGroupPrimaryUnit(units[0]?.['Unit Name'] || 'Pcs');
+                  setShowQuickUnitGroupModal(true);
+                }}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer"
+              >
+                <Layers className="h-4 w-4" />
+                + New Unit Group
+              </button>
             </div>
-            <button
-              onClick={() => {
-                setEditingUnitGroupOldName(null);
-                setQuickUnitGroupName('');
-                setQuickUnitGroupPrimaryUnit(units[0]?.['Unit Name'] || 'Pcs');
-                setShowQuickUnitGroupModal(true);
-              }}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer"
-            >
-              <Layers className="h-4 w-4" />
-              + New Unit Group
-            </button>
           </div>
 
-          <div className="overflow-auto max-h-[calc(100vh-230px)] rounded-xl border border-slate-200 bg-white shadow-2xs">
-            <table className="w-full border-collapse text-xs sm:text-sm">
-              <thead className="sticky top-0 z-20 bg-slate-100 shadow-2xs border-b border-slate-200">
-                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Unit Group Name</th>
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Primary Unit</th>
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-center whitespace-nowrap">Actions</th>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-xs">
+            <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+              <thead className="sticky top-0 z-30 bg-slate-100 shadow-xs border-b border-slate-200">
+                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px]">
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200 first:rounded-tl-2xl">Unit Group Name</th>
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Primary Unit</th>
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-center whitespace-nowrap border-b border-slate-200 last:rounded-tr-2xl">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1431,7 +1435,7 @@ export const Masters: React.FC<MastersProps> = ({
                   unitGroups
                     .filter(ug => !unitGroupSearch || ug['Group Name']?.toLowerCase().includes(unitGroupSearch.toLowerCase()))
                     .map(ug => (
-                      <tr key={ug['Group Name']} className="hover:bg-slate-50 transition">
+                      <tr key={ug['Group Name']} className="hover:bg-slate-50 transition border-b border-slate-100">
                         <td className="py-2.5 px-3 font-bold text-slate-900">{ug['Group Name']}</td>
                         <td className="py-2.5 px-3 text-slate-600 font-semibold">{ug['Primary Unit'] || '-'}</td>
                         <td className="py-2.5 px-3 text-center">
@@ -1473,42 +1477,44 @@ export const Masters: React.FC<MastersProps> = ({
 
       {/* LEDGER GROUPS MASTER */}
       {activeTab === 'ledgergroups' && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs space-y-3">
-          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search ledger groups & sub-groups..."
-                value={ledgerGroupSearch}
-                onChange={e => setLedgerGroupSearch(e.target.value)}
-                className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none"
-              />
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search ledger groups & sub-groups..."
+                  value={ledgerGroupSearch}
+                  onChange={e => setLedgerGroupSearch(e.target.value)}
+                  className="w-full h-9 pl-9 pr-3 rounded-xl border border-slate-300 text-xs font-medium outline-none"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  setEditingLedgerGroupOldName(null);
+                  setQuickLedgerGroupName('');
+                  setQuickLedgerGroupParent('Current Assets');
+                  setQuickLedgerGroupNature('Asset');
+                  setShowQuickLedgerGroupModal(true);
+                }}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer"
+              >
+                <FolderPlus className="h-4 w-4" />
+                + New Ledger Group / Sub-Group
+              </button>
             </div>
-            <button
-              onClick={() => {
-                setEditingLedgerGroupOldName(null);
-                setQuickLedgerGroupName('');
-                setQuickLedgerGroupParent('Current Assets');
-                setQuickLedgerGroupNature('Asset');
-                setShowQuickLedgerGroupModal(true);
-              }}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer"
-            >
-              <FolderPlus className="h-4 w-4" />
-              + New Ledger Group / Sub-Group
-            </button>
           </div>
 
-          <div className="overflow-auto max-h-[calc(100vh-230px)] rounded-xl border border-slate-200 bg-white shadow-2xs">
-            <table className="w-full border-collapse text-xs sm:text-sm">
-              <thead className="sticky top-0 z-20 bg-slate-100 shadow-2xs border-b border-slate-200">
-                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Group Name</th>
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Parent Group</th>
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-left whitespace-nowrap">Nature</th>
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-center whitespace-nowrap">Ledgers Count</th>
-                  <th className="sticky top-0 z-20 bg-slate-100 py-2.5 px-3 text-center whitespace-nowrap">Actions</th>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-xs">
+            <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+              <thead className="sticky top-0 z-30 bg-slate-100 shadow-xs border-b border-slate-200">
+                <tr className="bg-slate-100 text-slate-700 font-bold uppercase text-[11px]">
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200 first:rounded-tl-2xl">Group Name</th>
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Parent Group</th>
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-left whitespace-nowrap border-b border-slate-200">Nature</th>
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-center whitespace-nowrap border-b border-slate-200">Ledgers Count</th>
+                  <th className="sticky top-0 z-30 bg-slate-100 bg-clip-padding py-2.5 px-3 text-center whitespace-nowrap border-b border-slate-200 last:rounded-tr-2xl">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1529,7 +1535,7 @@ export const Masters: React.FC<MastersProps> = ({
                         Capital: 'bg-amber-50 text-amber-700 border-amber-200'
                       };
                       return (
-                        <tr key={lg['Group Name']} className="hover:bg-slate-50 transition">
+                        <tr key={lg['Group Name']} className="hover:bg-slate-50 transition border-b border-slate-100">
                           <td className="py-2.5 px-3 font-bold text-slate-900">{lg['Group Name']}</td>
                           <td className="py-2.5 px-3 text-slate-600 font-medium">
                             {lg['Parent Group'] ? (
