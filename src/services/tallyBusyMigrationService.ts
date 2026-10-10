@@ -60,6 +60,7 @@ export interface MigrationParsedData {
   units: Unit[];
   openingBills: MigrationOpeningBill[];
   vouchers: Voucher[];
+  salesVoucherSeries?: string[];
   stats: MigrationStats;
   warnings: string[];
   errors: string[];
@@ -69,6 +70,8 @@ export interface MigrationOptions {
   mergeOrReplace: 'merge' | 'replace';
   createMissingGroups: boolean;
   createOpeningBillsAsPending: boolean;
+  salesTypeMappings?: Record<string, 'normalsale' | 'pos'>;
+  defaultSalesType?: 'normalsale' | 'pos';
   targetCompanyId?: string;
 }
 
@@ -364,8 +367,29 @@ function parseTallyXmlRegexFallback(xmlString: string, mode: MigrationMode, file
     const opValMatch = body.match(/<OPENINGVALUE>([^<]+)<\/OPENINGVALUE>/i);
     const opVal = opValMatch ? Math.abs(parseFloat(opValMatch[1].replace(/[^0-9.-]/g, ''))) || 0 : 0;
 
-    let purchaseRate = opQty > 0 && opVal > 0 ? Math.round((opVal / opQty) * 100) / 100 : 0;
-    let saleRate = purchaseRate > 0 ? Math.round(purchaseRate * 1.25 * 100) / 100 : 0;
+    let purchaseRate = 0;
+    const stdCostMatch = body.match(/<(?:STANDARDCOSTLIST\.LIST|STANDARDCOST\.LIST|STANDARDCOSTDETAILS\.LIST)[\s\S]*?<RATE>([^<]+)<\/RATE>/i)
+      || body.match(/<(?:OPENINGRATE|PURCHASERATE|COST)>([^<]+)<\//i);
+    if (stdCostMatch) {
+      const match = stdCostMatch[1].match(/([0-9.-]+)/);
+      if (match) purchaseRate = parseFloat(match[1]) || 0;
+    }
+    if (purchaseRate === 0 && opQty > 0 && opVal > 0) {
+      purchaseRate = Math.round((opVal / opQty) * 100) / 100;
+    }
+
+    let saleRate = 0;
+    const stdSellingRateMatch = body.match(/<(?:STANDARDRATES\.LIST|STANDARDSELLINGPRICES\.LIST|STANDARDPRICELIST\.LIST|STANDARDPRICES\.LIST|SELLINGPRICELIST\.LIST|SELLINGRATEDETAILS\.LIST|FULLPRICELIST\.LIST|PRICELIST\.LIST)[\s\S]*?<(?:RATE|BASICPRICE|PRICE)>([^<]+)<\/(?:RATE|BASICPRICE|PRICE)>/i)
+      || body.match(/<(?:STDRATE|STANDARDRATE|SELLINGRATE|SALESRATE|BASICPRICE|OPENINGRATE)>([^<]+)<\//i);
+
+    if (stdSellingRateMatch) {
+      const match = stdSellingRateMatch[1].match(/([0-9.-]+)/);
+      if (match) saleRate = parseFloat(match[1]) || 0;
+    }
+
+    if (saleRate === 0 && purchaseRate > 0) {
+      saleRate = purchaseRate;
+    }
 
     const gstMatch = body.match(/<(?:GSTRATE|IGSTRATE|TAXPERCENTAGE)>([^<]+)<\//i);
     let gstPct = 5;
@@ -755,7 +779,20 @@ export function parseTallyXml(rawXmlString: string, mode: MigrationMode = 'cutof
     const opVal = Math.abs(parseFloat(opValText.replace(/[^0-9.-]/g, '')) || 0);
 
     let purchaseRate = 0;
-    const stdCostText = querySelectorTag(node, 'STANDARDCOSTLIST.LIST > RATE, OPENINGRATE')?.textContent?.trim() || '';
+    const stdCostNodes = querySelectorAllTags(node, 'STANDARDCOSTLIST.LIST')
+      .concat(querySelectorAllTags(node, 'STANDARDCOST.LIST'))
+      .concat(querySelectorAllTags(node, 'STANDARDCOSTDETAILS.LIST'));
+
+    let stdCostText = '';
+    if (stdCostNodes.length > 0) {
+      for (const scNode of stdCostNodes) {
+        const rateVal = getTagText(scNode, 'RATE');
+        if (rateVal) { stdCostText = rateVal; break; }
+      }
+    }
+    if (!stdCostText) {
+      stdCostText = getTagText(node, 'OPENINGRATE') || getTagText(node, 'PURCHASERATE') || getTagText(node, 'COST');
+    }
     if (stdCostText) {
       const match = stdCostText.match(/([0-9.-]+)/);
       if (match) purchaseRate = parseFloat(match[1]) || 0;
@@ -764,14 +801,40 @@ export function parseTallyXml(rawXmlString: string, mode: MigrationMode = 'cutof
       purchaseRate = Math.round((opVal / opQty) * 100) / 100;
     }
 
-    let saleRate = purchaseRate;
-    const stdPriceText = querySelectorTag(node, 'STANDARDPRICELIST.LIST > RATE, BASICPRICE')?.textContent?.trim() || '';
+    let saleRate = 0;
+    const stdRateNodes = querySelectorAllTags(node, 'STANDARDRATES.LIST')
+      .concat(querySelectorAllTags(node, 'STANDARDSELLINGPRICES.LIST'))
+      .concat(querySelectorAllTags(node, 'STANDARDPRICELIST.LIST'))
+      .concat(querySelectorAllTags(node, 'STANDARDPRICES.LIST'))
+      .concat(querySelectorAllTags(node, 'SELLINGPRICELIST.LIST'))
+      .concat(querySelectorAllTags(node, 'SELLINGRATEDETAILS.LIST'))
+      .concat(querySelectorAllTags(node, 'FULLPRICELIST.LIST'))
+      .concat(querySelectorAllTags(node, 'PRICELIST.LIST'));
+
+    let stdPriceText = '';
+    if (stdRateNodes.length > 0) {
+      for (const srNode of stdRateNodes) {
+        const rateVal = getTagText(srNode, 'RATE') || getTagText(srNode, 'BASICPRICE') || getTagText(srNode, 'PRICE');
+        if (rateVal) { stdPriceText = rateVal; break; }
+      }
+    }
+
+    if (!stdPriceText) {
+      stdPriceText = getTagText(node, 'STDRATE') || 
+                     getTagText(node, 'STANDARDRATE') || 
+                     getTagText(node, 'SELLINGRATE') || 
+                     getTagText(node, 'SALESRATE') || 
+                     getTagText(node, 'BASICPRICE') || 
+                     getTagText(node, 'OPENINGRATE');
+    }
+
     if (stdPriceText) {
       const match = stdPriceText.match(/([0-9.-]+)/);
       if (match) saleRate = parseFloat(match[1]) || 0;
     }
-    if (saleRate === 0) {
-      saleRate = Math.round(purchaseRate * 1.25 * 100) / 100;
+
+    if (saleRate === 0 && purchaseRate > 0) {
+      saleRate = purchaseRate;
     }
 
     let gstPct = 5;
@@ -846,10 +909,11 @@ export function parseTallyXml(rawXmlString: string, mode: MigrationMode = 'cutof
   });
 
   // 6. Parse Historical Vouchers / DayBook
+  const salesSeriesSet = new Set<string>();
   const voucherNodes = querySelectorAllTags(xmlDoc, 'VOUCHER');
   voucherNodes.forEach((node, vIdx) => {
     const vTypeName = getTagText(node, 'VOUCHERTYPENAME') || 
-      node.getAttribute('VCHTYPE') || 'Journal';
+      node.getAttribute('VCHTYPE') || 'Sales';
     
     const vDate = parseTallyDate(getTagText(node, 'DATE'));
     const rawVNo = getTagText(node, 'VOUCHERNUMBER');
@@ -867,6 +931,10 @@ export function parseTallyXml(rawXmlString: string, mode: MigrationMode = 'cutof
     else if (vTypeLower.includes('purchase')) grpType = 'PUR';
     else if (vTypeLower.includes('delivery')) grpType = 'DEL_NOTE';
     else grpType = 'J';
+
+    if (grpType === 'S') {
+      salesSeriesSet.add(vTypeName);
+    }
 
     const ledgerNodes = querySelectorAllTags(node, 'ALLLEDGERENTRIES.LIST')
       .concat(querySelectorAllTags(node, 'LEDGERENTRIES.LIST'))
@@ -980,6 +1048,7 @@ export function parseTallyXml(rawXmlString: string, mode: MigrationMode = 'cutof
         voucherNo: vNo,
         invoiceNo: vNo,
         billNo: vNo,
+        voucherTypeName: vTypeName,
         type: grpType,
         date: vDate,
         party: party,
@@ -1048,6 +1117,7 @@ export function parseTallyXml(rawXmlString: string, mode: MigrationMode = 'cutof
     units,
     openingBills,
     vouchers,
+    salesVoucherSeries: Array.from(salesSeriesSet),
     stats,
     warnings,
     errors
@@ -1439,13 +1509,21 @@ export async function execute1ClickMigration(
         const key = `${(v.type || '').toLowerCase()}_${vNo.toLowerCase()}_${v.date || ''}_${v.amount || 0}_${((v as any).party || v.debitLedger || '').toLowerCase()}`;
 
         if (mergeOrReplace === 'replace' || !existingSet.has(key)) {
+          const seriesName = (v as any).voucherTypeName || 'Sales';
+          const mappedType = (options.salesTypeMappings && options.salesTypeMappings[seriesName])
+            || options.defaultSalesType
+            || 'normalsale';
+          const isPOS = mappedType === 'pos';
+
           const vchToSave: Voucher = {
             ...v,
             voucherNo: vNo,
             invoiceNo: vNo,
             billNo: vNo,
+            isPOS: isPOS,
+            importTargetType: mappedType,
             transactionId: v.transactionId || `vch-mig-${Date.now()}-${idx + 1}-${Math.random().toString(36).substring(2, 6)}`
-          };
+          } as any;
           existingVouchers.push(vchToSave);
           existingSet.add(key);
           importedVouchersCount++;
@@ -1456,6 +1534,11 @@ export async function execute1ClickMigration(
             const itemsList = (v as any).items && (v as any).items.length > 0 ? (v as any).items : ((v as any).cart && (v as any).cart.length > 0 ? (v as any).cart : []);
             existingSales.push({
               invoiceNo: vNo,
+              voucherNo: vNo,
+              voucherTypeName: seriesName,
+              isPOS: isPOS,
+              voucherTypeId: isPOS ? 'VT-SALE-POS' : 'VT-SALE-NORMAL',
+              importTargetType: mappedType,
               date: v.date || new Date().toISOString(),
               dueDate: v.date,
               customer: {
@@ -1472,10 +1555,11 @@ export async function execute1ClickMigration(
               gstAmt: 0,
               discount: 0,
               total: v.amount || 0,
-              credit: v.amount || 0,
-              paymentMode: 'Credit',
-              status: 'Credit' as any,
-              notes: v.narration || `Migrated Sales Voucher ${vNo} from ${parsed.source.toUpperCase()}`
+              credit: isPOS ? 0 : (v.amount || 0),
+              cash: isPOS ? (v.amount || 0) : 0,
+              paymentMode: isPOS ? 'Cash' : 'Credit',
+              status: isPOS ? ('Paid' as any) : ('Credit' as any),
+              notes: v.narration || `Migrated Sales Voucher ${vNo} (${seriesName}) from ${parsed.source.toUpperCase()}`
             } as any);
             existingSaleNos.add(vNo.toLowerCase());
           }

@@ -1375,16 +1375,8 @@ export default function App() {
           if (vType === 'INV' || vType === 'S') {
             const details = getVoucherDetails(refNo);
             const inv = details?.header as any;
-            const isNormalSale = inv && inv.isPOS !== true && (
-              inv.isPOS === false || 
-              inv.voucherTypeId === 'VT-SALE-NORMAL' || 
-              inv.invoiceNo?.startsWith('SAL-') || 
-              inv.invoiceNo?.startsWith('INV-B2B-') || 
-              Boolean(inv.orderNo) || 
-              Boolean(inv.deliveryNoteNo) || 
-              (Boolean(inv.termsAndConditions) && !inv.invoiceNo?.startsWith('POS-'))
-            );
-            if (isNormalSale && config.EnableNormalSale !== 'false') {
+            const isPosSale = inv && (inv.isPOS === true || inv.importTargetType === 'pos' || inv.voucherTypeId === 'VT-SALE-POS');
+            if (!isPosSale && config.EnableNormalSale !== 'false') {
               navigateTo('normalsale', undefined, true);
             } else {
               navigateTo('pos', undefined, true);

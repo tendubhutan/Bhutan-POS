@@ -44,6 +44,8 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
   const [executionResult, setExecutionResult] = useState<MigrationResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activePreviewTab, setActivePreviewTab] = useState<'summary' | 'ledgers' | 'items' | 'bills' | 'vouchers'>('summary');
+  const [salesTypeMappings, setSalesTypeMappings] = useState<Record<string, 'normalsale' | 'pos'>>({});
+  const [defaultSalesType, setDefaultSalesType] = useState<'normalsale' | 'pos'>('normalsale');
   const [showHelpModal, setShowHelpModal] = useState<boolean>(false);
   const [helpGuideTab, setHelpGuideTab] = useState<'tally' | 'busy' | 'best_practices'>('tally');
 
@@ -70,6 +72,15 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
         const text = await file.text();
         const parsed = parseTallyXml(text, mode, file.name);
         setParsedData(parsed);
+
+        if (parsed.salesVoucherSeries && parsed.salesVoucherSeries.length > 0) {
+          const initialMap: Record<string, 'normalsale' | 'pos'> = {};
+          parsed.salesVoucherSeries.forEach(series => {
+            initialMap[series] = 'normalsale';
+          });
+          setSalesTypeMappings(initialMap);
+        }
+
         if (parsed.vouchers.length > 0 && parsed.ledgers.length === 0 && parsed.items.length === 0) {
           setActivePreviewTab('vouchers');
         } else {
@@ -80,11 +91,25 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
         if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
           const parsed = await parseBusyExcel(file, mode);
           setParsedData(parsed);
+          if (parsed.salesVoucherSeries && parsed.salesVoucherSeries.length > 0) {
+            const initialMap: Record<string, 'normalsale' | 'pos'> = {};
+            parsed.salesVoucherSeries.forEach(series => {
+              initialMap[series] = 'normalsale';
+            });
+            setSalesTypeMappings(initialMap);
+          }
         } else if (ext === 'xml') {
           const text = await file.text();
           const parsed = parseTallyXml(text, mode, file.name); // XML fallback
           parsed.source = 'busy';
           setParsedData(parsed);
+          if (parsed.salesVoucherSeries && parsed.salesVoucherSeries.length > 0) {
+            const initialMap: Record<string, 'normalsale' | 'pos'> = {};
+            parsed.salesVoucherSeries.forEach(series => {
+              initialMap[series] = 'normalsale';
+            });
+            setSalesTypeMappings(initialMap);
+          }
         } else {
           throw new Error('Please select an Excel (.xlsx, .xls) or XML file exported from Busy Accounting.');
         }
@@ -111,7 +136,9 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
       const res = await execute1ClickMigration(parsedData, {
         mergeOrReplace: mergeOption,
         createMissingGroups: true,
-        createOpeningBillsAsPending: true
+        createOpeningBillsAsPending: true,
+        salesTypeMappings,
+        defaultSalesType
       });
 
       setExecutionResult(res);
@@ -676,6 +703,56 @@ export const TallyBusyMigrationView: React.FC<TallyBusyMigrationViewProps> = ({ 
               )}
             </div>
           )}
+
+          {/* Sales Voucher Import Format Settings */}
+          <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200/90 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sliders className="h-4.5 w-4.5 text-indigo-600 shrink-0" />
+                <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                  Sales Voucher Import Format Settings
+                </h4>
+              </div>
+              <span className="text-[11px] text-indigo-700 font-semibold">
+                Select target entry screen for imported sales transactions
+              </span>
+            </div>
+
+            {parsedData.salesVoucherSeries && parsedData.salesVoucherSeries.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {parsedData.salesVoucherSeries.map((series) => (
+                  <div key={series} className="bg-white p-3 rounded-xl border border-indigo-100 shadow-2xs space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                      <span>Voucher Series: <strong className="text-indigo-700">{series}</strong></span>
+                      <span className="text-[10px] text-slate-500 font-normal">
+                        ({parsedData.vouchers.filter(v => (v as any).voucherTypeName === series).length} vouchers)
+                      </span>
+                    </div>
+                    <select
+                      value={salesTypeMappings[series] || 'normalsale'}
+                      onChange={(e) => setSalesTypeMappings(prev => ({ ...prev, [series]: e.target.value as 'normalsale' | 'pos' }))}
+                      className="w-full text-xs font-bold py-1.5 px-2.5 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:border-indigo-600 outline-none cursor-pointer text-slate-800"
+                    >
+                      <option value="normalsale">Sales Invoice (B2B Credit Sale) - Recommended Default</option>
+                      <option value="pos">POS Bill (Retail Cash POS)</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white p-3 rounded-xl border border-indigo-100">
+                <span className="text-xs font-bold text-slate-800">Default Entry Screen for All Sales Vouchers:</span>
+                <select
+                  value={defaultSalesType}
+                  onChange={(e) => setDefaultSalesType(e.target.value as 'normalsale' | 'pos')}
+                  className="text-xs font-bold py-1.5 px-3 rounded-lg border border-slate-300 bg-slate-50 focus:bg-white focus:border-indigo-600 outline-none cursor-pointer text-slate-800"
+                >
+                  <option value="normalsale">Sales Invoice (B2B Credit Sale) - Recommended Default</option>
+                  <option value="pos">POS Bill (Retail Cash POS)</option>
+                </select>
+              </div>
+            )}
+          </div>
 
           {/* Action Button: Execute 1-Click Import */}
           <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
