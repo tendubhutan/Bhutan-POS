@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   CalendarCheck, Search, Download, Briefcase, 
-  ChevronRight, ChevronDown, ChevronUp, AlertCircle, FileSpreadsheet, TrendingUp, Info, Printer, FileText
+  ChevronRight, ChevronDown, ChevronUp, AlertCircle, FileSpreadsheet, TrendingUp, Info, Printer, FileText, Share2
 } from 'lucide-react';
 import { Employee, Config } from '../../types';
 import { calculateMonthlyAttendanceSummary } from '../../services/employeeStaffService';
@@ -10,6 +10,7 @@ import {
   exportMonthlyAttendanceToExcel, 
   exportMonthlyAttendanceToPdf 
 } from '../../services/staffReportExportService';
+import { ReportShareModal } from '../common/ReportShareModal';
 
 export function exportMonthlyAttendanceExcel(
   employees: Employee[], 
@@ -76,6 +77,7 @@ export const MonthlyAttendanceRegisterView: React.FC<MonthlyAttendanceRegisterVi
 }) => {
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
   const [internalIsHeaderCollapsed, setInternalIsHeaderCollapsed] = useState(false);
+  const [shareModalConfig, setShareModalConfig] = useState<any | null>(null);
   const isHeaderCollapsed = propIsHeaderCollapsed !== undefined ? propIsHeaderCollapsed : internalIsHeaderCollapsed;
   const handleToggleCollapse = onToggleCollapse || (() => setInternalIsHeaderCollapsed(prev => !prev));
   const effectiveStickyTop = stickyTopPx !== undefined ? stickyTopPx : 54;
@@ -165,6 +167,39 @@ export const MonthlyAttendanceRegisterView: React.FC<MonthlyAttendanceRegisterVi
       selectedYear,
       selectedMonth,
       searchQuery
+    });
+  };
+
+  // Share Report via WhatsApp, Email or System Share
+  const handleOpenShareModal = () => {
+    const monthShort = new Date(selectedYear, selectedMonth - 1, 1).toLocaleString('default', { month: 'short' });
+    const summaryText = `*MONTHLY ATTENDANCE REGISTER - ${monthName.toUpperCase()} ${selectedYear}*\n` +
+      `Company: *${config?.CompanyName || 'Bhutan Enterprise'}*\n` +
+      `Period: ${monthName} ${selectedYear}\n` +
+      `Total Staff Evaluated: ${monthlyData.length} Staff\n` +
+      `Total Present Days: ${aggregates.totalPresent} d\n` +
+      `Total Paid Leave Days: ${aggregates.totalPaidLeave} d\n` +
+      `Total Loss of Pay (LOP): ${aggregates.totalLop} d\n` +
+      `Average Attendance Rate: ${aggregates.avgAttendance}%\n\n` +
+      `_Official Monthly Attendance Register PDF has been generated and is attached._`;
+
+    setShareModalConfig({
+      isOpen: true,
+      reportTitle: `Monthly Attendance Register - ${monthName} ${selectedYear}`,
+      reportSubtitle: `${config?.CompanyName || 'Bhutan Enterprise'} • ${monthlyData.length} Staff • Avg Attendance: ${aggregates.avgAttendance}%`,
+      pdfFileName: `Monthly_Attendance_Register_${monthShort}_${selectedYear}.pdf`,
+      generatePdfDoc: () => {
+        return exportMonthlyAttendanceToPdf({
+          config,
+          employees,
+          selectedYear,
+          selectedMonth,
+          searchQuery,
+          returnDocOnly: true
+        });
+      },
+      textSummary: summaryText,
+      emailSubject: `Monthly Attendance Register - ${monthName} ${selectedYear} (${config?.CompanyName || 'Bhutan Enterprise'})`
     });
   };
 
@@ -268,6 +303,16 @@ export const MonthlyAttendanceRegisterView: React.FC<MonthlyAttendanceRegisterVi
               >
                 <Printer className="h-3.5 w-3.5 text-slate-600" />
                 <span>Print</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenShareModal}
+                className="px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                title="Share Monthly Attendance PDF via WhatsApp, Email, or Device Apps"
+              >
+                <Share2 className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Share</span>
               </button>
 
               {onNavigateToPayroll && (
@@ -432,6 +477,15 @@ export const MonthlyAttendanceRegisterView: React.FC<MonthlyAttendanceRegisterVi
             )}
           </table>
       </div>
+
+      {/* Universal Report Share Modal */}
+      {shareModalConfig && (
+        <ReportShareModal
+          {...shareModalConfig}
+          onClose={() => setShareModalConfig(null)}
+          companyName={config?.CompanyName}
+        />
+      )}
     </div>
   );
 };

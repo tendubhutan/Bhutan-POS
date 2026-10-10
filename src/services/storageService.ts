@@ -7087,29 +7087,59 @@ export function getVoucherDetails(refNo: string) {
     return { type: 'J', header, items };
   }
 
-  // 7. Standard Vouchers (Payment, Receipt, Journal, Contra, Credit Note, Debit Note)
+  // 7. Standard Vouchers (Payment, Receipt, Journal, Contra, Credit Note, Debit Note, Sales, Purchase)
   const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, []);
-  const v = vouchers.find(x => x.voucherNo === cleanRef || x.voucherNo?.trim().toLowerCase() === cleanRefLower);
+  const v = vouchers.find(x => x.voucherNo === cleanRef || (x as any).invoiceNo === cleanRef || (x as any).billNo === cleanRef || x.voucherNo?.trim().toLowerCase() === cleanRefLower);
   if (v) {
-    // If lines not present in voucher, attempt to reconstruct from LEDGER_LOG
-    if (!v.lines || v.lines.length === 0) {
+    let vLines = v.lines || [];
+    if (vLines.length === 0) {
       const logs = loadJson<LedgerLogEntry[]>(STORAGE_KEYS.LEDGER_LOG, []);
       const matchedLogs = logs.filter(l => l['Ref No'] === cleanRef);
       if (matchedLogs.length > 0) {
-        const reconstructedLines = matchedLogs.map(l => ({
+        vLines = matchedLogs.map(l => ({
           ledger: l['Ledger Name'],
           type: (Number(l.Debit) > 0 ? 'Dr' : 'Cr') as 'Dr' | 'Cr',
           amount: Number(l.Debit) > 0 ? Number(l.Debit) : Number(l.Credit),
           narration: l.Narration
         }));
-        return {
-          type: v.type,
-          header: { ...v, lines: reconstructedLines },
-          items: v.items || []
-        };
       }
     }
-    return { type: v.type, header: v, items: v.items || [] };
+
+    let vItems: any[] = (v as any).items || (v as any).cart || [];
+    if (vItems.length === 0 && vLines.length > 0) {
+      vItems = vLines.map((l: any, idx: number) => ({
+        itemCode: `LINE-${idx + 1}`,
+        code: `LINE-${idx + 1}`,
+        name: l.ledger || 'Line Item',
+        itemName: l.ledger || 'Line Item',
+        qty: 1,
+        rate: l.amount || l.debit || l.credit || 0,
+        total: l.amount || l.debit || l.credit || 0,
+        unit: 'Pcs',
+        remarks: l.narration || ''
+      }));
+    }
+
+    const partyName = (v as any).party || (v as any).partyLedger || (v as any).debitLedger || (v as any).creditLedger || 'Party';
+    const normHeader = {
+      ...v,
+      invoiceNo: (v as any).invoiceNo || (v as any).billNo || v.voucherNo,
+      billNo: (v as any).billNo || (v as any).invoiceNo || v.voucherNo,
+      voucherNo: v.voucherNo || (v as any).invoiceNo || (v as any).billNo,
+      customer: (v as any).customer || { name: partyName, ledger: partyName },
+      supplier: (v as any).supplier || { name: partyName, ledger: partyName },
+      party: partyName,
+      partyLedger: partyName,
+      items: vItems,
+      cart: vItems,
+      lines: vLines,
+      subtotal: (v as any).subtotal || v.amount || 0,
+      total: (v as any).total || v.amount || 0,
+      narration: v.narration || (v as any).notes || '',
+      notes: (v as any).notes || v.narration || ''
+    };
+
+    return { type: v.type, header: normHeader, items: vItems };
   }
 
   // 8. Reconstruct from Ledger Logs if voucher not in VOUCHERS table

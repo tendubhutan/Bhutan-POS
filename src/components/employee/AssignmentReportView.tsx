@@ -22,6 +22,7 @@ import {
   exportTaskAssignmentsToPdf 
 } from '../../services/staffReportExportService';
 import { formatDateDMY } from '../../utils/dateUtils';
+import { ReportShareModal } from '../common/ReportShareModal';
 
 interface AssignmentReportViewProps {
   config: Config;
@@ -94,6 +95,7 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = useState<string>('');
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
+  const [shareModalConfig, setShareModalConfig] = useState<any | null>(null);
 
   // New Task Form
   const [newTaskForm, setNewTaskForm] = useState({
@@ -386,6 +388,36 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
     }
   };
 
+  // Share Assignment Report via WhatsApp, Email or System Share
+  const handleOpenShareModal = () => {
+    const summaryText = `*STAFF TASK ASSIGNMENT & DUTY REPORT*\n` +
+      `Company: *${config?.CompanyName || 'Bhutan Enterprise'}*\n` +
+      `Date: ${formatDateDMY(new Date())}\n` +
+      `Total Filtered Tasks: ${filteredTasks.length}\n` +
+      `Completed: ${kpis.completed} | In Progress: ${kpis.inProgress} | Pending: ${kpis.assigned} | Overdue: ${kpis.overdue}\n\n` +
+      `_Official Staff Assignment & Duty Report PDF has been generated and is attached._`;
+
+    setShareModalConfig({
+      isOpen: true,
+      reportTitle: `Staff Task Assignment & Duty Report`,
+      reportSubtitle: `${config?.CompanyName || 'Bhutan Enterprise'} • Total Tasks: ${filteredTasks.length} • Completed: ${kpis.completed}`,
+      pdfFileName: `Staff_Assignment_Report_${formatDateDMY(new Date())}.pdf`,
+      generatePdfDoc: () => {
+        return exportTaskAssignmentsToPdf({
+          config,
+          tasks: filteredTasks,
+          searchQuery,
+          filterStatus: statusFilter,
+          filterPriority: priorityFilter,
+          filterCategory: categoryFilter,
+          returnDocOnly: true
+        });
+      },
+      textSummary: summaryText,
+      emailSubject: `Staff Task Assignment & Duty Report - ${config?.CompanyName || 'Bhutan Enterprise'}`
+    });
+  };
+
   // Print Report Handler
   const handlePrintReport = () => {
     window.print();
@@ -642,6 +674,16 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
               >
                 <Printer className="h-3.5 w-3.5 text-slate-600" />
                 <span className="hidden sm:inline">Print</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenShareModal}
+                className="px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-800 font-bold text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                title="Share Task Assignment Report PDF via WhatsApp, Email, or Device Apps"
+              >
+                <Share2 className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Share</span>
               </button>
             </div>
           </div>
@@ -1964,6 +2006,15 @@ export const AssignmentReportView: React.FC<AssignmentReportViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Universal Report Share Modal */}
+      {shareModalConfig && (
+        <ReportShareModal
+          {...shareModalConfig}
+          onClose={() => setShareModalConfig(null)}
+          companyName={config?.CompanyName}
+        />
       )}
     </div>
   );

@@ -47,6 +47,7 @@ import { HolidayPolicyModal } from './HolidayPolicyModal';
 import { formatDateDMY } from '../../utils/dateUtils';
 import { DailyAttendanceView, exportDailyAttendanceExcel } from './DailyAttendanceView';
 import { MonthlyAttendanceRegisterView, exportMonthlyAttendanceExcel } from './MonthlyAttendanceRegisterView';
+import { ReportShareModal } from '../common/ReportShareModal';
 
 export type StaffTab = 
   | 'daily_clock' 
@@ -239,6 +240,115 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  // Universal Report Share Modal State
+  const [shareModalConfig, setShareModalConfig] = useState<any | null>(null);
+
+  const handleShareMonthlyAttendance = () => {
+    const monthName = new Date(selectedYear, selectedMonth - 1, 1).toLocaleString('default', { month: 'long' });
+    const monthShort = new Date(selectedYear, selectedMonth - 1, 1).toLocaleString('default', { month: 'short' });
+    const summaryText = `*MONTHLY ATTENDANCE REGISTER - ${monthName.toUpperCase()} ${selectedYear}*\n` +
+      `Company: *${config?.CompanyName || 'Bhutan Enterprise'}*\n` +
+      `Period: ${monthName} ${selectedYear}\n` +
+      `Total Staff Evaluated: ${employees.length} Staff\n\n` +
+      `_Official Monthly Attendance Register PDF has been generated and is attached._`;
+
+    setShareModalConfig({
+      isOpen: true,
+      reportTitle: `Monthly Attendance Register - ${monthName} ${selectedYear}`,
+      reportSubtitle: `${config?.CompanyName || 'Bhutan Enterprise'} • ${employees.length} Staff`,
+      pdfFileName: `Monthly_Attendance_Register_${monthShort}_${selectedYear}.pdf`,
+      generatePdfDoc: () => {
+        return exportMonthlyAttendanceToPdf({
+          config,
+          employees,
+          selectedYear,
+          selectedMonth,
+          searchQuery,
+          returnDocOnly: true
+        });
+      },
+      textSummary: summaryText,
+      emailSubject: `Monthly Attendance Register - ${monthName} ${selectedYear} (${config?.CompanyName || 'Bhutan Enterprise'})`
+    });
+  };
+
+  const handleShareDailyAttendance = () => {
+    const formattedDate = formatDateDMY(selectedDate);
+    const summaryText = `*DAILY ATTENDANCE LOG - ${formattedDate}*\n` +
+      `Company: *${config?.CompanyName || 'Bhutan Enterprise'}*\n` +
+      `Date: ${formattedDate}\n` +
+      `Total Staff Evaluated: ${employees.length} Staff\n\n` +
+      `_Official Daily Attendance Log PDF has been generated and is attached._`;
+
+    setShareModalConfig({
+      isOpen: true,
+      reportTitle: `Daily Attendance Log - ${formattedDate}`,
+      reportSubtitle: `${config?.CompanyName || 'Bhutan Enterprise'} • ${employees.length} Staff`,
+      pdfFileName: `Daily_Attendance_Log_${formattedDate.replace(/\//g, '-')}.pdf`,
+      generatePdfDoc: () => {
+        return exportDailyAttendanceToPdf({
+          config,
+          employees,
+          attendanceRecords,
+          selectedDate,
+          searchQuery,
+          statusFilter: dailyStatusFilter,
+          returnDocOnly: true
+        });
+      },
+      textSummary: summaryText,
+      emailSubject: `Daily Attendance Log - ${formattedDate} (${config?.CompanyName || 'Bhutan Enterprise'})`
+    });
+  };
+
+  const handleShareLeaveRegister = () => {
+    const summaryText = `*STAFF LEAVE APPLICATIONS & HISTORY REGISTER*\n` +
+      `Company: *${config?.CompanyName || 'Bhutan Enterprise'}*\n` +
+      `Date: ${formatDateDMY(new Date())}\n` +
+      `Total Leave Applications: ${leaveApplications.length}\n\n` +
+      `_Official Staff Leave Register PDF has been generated and is attached._`;
+
+    setShareModalConfig({
+      isOpen: true,
+      reportTitle: `Staff Leave Register`,
+      reportSubtitle: `${config?.CompanyName || 'Bhutan Enterprise'} • Total Applications: ${leaveApplications.length}`,
+      pdfFileName: `Staff_Leave_Register_${formatDateDMY(new Date())}.pdf`,
+      generatePdfDoc: () => {
+        return exportLeaveHistoryToPdf({
+          config,
+          leaveApplications,
+          returnDocOnly: true
+        });
+      },
+      textSummary: summaryText,
+      emailSubject: `Staff Leave Register - ${config?.CompanyName || 'Bhutan Enterprise'}`
+    });
+  };
+
+  const handleShareAssignmentReport = () => {
+    const summaryText = `*STAFF TASK ASSIGNMENT & DUTY REPORT*\n` +
+      `Company: *${config?.CompanyName || 'Bhutan Enterprise'}*\n` +
+      `Date: ${formatDateDMY(new Date())}\n` +
+      `Total Tasks: ${tasks.length}\n\n` +
+      `_Official Staff Task Assignment Report PDF has been generated and is attached._`;
+
+    setShareModalConfig({
+      isOpen: true,
+      reportTitle: `Staff Task Assignment & Duty Report`,
+      reportSubtitle: `${config?.CompanyName || 'Bhutan Enterprise'} • Total Tasks: ${tasks.length}`,
+      pdfFileName: `Staff_Assignment_Report_${formatDateDMY(new Date())}.pdf`,
+      generatePdfDoc: () => {
+        return exportTaskAssignmentsToPdf({
+          config,
+          tasks,
+          returnDocOnly: true
+        });
+      },
+      textSummary: summaryText,
+      emailSubject: `Staff Task Assignment & Duty Report - ${config?.CompanyName || 'Bhutan Enterprise'}`
+    });
   };
 
   // Modal states
@@ -880,6 +990,16 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                   <span className="hidden sm:inline">Print</span>
                 </button>
 
+                <button
+                  type="button"
+                  onClick={handleShareMonthlyAttendance}
+                  className="px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Share Monthly Attendance PDF via WhatsApp, Email, or Device Apps"
+                >
+                  <Share2 className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">Share</span>
+                </button>
+
                 {onNavigateToPayroll && (
                   <button
                     type="button"
@@ -1017,6 +1137,16 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                   <Printer className="h-3.5 w-3.5 text-slate-600" />
                   <span className="hidden sm:inline">Print</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={handleShareDailyAttendance}
+                  className="px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Share Daily Attendance PDF via WhatsApp, Email, or Device Apps"
+                >
+                  <Share2 className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">Share</span>
+                </button>
               </>
             )}
 
@@ -1079,6 +1209,16 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                   <Printer className="h-3.5 w-3.5 text-slate-600" />
                   <span className="hidden sm:inline">Print</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={handleShareLeaveRegister}
+                  className="px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Share Leave Register PDF via WhatsApp, Email, or Device Apps"
+                >
+                  <Share2 className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">Share</span>
+                </button>
               </>
             )}
 
@@ -1137,6 +1277,16 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
                 >
                   <Printer className="h-3.5 w-3.5 text-slate-600" />
                   <span className="hidden sm:inline">Print</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleShareAssignmentReport}
+                  className="px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  title="Share Assignment Report PDF via WhatsApp, Email, or Device Apps"
+                >
+                  <Share2 className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">Share</span>
                 </button>
 
                 <button
@@ -2949,6 +3099,15 @@ export const StaffManagementView: React.FC<StaffManagementViewProps> = ({
         onClose={() => setShowHolidayPolicyModal(false)}
         onPolicyUpdated={() => loadData()}
       />
+
+      {/* Universal Report Share Modal */}
+      {shareModalConfig && (
+        <ReportShareModal
+          {...shareModalConfig}
+          onClose={() => setShareModalConfig(null)}
+          companyName={config?.CompanyName}
+        />
+      )}
     </div>
   );
 };

@@ -2517,7 +2517,8 @@ export const Reports: React.FC<ReportsProps> = ({
           fill: { fgColor: { rgb: 'E2E8F0' } },
           alignment: {
             horizontal: isNumberCol ? 'right' : (c === 0 ? 'left' : 'center'),
-            vertical: 'center'
+            vertical: 'center',
+            wrapText: true
           },
           border: {
             top: { style: 'medium', color: { rgb: '0F172A' } },
@@ -2652,7 +2653,7 @@ export const Reports: React.FC<ReportsProps> = ({
             ws[cellRef].s = {
               font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: '3730A3' } },
               fill: { fgColor: { rgb: 'E0E7FF' } },
-              alignment: { vertical: 'center', horizontal: 'left' },
+              alignment: { vertical: 'center', horizontal: 'left', wrapText: true },
               border: {
                 top: { style: 'thin', color: { rgb: 'A5B4FC' } },
                 bottom: { style: 'thin', color: { rgb: 'A5B4FC' } },
@@ -2664,7 +2665,7 @@ export const Reports: React.FC<ReportsProps> = ({
             ws[cellRef].s = {
               font: { name: 'Calibri', sz: 11, bold: true, color: { rgb: '0F172A' } },
               fill: { fgColor: { rgb: 'F1F5F9' } },
-              alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left' },
+              alignment: { vertical: 'center', horizontal: isNum ? 'right' : 'left', wrapText: true },
               border: {
                 top: { style: 'thin', color: { rgb: '0F172A' } },
                 bottom: { style: 'double', color: { rgb: '0F172A' } },

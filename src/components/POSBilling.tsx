@@ -323,7 +323,20 @@ export const POSBilling: React.FC<POSBillingProps> = ({
             }
             const schemeEvalDate = inv.date ? new Date(inv.date) : new Date();
             const allSchemes = getSchemes();
-            const newCart: CartLine[] = (inv.items || []).map((it: any) => {
+            const rawItemsList = (inv.items && inv.items.length > 0)
+              ? inv.items
+              : ((inv.cart && inv.cart.length > 0)
+                  ? inv.cart
+                  : (inv.lines || []).map((l: any, idx: number) => ({
+                      itemCode: `LINE-${idx + 1}`,
+                      itemName: l.ledger || 'Sales Item',
+                      qty: 1,
+                      rate: l.amount || l.debit || l.credit || 0,
+                      total: l.amount || l.debit || l.credit || 0
+                    }))
+                );
+
+            const newCart: CartLine[] = rawItemsList.map((it: any) => {
               const itemMatch = items.find(i => i['Item Code'] === (it['Item Code'] || it.itemCode));
               const isZeroRated = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
               let rawRate = Number(it.Rate !== undefined ? it.Rate : (it.rate !== undefined ? it.rate : 0));
@@ -392,12 +405,13 @@ export const POSBilling: React.FC<POSBillingProps> = ({
             });
             setCart(newCart);
             
-            if (inv.customer) {
-              if (typeof inv.customer === 'object') {
-                setCustomerName(inv.customer.ledger || inv.customer.name || '');
-                setWalkInDetails(inv.customer);
+            const cust = inv.customer || inv.supplier || inv.party || inv.partyLedger;
+            if (cust) {
+              if (typeof cust === 'object') {
+                setCustomerName(cust.ledger || cust.name || '');
+                setWalkInDetails(cust);
               } else {
-                setCustomerName(inv.customer);
+                setCustomerName(cust);
               }
             }
 
@@ -438,7 +452,7 @@ export const POSBilling: React.FC<POSBillingProps> = ({
                 setPosBillNo(peekNextInvoiceNumber(true, activeVoucherType?.id));
               } catch {}
             } else {
-              setEditingInvoiceNo(inv.invoiceNo || inv.billNo);
+              setEditingInvoiceNo(inv.invoiceNo || inv.billNo || inv.voucherNo || '');
               if (inv.date) {
                 setEditingInvoiceDate(inv.date);
               }

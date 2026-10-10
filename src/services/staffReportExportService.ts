@@ -259,7 +259,8 @@ export function buildStyledStaffExcelSheet({
           fill: { fgColor: { rgb: customFill || (isEven ? 'FFFFFF' : 'F8FAFC') } },
           alignment: {
             horizontal: alignments[c] || 'left',
-            vertical: 'center'
+            vertical: 'center',
+            wrapText: true
           },
           border: {
             top: { style: 'thin', color: { rgb: 'E2E8F0' } },
@@ -293,7 +294,8 @@ export function buildStyledStaffExcelSheet({
           fill: { fgColor: { rgb: 'E2E8F0' } },
           alignment: {
             horizontal: alignments[c] || 'center',
-            vertical: 'center'
+            vertical: 'center',
+            wrapText: true
           },
           border: {
             top: { style: 'thin', color: { rgb: '64748B' } },
@@ -325,6 +327,7 @@ export interface MonthlyAttendanceExportParams {
   selectedYear: number;
   selectedMonth: number;
   searchQuery?: string;
+  returnDocOnly?: boolean;
 }
 
 export function exportMonthlyAttendanceToExcel({
@@ -471,8 +474,9 @@ export function exportMonthlyAttendanceToPdf({
   employees,
   selectedYear,
   selectedMonth,
-  searchQuery = ''
-}: MonthlyAttendanceExportParams) {
+  searchQuery = '',
+  returnDocOnly = false
+}: MonthlyAttendanceExportParams): jsPDF {
   let list = employees;
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase();
@@ -612,7 +616,10 @@ export function exportMonthlyAttendanceToPdf({
   });
 
   const monthShort = new Date(selectedYear, selectedMonth - 1, 1).toLocaleString('default', { month: 'short' });
-  doc.save(`Monthly_Attendance_Register_${monthShort}_${selectedYear}.pdf`);
+  if (!returnDocOnly) {
+    doc.save(`Monthly_Attendance_Register_${monthShort}_${selectedYear}.pdf`);
+  }
+  return doc;
 }
 
 // ---------------------------------------------------------------------------
@@ -626,6 +633,7 @@ export interface DailyAttendanceExportParams {
   selectedDate: string;
   searchQuery?: string;
   statusFilter?: 'ALL' | 'PRESENT' | 'LATE' | 'LEAVE' | 'ABSENT';
+  returnDocOnly?: boolean;
 }
 
 export function exportDailyAttendanceToExcel({
@@ -768,8 +776,9 @@ export function exportDailyAttendanceToPdf({
   attendanceRecords,
   selectedDate,
   searchQuery = '',
-  statusFilter = 'ALL'
-}: DailyAttendanceExportParams) {
+  statusFilter = 'ALL',
+  returnDocOnly = false
+}: DailyAttendanceExportParams): jsPDF {
   const todayRecords = attendanceRecords.filter(r => r.date === selectedDate);
   const companyName = config?.CompanyName || 'Bhutan Retail Enterprise';
   const companyAddress = [
@@ -906,7 +915,10 @@ export function exportDailyAttendanceToPdf({
     }
   });
 
-  doc.save(`Daily_Attendance_Log_${formattedLogDate}.pdf`);
+  if (!returnDocOnly) {
+    doc.save(`Daily_Attendance_Log_${formattedLogDate}.pdf`);
+  }
+  return doc;
 }
 
 // ---------------------------------------------------------------------------
@@ -920,6 +932,7 @@ export interface TaskAssignmentExportParams {
   filterStatus?: string;
   filterPriority?: string;
   filterCategory?: string;
+  returnDocOnly?: boolean;
 }
 
 export function exportTaskAssignmentsToExcel({
@@ -1056,8 +1069,9 @@ export function exportTaskAssignmentsToPdf({
   searchQuery = '',
   filterStatus = 'ALL',
   filterPriority = 'ALL',
-  filterCategory = 'ALL'
-}: TaskAssignmentExportParams) {
+  filterCategory = 'ALL',
+  returnDocOnly = false
+}: TaskAssignmentExportParams): jsPDF {
   const companyName = config?.CompanyName || 'Bhutan Retail Enterprise';
   const companyAddress = [
     config?.Address || config?.CompanyAddress || 'Bhutan',
@@ -1180,7 +1194,10 @@ export function exportTaskAssignmentsToPdf({
     }
   });
 
-  doc.save(`Staff_Assignment_Report_${formatDateDMY(new Date())}.pdf`);
+  if (!returnDocOnly) {
+    doc.save(`Staff_Assignment_Report_${formatDateDMY(new Date())}.pdf`);
+  }
+  return doc;
 }
 
 // ---------------------------------------------------------------------------
@@ -1190,6 +1207,7 @@ export function exportTaskAssignmentsToPdf({
 export interface LeaveHistoryExportParams {
   config: Config;
   leaveApplications: LeaveApplication[];
+  returnDocOnly?: boolean;
 }
 
 export function exportLeaveHistoryToExcel({
@@ -1285,8 +1303,9 @@ export function exportLeaveHistoryToExcel({
 
 export function exportLeaveHistoryToPdf({
   config,
-  leaveApplications
-}: LeaveHistoryExportParams) {
+  leaveApplications,
+  returnDocOnly = false
+}: LeaveHistoryExportParams): jsPDF {
   const companyName = config?.CompanyName || 'Bhutan Retail Enterprise';
   const companyAddress = [
     config?.Address || config?.CompanyAddress || 'Bhutan',
@@ -1389,5 +1408,8 @@ export function exportLeaveHistoryToPdf({
     }
   });
 
-  doc.save(`Staff_Leave_Register_${formatDateDMY(new Date())}.pdf`);
+  if (!returnDocOnly) {
+    doc.save(`Staff_Leave_Register_${formatDateDMY(new Date())}.pdf`);
+  }
+  return doc;
 }

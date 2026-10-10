@@ -71,7 +71,20 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
         const details = getVoucherDetails(initialVoucherTarget.voucherNo);
         if (details && details.type === 'PUR') {
           const inv = details.header as any;
-          const newCart = (inv.items || []).map((it: any) => {
+          const rawItemsList = (inv.items && inv.items.length > 0)
+            ? inv.items
+            : ((inv.cart && inv.cart.length > 0)
+                ? inv.cart
+                : (inv.lines || []).map((l: any, idx: number) => ({
+                    itemCode: `LINE-${idx + 1}`,
+                    itemName: l.ledger || 'Purchase Item',
+                    qty: 1,
+                    rate: l.amount || l.debit || l.credit || 0,
+                    total: l.amount || l.debit || l.credit || 0
+                  }))
+              );
+
+          const newCart = rawItemsList.map((it: any) => {
             const itemMatch = items.find(i => i['Item Code'] === (it['Item Code'] || it.itemCode));
             const isZeroRated = (it['Zero Rated (Y/N)'] === 'Y' || it.zeroRated === 'Y' || it.zeroRated === true);
             return {
@@ -98,23 +111,24 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
           });
           setCart(newCart);
 
-          const hasAnyGst = (inv.items || []).some((it: any) => (Number(it['GST Amount']) > 0 || Number(it['GST %']) > 0));
+          const hasAnyGst = rawItemsList.some((it: any) => (Number(it['GST Amount']) > 0 || Number(it['GST %']) > 0));
           const totalGstAmt = Number(inv.gstAmt || 0);
           if (totalGstAmt > 0 || hasAnyGst) {
             setIsGstMode(true);
-          } else if (inv.items && inv.items.length > 0) {
+          } else if (rawItemsList.length > 0) {
             setIsGstMode(false);
           }
           
-          if (inv.supplier) {
-            if (typeof inv.supplier === 'object') {
-              setSupplierName(inv.supplier.ledger || inv.supplier.name || '');
+          const supp = inv.supplier || inv.customer || inv.party || inv.partyLedger;
+          if (supp) {
+            if (typeof supp === 'object') {
+              setSupplierName(supp.ledger || supp.name || '');
             } else {
-              setSupplierName(inv.supplier);
+              setSupplierName(supp);
             }
           }
 
-          setPurchaseVoucherNo(inv.billNo || inv.invoiceNo || '');
+          setPurchaseVoucherNo(inv.billNo || inv.invoiceNo || inv.voucherNo || '');
           setBillNo(inv.supplierBillNo || '');
           setReceiptNoteNo(inv.receiptNoteNo || '');
           setPoNo(inv.poNo || '');

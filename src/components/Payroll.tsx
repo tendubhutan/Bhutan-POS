@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { EmployeeAdvances } from './payroll/EmployeeAdvances';
 import { StaffManagementView } from './employee/StaffManagementView';
+import { ReportShareModal } from './common/ReportShareModal';
 import { calculateMonthlyAttendanceSummary } from '../services/employeeStaffService';
 import { Config, PayHead, Employee, MonthlyPayroll, PayrollEntry, PayrollPayHeadItem, AdvanceType, EmployeeAdvance } from '../types';
 import {
@@ -213,6 +214,21 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
   // Full Printable Salary Register Sheet Modal
   const [showSalarySheetPrintModal, setShowSalarySheetPrintModal] = useState(false);
+
+  // Unified Report Share Modal State
+  const [shareModalConfig, setShareModalConfig] = useState<{
+    isOpen: boolean;
+    reportTitle: string;
+    reportSubtitle?: string;
+    pdfFileName: string;
+    generatePdfDoc: () => jsPDF | Blob | Promise<jsPDF | Blob>;
+    textSummary: string;
+    emailSubject?: string;
+    emailBody?: string;
+    whatsappText?: string;
+    defaultPhone?: string;
+    defaultEmail?: string;
+  } | null>(null);
 
   // Notification Toast
   const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -664,10 +680,9 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
         <style>
           table { border-collapse: collapse; font-family: Calibri, Arial, sans-serif; font-size: 11pt; }
           th, td { border: 1px solid #000000; padding: 6px 10px; }
-          .banner { background-color: #FFFF00; font-weight: bold; text-align: center; font-size: 14pt; padding: 10px; }
-          .th-blue { background-color: #0d6efd; color: #FFFFFF; font-weight: bold; text-align: center; vertical-align: middle; }
-          .th-yellow { background-color: #FFFF00; color: #000000; font-weight: bold; text-align: center; vertical-align: middle; }
-          .total-row { background-color: #e2e8f0; font-weight: bold; }
+          .banner { background-color: #FFC000; color: #000000; font-weight: bold; text-align: center; font-size: 13pt; padding: 8px; border: 1px solid #000000; }
+          .th-cyan { background-color: #00A3E0; color: #FFFFFF; font-weight: bold; text-align: center; vertical-align: middle; border: 1px solid #000000; }
+          .total-row { background-color: #FFFFFF; font-weight: bold; border-top: 2px solid #000000; border-bottom: 2px solid #000000; }
         </style>
       </head>
       <body>
@@ -689,30 +704,30 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               <th colspan="12" class="banner">FORM IT-1(a) MONTHLY SALARY SCHEDULE</th>
             </tr>
             <tr>
-              <th rowspan="2" class="th-blue">Name of Employee</th>
-              <th rowspan="2" class="th-blue">TPN</th>
-              <th class="th-blue">1</th>
-              <th class="th-blue">2</th>
-              <th class="th-blue">3</th>
-              <th class="th-blue">4</th>
-              <th class="th-yellow">5</th>
-              <th class="th-yellow">6</th>
-              <th class="th-blue">7</th>
-              <th class="th-blue">8</th>
-              <th class="th-blue">9</th>
-              <th class="th-blue">10</th>
+              <th rowspan="2" class="th-cyan">Name of Employee</th>
+              <th rowspan="2" class="th-cyan">TPN</th>
+              <th class="th-cyan">1</th>
+              <th class="th-cyan">2</th>
+              <th class="th-cyan">3</th>
+              <th class="th-cyan">4</th>
+              <th class="th-cyan">5</th>
+              <th class="th-cyan">6</th>
+              <th class="th-cyan">7</th>
+              <th class="th-cyan">8</th>
+              <th class="th-cyan">9</th>
+              <th class="th-cyan">10</th>
             </tr>
             <tr>
-              <th class="th-blue">Basic Salary</th>
-              <th class="th-blue">Benefit / Allowance</th>
-              <th class="th-blue">Salary Arrear</th>
-              <th class="th-blue">Gross Salary</th>
-              <th class="th-yellow">Provident Fun (PF)/15%of Gross Salary</th>
-              <th class="th-yellow">Group Insurance Scheme (GIS) / Zero</th>
-              <th class="th-blue">Net Salary (Gross Salary-(PF+GIS))</th>
-              <th class="th-blue">TDS On Net Salary</th>
-              <th class="th-blue">Health Contribution (1% of Gross Salary)</th>
-              <th class="th-blue">Total (8+9)</th>
+              <th class="th-cyan">Basic Salary</th>
+              <th class="th-cyan">Benefit / Allowance</th>
+              <th class="th-cyan">Salary Arrear</th>
+              <th class="th-cyan">Gross Salary</th>
+              <th class="th-cyan">Provident Fun (PF)/15%of Gross Salary</th>
+              <th class="th-cyan">Group Insurance Scheme (GIS) / Zero</th>
+              <th class="th-cyan">Net Salary (Gross Salary-(PF+GIS))</th>
+              <th class="th-cyan">TDS On Net Salary</th>
+              <th class="th-cyan">Health Contribution (1% of Gross Salary)</th>
+              <th class="th-cyan">Total (8+9)</th>
             </tr>
           </thead>
           <tbody>
@@ -723,12 +738,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
               <td style="text-align: right; border: 1px solid #000; font-weight: bold; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumAllowance.toFixed(2)}</td>
               <td style="text-align: right; border: 1px solid #000; font-weight: bold; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumArrear.toFixed(2)}</td>
               <td style="text-align: right; border: 1px solid #000; font-weight: bold; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumGross.toFixed(2)}</td>
-              <td style="text-align: right; border: 1px solid #000; font-weight: bold; background-color: #FFFF99; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumPf.toFixed(2)}</td>
-              <td style="text-align: right; border: 1px solid #000; font-weight: bold; background-color: #FFFF99; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumGis.toFixed(2)}</td>
+              <td style="text-align: right; border: 1px solid #000; font-weight: bold; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumPf.toFixed(2)}</td>
+              <td style="text-align: right; border: 1px solid #000; font-weight: bold; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumGis.toFixed(2)}</td>
               <td style="text-align: right; border: 1px solid #000; font-weight: bold; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumNetSalary.toFixed(2)}</td>
-              <td style="text-align: right; border: 1px solid #000; font-weight: bold; color: #b91c1c; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumTds.toFixed(2)}</td>
-              <td style="text-align: right; border: 1px solid #000; font-weight: bold; color: #047857; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumHealth.toFixed(2)}</td>
-              <td style="text-align: right; border: 1px solid #000; font-weight: bold; color: #1d4ed8; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumTotalTax.toFixed(2)}</td>
+              <td style="text-align: right; border: 1px solid #000; font-weight: bold; color: #DC2626; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumTds.toFixed(2)}</td>
+              <td style="text-align: right; border: 1px solid #000; font-weight: bold; color: #16A34A; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumHealth.toFixed(2)}</td>
+              <td style="text-align: right; border: 1px solid #000; font-weight: bold; color: #1D4ED8; mso-number-format:'\\#\\,\\#\\#0\\.00';">${sumTotalTax.toFixed(2)}</td>
             </tr>
           </tbody>
         </table>
@@ -829,12 +844,78 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
 
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
 
-    // Format all numeric cells with #,##0.00
-    for (let R = 3; R < sheetData.length; R++) {
-      for (let C = 2; C < 12; C++) {
+    // Apply exact Excel styles to match DRC Form Header
+    const totalRowsCount = sheetData.length;
+    for (let R = 0; R < totalRowsCount; R++) {
+      for (let C = 0; C < 12; C++) {
         const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
-        if (ws[cellRef]) {
-          ws[cellRef].z = '#,##0.00';
+        if (!ws[cellRef]) {
+          if (R <= 2 || R === totalRowsCount - 1) {
+            ws[cellRef] = { v: '', t: 's' };
+          } else {
+            continue;
+          }
+        }
+
+        if (R === 0) {
+          // Banner Row
+          ws[cellRef].s = {
+            font: { bold: true, color: { rgb: "000000" }, name: "Calibri", sz: 12 },
+            fill: { fgColor: { rgb: "FFC000" } },
+            alignment: { vertical: "center", horizontal: "center" },
+            border: {
+              top: { style: "medium", color: { rgb: "000000" } },
+              bottom: { style: "medium", color: { rgb: "000000" } },
+              left: { style: "thin", color: { rgb: "000000" } },
+              right: { style: "thin", color: { rgb: "000000" } }
+            }
+          };
+        } else if (R === 1 || R === 2) {
+          // Column Headers (Bright Sky Blue / Cyan)
+          ws[cellRef].s = {
+            font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 10 },
+            fill: { fgColor: { rgb: "00A3E0" } },
+            alignment: { vertical: "center", horizontal: "center", wrapText: true },
+            border: {
+              top: { style: "thin", color: { rgb: "000000" } },
+              bottom: { style: "thin", color: { rgb: "000000" } },
+              left: { style: "thin", color: { rgb: "000000" } },
+              right: { style: "thin", color: { rgb: "000000" } }
+            }
+          };
+        } else {
+          // Data & Total Rows
+          const isTotalRow = R === totalRowsCount - 1;
+          const val = ws[cellRef].v;
+          if (typeof val === 'number' && C >= 2) {
+            ws[cellRef].z = '#,##0.00';
+          }
+
+          let fontColorRgb = "000000";
+          let isBold = isTotalRow || C === 0 || C === 5 || C === 8 || C >= 9;
+
+          if (C === 9) {
+            fontColorRgb = "DC2626"; // Red TDS
+          } else if (C === 10) {
+            fontColorRgb = "16A34A"; // Green Health
+          } else if (C === 11) {
+            fontColorRgb = "1D4ED8"; // Blue Total Tax
+          }
+
+          ws[cellRef].s = {
+            font: { bold: isBold, color: { rgb: fontColorRgb }, name: "Calibri", sz: 10 },
+            fill: { fgColor: { rgb: "FFFFFF" } },
+            alignment: {
+              vertical: "center",
+              horizontal: C === 0 ? "left" : (C === 1 ? "center" : "right")
+            },
+            border: {
+              top: { style: isTotalRow ? "medium" : "thin", color: { rgb: "000000" } },
+              bottom: { style: isTotalRow ? "double" : "thin", color: { rgb: "000000" } },
+              left: { style: "thin", color: { rgb: "000000" } },
+              right: { style: "thin", color: { rgb: "000000" } }
+            }
+          };
         }
       }
     }
@@ -878,7 +959,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
   };
 
   // Salary Register Export & Share Handlers
-  const handleExportSalaryRegisterPDF = () => {
+  const handleExportSalaryRegisterPDF = (returnDocOnly?: boolean): jsPDF | undefined => {
     if (!currentPayroll) return;
     const entries = displayedRegisterEntries.length > 0 ? displayedRegisterEntries : currentPayroll.entries;
 
@@ -1080,9 +1161,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       doc.text('Approved By (Managing Director)', margin + sigColWidth * 2.5, signatureY + 4, { align: 'center' });
     }
 
-    const filename = `Salary_Register_${currentPayroll.monthYear.replace(/\s+/g, '_')}.pdf`;
-    doc.save(filename);
-    showToast('Salary Register PDF generated and downloaded successfully!');
+    if (!returnDocOnly) {
+      const filename = `Salary_Register_${currentPayroll.monthYear.replace(/\s+/g, '_')}.pdf`;
+      doc.save(filename);
+      showToast('Salary Register PDF generated and downloaded successfully!');
+    }
+    return doc;
   };
 
   const handleExportSalaryRegisterExcel = () => {
@@ -1318,38 +1402,50 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     showToast('Salary Register exported to Excel with bright blue header styling!');
   };
 
-  const handleShareSalaryRegisterWhatsApp = () => {
+  const handleOpenSalaryRegisterShare = () => {
     if (!currentPayroll) return;
     const entries = displayedRegisterEntries.length > 0 ? displayedRegisterEntries : currentPayroll.entries;
-    const text = `*SALARY REGISTER SUMMARY - ${currentPayroll.monthYear}*\n` +
-      `Company: *${config.CompanyName}*\n` +
-      `Total Staff: ${entries.length}\n` +
-      `Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalGross.toLocaleString('en-IN')}\n` +
-      `Total Deductions: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalDeductions.toLocaleString('en-IN')}\n` +
-      `*Net Payable Salary: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalNet.toLocaleString('en-IN')}*\n\n` +
-      `_Generated via ${config.CompanyName} Payroll System_`;
+    const summaryText = `*SALARY REGISTER SUMMARY - ${currentPayroll.monthYear.toUpperCase()}*\n` +
+      `Company: *${config.CompanyName || 'Bhutan Enterprise'}*\n` +
+      `Total Staff: ${entries.length} Employees\n` +
+      `Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalGross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+      `Total Deductions: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+      `*Net Payable Salary: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalNet.toLocaleString('en-IN', { minimumFractionDigits: 2 })}*\n\n` +
+      `_Official PDF report has been generated and is attached._`;
 
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+    setShareModalConfig({
+      isOpen: true,
+      reportTitle: `Salary Register - ${currentPayroll.monthYear}`,
+      reportSubtitle: `${config.CompanyName || 'Bhutan Enterprise'} • ${entries.length} Staff • Total Net: Nu. ${displayedTotalNet.toLocaleString('en-IN')}`,
+      pdfFileName: `Salary_Register_${currentPayroll.monthYear.replace(/\s+/g, '_')}.pdf`,
+      generatePdfDoc: () => {
+        const doc = handleExportSalaryRegisterPDF(true);
+        if (!doc) throw new Error('Failed to generate PDF');
+        return doc;
+      },
+      textSummary: summaryText,
+      emailSubject: `Monthly Salary Register Report - ${currentPayroll.monthYear} (${config.CompanyName || 'Bhutan Enterprise'})`,
+      emailBody: `Dear Team,\n\nPlease find the Monthly Salary Register breakdown and summary for ${currentPayroll.monthYear}:\n\n` +
+        `Company: ${config.CompanyName || 'Bhutan Enterprise'}\n` +
+        `Payroll Period: ${currentPayroll.monthYear}\n` +
+        `Total Staff: ${entries.length}\n` +
+        `Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalGross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+        `Total Deductions: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+        `Net Salary Payable: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalNet.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n\n` +
+        `Best regards,\nHR & Finance Department\n${config.CompanyName || 'Bhutan Enterprise'}`
+    });
+  };
+
+  const handleShareSalaryRegisterWhatsApp = () => {
+    handleOpenSalaryRegisterShare();
   };
 
   const handleShareSalaryRegisterEmail = () => {
-    if (!currentPayroll) return;
-    const entries = displayedRegisterEntries.length > 0 ? displayedRegisterEntries : currentPayroll.entries;
-    const subject = `Salary Register Report - ${currentPayroll.monthYear} (${config.CompanyName})`;
-    const body = `Dear Team,\n\nPlease find the Salary Register Summary for ${currentPayroll.monthYear}:\n\n` +
-      `Company Name: ${config.CompanyName}\n` +
-      `Payroll Period: ${currentPayroll.monthYear}\n` +
-      `Total Staff: ${entries.length}\n` +
-      `Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalGross.toLocaleString('en-IN')}\n` +
-      `Total Deductions: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalDeductions.toLocaleString('en-IN')}\n` +
-      `Net Salary Payable: ${config.CurrencySymbol || 'Nu.'} ${displayedTotalNet.toLocaleString('en-IN')}\n\n` +
-      `Regards,\nHR & Finance Department\n${config.CompanyName}`;
-
-    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+    handleOpenSalaryRegisterShare();
   };
 
   // Payslip Export & Share Handlers
-  const handleExportPayslipPDF = (entry: PayrollEntry) => {
+  const handleExportPayslipPDF = (entry: PayrollEntry, returnDocOnly?: boolean): jsPDF | undefined => {
     if (!currentPayroll) return;
 
     const empTpn = entry.tpnNo || employees.find(e => e.empCode === entry.empCode || e.id === entry.empId)?.tpnNo || '-';
@@ -1548,9 +1644,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     doc.line(margin + sigWidth + 8, sigY, pageWidth - margin - 8, sigY);
     doc.text('Employee Signature', margin + sigWidth * 1.5, sigY + 4, { align: 'center' });
 
-    const filename = `Payslip_${entry.fullName.replace(/\s+/g, '_')}_${currentPayroll.monthYear.replace(/\s+/g, '_')}.pdf`;
-    doc.save(filename);
-    showToast(`Payslip PDF for ${entry.fullName} downloaded successfully!`);
+    if (!returnDocOnly) {
+      const filename = `Payslip_${entry.fullName.replace(/\s+/g, '_')}_${currentPayroll.monthYear.replace(/\s+/g, '_')}.pdf`;
+      doc.save(filename);
+      showToast(`Payslip PDF for ${entry.fullName} downloaded successfully!`);
+    }
+    return doc;
   };
 
   const handleExportPayslipExcel = (entry: PayrollEntry) => {
@@ -1656,7 +1755,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
         ws[cellRef].s = {
           font: { bold: isLabel, color: { rgb: isLabel ? "475569" : "0F172A" }, name: "Calibri", sz: 10 },
           fill: { fgColor: { rgb: isLabel ? "F1F5F9" : "FFFFFF" } },
-          alignment: { vertical: "center", horizontal: "left" },
+          alignment: { vertical: "center", horizontal: "left", wrapText: true },
           border: {
             top: { style: "thin", color: { rgb: "CBD5E1" } },
             bottom: { style: "thin", color: { rgb: "CBD5E1" } },
@@ -1698,7 +1797,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
         ws[cellRef].s = {
           font: { bold: false, color: { rgb: "1E293B" }, name: "Calibri", sz: 10 },
           fill: { fgColor: { rgb: R % 2 === 0 ? "F8FAFC" : "FFFFFF" } },
-          alignment: { vertical: "center", horizontal: C % 2 === 0 ? "left" : "right" },
+          alignment: { vertical: "center", horizontal: C % 2 === 0 ? "left" : "right", wrapText: true },
           border: {
             top: { style: "thin", color: { rgb: "CBD5E1" } },
             bottom: { style: "thin", color: { rgb: "CBD5E1" } },
@@ -1722,7 +1821,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       ws[cellRef].s = {
         font: { bold: true, color: { rgb: isEarnings ? "065F46" : "9F1239" }, name: "Calibri", sz: 10.5 },
         fill: { fgColor: { rgb: isEarnings ? "ECFDF5" : "FFE4E6" } },
-        alignment: { vertical: "center", horizontal: C % 2 === 0 ? "left" : "right" },
+        alignment: { vertical: "center", horizontal: C % 2 === 0 ? "left" : "right", wrapText: true },
         border: {
           top: { style: "medium", color: { rgb: "64748B" } },
           bottom: { style: "medium", color: { rgb: "64748B" } },
@@ -1762,59 +1861,70 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     showToast(`Payslip for ${entry.fullName} exported to Excel with rich styling!`);
   };
 
-  const handleSharePayslipWhatsApp = (entry: PayrollEntry) => {
+  const handleOpenPayslipShare = (entry: PayrollEntry) => {
     if (!currentPayroll) return;
     const empTpn = entry.tpnNo || employees.find(e => e.empCode === entry.empCode || e.id === entry.empId)?.tpnNo || '-';
+    const empContact = employees.find(e => e.empCode === entry.empCode || e.id === entry.empId)?.contactNo || '';
+    const empEmail = employees.find(e => e.empCode === entry.empCode || e.id === entry.empId)?.email || '';
+
     const earningsList = entry.earnings.map(e => `• ${formatPayHeadDisplayName(e.payHeadName, e.payHeadId)}: ${config.CurrencySymbol || 'Nu.'} ${e.amount.toLocaleString('en-IN')}`).join('\n');
     const deductionsList = entry.deductions.map(d => `• ${formatPayHeadDisplayName(d.payHeadName, d.payHeadId)}: ${config.CurrencySymbol || 'Nu.'} ${d.amount.toLocaleString('en-IN')}`).join('\n');
 
-    const text = `*PAYSLIP FOR ${currentPayroll.monthYear.toUpperCase()}*\n` +
-      `Company: *${config.CompanyName}*\n` +
+    const summaryText = `*SALARY PAYSLIP - ${currentPayroll.monthYear.toUpperCase()}*\n` +
+      `Company: *${config.CompanyName || 'Bhutan Enterprise'}*\n` +
       `Employee: *${entry.fullName}*\n` +
       `ID No: *${entry.empCode}* | CID: *${entry.cidNo || '-'}* | TPN: *${empTpn}*\n` +
       `Designation: ${entry.designation}\n\n` +
       `*EARNINGS:*\n${earningsList}\n` +
-      `*Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${entry.grossPay.toLocaleString('en-IN')}*\n\n` +
+      `*Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${entry.grossPay.toLocaleString('en-IN', { minimumFractionDigits: 2 })}*\n\n` +
       `*DEDUCTIONS:*\n${deductionsList}\n` +
-      `*Total Deductions: ${config.CurrencySymbol || 'Nu.'} ${entry.totalDeductions.toLocaleString('en-IN')}*\n\n` +
-      `*NET SALARY PAYABLE: ${config.CurrencySymbol || 'Nu.'} ${entry.netPay.toLocaleString('en-IN')}*\n` +
+      `*Total Deductions: ${config.CurrencySymbol || 'Nu.'} ${entry.totalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}*\n\n` +
+      `*NET SALARY PAYABLE: ${config.CurrencySymbol || 'Nu.'} ${entry.netPay.toLocaleString('en-IN', { minimumFractionDigits: 2 })}*\n` +
       `_(${numberToWordsBhutan(entry.netPay)})_\n\n` +
-      `_Generated by ${config.CompanyName} Payroll_`;
+      `_Official signed PDF payslip is attached._`;
 
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+    setShareModalConfig({
+      isOpen: true,
+      reportTitle: `Salary Payslip - ${entry.fullName}`,
+      reportSubtitle: `${entry.empCode} • ${entry.designation} • ${currentPayroll.monthYear}`,
+      pdfFileName: `Payslip_${entry.fullName.replace(/\s+/g, '_')}_${currentPayroll.monthYear.replace(/\s+/g, '_')}.pdf`,
+      generatePdfDoc: () => {
+        const doc = handleExportPayslipPDF(entry, true);
+        if (!doc) throw new Error('Failed to generate PDF');
+        return doc;
+      },
+      textSummary: summaryText,
+      emailSubject: `Pay Slip for ${currentPayroll.monthYear} - ${entry.fullName}`,
+      emailBody: `Dear ${entry.fullName},\n\nPlease find your Salary Payslip breakdown for ${currentPayroll.monthYear}:\n\n` +
+        `Company: ${config.CompanyName || 'Bhutan Enterprise'}\n` +
+        `Employee Name: ${entry.fullName}\n` +
+        `ID No: ${entry.empCode}\n` +
+        `CID Card Number: ${entry.cidNo || '-'}\n` +
+        `TPN Number: ${empTpn}\n` +
+        `Designation: ${entry.designation}\n` +
+        `Bank Account: ${entry.bankName} (${entry.accountNo})\n\n` +
+        `EARNINGS BREAKDOWN:\n${earningsList}\n` +
+        `Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${entry.grossPay.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n\n` +
+        `DEDUCTIONS BREAKDOWN:\n${deductionsList}\n` +
+        `Total Deductions: ${config.CurrencySymbol || 'Nu.'} ${entry.totalDeductions.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n\n` +
+        `NET SALARY PAYABLE: ${config.CurrencySymbol || 'Nu.'} ${entry.netPay.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n` +
+        `Amount in Words: ${numberToWordsBhutan(entry.netPay)}\n\n` +
+        `Best regards,\nHR & Finance Department\n${config.CompanyName || 'Bhutan Enterprise'}`,
+      defaultPhone: empContact,
+      defaultEmail: empEmail
+    });
+  };
+
+  const handleSharePayslipWhatsApp = (entry: PayrollEntry) => {
+    handleOpenPayslipShare(entry);
   };
 
   const handleSharePayslipEmail = (entry: PayrollEntry) => {
-    if (!currentPayroll) return;
-    const empTpn = entry.tpnNo || employees.find(e => e.empCode === entry.empCode || e.id === entry.empId)?.tpnNo || '-';
-    const subject = `Pay Slip for ${currentPayroll.monthYear} - ${entry.fullName}`;
-    const earningsList = entry.earnings.map(e => `  - ${formatPayHeadDisplayName(e.payHeadName, e.payHeadId)}: ${config.CurrencySymbol || 'Nu.'} ${e.amount.toLocaleString('en-IN')}`).join('\n');
-    const deductionsList = entry.deductions.map(d => `  - ${formatPayHeadDisplayName(d.payHeadName, d.payHeadId)}: ${config.CurrencySymbol || 'Nu.'} ${d.amount.toLocaleString('en-IN')}`).join('\n');
-
-    const body = `Dear ${entry.fullName},\n\n` +
-      `Please find your Salary Payslip breakdown for ${currentPayroll.monthYear}:\n\n` +
-      `Company: ${config.CompanyName}\n` +
-      `Employee Name: ${entry.fullName}\n` +
-      `ID No: ${entry.empCode}\n` +
-      `CID Card Number: ${entry.cidNo || '-'}\n` +
-      `TPN Number: ${empTpn}\n` +
-      `Designation: ${entry.designation}\n` +
-      `Bank Account: ${entry.bankName} (${entry.accountNo})\n\n` +
-      `EARNINGS BREAKDOWN:\n${earningsList}\n` +
-      `Total Gross Pay: ${config.CurrencySymbol || 'Nu.'} ${entry.grossPay.toLocaleString('en-IN')}\n\n` +
-      `DEDUCTIONS BREAKDOWN:\n${deductionsList}\n` +
-      `Total Deductions: ${config.CurrencySymbol || 'Nu.'} ${entry.totalDeductions.toLocaleString('en-IN')}\n\n` +
-      `NET SALARY PAYABLE: ${config.CurrencySymbol || 'Nu.'} ${entry.netPay.toLocaleString('en-IN')}\n` +
-      `Amount in Words: ${numberToWordsBhutan(entry.netPay)}\n\n` +
-      `Best regards,\n` +
-      `Finance & HR Department\n` +
-      `${config.CompanyName}`;
-
-    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+    handleOpenPayslipShare(entry);
   };
 
   // Bank Advice Sheet Export & Share Handlers
-  const handleExportBankSheetPDF = () => {
+  const handleExportBankSheetPDF = (returnDocOnly?: boolean): jsPDF | undefined => {
     if (!currentPayroll) return;
 
     // A4 Portrait is 210mm width x 297mm height
@@ -1954,9 +2064,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       doc.text('Approved By (Managing Director)', margin + sigColWidth * 2.5, signatureY + 4, { align: 'center' });
     }
 
-    const filename = `Bank_Salary_Advice_${currentPayroll.monthYear.replace(/\s+/g, '_')}.pdf`;
-    doc.save(filename);
-    showToast('Bank Advice Schedule PDF downloaded successfully!');
+    if (!returnDocOnly) {
+      const filename = `Bank_Salary_Advice_${currentPayroll.monthYear.replace(/\s+/g, '_')}.pdf`;
+      doc.save(filename);
+      showToast('Bank Advice Schedule PDF downloaded successfully!');
+    }
+    return doc;
   };
 
   const handleExportBankSheetExcel = () => {
@@ -2124,33 +2237,45 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
     showToast('Bank Advice Schedule exported to Excel with bright blue header styling!');
   };
 
-  const handleShareBankSheetWhatsApp = () => {
+  const handleOpenBankSheetShare = () => {
     if (!currentPayroll) return;
-    const text = `*BANK SALARY ADVICE SCHEDULE - ${currentPayroll.monthYear}*\n` +
-      `Company: *${config.CompanyName}*\n` +
-      `Total Employees: ${currentPayroll.entries.length}\n` +
-      `*Total Net Salary Transfer: ${config.CurrencySymbol || 'Nu.'} ${currentPayroll.totalNetPay.toLocaleString('en-IN')}*\n\n` +
-      `Please process salary disbursement to employee bank accounts as per attached schedule.\n\n` +
-      `_Generated via ${config.CompanyName} Payroll System_`;
+    const totalAmount = currentPayroll.entries.reduce((sum, e) => sum + (e.netPay || 0), 0);
+    const summaryText = `*BANK SALARY TRANSFER ADVICE SCHEDULE - ${currentPayroll.monthYear.toUpperCase()}*\n` +
+      `Company: *${config.CompanyName || 'Bhutan Enterprise'}*\n` +
+      `Date: ${new Date().toLocaleDateString('en-GB')}\n` +
+      `Total Staff Transferred: ${currentPayroll.entries.length} Employees\n` +
+      `*Total Transfer Amount: ${config.CurrencySymbol || 'Nu.'} ${totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}*\n\n` +
+      `_Please find attached the official Bank Salary Transfer Advice Schedule PDF for account credits._`;
 
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+    setShareModalConfig({
+      isOpen: true,
+      reportTitle: `Bank Transfer Advice Schedule - ${currentPayroll.monthYear}`,
+      reportSubtitle: `${config.CompanyName || 'Bhutan Enterprise'} • ${currentPayroll.entries.length} Staff • Total: Nu. ${totalAmount.toLocaleString('en-IN')}`,
+      pdfFileName: `Bank_Salary_Advice_${currentPayroll.monthYear.replace(/\s+/g, '_')}.pdf`,
+      generatePdfDoc: () => {
+        const doc = handleExportBankSheetPDF(true);
+        if (!doc) throw new Error('Failed to generate PDF');
+        return doc;
+      },
+      textSummary: summaryText,
+      emailSubject: `Bank Salary Transfer Advice Schedule - ${currentPayroll.monthYear} (${config.CompanyName || 'Bhutan Enterprise'})`,
+      emailBody: `Dear Branch Manager / Operations Team,\n\nPlease find attached the Bank Salary Transfer Advice Schedule for ${currentPayroll.monthYear}:\n\n` +
+        `Company: ${config.CompanyName || 'Bhutan Enterprise'}\n` +
+        `Payroll Month: ${currentPayroll.monthYear}\n` +
+        `Total Employees: ${currentPayroll.entries.length}\n` +
+        `Total Net Payable: ${config.CurrencySymbol || 'Nu.'} ${totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}\n\n` +
+        `Kindly debit our company account and credit the respective employee bank accounts as per the attached schedule.\n\n` +
+        `Thank you.\n\n` +
+        `Authorized Signatory,\n${config.CompanyName || 'Bhutan Enterprise'}`
+    });
+  };
+
+  const handleShareBankSheetWhatsApp = () => {
+    handleOpenBankSheetShare();
   };
 
   const handleShareBankSheetEmail = () => {
-    if (!currentPayroll) return;
-    const subject = `Bank Salary Transfer Advice Letter - ${currentPayroll.monthYear} (${config.CompanyName})`;
-    const body = `To The Branch Manager,\n\n` +
-      `Re: Salary Disbursement Advice for ${currentPayroll.monthYear}\n\n` +
-      `Please find below the salary transfer advice summary for ${config.CompanyName}:\n\n` +
-      `Payroll Month: ${currentPayroll.monthYear}\n` +
-      `Total Number of Staff: ${currentPayroll.entries.length}\n` +
-      `Total Net Salary Transfer Amount: ${config.CurrencySymbol || 'Nu.'} ${currentPayroll.totalNetPay.toLocaleString('en-IN')}\n\n` +
-      `Kindly debit our company account and credit the respective employee bank accounts listed in the official salary advice schedule.\n\n` +
-      `Thank you.\n\n` +
-      `Authorized Signatory,\n` +
-      `${config.CompanyName}`;
-
-    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+    handleOpenBankSheetShare();
   };
 
   // Employee CRUD & Salary Structure Helpers
@@ -2903,7 +3028,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     </button>
                     <button
                       type="button"
-                      onClick={handleExportSalaryRegisterPDF}
+                      onClick={() => handleExportSalaryRegisterPDF()}
                       className="h-7 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
                       title="Download Formatted PDF Report (.pdf)"
                     >
@@ -2921,21 +3046,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                     </button>
                     <button
                       type="button"
-                      onClick={handleShareSalaryRegisterWhatsApp}
-                      className="h-7 px-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
-                      title="Share Summary via WhatsApp"
+                      onClick={handleOpenSalaryRegisterShare}
+                      className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      title="Share Salary Register PDF & Summary via WhatsApp, Email, or Device Apps"
                     >
-                      <MessageSquare className="h-3.5 w-3.5" />
-                      <span>WhatsApp</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleShareSalaryRegisterEmail}
-                      className="h-7 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
-                      title="Send Summary via Email"
-                    >
-                      <Mail className="h-3.5 w-3.5" />
-                      <span>Email</span>
+                      <Share2 className="h-3.5 w-3.5" />
+                      <span>Share</span>
                     </button>
                   </div>
 
@@ -4314,20 +4430,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                       <span>Print</span>
                     </button>
                     <button
-                      onClick={() => handleSharePayslipWhatsApp(payslipModalEntry)}
-                      className="px-2.5 h-7.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
-                      title="Share Payslip via WhatsApp"
+                      onClick={() => handleOpenPayslipShare(payslipModalEntry)}
+                      className="px-2.5 h-7.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      title="Share Payslip PDF via WhatsApp, Email, or Device Apps"
                     >
-                      <MessageSquare className="h-3.5 w-3.5" />
-                      <span>WhatsApp</span>
-                    </button>
-                    <button
-                      onClick={() => handleSharePayslipEmail(payslipModalEntry)}
-                      className="px-2.5 h-7.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] transition flex items-center gap-1 cursor-pointer shadow-xs"
-                      title="Send Payslip via Email"
-                    >
-                      <Mail className="h-3.5 w-3.5" />
-                      <span>Email</span>
+                      <Share2 className="h-3.5 w-3.5" />
+                      <span>Share</span>
                     </button>
                   </div>
                 )}
@@ -4557,7 +4665,7 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   <span>Excel</span>
                 </button>
                 <button
-                  onClick={handleExportBankSheetPDF}
+                  onClick={() => handleExportBankSheetPDF()}
                   className="px-2.5 h-8 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 cursor-pointer transition"
                   title="Download Bank Advice PDF Report (.pdf)"
                 >
@@ -4573,20 +4681,12 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                   <span>Print</span>
                 </button>
                 <button
-                  onClick={handleShareBankSheetWhatsApp}
-                  className="px-2.5 h-8 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-xs flex items-center gap-1 cursor-pointer transition"
-                  title="Share Bank Advice via WhatsApp"
+                  onClick={handleOpenBankSheetShare}
+                  className="px-2.5 h-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 cursor-pointer transition"
+                  title="Share Bank Advice PDF via WhatsApp, Email, or Device Apps"
                 >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  <span>WhatsApp</span>
-                </button>
-                <button
-                  onClick={handleShareBankSheetEmail}
-                  className="px-2.5 h-8 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs flex items-center gap-1 cursor-pointer transition"
-                  title="Send Bank Advice via Email"
-                >
-                  <Mail className="h-3.5 w-3.5" />
-                  <span>Email</span>
+                  <Share2 className="h-3.5 w-3.5" />
+                  <span>Share</span>
                 </button>
                 <button
                   onClick={() => setShowBankSheetModal(false)}
@@ -4706,44 +4806,44 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
             </div>
 
             {/* Printable & Scrollable DRC Schedule Table */}
-            <div className="overflow-auto max-h-[calc(100vh-280px)] border border-slate-300 rounded-xl">
-              <div className="sticky top-0 z-30 bg-yellow-300 text-slate-900 font-bold text-center py-2 text-sm uppercase tracking-wide border-b border-slate-300 shadow-2xs">
+            <div className="overflow-auto max-h-[calc(100vh-280px)] border-2 border-black rounded-xl shadow-xs">
+              <div className="sticky top-0 z-30 bg-[#FFC000] text-black font-bold text-center py-2 text-sm uppercase tracking-wide border-b-2 border-black shadow-xs">
                 FORM IT-1(a) MONTHLY SALARY SCHEDULE
               </div>
-              <table className="w-full text-xs border-collapse">
-                <thead className="sticky top-[37px] z-20 shadow-xs">
-                  <tr className="bg-blue-600 text-white font-bold text-center">
-                    <th rowSpan={2} className="p-2 border border-slate-300 min-w-[140px]">Name of Employee</th>
-                    <th rowSpan={2} className="p-2 border border-slate-300 min-w-[90px]">TPN</th>
-                    <th className="p-1.5 border border-slate-300 bg-blue-700">1</th>
-                    <th className="p-1.5 border border-slate-300 bg-blue-700">2</th>
-                    <th className="p-1.5 border border-slate-300 bg-blue-700">3</th>
-                    <th className="p-1.5 border border-slate-300 bg-blue-700">4</th>
-                    <th className="p-1.5 border border-slate-300 bg-yellow-400 text-slate-900">5</th>
-                    <th className="p-1.5 border border-slate-300 bg-yellow-400 text-slate-900">6</th>
-                    <th className="p-1.5 border border-slate-300 bg-blue-700">7</th>
-                    <th className="p-1.5 border border-slate-300 bg-blue-700">8</th>
-                    <th className="p-1.5 border border-slate-300 bg-blue-700">9</th>
-                    <th className="p-1.5 border border-slate-300 bg-blue-700">10</th>
+              <table className="w-full text-xs border-collapse bg-white">
+                <thead className="sticky top-[35px] z-20 shadow-xs">
+                  <tr className="bg-[#00A3E0] text-white font-bold text-center">
+                    <th rowSpan={2} className="p-2 border border-black bg-[#00A3E0] min-w-[140px] align-middle">Name of Employee</th>
+                    <th rowSpan={2} className="p-2 border border-black bg-[#00A3E0] min-w-[90px] align-middle">TPN</th>
+                    <th className="p-1 border border-black bg-[#00A3E0] text-center">1</th>
+                    <th className="p-1 border border-black bg-[#00A3E0] text-center">2</th>
+                    <th className="p-1 border border-black bg-[#00A3E0] text-center">3</th>
+                    <th className="p-1 border border-black bg-[#00A3E0] text-center">4</th>
+                    <th className="p-1 border border-black bg-[#00A3E0] text-center">5</th>
+                    <th className="p-1 border border-black bg-[#00A3E0] text-center">6</th>
+                    <th className="p-1 border border-black bg-[#00A3E0] text-center">7</th>
+                    <th className="p-1 border border-black bg-[#00A3E0] text-center">8</th>
+                    <th className="p-1 border border-black bg-[#00A3E0] text-center">9</th>
+                    <th className="p-1 border border-black bg-[#00A3E0] text-center">10</th>
                   </tr>
-                  <tr className="bg-blue-600 text-white font-bold text-center">
-                    <th className="p-2 border border-slate-300">Basic Salary</th>
-                    <th className="p-2 border border-slate-300">Benefit / Allowance</th>
-                    <th className="p-2 border border-slate-300">Salary Arrear</th>
-                    <th className="p-2 border border-slate-300">Gross Salary</th>
-                    <th className="p-2 border border-slate-300 bg-yellow-300 text-slate-900 max-w-[120px]">
+                  <tr className="bg-[#00A3E0] text-white font-bold text-center">
+                    <th className="p-1.5 border border-black bg-[#00A3E0] align-middle">Basic Salary</th>
+                    <th className="p-1.5 border border-black bg-[#00A3E0] align-middle">Benefit / Allowance</th>
+                    <th className="p-1.5 border border-black bg-[#00A3E0] align-middle">Salary Arrear</th>
+                    <th className="p-1.5 border border-black bg-[#00A3E0] align-middle">Gross Salary</th>
+                    <th className="p-1.5 border border-black bg-[#00A3E0] align-middle max-w-[125px]">
                       Provident Fun (PF)/15%of Gross Salary
                     </th>
-                    <th className="p-2 border border-slate-300 bg-yellow-300 text-slate-900 max-w-[120px]">
+                    <th className="p-1.5 border border-black bg-[#00A3E0] align-middle max-w-[125px]">
                       Group Insurance Scheme (GIS) / Zero
                     </th>
-                    <th className="p-2 border border-slate-300">Net Salary (Gross Salary-(PF+GIS))</th>
-                    <th className="p-2 border border-slate-300">TDS On Net Salary</th>
-                    <th className="p-2 border border-slate-300">Health Contribution (1% of Gross Salary)</th>
-                    <th className="p-2 border border-slate-300">Total (8+9)</th>
+                    <th className="p-1.5 border border-black bg-[#00A3E0] align-middle">Net Salary (Gross Salary-(PF+GIS))</th>
+                    <th className="p-1.5 border border-black bg-[#00A3E0] align-middle">TDS On Net Salary</th>
+                    <th className="p-1.5 border border-black bg-[#00A3E0] align-middle">Health Contribution (1% of Gross Salary)</th>
+                    <th className="p-1.5 border border-black bg-[#00A3E0] align-middle">Total (8+9)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200 font-medium">
+                <tbody className="bg-white">
                   {(() => {
                     let sumBasic = 0, sumAllowance = 0, sumArrear = 0, sumGross = 0, sumPf = 0, sumGis = 0, sumNetSalary = 0, sumTds = 0, sumHealth = 0, sumTotalTax = 0;
 
@@ -4774,37 +4874,37 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
                           sumTotalTax += totalTax;
 
                           return (
-                            <tr key={entry.id} className="hover:bg-slate-50 transition text-slate-800">
-                              <td className="p-2 border border-slate-200 font-bold">{entry.fullName}</td>
-                              <td className="p-2 border border-slate-200 font-mono text-center">{emp?.tpnNo || '-'}</td>
-                              <td className="p-2 border border-slate-200 font-mono text-right">{basic.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                              <td className="p-2 border border-slate-200 font-mono text-right">{allowance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                              <td className="p-2 border border-slate-200 font-mono text-right">{arrear.toFixed(2)}</td>
-                              <td className="p-2 border border-slate-200 font-mono text-right font-semibold">{gross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                              <td className="p-2 border border-slate-200 font-mono text-right bg-yellow-50">{pf.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                              <td className="p-2 border border-slate-200 font-mono text-right bg-yellow-50">{gis.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                              <td className="p-2 border border-slate-200 font-mono text-right font-semibold">{netSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                              <td className="p-2 border border-slate-200 font-mono text-right font-bold text-rose-700">{tds.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                              <td className="p-2 border border-slate-200 font-mono text-right font-bold text-emerald-700">{health.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                              <td className="p-2 border border-slate-200 font-mono text-right font-black text-indigo-700">{totalTax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                            <tr key={entry.id} className="hover:bg-sky-50/30 transition text-black bg-white">
+                              <td className="p-2 border border-black font-bold text-left">{entry.fullName}</td>
+                              <td className="p-2 border border-black font-mono text-center">{emp?.tpnNo || ''}</td>
+                              <td className="p-2 border border-black font-mono text-right">{basic.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              <td className="p-2 border border-black font-mono text-right">{allowance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              <td className="p-2 border border-black font-mono text-right">{arrear.toFixed(2)}</td>
+                              <td className="p-2 border border-black font-mono text-right font-bold">{gross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              <td className="p-2 border border-black font-mono text-right">{pf.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              <td className="p-2 border border-black font-mono text-right">{gis.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              <td className="p-2 border border-black font-mono text-right font-bold">{netSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              <td className="p-2 border border-black font-mono text-right font-bold text-[#DC2626]">{tds.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              <td className="p-2 border border-black font-mono text-right font-bold text-[#16A34A]">{health.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                              <td className="p-2 border border-black font-mono text-right font-bold text-[#1D4ED8]">{totalTax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                             </tr>
                           );
                         })}
 
-                        <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-400">
-                          <td colSpan={2} className="p-2 border border-slate-300 text-right uppercase">
+                        <tr className="bg-white font-bold text-black border-t-2 border-b-2 border-black">
+                          <td colSpan={2} className="p-2 border border-black text-right font-bold uppercase">
                             TOTAL:
                           </td>
-                          <td className="p-2 border border-slate-300 font-mono text-right">{sumBasic.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          <td className="p-2 border border-slate-300 font-mono text-right">{sumAllowance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          <td className="p-2 border border-slate-300 font-mono text-right">{sumArrear.toFixed(2)}</td>
-                          <td className="p-2 border border-slate-300 font-mono text-right text-indigo-800">{sumGross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          <td className="p-2 border border-slate-300 font-mono text-right bg-yellow-100">{sumPf.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          <td className="p-2 border border-slate-300 font-mono text-right bg-yellow-100">{sumGis.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          <td className="p-2 border border-slate-300 font-mono text-right text-slate-900">{sumNetSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          <td className="p-2 border border-slate-300 font-mono text-right text-rose-800">{sumTds.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          <td className="p-2 border border-slate-300 font-mono text-right text-emerald-800">{sumHealth.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
-                          <td className="p-2 border border-slate-300 font-mono text-right text-blue-900">{sumTotalTax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="p-2 border border-black font-mono text-right font-bold">{sumBasic.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="p-2 border border-black font-mono text-right font-bold">{sumAllowance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="p-2 border border-black font-mono text-right font-bold">{sumArrear.toFixed(2)}</td>
+                          <td className="p-2 border border-black font-mono text-right font-bold">{sumGross.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="p-2 border border-black font-mono text-right font-bold">{sumPf.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="p-2 border border-black font-mono text-right font-bold">{sumGis.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="p-2 border border-black font-mono text-right font-bold">{sumNetSalary.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="p-2 border border-black font-mono text-right font-bold text-[#DC2626]">{sumTds.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="p-2 border border-black font-mono text-right font-bold text-[#16A34A]">{sumHealth.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                          <td className="p-2 border border-black font-mono text-right font-bold text-[#1D4ED8]">{sumTotalTax.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                         </tr>
                       </>
                     );
@@ -4835,6 +4935,15 @@ export const Payroll: React.FC<PayrollProps> = ({ config, ledgers, onDataRefresh
       {/* TAB 4: ADVANCES & LOANS */}
       {activeTab === "advances" && (
         <EmployeeAdvances config={config} ledgers={ledgers} employees={employees} isHeaderCollapsed={isHeaderCollapsed} />
+      )}
+
+      {/* Universal Report Share Modal */}
+      {shareModalConfig && (
+        <ReportShareModal
+          {...shareModalConfig}
+          onClose={() => setShareModalConfig(null)}
+          companyName={config.CompanyName}
+        />
       )}
     </div>
   );

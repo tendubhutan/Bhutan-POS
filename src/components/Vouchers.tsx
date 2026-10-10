@@ -2512,6 +2512,93 @@ export const Vouchers: React.FC<VouchersProps> = ({
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet(aoa);
 
+      const headerRowIdx = 4;
+      const totalRowIdx = aoa.length - 1;
+
+      // Apply Excel Cell Styles with wrapText: true across all cells
+      for (let R = 0; R < aoa.length; R++) {
+        for (let C = 0; C < 8; C++) {
+          const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!ws[cellRef]) {
+            if (R === 0 || R === 1 || R === 2 || R === totalRowIdx) {
+              ws[cellRef] = { v: '', t: 's' };
+            } else {
+              continue;
+            }
+          }
+
+          if (R === 0) {
+            ws[cellRef].s = {
+              font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 14 },
+              fill: { fgColor: { rgb: "1E3A8A" } },
+              alignment: { vertical: "center", horizontal: "center", wrapText: true }
+            };
+          } else if (R === 1) {
+            ws[cellRef].s = {
+              font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 11 },
+              fill: { fgColor: { rgb: "2563EB" } },
+              alignment: { vertical: "center", horizontal: "center", wrapText: true }
+            };
+          } else if (R === 2) {
+            ws[cellRef].s = {
+              font: { italic: true, color: { rgb: "64748B" }, name: "Calibri", sz: 9.5 },
+              alignment: { vertical: "center", horizontal: "center", wrapText: true }
+            };
+          } else if (R === headerRowIdx) {
+            ws[cellRef].s = {
+              font: { bold: true, color: { rgb: "FFFFFF" }, name: "Calibri", sz: 10.5 },
+              fill: { fgColor: { rgb: "1E293B" } },
+              alignment: { vertical: "center", horizontal: C === 7 ? "right" : (C <= 3 ? "center" : "left"), wrapText: true },
+              border: {
+                top: { style: "medium", color: { rgb: "0F172A" } },
+                bottom: { style: "medium", color: { rgb: "0F172A" } },
+                left: { style: "thin", color: { rgb: "475569" } },
+                right: { style: "thin", color: { rgb: "475569" } }
+              }
+            };
+          } else if (R === totalRowIdx) {
+            const val = ws[cellRef].v;
+            if (typeof val === 'number') {
+              ws[cellRef].z = '#,##0.00';
+            }
+            ws[cellRef].s = {
+              font: { bold: true, color: { rgb: "0F172A" }, name: "Calibri", sz: 11 },
+              fill: { fgColor: { rgb: "E2E8F0" } },
+              alignment: { vertical: "center", horizontal: C === 7 ? "right" : "left", wrapText: true },
+              border: {
+                top: { style: "medium", color: { rgb: "64748B" } },
+                bottom: { style: "double", color: { rgb: "0F172A" } },
+                left: { style: "thin", color: { rgb: "CBD5E1" } },
+                right: { style: "thin", color: { rgb: "CBD5E1" } }
+              }
+            };
+          } else if (R > headerRowIdx && R < totalRowIdx - 1) {
+            const val = ws[cellRef].v;
+            if (typeof val === 'number' && C === 7) {
+              ws[cellRef].z = '#,##0.00';
+            }
+            const isEven = (R - headerRowIdx) % 2 === 0;
+            ws[cellRef].s = {
+              font: { bold: C === 1, color: { rgb: "1E293B" }, name: "Calibri", sz: 10 },
+              fill: { fgColor: { rgb: isEven ? "F8FAFC" : "FFFFFF" } },
+              alignment: { vertical: "center", horizontal: C === 7 ? "right" : (C <= 3 ? "center" : "left"), wrapText: true },
+              border: {
+                top: { style: "thin", color: { rgb: "E2E8F0" } },
+                bottom: { style: "thin", color: { rgb: "E2E8F0" } },
+                left: { style: "thin", color: { rgb: "E2E8F0" } },
+                right: { style: "thin", color: { rgb: "E2E8F0" } }
+              }
+            };
+          }
+        }
+      }
+
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 7 } }
+      ];
+
       ws['!cols'] = [
         { wch: 14 },
         { wch: 18 },

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Clock, Search, UserCheck, Wifi, RefreshCw, Calendar, 
   Download, Filter, AlertCircle, CheckCircle2, Printer, FileText,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Share2
 } from 'lucide-react';
 import { AttendanceRecord } from '../../types/staffPortal';
 import { Employee, Config } from '../../types';
@@ -12,6 +12,7 @@ import {
   exportDailyAttendanceToExcel, 
   exportDailyAttendanceToPdf 
 } from '../../services/staffReportExportService';
+import { ReportShareModal } from '../common/ReportShareModal';
 
 export function exportDailyAttendanceExcel(
   employees: Employee[],
@@ -85,6 +86,7 @@ export const DailyAttendanceView: React.FC<DailyAttendanceViewProps> = ({
   const [internalSearchQuery, setInternalSearchQuery] = useState('');
   const [internalStatusFilter, setInternalStatusFilter] = useState<'ALL' | 'PRESENT' | 'LATE' | 'LEAVE' | 'ABSENT'>('ALL');
   const [internalIsHeaderCollapsed, setInternalIsHeaderCollapsed] = useState(false);
+  const [shareModalConfig, setShareModalConfig] = useState<any | null>(null);
   const isHeaderCollapsed = propIsHeaderCollapsed !== undefined ? propIsHeaderCollapsed : internalIsHeaderCollapsed;
   const handleToggleCollapse = onToggleCollapse || (() => setInternalIsHeaderCollapsed(prev => !prev));
   const effectiveStickyTop = stickyTopPx !== undefined ? stickyTopPx : 54;
@@ -153,6 +155,37 @@ export const DailyAttendanceView: React.FC<DailyAttendanceViewProps> = ({
       selectedDate,
       searchQuery,
       statusFilter
+    });
+  };
+
+  // Share Daily Log via WhatsApp, Email or System Share
+  const handleOpenShareModal = () => {
+    const formattedDate = formatDateDMY(selectedDate);
+    const summaryText = `*DAILY ATTENDANCE LOG - ${formattedDate}*\n` +
+      `Company: *${config?.CompanyName || 'Bhutan Enterprise'}*\n` +
+      `Date: ${formattedDate}\n` +
+      `Total Staff: ${employees.length} Staff\n` +
+      `Present: ${presentCount} | Late: ${lateCount} | Leave: ${leaveCount} | Absent: ${absentCount}\n\n` +
+      `_Official Daily Staff Attendance Log PDF has been generated and is attached._`;
+
+    setShareModalConfig({
+      isOpen: true,
+      reportTitle: `Daily Attendance Log - ${formattedDate}`,
+      reportSubtitle: `${config?.CompanyName || 'Bhutan Enterprise'} • Present: ${presentCount} • Late: ${lateCount} • Total Staff: ${employees.length}`,
+      pdfFileName: `Daily_Attendance_Log_${formattedDate.replace(/\//g, '-')}.pdf`,
+      generatePdfDoc: () => {
+        return exportDailyAttendanceToPdf({
+          config,
+          employees,
+          attendanceRecords,
+          selectedDate,
+          searchQuery,
+          statusFilter,
+          returnDocOnly: true
+        });
+      },
+      textSummary: summaryText,
+      emailSubject: `Daily Attendance Log - ${formattedDate} (${config?.CompanyName || 'Bhutan Enterprise'})`
     });
   };
 
@@ -308,6 +341,16 @@ export const DailyAttendanceView: React.FC<DailyAttendanceViewProps> = ({
             >
               <Printer className="h-3.5 w-3.5 text-slate-600" />
               <span>Print</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenShareModal}
+              className="px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="Share Daily Attendance PDF via WhatsApp, Email, or Device Apps"
+            >
+              <Share2 className="h-3.5 w-3.5 text-emerald-600" />
+              <span>Share</span>
             </button>
           </div>
         </div>
@@ -485,6 +528,15 @@ export const DailyAttendanceView: React.FC<DailyAttendanceViewProps> = ({
             </tbody>
           </table>
       </div>
+
+      {/* Universal Report Share Modal */}
+      {shareModalConfig && (
+        <ReportShareModal
+          {...shareModalConfig}
+          onClose={() => setShareModalConfig(null)}
+          companyName={config?.CompanyName}
+        />
+      )}
     </div>
   );
 };

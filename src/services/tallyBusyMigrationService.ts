@@ -868,20 +868,23 @@ export function parseTallyXml(rawXmlString: string, mode: MigrationMode = 'cutof
     else if (vTypeLower.includes('delivery')) grpType = 'DEL_NOTE';
     else grpType = 'J';
 
-    const lineNodes = querySelectorAllTags(node, 'ALLLEDGERENTRIES.LIST')
+    const ledgerNodes = querySelectorAllTags(node, 'ALLLEDGERENTRIES.LIST')
       .concat(querySelectorAllTags(node, 'LEDGERENTRIES.LIST'))
-      .concat(querySelectorAllTags(node, 'ALLINVENTORYENTRIES.LIST'))
-      .concat(querySelectorAllTags(node, 'INVENTORYENTRIES.LIST'))
       .concat(querySelectorAllTags(node, 'ALLLEDGERENTRIES'))
       .concat(querySelectorAllTags(node, 'LEDGERENTRIES'));
+
+    const inventoryNodes = querySelectorAllTags(node, 'ALLINVENTORYENTRIES.LIST')
+      .concat(querySelectorAllTags(node, 'INVENTORYENTRIES.LIST'))
+      .concat(querySelectorAllTags(node, 'ALLINVENTORYENTRIES'))
+      .concat(querySelectorAllTags(node, 'INVENTORYENTRIES'));
 
     let totalVoucherAmt = 0;
     let debitParty = '';
     let creditParty = '';
 
     const lines: any[] = [];
-    lineNodes.forEach((lNode, lIdx) => {
-      const lName = getTagText(lNode, 'LEDGERNAME') || getTagText(lNode, 'STOCKITEMNAME') || getTagText(lNode, 'NAME');
+    ledgerNodes.forEach((lNode, lIdx) => {
+      const lName = getTagText(lNode, 'LEDGERNAME') || getTagText(lNode, 'NAME');
       if (!lName) return;
       const amtText = getTagText(lNode, 'AMOUNT') || '0';
       const numAmt = parseFloat(amtText.replace(/[^0-9.-]/g, '')) || 0;
@@ -914,6 +917,43 @@ export function parseTallyXml(rawXmlString: string, mode: MigrationMode = 'cutof
       totalVoucherAmt = Math.max(totalVoucherAmt, absAmt);
     });
 
+    const vItems: any[] = [];
+    inventoryNodes.forEach((iNode) => {
+      const iName = getTagText(iNode, 'STOCKITEMNAME') || getTagText(iNode, 'NAME');
+      if (!iName) return;
+
+      const rateText = getTagText(iNode, 'RATE');
+      const qtyText = getTagText(iNode, 'ACTUALQTY') || getTagText(iNode, 'BILLEDQTY') || getTagText(iNode, 'QTY');
+      const amtText = getTagText(iNode, 'AMOUNT') || '0';
+      const discText = getTagText(iNode, 'DISCOUNT') || '0';
+
+      const numAmt = Math.abs(parseFloat(amtText.replace(/[^0-9.-]/g, '')) || 0);
+      const qtyNum = Math.abs(parseFloat(qtyText.replace(/[^0-9.-]/g, ''))) || 1;
+      const rateNum = rateText ? Math.abs(parseFloat(rateText.replace(/[^0-9.-]/g, ''))) : (qtyNum > 0 ? numAmt / qtyNum : 0);
+      const discNum = Math.abs(parseFloat(discText.replace(/[^0-9.-]/g, ''))) || 0;
+
+      let unitStr = 'Pcs';
+      const unitMatch = qtyText.match(/[a-zA-Z]+/);
+      if (unitMatch) unitStr = unitMatch[0];
+
+      vItems.push({
+        itemCode: iName,
+        code: iName,
+        name: iName,
+        itemName: iName,
+        qty: qtyNum,
+        rate: rateNum || (qtyNum > 0 ? numAmt / qtyNum : 0),
+        amount: numAmt,
+        total: numAmt,
+        discount: discNum,
+        unit: unitStr
+      });
+
+      if (numAmt > 0) {
+        totalVoucherAmt = Math.max(totalVoucherAmt, numAmt);
+      }
+    });
+
     if (lines.length === 0) {
       const partyName = getTagText(node, 'PARTYLEDGERNAME') || getTagText(node, 'PARTYNAME') || getTagText(node, 'BASICBUYERNAME');
       if (partyName) {
@@ -926,22 +966,35 @@ export function parseTallyXml(rawXmlString: string, mode: MigrationMode = 'cutof
           debit: vAmt,
           credit: ''
         });
-        totalVoucherAmt = vAmt;
+        totalVoucherAmt = Math.max(totalVoucherAmt, vAmt);
       }
     }
 
-    if (lines.length > 0) {
+    if (lines.length > 0 || vItems.length > 0) {
+      const rawParty = getTagText(node, 'PARTYLEDGERNAME') || getTagText(node, 'PARTYNAME') || getTagText(node, 'BASICBUYERNAME');
+      const party = rawParty || (grpType === 'S' || grpType === 'DEL_NOTE' ? debitParty : (grpType === 'PUR' ? creditParty : (debitParty || creditParty || 'Party')));
+
       vouchers.push({
         id: `vch-tally-${vIdx + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         transactionId: `vch-tally-${vIdx + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         voucherNo: vNo,
+        invoiceNo: vNo,
+        billNo: vNo,
         type: grpType,
         date: vDate,
-        party: debitParty || creditParty || getTagText(node, 'PARTYLEDGERNAME') || 'Party',
+        party: party,
+        partyLedger: party,
+        customer: { name: party, ledger: party, phone: '', address: '' },
+        supplier: { name: party, ledger: party, phone: '', address: '' },
         amount: totalVoucherAmt,
+        subtotal: totalVoucherAmt,
+        total: totalVoucherAmt,
         status: 'Active',
         narration: narration,
-        lines: lines
+        notes: narration,
+        lines: lines,
+        items: vItems,
+        cart: vItems
       } as any);
     }
   });
@@ -1369,6 +1422,12 @@ export async function execute1ClickMigration(
         ? []
         : loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, [], targetCompanyId);
 
+      const existingSales = loadJson<SalesInvoice[]>(STORAGE_KEYS.SALES_INVOICES, [], targetCompanyId);
+      const existingPurchases = loadJson<PurchaseInvoice[]>(STORAGE_KEYS.PURCHASE_INVOICES, [], targetCompanyId);
+
+      const existingSaleNos = new Set(existingSales.map(s => (s.invoiceNo || '').toLowerCase()));
+      const existingPurchNos = new Set(existingPurchases.map(p => (p.billNo || p.invoiceNo || '').toLowerCase()));
+
       const existingSet = new Set(
         existingVouchers.map(v =>
           `${(v.type || '').toLowerCase()}_${(v.voucherNo || '').toLowerCase()}_${v.date || ''}_${v.amount || 0}_${((v as any).party || v.debitLedger || '').toLowerCase()}`
@@ -1383,11 +1442,72 @@ export async function execute1ClickMigration(
           const vchToSave: Voucher = {
             ...v,
             voucherNo: vNo,
+            invoiceNo: vNo,
+            billNo: vNo,
             transactionId: v.transactionId || `vch-mig-${Date.now()}-${idx + 1}-${Math.random().toString(36).substring(2, 6)}`
           };
           existingVouchers.push(vchToSave);
           existingSet.add(key);
           importedVouchersCount++;
+
+          // Mirror Sales Vouchers to Sales Invoices so Sales Entry & Sales Reports are fully loaded
+          if ((v.type === 'S' || (v.type as string) === 'INV') && !existingSaleNos.has(vNo.toLowerCase())) {
+            const partyName = (v as any).party || (v as any).partyLedger || 'Customer';
+            const itemsList = (v as any).items && (v as any).items.length > 0 ? (v as any).items : ((v as any).cart && (v as any).cart.length > 0 ? (v as any).cart : []);
+            existingSales.push({
+              invoiceNo: vNo,
+              date: v.date || new Date().toISOString(),
+              dueDate: v.date,
+              customer: {
+                name: partyName,
+                ledger: partyName,
+                phone: '',
+                address: ''
+              },
+              items: itemsList,
+              cart: itemsList,
+              subtotal: v.amount || 0,
+              taxable: v.amount || 0,
+              zeroRated: 0,
+              gstAmt: 0,
+              discount: 0,
+              total: v.amount || 0,
+              credit: v.amount || 0,
+              paymentMode: 'Credit',
+              status: 'Credit' as any,
+              notes: v.narration || `Migrated Sales Voucher ${vNo} from ${parsed.source.toUpperCase()}`
+            } as any);
+            existingSaleNos.add(vNo.toLowerCase());
+          }
+
+          // Mirror Purchase Vouchers to Purchase Invoices
+          if (v.type === 'PUR' && !existingPurchNos.has(vNo.toLowerCase())) {
+            const partyName = (v as any).party || (v as any).partyLedger || 'Supplier';
+            const itemsList = (v as any).items && (v as any).items.length > 0 ? (v as any).items : ((v as any).cart && (v as any).cart.length > 0 ? (v as any).cart : []);
+            existingPurchases.push({
+              id: (v as any).id || `pur-vch-${idx + 1}`,
+              billNo: vNo,
+              invoiceNo: vNo,
+              supplierBillNo: vNo,
+              date: v.date || new Date().toISOString(),
+              dueDate: v.date,
+              supplier: {
+                name: partyName,
+                ledger: partyName,
+                phone: '',
+                address: ''
+              },
+              items: itemsList,
+              subtotal: v.amount || 0,
+              taxable: v.amount || 0,
+              total: v.amount || 0,
+              credit: v.amount || 0,
+              paymentMode: 'Credit',
+              status: 'Credit' as any,
+              notes: v.narration || `Migrated Purchase Voucher ${vNo} from ${parsed.source.toUpperCase()}`
+            } as any);
+            existingPurchNos.add(vNo.toLowerCase());
+          }
 
           try {
             syncVoucherToSupabase(vchToSave);
@@ -1397,6 +1517,8 @@ export async function execute1ClickMigration(
         }
       });
       saveJson(STORAGE_KEYS.VOUCHERS, existingVouchers, targetCompanyId);
+      saveJson(STORAGE_KEYS.SALES_INVOICES, existingSales, targetCompanyId);
+      saveJson(STORAGE_KEYS.PURCHASE_INVOICES, existingPurchases, targetCompanyId);
     }
 
     // 6. Recalculate all balances & trial balance
