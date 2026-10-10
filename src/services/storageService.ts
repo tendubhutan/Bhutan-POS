@@ -7469,6 +7469,55 @@ export function getDeduplicatedSales(targetCompanyId?: string): SalesInvoice[] {
       }
     }
   });
+
+  // Dynamically bridge sales vouchers stored in VOUCHERS table
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, [], cId);
+  vouchers.forEach((v: any) => {
+    if (v && (v.type === 'S' || v.type === 'INV' || v.voucherNo?.startsWith('SAL-') || v.voucherNo?.startsWith('POS-'))) {
+      const invNo = v.invoiceNo || v.billNo || v.voucherNo;
+      if (invNo && !map.has(invNo)) {
+        const partyName = v.party || v.partyLedger || (v.customer ? (typeof v.customer === 'object' ? v.customer.name : v.customer) : 'Customer');
+        const itemsList = v.items && v.items.length > 0 ? v.items : (v.cart && v.cart.length > 0 ? v.cart : (v.lines || []).map((l: any, idx: number) => ({
+          itemCode: `LINE-${idx + 1}`,
+          itemName: l.ledger || 'Sales Item',
+          qty: 1,
+          rate: l.amount || l.debit || l.credit || 0,
+          total: l.amount || l.debit || l.credit || 0
+        })));
+
+        const isPos = v.isPOS === true || v.importTargetType === 'pos';
+
+        map.set(invNo, {
+          invoiceNo: invNo,
+          voucherNo: invNo,
+          date: v.date || new Date().toISOString(),
+          dueDate: v.date,
+          customer: {
+            name: partyName,
+            ledger: partyName,
+            phone: '',
+            address: ''
+          },
+          items: itemsList,
+          cart: itemsList,
+          subtotal: v.amount || v.subtotal || v.total || 0,
+          taxable: v.amount || v.taxable || v.total || 0,
+          zeroRated: 0,
+          gstAmt: v.gstAmt || 0,
+          discount: v.discount || 0,
+          total: v.total || v.amount || 0,
+          credit: isPos ? 0 : (v.total || v.amount || 0),
+          cash: isPos ? (v.total || v.amount || 0) : 0,
+          paymentMode: isPos ? 'Cash' : 'Credit',
+          status: isPos ? ('Paid' as any) : ('Credit' as any),
+          notes: v.narration || v.notes || '',
+          isPOS: isPos,
+          importTargetType: v.importTargetType || (isPos ? 'pos' : 'normalsale')
+        } as any);
+      }
+    }
+  });
+
   return Array.from(map.values());
 }
 
@@ -7486,6 +7535,47 @@ export function getDeduplicatedPurchases(targetCompanyId?: string): PurchaseInvo
       map.set(Math.random().toString(), p);
     }
   });
+
+  const vouchers = loadJson<Voucher[]>(STORAGE_KEYS.VOUCHERS, [], cId);
+  vouchers.forEach((v: any) => {
+    if (v && (v.type === 'PUR' || v.voucherNo?.startsWith('PUR-'))) {
+      const bNo = v.billNo || v.invoiceNo || v.voucherNo;
+      if (bNo && !map.has(bNo)) {
+        const partyName = v.party || v.partyLedger || (v.supplier ? (typeof v.supplier === 'object' ? v.supplier.name : v.supplier) : 'Supplier');
+        const itemsList = v.items && v.items.length > 0 ? v.items : (v.cart && v.cart.length > 0 ? v.cart : (v.lines || []).map((l: any, idx: number) => ({
+          itemCode: `LINE-${idx + 1}`,
+          itemName: l.ledger || 'Purchase Item',
+          qty: 1,
+          rate: l.amount || l.debit || l.credit || 0,
+          total: l.amount || l.debit || l.credit || 0
+        })));
+
+        map.set(bNo, {
+          id: v.id || bNo,
+          billNo: bNo,
+          invoiceNo: bNo,
+          supplierBillNo: bNo,
+          date: v.date || new Date().toISOString(),
+          dueDate: v.date,
+          supplier: {
+            name: partyName,
+            ledger: partyName,
+            phone: '',
+            address: ''
+          },
+          items: itemsList,
+          subtotal: v.amount || v.subtotal || v.total || 0,
+          taxable: v.amount || v.taxable || v.total || 0,
+          total: v.total || v.amount || 0,
+          credit: v.total || v.amount || 0,
+          paymentMode: 'Credit',
+          status: 'Credit' as any,
+          notes: v.narration || v.notes || ''
+        } as any);
+      }
+    }
+  });
+
   return Array.from(map.values());
 }
 
