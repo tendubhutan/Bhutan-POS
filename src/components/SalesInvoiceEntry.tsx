@@ -4,7 +4,7 @@ import { loadJson, STORAGE_KEYS, DEFAULT_UNITS } from '../services/storageServic
 import { GlowButton } from './common/GlowButton';
 import { AlertCircle } from 'lucide-react';
 import { playSaveSound, playWarningTone } from '../utils/audio';
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   focusElement,
   focusNextOutsideGrid } from "../utils/domUtils";

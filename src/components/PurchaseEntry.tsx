@@ -1,5 +1,5 @@
 import { QuitConfirmModal } from './QuitConfirmModal';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GlowButton } from './common/GlowButton';
 import { focusNextOutsideGrid } from '../utils/domUtils';
 import { Config, Item, Ledger, CartLine, Unit, BarcodeQueueItem, ReceiptNote, PurchaseOrder } from '../types';
