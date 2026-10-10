@@ -278,6 +278,7 @@ export const DEFAULT_CONFIG: Config = {
   EnablePharmacyBatch: 'true',
   EnableItemDiscount: 'true',
   EnableCategory: 'true',
+  EnableBarcodePrinting: 'true',
   EnableAssetManagement: 'true',
   EnablePayroll: 'true',
   EnableStaffAttendanceAndLeave: 'true',

@@ -176,6 +176,13 @@ export const ALL_SYSTEM_FEATURES: FeatureDefinition[] = [
     category: 'Inventory & Variants',
     defaultEnabled: false
   },
+  {
+    id: 'EnableBarcodePrinting',
+    label: 'Barcode Printing & Tag Studio',
+    shortDesc: 'Custom product barcode generator & sticker label printing studio for thermal rolls & sheet layouts.',
+    category: 'Inventory & Variants',
+    defaultEnabled: true
+  },
 
   // Taxation & Accounts
   {
@@ -315,6 +322,7 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableGarmentsAndFootwear: false,
       EnableAltUnitPrice: true,
       EnableCategory: true,
+      EnableBarcodePrinting: true,
       EnableGST: true,
       EnableGSTInputTax: true,
       EnableBillWiseDetails: false,
@@ -358,6 +366,7 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableGarmentsAndFootwear: false,
       EnableAltUnitPrice: false,
       EnableCategory: true,
+      EnableBarcodePrinting: true,
       EnableGST: true,
       EnableGSTInputTax: true,
       EnableBillWiseDetails: true,
@@ -444,6 +453,7 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableGarmentsAndFootwear: false,
       EnableAltUnitPrice: true,
       EnableCategory: true,
+      EnableBarcodePrinting: true,
       EnableGST: true,
       EnableGSTInputTax: true,
       EnableBillWiseDetails: true,
@@ -487,6 +497,7 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableGarmentsAndFootwear: false,
       EnableAltUnitPrice: false,
       EnableCategory: true,
+      EnableBarcodePrinting: true,
       EnableGST: true,
       EnableGSTInputTax: true,
       EnableBillWiseDetails: true,
@@ -530,6 +541,7 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableGarmentsAndFootwear: true,
       EnableAltUnitPrice: false,
       EnableCategory: true,
+      EnableBarcodePrinting: true,
       EnableGST: true,
       EnableGSTInputTax: true,
       EnableBillWiseDetails: false,
@@ -573,6 +585,7 @@ export const FEATURE_PRESETS: FeaturePreset[] = [
       EnableGarmentsAndFootwear: true,
       EnableAltUnitPrice: true,
       EnableCategory: true,
+      EnableBarcodePrinting: true,
       EnableGST: true,
       EnableGSTInputTax: true,
       EnableBillWiseDetails: true,

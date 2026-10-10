@@ -1204,7 +1204,28 @@ export default function App() {
           )}
 
           {currentView === 'barcode' && isModulePermitted(currentUser, 'barcode', 'display') && (
-            <BarcodePrinting config={config} items={items} initialQueue={barcodeQueueInitial} />
+            (isFeatureAllowed(config, 'EnableBarcodePrinting') && config.EnableBarcodePrinting !== 'false') ? (
+              <BarcodePrinting config={config} items={items} initialQueue={barcodeQueueInitial} />
+            ) : (
+              <div className="p-12 max-w-lg mx-auto text-center space-y-4">
+                <div className="h-14 w-14 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mx-auto shadow-xs">
+                  <Lock className="h-7 w-7" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Barcode Studio Disabled for Store</h3>
+                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                    Barcode Printing & Tag Management are currently not enabled for this client store. Please contact your platform superadmin to activate this module.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('dashboard')}
+                  className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition cursor-pointer"
+                >
+                  Return to Dashboard
+                </button>
+              </div>
+            )
           )}
 
           {currentView === 'payroll' && isFeatureAllowed(config, 'EnablePayroll') && config.EnablePayroll !== 'false' && isModulePermitted(currentUser, 'payroll', 'display') && (
