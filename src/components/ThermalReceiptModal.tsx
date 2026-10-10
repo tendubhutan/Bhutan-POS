@@ -208,14 +208,14 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
         (showGst && rGstAmt > 0) ? `GST Amount (5%): +${currency} ${rGstAmt.toFixed(2)}` : '',
         `*TOTAL INVOICE AMOUNT: ${currency} ${rTotalInvoiceAmt.toFixed(2)}*`
       ] : [
-        hasGstOnBill ? `Taxable Sale: ${currency} ${Number(invoice.taxable || 0).toFixed(2)}` : '',
-        (hasGstOnBill && Number(invoice.zeroRated || 0) > 0) ? `Exempted Sale: ${currency} ${Number(invoice.zeroRated || 0).toFixed(2)}` : '',
-        hasGstOnBill ? `GST Amount: ${currency} ${Number(invoice.gstAmt || 0).toFixed(2)}` : '',
+        `Taxable Sale: ${currency} ${Number(invoice.taxable || 0).toFixed(2)}`,
+        `Exempted Sale: ${currency} ${Number(invoice.zeroRated || 0).toFixed(2)}`,
+        `GST Amount: ${currency} ${Number(invoice.gstAmt || 0).toFixed(2)}`,
         ...(Array.isArray(invoice.additionalExpenses) && invoice.additionalExpenses.length > 0 ? invoice.additionalExpenses.map((exp: any) => `Addl Charge (${exp.ledger || 'Exp'}): ${currency} ${Number(exp.amount || 0).toFixed(2)}`) : []),
         (Number(invoice.discount || 0) > 0) ? `Subtotal: ${currency} ${Number(invoice.subtotal || (Number(invoice.total || 0) + Number(invoice.discount || 0))).toFixed(2)}` : '',
         (invoiceSavings.itemDiscountsTotal > 0) ? `Item Discounts: -${currency} ${invoiceSavings.itemDiscountsTotal.toFixed(2)}` : '',
         (Number(invoice.discount || 0) > 0) ? `Bill Discount: -${currency} ${Number(invoice.discount || 0).toFixed(2)}` : '',
-        `*GRAND TOTAL: ${currency} ${Number(invoice.total || 0).toFixed(2)}*`,
+        `*TOTAL INVOICE AMOUNT: ${currency} ${Number(invoice.total || 0).toFixed(2)}*`,
         (invoiceSavings.totalSavings > 0) ? `*TOTAL SAVINGS: ${currency} ${invoiceSavings.totalSavings.toFixed(2)}*` : ''
       ]),
       '--------------------------------',
@@ -885,9 +885,9 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                 </div>
               ` : `
                 ${hasGstOnBill ? `
-                  <div class="calc-row"><span>Taxable Amount:</span><span>${currency} ${invoice.taxable.toFixed(2)}</span></div>
-                  <div class="calc-row"><span>Zero-Rated / Exempt:</span><span>${currency} ${invoice.zeroRated.toFixed(2)}</span></div>
-                  <div class="calc-row"><span>Total GST:</span><span>${currency} ${invoice.gstAmt.toFixed(2)}</span></div>
+                  <div class="calc-row"><span>Taxable Sale:</span><span>${invoice.taxable.toFixed(2)}</span></div>
+                  <div class="calc-row"><span>Exempted Sale:</span><span>${invoice.zeroRated.toFixed(2)}</span></div>
+                  <div class="calc-row"><span>GST Amount:</span><span>${invoice.gstAmt.toFixed(2)}</span></div>
                 ` : ''}
                 ${(invoice.additionalExpenses && invoice.additionalExpenses.length > 0) ? invoice.additionalExpenses.map(exp => `
                   <div class="calc-row"><span>Addl Charge (${exp.ledger}):</span><span>${currency} ${Number(exp.amount).toFixed(2)}</span></div>
@@ -1409,11 +1409,11 @@ export const ThermalReceiptModal: React.FC<ThermalReceiptModalProps> = ({
                   {hasGstOnBill && (
                     <div className="space-y-1 text-slate-600 text-[11px] pt-1">
                       <div className="flex justify-between">
-                        <span>Taxable Amount:</span>
+                        <span>Taxable Sale:</span>
                         <span className="font-semibold text-slate-800">{currency} {invoice.taxable.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Exempted / Zero-Rated:</span>
+                        <span>Exempted Sale:</span>
                         <span className="font-semibold text-slate-800">{currency} {invoice.zeroRated.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between">

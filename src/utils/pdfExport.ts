@@ -1035,9 +1035,9 @@ export function drawDetailedBillSummaryBox(
       const exemptedSale = Number(totals.zeroRated || 0);
       const taxableSale = Math.max(0, totalWithServiceCharge - exemptedSale);
       const gstAmt = Number(totals.gstAmt || 0) > 0 ? Number(totals.gstAmt || 0) : (taxableSale * 0.05);
-      rows.push({ label: 'Taxable Sale:', value: `${currency} ${taxableSale.toFixed(2)}` });
-      rows.push({ label: 'Exempted Sale:', value: `${currency} ${exemptedSale.toFixed(2)}` });
-      rows.push({ label: 'GST Amount (5%):', value: `+${currency} ${gstAmt.toFixed(2)}` });
+      rows.push({ label: 'Taxable Sale:', value: taxableSale.toFixed(2) });
+      rows.push({ label: 'Exempted Sale:', value: exemptedSale.toFixed(2) });
+      rows.push({ label: 'GST Amount:', value: gstAmt.toFixed(2) });
     }
 
     rows.push({
@@ -1060,51 +1060,54 @@ export function drawDetailedBillSummaryBox(
       isStatus: true
     });
   } else {
-    if (hasGstOnBill) {
-      rows.push({ label: 'Taxable Amount:', value: `${currency} ${totals.taxable.toFixed(2)}` });
-      if (totals.zeroRated > 0) {
-        rows.push({ label: 'Exempted / Zero Rated Sale:', value: `${currency} ${totals.zeroRated.toFixed(2)}` });
-      }
-      rows.push({ label: 'GST Amount:', value: `${currency} ${totals.gstAmt.toFixed(2)}` });
-    } else if (totals.zeroRated > 0) {
-      rows.push({ label: 'Exempted / Zero Rated Sale:', value: `${currency} ${totals.zeroRated.toFixed(2)}` });
+    // 1. Taxable Sale (matching print bill format)
+    rows.push({ label: 'Taxable Sale:', value: totals.taxable.toFixed(2) });
+    // 2. Exempted Sale
+    rows.push({ label: 'Exempted Sale:', value: totals.zeroRated.toFixed(2) });
+    // 3. GST Amount
+    rows.push({ label: 'GST Amount:', value: totals.gstAmt.toFixed(2) });
+
+    if (Array.isArray(invoice.additionalExpenses) && invoice.additionalExpenses.length > 0) {
+      invoice.additionalExpenses.forEach((exp: any) => {
+        rows.push({ label: `Addl Charge (${exp.ledger || 'Exp'}):`, value: Number(exp.amount || 0).toFixed(2) });
+      });
     }
 
     if (totals.discount > 0) {
-      rows.push({ label: 'Bill Discount:', value: `-${currency} ${totals.discount.toFixed(2)}`, isDiscount: true });
+      rows.push({ label: 'Gross Subtotal:', value: `${currency} ${(invoice.subtotal || (totals.total + totals.discount)).toFixed(2)}` });
+      rows.push({ label: 'Bill / Lumpsum Discount:', value: `-${currency} ${totals.discount.toFixed(2)}`, isDiscount: true });
     }
 
+    // 4. Total Invoice Amount (with print-style top & bottom lines)
     rows.push({
-      label: totalLabel,
+      label: totalLabel || 'Total Invoice Amount:',
       value: `${currency} ${totals.total.toFixed(2)}`,
-      isBold: true,
-      isHighlight: true
+      isTotal: true
     });
-  }
 
-  if (undiscounted.totalSavingsIncGst > 0.005 || savings.totalSavings > 0) {
+    // Paid & Status matching print bill
+    const paidAmt = Number(invoice.cash || 0) + Number(invoice.bank1 || 0) + Number(invoice.bank2 || 0);
+    const creditDue = Number(invoice.credit || 0);
     rows.push({
-      label: 'Your Savings on this bill',
-      value: '',
-      isBold: true,
-      isSavingsHeader: true
+      label: 'Paid (Cash + Bank):',
+      value: `${currency} ${(paidAmt > 0 ? paidAmt : totals.total).toFixed(2)}`,
+      isPaid: true
     });
     rows.push({
-      label: 'Total Bill Amount (Inc GST):',
-      value: `${currency} ${undiscounted.undiscountedBillIncGst.toFixed(2)}`
+      label: 'Status:',
+      value: creditDue > 0 ? `DUE ${currency} ${creditDue.toFixed(2)}` : 'PAID IN FULL',
+      isStatus: true
     });
-    rows.push({
-      label: 'less Discount (Total Savings):',
-      value: `-${currency} ${undiscounted.totalSavingsIncGst.toFixed(2)}`,
-      isBold: true,
-      isSavings: true
-    });
-    rows.push({
-      label: 'Net Amount Paid:',
-      value: `${currency} ${totals.total.toFixed(2)}`,
-      isBold: true,
-      isNet: true
-    });
+
+    const savingsAmt = (undiscounted.totalSavingsIncGst > 0.005 ? undiscounted.totalSavingsIncGst : (savings.totalSavings > 0 ? savings.totalSavings : 0));
+    if (savingsAmt > 0.005) {
+      rows.push({
+        label: 'Total Savings on this Bill:',
+        value: `${currency} ${savingsAmt.toFixed(2)}`,
+        isBold: true,
+        isSavings: true
+      });
+    }
   }
 
   const rowHeight = 5.2;
@@ -1160,19 +1163,21 @@ export function drawDetailedBillSummaryBox(
       doc.text(r.value, boxX + boxW - 4, currentY, { align: 'right' });
     } else if (r.isTotal) {
       const tY = currentY - 3.8;
+      const bY = currentY + 2.2;
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(15, 23, 42);
-      doc.setLineWidth(0.5);
+      doc.setLineWidth(0.6);
       doc.line(boxX + 2, tY, boxX + boxW - 2, tY);
+      doc.line(boxX + 2, bY, boxX + boxW - 2, bY);
 
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8.2);
+      doc.setFontSize(8.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(r.label, boxX + 4, currentY + 0.3);
+      doc.text(r.label, boxX + 4, currentY - 0.2);
 
       doc.setFontSize(9.5);
       doc.setTextColor(15, 23, 42);
-      doc.text(r.value, boxX + boxW - 4, currentY + 0.3, { align: 'right' });
+      doc.text(r.value, boxX + boxW - 4, currentY - 0.2, { align: 'right' });
     } else if (r.isHighlight) {
       const hY = currentY - 3.9;
       doc.setFillColor(239, 246, 255);

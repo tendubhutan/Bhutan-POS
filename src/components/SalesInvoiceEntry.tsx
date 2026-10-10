@@ -287,6 +287,13 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         zeroRated: isZero ? 'Y' : 'N'
       };
       setCart(updated);
+      setTimeout(() => {
+        const rateEl = document.getElementById(`sale-rate-${targetIndex}`) as HTMLInputElement | null;
+        if (rateEl) {
+          rateEl.focus();
+          rateEl.select();
+        }
+      }, 50);
     } else {
       const newLine: CartLine = {
         itemCode: `ACC-${ledger.id || ledger['Ledger Name']}`,
@@ -884,6 +891,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     setOrderNo("");
     setOrderDate(new Date().toISOString().split("T")[0]);
     setDeliveryNoteNo("");
+    setInvoiceMode('item');
     setAdditionalExpenses([]);
     setBillDiscount("");
     setTermsAndConditions(getDefaultTerms(config));
@@ -975,6 +983,16 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
         handleToggleInclusiveGst(!isInclusiveGst);
         return;
       }
+
+      // Ctrl + H: Change Voucher Mode (Item Invoice vs Accounting Invoice)
+      const isCtrlH = (e.ctrlKey || e.metaKey) && (e.key === 'h' || e.key === 'H');
+      if (isCtrlH) {
+        e.preventDefault();
+        e.stopPropagation();
+        setInvoiceMode(prev => prev === 'accounting' ? 'item' : 'accounting');
+        return;
+      }
+
       if (isCtrlA || isF2) {
         e.preventDefault();
         e.stopPropagation();
@@ -1429,10 +1447,11 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     const customerLedger = ledgers.find(
       (l) => l["Ledger Name"] === customerName,
     );
-    const queueForBarcode = prepareBarcodeQueue();
+    const queueForBarcode = invoiceMode === 'accounting' ? [] : prepareBarcodeQueue();
 
     const res = saveSalesInvoice({
       cart,
+      invoiceMode,
       customer: {
         ledger: customerLedger ? customerLedger["Ledger Name"] : customerName,
         name: customerName,
@@ -1478,6 +1497,7 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
     setShowPrintModal(true);
     setEditingBillNo(null);
     setCart([]);
+    setInvoiceMode('item');
     setBillDate(new Date().toISOString().split("T")[0]);
     setTimeout(() => {
       try {
@@ -1651,6 +1671,26 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
 
         {/* Top-Right Action Controls (Fetch DN/Order, Offers) as indicated by green arrow */}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
+          {/* Tally Ctrl+H Voucher Mode Switcher */}
+          <button
+            type="button"
+            onClick={() => setInvoiceMode(prev => prev === 'accounting' ? 'item' : 'accounting')}
+            className={`h-7 px-2.5 rounded-lg border font-extrabold text-[11px] flex items-center gap-1.5 transition cursor-pointer shadow-2xs shrink-0 ${
+              invoiceMode === 'accounting'
+                ? 'bg-purple-600 text-white border-purple-700 ring-2 ring-purple-200'
+                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+            }`}
+            title="Switch between Item Invoice and Accounting Invoice without maintaining stock (Ctrl+H)"
+          >
+            <ArrowRightLeft className="h-3.5 w-3.5" />
+            <span>{invoiceMode === 'accounting' ? 'Mode: Accounting Invoice [Ctrl+H]' : 'Mode: Item Invoice [Ctrl+H]'}</span>
+            {invoiceMode === 'accounting' && (
+              <span className="text-[9px] bg-purple-700 px-1.5 py-0.2 rounded font-black uppercase text-purple-100">
+                No Stock
+              </span>
+            )}
+          </button>
+
           {deliveryNoteNo && (
             <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-cyan-50 border border-cyan-300 text-cyan-800 text-[11px] font-bold shadow-2xs shrink-0" title="Items dispatched via Delivery Challan. Stock will not be double-deducted upon invoice save.">
               <Truck className="h-3.5 w-3.5 text-cyan-600 shrink-0" />
@@ -1857,11 +1897,15 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
           <table className="w-full border-collapse text-xs sm:text-sm">
             <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[11px] tracking-wider">
               <tr>
-                <th className="py-2 px-3 text-left">ITEM DESCRIPTION</th>
+                <th className="py-2 px-3 text-left">
+                  {invoiceMode === 'accounting' ? 'PARTICULARS (SALES / INCOME LEDGER)' : 'ITEM DESCRIPTION'}
+                </th>
                 <th className="py-2 px-1 text-center w-20">QTY</th>
                 <th className="py-2 px-1 text-center w-16">UNIT</th>
                 <th className="py-2 px-1 text-right w-24">
-                  RATE {isInclusiveGst ? <span className="text-[9px] text-indigo-600 font-extrabold normal-case">(BASE)</span> : null}
+                  {invoiceMode === 'accounting' ? 'AMOUNT' : (
+                    <>RATE {isInclusiveGst ? <span className="text-[9px] text-indigo-600 font-extrabold normal-case">(BASE)</span> : null}</>
+                  )}
                 </th>
                 {showItemDiscount && (
                   <th className="py-2 px-1 text-right w-24">
@@ -1887,95 +1931,116 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                     <td className="py-0.5 px-2 align-middle font-medium min-w-[220px]">
                       <div className="flex items-center gap-1">
                         <div className="flex-1 min-w-0">
-                          <SearchableItemSelect
-                            variant="grid"
-                            id={`sale-item-${idx}`}
-                            onEnterNext={() => {
-                              setTimeout(() => {
-                                const el = document.getElementById(`sale-qty-${idx}`);
-                                if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
-                              }, 10);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return;
-                              handleGridKeyDown(e, getGridNavOpts(idx, "item"));
-                            }}
-                            valueCode={line.itemCode}
-                            items={items}
-                            placeholder="Select Item / Barcode..."
-                            currencySymbol={config.CurrencySymbol || "Nu."}
-                            priceType="sale"
-                            showPrice={true}
-                            onEndOfList={(id) => id && focusNextOutsideGrid(id)}
-                            onSelect={(item, scannedSerial) => {
-                              const qty = line.qty || 1;
-                              let rate = Number(
-                                (item as any)["Sale Rate"] ??
-                                  (item as any)["Sales Rate"] ??
-                                  item.MRP ??
-                                  0,
-                              );
-                              if (pricingMode === 'wholesale' && Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate'] || 0) > 0) {
-                                rate = Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate']);
-                              }
-                              const isZero =
-                                isCustomerGstExempted ||
-                                String(item["Zero Rated (Y/N)"]).toUpperCase() ===
-                                  "Y";
-                              const gstPct = Number(item["GST %"]) || 5;
-
-                              let inclusiveRate: number | undefined;
-                              if (isInclusiveGst && !isZero && gstPct > 0) {
-                                inclusiveRate = rate;
-                                rate = round2(rate / (1 + (gstPct / 100)));
-                              }
-
-                              const computedGstAmt = isZero
-                                ? 0
-                                : (isInclusiveGst && inclusiveRate
-                                    ? Math.max(0, round2(qty * inclusiveRate - qty * rate))
-                                    : round2((qty * rate * gstPct) / 100));
-
-                              const updated = [...cart];
-                              updated[idx] = {
-                                ...updated[idx],
-                                itemCode: item["Item Code"],
-                                itemName: item["Item Name"],
-                                unit: item.Unit || "Pcs",
-                                rate,
-                                inclusiveRate,
-                                gstPct,
-                                zeroRated: item["Zero Rated (Y/N)"] || "N",
-                                purchaseRate: item["Purchase Rate"] || 0,
-                                isSerialized: item["Is Serialized"],
-                                serials: scannedSerial ? [scannedSerial] : (updated[idx].serials || []),
-                                gstAmt: computedGstAmt,
-                              };
-                              setCart(updated);
-                              setTimeout(() => {
-                                const qtyEl = document.getElementById(
-                                  `sale-qty-${idx}`,
-                                ) as HTMLInputElement | null;
-                                if (qtyEl) {
-                                  qtyEl.focus();
-                                  qtyEl.select();
+                          {invoiceMode === 'accounting' || line.isAccountingLine ? (
+                            <SearchableLedgerSelect
+                              variant="grid"
+                              id={`sale-item-${idx}`}
+                              ledgers={salesIncomeLedgers}
+                              value={line.itemName}
+                              placeholder="Select Sales / Income Ledger..."
+                              onSelect={l => selectAccountingLedger(l, idx)}
+                              onEnterNext={() => {
+                                setTimeout(() => {
+                                  const el = document.getElementById(`sale-rate-${idx}`);
+                                  if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
+                                }, 10);
+                              }}
+                              onCreateNew={() => onOpenNewLedgerModal?.('Sales Accounts', (name) => {
+                                const newL = ledgers.find(l => l['Ledger Name'] === name);
+                                if (newL) selectAccountingLedger(newL, idx);
+                              })}
+                            />
+                          ) : (
+                            <SearchableItemSelect
+                              variant="grid"
+                              id={`sale-item-${idx}`}
+                              onEnterNext={() => {
+                                setTimeout(() => {
+                                  const el = document.getElementById(`sale-qty-${idx}`);
+                                  if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
+                                }, 10);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return;
+                                handleGridKeyDown(e, getGridNavOpts(idx, "item"));
+                              }}
+                              valueCode={line.itemCode}
+                              items={items}
+                              placeholder="Select Item / Barcode..."
+                              currencySymbol={config.CurrencySymbol || "Nu."}
+                              priceType="sale"
+                              showPrice={true}
+                              onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                              onSelect={(item, scannedSerial) => {
+                                const qty = line.qty || 1;
+                                let rate = Number(
+                                  (item as any)["Sale Rate"] ??
+                                    (item as any)["Sales Rate"] ??
+                                    item.MRP ??
+                                    0,
+                                );
+                                if (pricingMode === 'wholesale' && Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate'] || 0) > 0) {
+                                  rate = Number((item as any)['Wholesale Rate'] || (item as any)['wholesaleRate']);
                                 }
-                              }, 50);
-                            }}
-                            onCreateNew={onOpenNewItemModal}
-                            onEditItem={(item) => {
-                              setItemToAlter(item);
-                              setShowItemAlterModal(true);
-                            }}
-                            onShowInfo={(item) =>
-                              setDrillModalState({
-                                type: "stock",
-                                targetId: item["Item Code"] || item["Item Name"],
-                              })
-                            }
-                            onSaveVoucher={handleSaveInvoice}
-                            onFocusDate={() => billDateRef.current?.focus()}
-                          />
+                                const isZero =
+                                  isCustomerGstExempted ||
+                                  String(item["Zero Rated (Y/N)"]).toUpperCase() ===
+                                    "Y";
+                                const gstPct = Number(item["GST %"]) || 5;
+
+                                let inclusiveRate: number | undefined;
+                                if (isInclusiveGst && !isZero && gstPct > 0) {
+                                  inclusiveRate = rate;
+                                  rate = round2(rate / (1 + (gstPct / 100)));
+                                }
+
+                                const computedGstAmt = isZero
+                                  ? 0
+                                  : (isInclusiveGst && inclusiveRate
+                                      ? Math.max(0, round2(qty * inclusiveRate - qty * rate))
+                                      : round2((qty * rate * gstPct) / 100));
+
+                                const updated = [...cart];
+                                updated[idx] = {
+                                  ...updated[idx],
+                                  itemCode: item["Item Code"],
+                                  itemName: item["Item Name"],
+                                  unit: item.Unit || "Pcs",
+                                  rate,
+                                  inclusiveRate,
+                                  gstPct,
+                                  zeroRated: item["Zero Rated (Y/N)"] || "N",
+                                  purchaseRate: item["Purchase Rate"] || 0,
+                                  isSerialized: item["Is Serialized"],
+                                  serials: scannedSerial ? [scannedSerial] : (updated[idx].serials || []),
+                                  gstAmt: computedGstAmt,
+                                };
+                                setCart(updated);
+                                setTimeout(() => {
+                                  const qtyEl = document.getElementById(
+                                    `sale-qty-${idx}`,
+                                  ) as HTMLInputElement | null;
+                                  if (qtyEl) {
+                                    qtyEl.focus();
+                                    qtyEl.select();
+                                  }
+                                }, 50);
+                              }}
+                              onCreateNew={onOpenNewItemModal}
+                              onEditItem={(item) => {
+                                setItemToAlter(item);
+                                setShowItemAlterModal(true);
+                              }}
+                              onShowInfo={(item) =>
+                                setDrillModalState({
+                                  type: "stock",
+                                  targetId: item["Item Code"] || item["Item Name"],
+                                })
+                              }
+                              onSaveVoucher={handleSaveInvoice}
+                              onFocusDate={() => billDateRef.current?.focus()}
+                            />
+                          )}
                         </div>
                         {line.itemCode && (
                           <ItemNoteButton
@@ -2208,33 +2273,50 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
               {/* Active Table Cell Search Row (Tally.Prime Style) */}
               <tr className="bg-indigo-50 hover:bg-indigo-100 transition border-t border-indigo-100 sticky bottom-0 z-10 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
                 <td className="py-1 px-2 align-middle min-w-[220px]">
-                  <SearchableItemSelect
-                    variant="grid"
-                    id="sale-fast-item-picker"
-                    items={items}
-                    placeholder="+ Type Item Name or Scan Barcode..."
-                    currencySymbol={config.CurrencySymbol || "Nu."}
-                    priceType="sale"
-                    showPrice={true}
-                    onEndOfList={(id) => id && focusNextOutsideGrid(id)}
-                    onSelect={(item, scannedSerial) => selectItem(item, true, scannedSerial)}
-                    autoClearAfterSelect={true}
-                    onEnterNext={() => focusNextOutsideGrid("sale-fast-item-picker")}
-                    onCreateNew={onOpenNewItemModal}
-                    onEditItem={(item) => {
-                      setItemToAlter(item);
-                      setShowItemAlterModal(true);
-                    }}
-                    onShowInfo={(item) =>
-                      setDrillModalState({
-                        type: "stock",
-                        targetId: item["Item Code"] || item["Item Name"],
-                      })
-                    }
-                    onSaveVoucher={handleSaveInvoice}
-                    onFocusDate={() => billDateRef.current?.focus()}
-                    
-                  />
+                  {invoiceMode === 'accounting' ? (
+                    <SearchableLedgerSelect
+                      variant="grid"
+                      id="sale-fast-ledger-picker"
+                      ledgers={salesIncomeLedgers}
+                      placeholder="+ Type Sales / Income Ledger (or select from list)..."
+                      onSelect={l => selectAccountingLedger(l)}
+                      autoClearAfterSelect={true}
+                      onEnterNext={() => focusNextOutsideGrid("sale-fast-ledger-picker")}
+                      onCreateNew={() => onOpenNewLedgerModal?.('Sales Accounts', (name) => {
+                        const newL = ledgers.find(l => l['Ledger Name'] === name);
+                        if (newL) selectAccountingLedger(newL);
+                      })}
+                      onSaveVoucher={handleSaveInvoice}
+                      onFocusDate={() => billDateRef.current?.focus()}
+                    />
+                  ) : (
+                    <SearchableItemSelect
+                      variant="grid"
+                      id="sale-fast-item-picker"
+                      items={items}
+                      placeholder="+ Type Item Name or Scan Barcode..."
+                      currencySymbol={config.CurrencySymbol || "Nu."}
+                      priceType="sale"
+                      showPrice={true}
+                      onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                      onSelect={(item, scannedSerial) => selectItem(item, true, scannedSerial)}
+                      autoClearAfterSelect={true}
+                      onEnterNext={() => focusNextOutsideGrid("sale-fast-item-picker")}
+                      onCreateNew={onOpenNewItemModal}
+                      onEditItem={(item) => {
+                        setItemToAlter(item);
+                        setShowItemAlterModal(true);
+                      }}
+                      onShowInfo={(item) =>
+                        setDrillModalState({
+                          type: "stock",
+                          targetId: item["Item Code"] || item["Item Name"],
+                        })
+                      }
+                      onSaveVoucher={handleSaveInvoice}
+                      onFocusDate={() => billDateRef.current?.focus()}
+                    />
+                  )}
                 </td>
                 <td className="py-1 px-1 align-middle text-center font-semibold text-slate-400 text-xs">
                   —

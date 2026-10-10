@@ -6,8 +6,11 @@ import { getPartyOutstandingBills } from '../services/storageService';
 
 interface SearchableLedgerSelectProps {
   id?: string;
-  value: string;
-  onChange: (ledgerName: string) => void;
+  value?: string;
+  onChange?: (ledgerName: string) => void;
+  onSelect?: (ledger: Ledger) => void;
+  autoClearAfterSelect?: boolean;
+  variant?: 'standard' | 'grid';
   onEnterNext?: () => void;
   onArrowLeft?: () => void;
   onArrowRight?: () => void;
@@ -33,8 +36,11 @@ interface SearchableLedgerSelectProps {
 
 export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
   id,
-  value,
+  value = '',
   onChange,
+  onSelect,
+  autoClearAfterSelect = false,
+  variant = 'standard',
   onEnterNext,
   onArrowLeft,
   onArrowRight,
@@ -404,9 +410,18 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
   }, [value]);
 
   const selectLedger = (ledgerName: string) => {
-    onChange(ledgerName);
-    setSearchTerm(ledgerName);
-    setUserQuery('');
+    if (onChange) onChange(ledgerName);
+    if (onSelect) {
+      const found = ledgers.find(l => l['Ledger Name'] === ledgerName);
+      if (found) onSelect(found);
+    }
+    if (autoClearAfterSelect) {
+      setSearchTerm('');
+      setUserQuery('');
+    } else {
+      setSearchTerm(ledgerName);
+      setUserQuery('');
+    }
     setIsOpen(false);
     if (onEnterNext) {
       setTimeout(() => {
@@ -567,11 +582,11 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
         const ledgerIdx = hasCreateOption ? highlightedIndex - 1 : highlightedIndex;
         if (ledgerIdx >= 0 && filteredLedgers[ledgerIdx]) {
           const selected = filteredLedgers[ledgerIdx];
-          onChange(selected['Ledger Name']);
-          setSearchTerm(selected['Ledger Name']);
+          selectLedger(selected['Ledger Name']);
+        } else {
+          setIsOpen(false);
+          setUserQuery('');
         }
-        setIsOpen(false);
-        setUserQuery('');
       }
     }
   };
@@ -657,11 +672,14 @@ export const SearchableLedgerSelect: React.FC<SearchableLedgerSelectProps> = ({
             setHighlightedIndex(1); // Point to first filtered ledger
           }}
           onKeyDown={handleKeyDown}
-          className={`w-full h-8.5 rounded-lg border border-slate-300 bg-white px-2.5 pr-12 font-bold text-slate-900 text-xs outline-none transition shadow-2xs ${
-            isOpen
-              ? 'border-indigo-600 ring-2 ring-indigo-100'
-              : 'focus:border-indigo-600 hover:border-slate-400'
-          } ${disabled ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
+          className={`w-full ${
+            variant === 'grid'
+              ? 'h-[30px] bg-transparent border-0 px-1 text-xs sm:text-sm font-semibold rounded-none focus:ring-0 focus:outline-none shadow-none text-slate-800 placeholder:font-normal placeholder:text-slate-400'
+              : 'h-8.5 rounded-lg border border-slate-300 bg-white px-2.5 font-bold text-slate-900 text-xs shadow-2xs ' +
+                (isOpen
+                  ? 'border-indigo-600 ring-2 ring-indigo-100'
+                  : 'focus:border-indigo-600 hover:border-slate-400')
+          } pr-12 outline-none transition ${disabled ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : ''}`}
         />
 
         {/* Action icons on right */}

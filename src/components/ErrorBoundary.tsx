@@ -53,7 +53,16 @@ export class ErrorBoundary extends React.Component<Props, State> {
             <div className="flex items-center gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => window.location.reload()}
+                onClick={() => {
+                  this.setState({ hasError: false, error: null, errorInfo: null });
+                  try {
+                    window.location.reload();
+                  } catch {
+                    try {
+                      window.location.href = window.location.href;
+                    } catch {}
+                  }
+                }}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition cursor-pointer"
               >
                 Reload App
@@ -61,8 +70,20 @@ export class ErrorBoundary extends React.Component<Props, State> {
               <button
                 type="button"
                 onClick={() => {
-                  sessionStorage.clear();
-                  window.location.reload();
+                  try {
+                    sessionStorage.clear();
+                    if (typeof window !== 'undefined' && window.history) {
+                      window.history.replaceState({}, '', window.location.pathname);
+                    }
+                  } catch {}
+                  this.setState({ hasError: false, error: null, errorInfo: null });
+                  try {
+                    window.location.reload();
+                  } catch {
+                    try {
+                      window.location.href = window.location.origin + window.location.pathname;
+                    } catch {}
+                  }
                 }}
                 className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold rounded-xl transition cursor-pointer"
               >
