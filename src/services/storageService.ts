@@ -3860,11 +3860,12 @@ export function saveSalesInvoice(payload: {
   voucherTypeId?: string;
   voucherTypeName?: string;
   isPOS?: boolean;
+  invoiceMode?: 'item' | 'accounting';
 }) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const itemsList = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const ledgersList = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
-  const { cart, payment, customer, billDiscount = 0, billDiscountType = 'flat', billDiscountValue, additionalExpenses = [], termsAndConditions, orderNo, orderDate, deliveryNoteNo, voucherTypeId, voucherTypeName, invoiceNo, originalInvoiceNo, isPOS, notes, appliedBillSchemeName, appliedBillSchemeId } = payload;
+  const { cart, payment, customer, billDiscount = 0, billDiscountType = 'flat', billDiscountValue, additionalExpenses = [], termsAndConditions, orderNo, orderDate, deliveryNoteNo, voucherTypeId, voucherTypeName, invoiceNo, originalInvoiceNo, isPOS, notes, appliedBillSchemeName, appliedBillSchemeId, invoiceMode = 'item' } = payload;
   
   // Duplicate Serial Number Check (Must exist and not be sold)
   const serialStock = getSerialNumbersStockReport();
@@ -3892,10 +3893,12 @@ export function saveSalesInvoice(payload: {
     const oldInv = existingSales.find(s => s.invoiceNo?.trim().toLowerCase() === refToMatch || (invoiceNo && s.invoiceNo?.trim().toLowerCase() === invoiceNo.trim().toLowerCase()));
     if (oldInv) {
       originalDate = oldInv.date;
-      // 1. Revert previous stock deduction ONLY if the original sale had actually deducted stock (i.e. was NOT against a Delivery Note)
+      // 1. Revert previous stock deduction ONLY if the original sale had actually deducted stock (i.e. was NOT against a Delivery Note and NOT an accounting invoice)
       const oldWasAgainstDN = Boolean(oldInv.deliveryNoteNo && oldInv.deliveryNoteNo.trim());
-      if (!oldWasAgainstDN) {
+      const oldWasAccounting = oldInv.invoiceMode === 'accounting';
+      if (!oldWasAgainstDN && !oldWasAccounting) {
         (oldInv.items || []).forEach((item: any) => {
+          if (item.isAccountingLine) return;
           const qty = Number(item.Qty) || 0;
           if (qty !== 0) {
             updateItemStock(item['Item Code'], qty, item.Unit || item.unit);
@@ -3960,6 +3963,9 @@ export function saveSalesInvoice(payload: {
       originalRate: l.originalRate,
       appliedSchemeId: l.appliedSchemeId,
       appliedSchemeName: l.appliedSchemeName,
+      isAccountingLine: Boolean(l.isAccountingLine || invoiceMode === 'accounting'),
+      ledgerName: l.ledgerName,
+      particulars: l.particulars || l.lineDescription || l.description || '',
       'Taxable Value': round2(gr),
       'GST %': isZ ? 0 : l.gstPct,
       'GST Amount': lGst,
@@ -4150,6 +4156,7 @@ export function saveSalesInvoice(payload: {
     bankTxnNo: payment.bankTxnNo || '',
     bank2TxnNo: payment.bank2TxnNo || '',
     isPOS: isPOS,
+    invoiceMode: invoiceMode || (oldInv as any)?.invoiceMode || 'item',
     orderNo: payload.orderNo || '',
     orderDate: payload.orderDate || '',
     deliveryNoteNo: payload.deliveryNoteNo || '',
@@ -4224,8 +4231,10 @@ export function saveSalesInvoice(payload: {
     dnNo ||
     deliveryNotes.some(dn => (dn.invoiceNo && dn.invoiceNo.trim().toLowerCase() === iNo.trim().toLowerCase()) || (dnNo && dn.noteNo?.trim().toLowerCase() === dnNo.toLowerCase()))
   );
-  if (!isAgainstDeliveryNote) {
+  const isAccountingSale = invoiceMode === 'accounting';
+  if (!isAgainstDeliveryNote && !isAccountingSale) {
     cart.forEach(l => {
+      if (l.isAccountingLine) return;
       const q = Number(l.qty);
       const nq = updateItemStock(l.itemCode, -q, l.unit);
       if (l.selectedBatchId || l.selectedBatchNo) {
@@ -4262,9 +4271,21 @@ export function saveSalesInvoice(payload: {
   if (cr > 0.009) {
     adjustLedgerBalance(sLg, cr, 'Dr', iNo, 'Credit sale ' + iNo, 'Sale');
   }
-  // Sales account adjusted by net sale (tax + zro minus lumpsum discount)
-  const netSalesCredit = Math.max(0, round2((tax + zro) - appliedDiscount));
-  adjustLedgerBalance('Sales Account', netSalesCredit, 'Cr', iNo, 'Sale ' + iNo, 'Sale');
+
+  if (isAccountingSale) {
+    cart.forEach(l => {
+      const lineDisc = l.discountType === 'percent' ? ((Number(l.qty) || 0) * (Number(l.rate) || 0) * (Number(l.discount) || 0) / 100) : (Number(l.discount) || 0);
+      const lineGr = Math.max(0, round2((Number(l.qty) || 0) * (Number(l.rate) || 0) - lineDisc));
+      const targetLedger = l.ledgerName || l.itemName || 'Sales Account';
+      if (lineGr > 0) {
+        adjustLedgerBalance(targetLedger, lineGr, 'Cr', iNo, (l.particulars || l.lineDescription || `Sale ${iNo}`), 'Sale');
+      }
+    });
+  } else {
+    // Sales account adjusted by net sale (tax + zro minus lumpsum discount)
+    const netSalesCredit = Math.max(0, round2((tax + zro) - appliedDiscount));
+    adjustLedgerBalance('Sales Account', netSalesCredit, 'Cr', iNo, 'Sale ' + iNo, 'Sale');
+  }
   if (gst > 0) adjustLedgerBalance(cfg.EnableGSTInputTax === 'true' ? 'GST Output' : 'GST Payable', gst, 'Cr', iNo, 'GST ' + iNo, 'Sale');
 
   if (isEditing) {
@@ -4354,12 +4375,13 @@ export function savePurchaseInvoice(payload: {
   originalBillNo?: string;
   date?: string;
   isEdit?: boolean;
+  invoiceMode?: 'item' | 'accounting';
 }) {
   const cfg = loadJson<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
   const itemsList = loadJson<Item[]>(STORAGE_KEYS.ITEMS, DEFAULT_ITEMS);
   const ledgersList = loadJson<Ledger[]>(STORAGE_KEYS.LEDGERS, DEFAULT_LEDGERS);
 
-  const { cart, supplier, payment, additionalExpenses = [], originalBillNo, billNo } = payload;
+  const { cart, supplier, payment, additionalExpenses = [], originalBillNo, billNo, invoiceMode = 'item' } = payload;
   
   const purchasesCheck = getDeduplicatedPurchases();
   const currentTargetBill = (originalBillNo || billNo || '').trim();
@@ -4399,13 +4421,17 @@ export function savePurchaseInvoice(payload: {
     oldPur = existingPurchases.find(p => p.billNo?.trim().toLowerCase() === refToMatch || (billNo && p.billNo?.trim().toLowerCase() === billNo.trim().toLowerCase()));
     if (oldPur) {
       originalDate = oldPur.date;
-      // 1. Revert previous stock addition from original purchase
-      (oldPur.items || []).forEach((item: any) => {
-        const qty = Number(item.Qty) || 0;
-        if (qty > 0) {
-          updateItemStock(item['Item Code'], -qty, item.Unit || item.unit);
-        }
-      });
+      // 1. Revert previous stock addition from original purchase (only if not an accounting invoice)
+      const oldWasAccounting = oldPur.invoiceMode === 'accounting';
+      if (!oldWasAccounting) {
+        (oldPur.items || []).forEach((item: any) => {
+          if (item.isAccountingLine) return;
+          const qty = Number(item.Qty) || 0;
+          if (qty > 0) {
+            updateItemStock(item['Item Code'], -qty, item.Unit || item.unit);
+          }
+        });
+      }
     }
 
     // 2. Remove old stock ledger entries for this bill to prevent duplicate audit rows
@@ -4463,6 +4489,9 @@ export function savePurchaseInvoice(payload: {
       'Zero Rated (Y/N)': isZ ? 'Y' : 'N',
       'Line Total': round2(gr + lGst),
       'Serial Numbers': serialStr,
+      isAccountingLine: Boolean(l.isAccountingLine || invoiceMode === 'accounting'),
+      ledgerName: l.ledgerName,
+      particulars: l.particulars || l.lineDescription || l.description || '',
       selectedSize: l.selectedSize,
       selectedColor: l.selectedColor,
       Size: l.selectedSize,
@@ -4506,6 +4535,7 @@ export function savePurchaseInvoice(payload: {
     companyId: currentActiveCompanyId,
     company_id: currentActiveCompanyId,
     billNo: bNo,
+    invoiceMode: invoiceMode || (oldPur as any)?.invoiceMode || 'item',
     supplierBillNo: payload.supplierBillNo || '',
     supplierBillDate: payload.supplierBillDate || (payload.date ? new Date(payload.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
     receiptNoteNo: payload.receiptNoteNo || '',
@@ -4594,8 +4624,10 @@ export function savePurchaseInvoice(payload: {
   // Stock logging & ledger balance
   // If purchase invoice is generated against an existing Receipt Note (GRN), stock was already added into inventory during Receipt Note entry.
   const isAgainstReceiptNote = Boolean(payload.receiptNoteNo && payload.receiptNoteNo.trim());
-  if (!isAgainstReceiptNote) {
+  const isAccountingPurchase = invoiceMode === 'accounting';
+  if (!isAgainstReceiptNote && !isAccountingPurchase) {
     cart.forEach(l => {
+      if (l.isAccountingLine) return;
       const nq = updateItemStock(l.itemCode, Number(l.qty), l.unit);
       if (l.selectedBatchId || l.selectedBatchNo) {
         updateItemBatchStock(l.itemCode, l.selectedBatchId || l.selectedBatchNo, Number(l.qty), l.unit);
@@ -4617,7 +4649,17 @@ export function savePurchaseInvoice(payload: {
   
   if (cr > 0.009 && supplier.name) adjustLedgerBalance(supplier.name, cr, 'Cr', bNo, 'Credit purchase ' + bNo, 'Purchase');
   
-  adjustLedgerBalance('Purchase Account', tax + zro, 'Dr', bNo, 'Purchase ' + bNo, 'Purchase');
+  if (isAccountingPurchase) {
+    cart.forEach(l => {
+      const lineGr = (Number(l.qty) || 0) * (Number(l.rate) || 0) - (Number(l.discount) || 0);
+      const targetLedger = l.ledgerName || l.itemName || 'Purchase Account';
+      if (lineGr > 0) {
+        adjustLedgerBalance(targetLedger, round2(lineGr), 'Dr', bNo, (l.particulars || l.lineDescription || `Purchase ${bNo}`), 'Purchase');
+      }
+    });
+  } else {
+    adjustLedgerBalance('Purchase Account', tax + zro, 'Dr', bNo, 'Purchase ' + bNo, 'Purchase');
+  }
   if (gst > 0) adjustLedgerBalance(cfg.EnableGSTInputTax === 'true' ? 'GST Input' : 'GST Payable', gst, 'Dr', bNo, 'GST ' + bNo, 'Purchase');
 
   // Adjust expense ledgers

@@ -6,7 +6,7 @@ import { Config, Item, Ledger, CartLine, Unit, BarcodeQueueItem, ReceiptNote, Pu
 import { BankTransactionIdModal } from './BankTransactionIdModal';
 import { isBankLedger } from '../utils/ledgerUtils';
 import { savePurchaseInvoice, deletePurchaseInvoice, getVoucherDetails, saveLedger, loadJson, STORAGE_KEYS, DEFAULT_UNITS, peekNextVoucherNo, getSizes, getColors } from '../services/storageService';
-import { Plus, Trash2, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckCircle2, UserPlus, ShoppingBag, Tag, Printer, AlertCircle, ArrowDownToLine, Receipt, Calendar } from 'lucide-react';
+import { Plus, Trash2, ChevronDown, ChevronUp, Maximize2, Minimize2, CheckCircle2, UserPlus, ShoppingBag, Tag, Printer, AlertCircle, ArrowDownToLine, Receipt, Calendar, ArrowRightLeft } from 'lucide-react';
 import { playSaveSound, playWarningTone } from '../utils/audio';
 import { SerialModal } from './SerialModal';
 import { FetchVoucherModal } from './vouchers/FetchVoucherModal';
@@ -53,6 +53,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
   const [purchaseVoucherNo, setPurchaseVoucherNo] = useState('');
   const [narration, setNarration] = useState('');
   const [isGstMode, setIsGstMode] = useState(true);
+  const [invoiceMode, setInvoiceMode] = useState<'item' | 'accounting'>('item');
   const [receiptNoteNo, setReceiptNoteNo] = useState('');
   const [poNo, setPoNo] = useState('');
   
@@ -62,6 +63,17 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
 
   const [showBarcodePrompt, setShowBarcodePrompt] = useState(false);
   const [pendingBarcodeQueue, setPendingBarcodeQueue] = useState<BarcodeQueueItem[] | null>(null);
+
+  const purchaseExpenseLedgers = useMemo(() => {
+    const primaryGroups = ['Purchase Accounts', 'Direct Expenses', 'Indirect Expenses', 'Expenses (Direct)', 'Expenses (Indirect)'];
+    return [...ledgers].sort((a, b) => {
+      const aIsPri = primaryGroups.includes(a.Group || '');
+      const bIsPri = primaryGroups.includes(b.Group || '');
+      if (aIsPri && !bIsPri) return -1;
+      if (!aIsPri && bIsPri) return 1;
+      return (a['Ledger Name'] || '').localeCompare(b['Ledger Name'] || '');
+    });
+  }, [ledgers]);
 
   useEffect(() => {
     if (initialVoucherTarget && initialVoucherTarget.voucherNo) {
@@ -106,10 +118,14 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                 ? it['Serial Numbers'].split(',').map((s: string) => s.trim()).filter(Boolean) 
                 : (Array.isArray(it.serials) ? it.serials : []),
               selectedSize: it.selectedSize || it.Size || '',
-              selectedColor: it.selectedColor || it.Color || ''
+              selectedColor: it.selectedColor || it.Color || '',
+              isAccountingLine: Boolean(it.isAccountingLine || inv.invoiceMode === 'accounting'),
+              ledgerName: it.ledgerName || it['Item Name'] || it.itemName,
+              particulars: it.particulars || it.lineDescription || it.description || ''
             };
           });
           setCart(newCart);
+          setInvoiceMode(inv.invoiceMode === 'accounting' ? 'accounting' : 'item');
 
           const hasAnyGst = rawItemsList.some((it: any) => (Number(it['GST Amount']) > 0 || Number(it['GST %']) > 0));
           const totalGstAmt = Number(inv.gstAmt || 0);
@@ -442,6 +458,15 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
       const isCtrlA = (e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A');
       const isF2 = e.key === 'F2' || e.code === 'F2';
 
+      // Ctrl + H: Change Voucher Mode (Item Invoice vs Accounting Invoice)
+      const isCtrlH = (e.ctrlKey || e.metaKey) && (e.key === 'h' || e.key === 'H');
+      if (isCtrlH) {
+        e.preventDefault();
+        e.stopPropagation();
+        setInvoiceMode(prev => prev === 'accounting' ? 'item' : 'accounting');
+        return;
+      }
+
       // Alt+F: Open Fetch Modal (Receipt Note / Purchase Order)
       if (e.altKey && (e.key === 'f' || e.key === 'F')) {
         e.preventDefault();
@@ -570,6 +595,63 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     }, 50);
   };
 
+  const selectAccountingLedger = (ledger: Ledger, targetIndex?: number) => {
+    const isSupplierGstExempted = Boolean(
+      ledgers.find(l => l['Ledger Name'] === supplierName)?.['GST Exempted'] === 'Y' ||
+      ledgers.find(l => l['Ledger Name'] === supplierName)?.['GST Type'] === 'Exempted'
+    );
+    const lineGstPct = Number(ledger['GST %'] || config.GSTRate || 0);
+    const isZero = !isGstMode || isSupplierGstExempted || ledger['GST Type'] === 'Exempted';
+
+    if (targetIndex !== undefined && targetIndex >= 0 && targetIndex < cart.length) {
+      const updated = [...cart];
+      const cur = updated[targetIndex];
+      const qty = cur.qty || 1;
+      const rate = cur.rate || 0;
+      const computedGstAmt = isZero ? 0 : round2((qty * rate) * lineGstPct / 100);
+      updated[targetIndex] = {
+        ...cur,
+        itemCode: `ACC-${ledger.id || ledger['Ledger Name']}`,
+        itemName: ledger['Ledger Name'],
+        ledgerName: ledger['Ledger Name'],
+        isAccountingLine: true,
+        unit: 'Nos',
+        gstPct: lineGstPct,
+        gstAmt: computedGstAmt,
+        zeroRated: isZero ? 'Y' : 'N'
+      };
+      setCart(updated);
+    } else {
+      const newLine: CartLine = {
+        itemCode: `ACC-${ledger.id || ledger['Ledger Name']}`,
+        itemName: ledger['Ledger Name'],
+        ledgerName: ledger['Ledger Name'],
+        isAccountingLine: true,
+        unit: 'Nos',
+        qty: 1,
+        rate: 0,
+        discount: 0,
+        discountType: 'flat',
+        gstPct: lineGstPct,
+        gstAmt: 0,
+        zeroRated: isZero ? 'Y' : 'N',
+        purchaseRate: 0,
+        isSerialized: 'N',
+        serials: []
+      };
+      const updatedCart = [...cart, newLine];
+      setCart(updatedCart);
+      const nextIdx = updatedCart.length - 1;
+      setTimeout(() => {
+        const rateEl = document.getElementById(`pur-rate-${nextIdx}`) as HTMLInputElement | null;
+        if (rateEl) {
+          rateEl.focus();
+          rateEl.select();
+        }
+      }, 50);
+    }
+  };
+
   const updateCartLine = (index: number, field: 'qty' | 'rate' | 'gstAmt' | 'lineDescription', val: any) => {
     const updated = [...cart];
     (updated[index] as any)[field] = val;
@@ -645,12 +727,13 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
     setShowAcceptModal(false);
 
     const supplierLedger = ledgers.find(l => l['Ledger Name'] === supplierName);
-    const queueForBarcode = prepareBarcodeQueue();
+    const queueForBarcode = invoiceMode === 'accounting' ? [] : prepareBarcodeQueue();
 
     const finalCart = isGstMode ? cart : cart.map(l => ({ ...l, gstPct: 0, gstAmt: 0 }));
 
     const res = savePurchaseInvoice({
       cart: finalCart,
+      invoiceMode,
       supplier: {
         name: supplierName,
         gstNo: supplierLedger?.['GST No'] || '',
@@ -790,6 +873,26 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                 >
                   <ArrowDownToLine className="h-3.5 w-3.5 text-indigo-600" />
                   <span>Fetch (GRN / PO) [Alt+F]</span>
+                </button>
+
+                {/* Tally Ctrl+H Voucher Mode Switcher */}
+                <button
+                  type="button"
+                  onClick={() => setInvoiceMode(prev => prev === 'accounting' ? 'item' : 'accounting')}
+                  className={`h-7 px-2.5 rounded-lg border font-extrabold text-[11px] flex items-center gap-1.5 transition cursor-pointer shadow-2xs shrink-0 ${
+                    invoiceMode === 'accounting'
+                      ? 'bg-purple-600 text-white border-purple-700 ring-2 ring-purple-200'
+                      : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+                  }`}
+                  title="Switch between Item Invoice and Accounting Invoice without maintaining stock (Ctrl+H)"
+                >
+                  <ArrowRightLeft className="h-3.5 w-3.5" />
+                  <span>{invoiceMode === 'accounting' ? 'Mode: Accounting Invoice [Ctrl+H]' : 'Mode: Item Invoice [Ctrl+H]'}</span>
+                  {invoiceMode === 'accounting' && (
+                    <span className="text-[9px] bg-purple-700 px-1.5 py-0.2 rounded font-black uppercase text-purple-100">
+                      No Stock
+                    </span>
+                  )}
                 </button>
               </div>
             </div>
@@ -990,10 +1093,12 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
           <table className="w-full border-collapse text-xs sm:text-sm">
             <thead className="sticky top-0 z-10 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[11px] tracking-wider">
               <tr>
-                <th className="py-2 px-3 text-left">ITEM DESCRIPTION</th>
+                <th className="py-2 px-3 text-left">
+                  {invoiceMode === 'accounting' ? 'PARTICULARS (PURCHASE / EXPENSE LEDGER)' : 'ITEM DESCRIPTION'}
+                </th>
                 <th className="py-2 px-1 text-center w-20">QTY</th>
                 <th className="py-2 px-1 text-center w-16">UNIT</th>
-                <th className="py-2 px-1 text-right w-24">RATE</th>
+                <th className="py-2 px-1 text-right w-24">{invoiceMode === 'accounting' ? 'AMOUNT' : 'RATE'}</th>
                 {isGstMode && <th className="py-2 px-1 text-right w-24">GST</th>}
                 <th className="py-2 px-2 text-right w-28">AMOUNT</th>
                 <th className="py-2 px-1 text-center w-12">ACT</th>
@@ -1011,70 +1116,91 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
                     <td className="py-1 px-2 align-middle font-medium min-w-[220px]">
                       <div className="flex items-center gap-1">
                         <div className="flex-1 min-w-0">
-                          <SearchableItemSelect
-                            variant="grid"
-                            id={`pur-item-${idx}`}
-                            onEnterNext={() => {
-                              setTimeout(() => {
-                                const el = document.getElementById(`pur-qty-${idx}`);
-                                if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
-                              }, 10);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return;
-                              handleGridKeyDown(e, getGridNavOpts(idx, 'item'));
-                            }}
-                            valueCode={line.itemCode}
-                            items={items}
-                            placeholder="Select Item / Barcode..."
-                            currencySymbol={config.CurrencySymbol || 'Nu.'}
-                            priceType="purchase"
-                            showPrice={true}
-                            onEndOfList={(id) => id && focusNextOutsideGrid(id)}
-                            onSelect={item => {
-                              const qty = line.qty || 1;
-                              const rate = Number(item['Purchase Rate'] ?? (item as any)['Purchase Price'] ?? item.MRP ?? (item as any)['Sale Rate'] ?? 0);
-                              const isZero = !isGstMode || isSupplierGstExempted || String(item['Zero Rated (Y/N)']).toUpperCase() === 'Y';
-                              const computedGstAmt = isZero ? 0 : round2((qty * rate) * (Number(item['GST %']) || 0) / 100);
+                          {invoiceMode === 'accounting' || line.isAccountingLine ? (
+                            <SearchableLedgerSelect
+                              variant="grid"
+                              id={`pur-item-${idx}`}
+                              ledgers={purchaseExpenseLedgers}
+                              value={line.itemName}
+                              placeholder="Select Purchase / Expense Ledger..."
+                              onSelect={l => selectAccountingLedger(l, idx)}
+                              onEnterNext={() => {
+                                setTimeout(() => {
+                                  const el = document.getElementById(`pur-rate-${idx}`);
+                                  if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
+                                }, 10);
+                              }}
+                              onCreateNew={() => onOpenNewLedgerModal?.('Purchase Accounts', (name) => {
+                                const newL = ledgers.find(l => l['Ledger Name'] === name);
+                                if (newL) selectAccountingLedger(newL, idx);
+                              })}
+                            />
+                          ) : (
+                            <SearchableItemSelect
+                              variant="grid"
+                              id={`pur-item-${idx}`}
+                              onEnterNext={() => {
+                                setTimeout(() => {
+                                  const el = document.getElementById(`pur-qty-${idx}`);
+                                  if (el) { el.focus(); (el as HTMLInputElement).select?.(); }
+                                }, 10);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') return;
+                                handleGridKeyDown(e, getGridNavOpts(idx, 'item'));
+                              }}
+                              valueCode={line.itemCode}
+                              items={items}
+                              placeholder="Select Item / Barcode..."
+                              currencySymbol={config.CurrencySymbol || 'Nu.'}
+                              priceType="purchase"
+                              showPrice={true}
+                              onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                              onSelect={item => {
+                                const qty = line.qty || 1;
+                                const rate = Number(item['Purchase Rate'] ?? (item as any)['Purchase Price'] ?? item.MRP ?? (item as any)['Sale Rate'] ?? 0);
+                                const isZero = !isGstMode || isSupplierGstExempted || String(item['Zero Rated (Y/N)']).toUpperCase() === 'Y';
+                                const computedGstAmt = isZero ? 0 : round2((qty * rate) * (Number(item['GST %']) || 0) / 100);
 
-                              const isPharm = item.isPharmacy === 'Y' || item.maintainBatch === 'Y';
-                              const defBatchNo = isPharm ? (line.selectedBatchNo || `B-${Math.floor(100 + Math.random() * 900)}`) : '';
-                              const defBatchExp = isPharm ? (line.selectedBatchExp || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]) : '';
+                                const isPharm = item.isPharmacy === 'Y' || item.maintainBatch === 'Y';
+                                const defBatchNo = isPharm ? (line.selectedBatchNo || `B-${Math.floor(100 + Math.random() * 900)}`) : '';
+                                const defBatchExp = isPharm ? (line.selectedBatchExp || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]) : '';
 
-                              const updated = [...cart];
-                              updated[idx] = {
-                                ...updated[idx],
-                                itemCode: item['Item Code'],
-                                itemName: item['Item Name'],
-                                unit: item.Unit || 'Pcs',
-                                rate,
-                                gstPct: Number(item['GST %']) || 0,
-                                zeroRated: item['Zero Rated (Y/N)'] || 'N',
-                                isSerialized: item['Is Serialized'],
-                                gstAmt: computedGstAmt,
-                                selectedSize: item.size ? item.size.split(/[,/;|]+/)[0]?.trim() || '' : '',
-                                selectedColor: item.color ? item.color.split(/[,/;|]+/)[0]?.trim() || '' : '',
-                                selectedBatchNo: defBatchNo,
-                                selectedBatchExp: defBatchExp
-                              };
-                              setCart(updated);
-                              setTimeout(() => {
-                                const qtyEl = document.getElementById(`pur-qty-${idx}`) as HTMLInputElement | null;
-                                if (qtyEl) {
-                                  qtyEl.focus();
-                                  qtyEl.select();
-                                }
-                              }, 50);
-                            }}
-                            onCreateNew={onOpenNewItemModal}
-                            onEditItem={item => {
-                              setItemToAlter(item);
-                              setShowItemAlterModal(true);
-                            }}
-                            onShowInfo={item => setDrillModalState({ type: 'stock', targetId: item['Item Code'] || item['Item Name'] })}
-                            onSaveVoucher={handleSavePurchase}
-                            onFocusDate={() => billDateRef.current?.focus()}
-                          />
+                                const updated = [...cart];
+                                updated[idx] = {
+                                  ...updated[idx],
+                                  itemCode: item['Item Code'],
+                                  itemName: item['Item Name'],
+                                  unit: item.Unit || 'Pcs',
+                                  rate,
+                                  gstPct: Number(item['GST %']) || 0,
+                                  zeroRated: item['Zero Rated (Y/N)'] || 'N',
+                                  isSerialized: item['Is Serialized'],
+                                  gstAmt: computedGstAmt,
+                                  selectedSize: item.size ? item.size.split(/[,/;|]+/)[0]?.trim() || '' : '',
+                                  selectedColor: item.color ? item.color.split(/[,/;|]+/)[0]?.trim() || '' : '',
+                                  selectedBatchNo: defBatchNo,
+                                  selectedBatchExp: defBatchExp
+                                };
+                                setCart(updated);
+                                setTimeout(() => {
+                                  const qtyEl = document.getElementById(`pur-qty-${idx}`) as HTMLInputElement | null;
+                                  if (qtyEl) {
+                                    qtyEl.focus();
+                                    qtyEl.select();
+                                  }
+                                }, 50);
+                              }}
+                              onCreateNew={onOpenNewItemModal}
+                              onEditItem={item => {
+                                setItemToAlter(item);
+                                setShowItemAlterModal(true);
+                              }}
+                              onShowInfo={item => setDrillModalState({ type: 'stock', targetId: item['Item Code'] || item['Item Name'] })}
+                              onSaveVoucher={handleSavePurchase}
+                              onFocusDate={() => billDateRef.current?.focus()}
+                            />
+                          )}
                         </div>
                         {line.itemCode && (
                           <ItemNoteButton
@@ -1303,28 +1429,46 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({
               {/* Active Table Cell Search Row (Tally.Prime Style) */}
               <tr className="bg-indigo-50/50 hover:bg-indigo-100/50 transition border-t border-indigo-100 sticky bottom-0 z-10 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
                 <td className="py-1 px-2 align-middle min-w-[220px]">
-                  <SearchableItemSelect
-                    variant="grid"
-                    id="pur-fast-item-picker"
-                    onInputChange={(val) => { if (val && supplierName) setIsHeaderCollapsed(true); }}
-                    items={items}
-                    placeholder="+ Type Item Name or Scan Barcode..."
-                    currencySymbol={config.CurrencySymbol || 'Nu.'}
-                    priceType="purchase"
-                    showPrice={true}
-                    onEndOfList={(id) => id && focusNextOutsideGrid(id)}
-                    onSelect={item => selectItem(item, true)}
-                    autoClearAfterSelect={true}
-                    onEnterNext={() => focusNextOutsideGrid('pur-fast-item-picker')}
-                    onCreateNew={onOpenNewItemModal}
-                    onEditItem={item => {
-                      setItemToAlter(item);
-                      setShowItemAlterModal(true);
-                    }}
-                    onShowInfo={item => setDrillModalState({ type: 'stock', targetId: item['Item Code'] || item['Item Name'] })}
-                    onSaveVoucher={handleSavePurchase}
-                    onFocusDate={() => billDateRef.current?.focus()}
-                  />
+                  {invoiceMode === 'accounting' ? (
+                    <SearchableLedgerSelect
+                      variant="grid"
+                      id="pur-fast-ledger-picker"
+                      ledgers={purchaseExpenseLedgers}
+                      placeholder="+ Type Purchase / Expense Ledger (or select from list)..."
+                      onSelect={l => selectAccountingLedger(l)}
+                      autoClearAfterSelect={true}
+                      onEnterNext={() => focusNextOutsideGrid('pur-fast-ledger-picker')}
+                      onCreateNew={() => onOpenNewLedgerModal?.('Purchase Accounts', (name) => {
+                        const newL = ledgers.find(l => l['Ledger Name'] === name);
+                        if (newL) selectAccountingLedger(newL);
+                      })}
+                      onSaveVoucher={handleSavePurchase}
+                      onFocusDate={() => billDateRef.current?.focus()}
+                    />
+                  ) : (
+                    <SearchableItemSelect
+                      variant="grid"
+                      id="pur-fast-item-picker"
+                      onInputChange={(val) => { if (val && supplierName) setIsHeaderCollapsed(true); }}
+                      items={items}
+                      placeholder="+ Type Item Name or Scan Barcode..."
+                      currencySymbol={config.CurrencySymbol || 'Nu.'}
+                      priceType="purchase"
+                      showPrice={true}
+                      onEndOfList={(id) => id && focusNextOutsideGrid(id)}
+                      onSelect={item => selectItem(item, true)}
+                      autoClearAfterSelect={true}
+                      onEnterNext={() => focusNextOutsideGrid('pur-fast-item-picker')}
+                      onCreateNew={onOpenNewItemModal}
+                      onEditItem={item => {
+                        setItemToAlter(item);
+                        setShowItemAlterModal(true);
+                      }}
+                      onShowInfo={item => setDrillModalState({ type: 'stock', targetId: item['Item Code'] || item['Item Name'] })}
+                      onSaveVoucher={handleSavePurchase}
+                      onFocusDate={() => billDateRef.current?.focus()}
+                    />
+                  )}
                 </td>
                 <td className="py-1 px-1 align-middle text-center font-semibold text-slate-400 text-xs">—</td>
                 <td className="py-1 px-1 align-middle text-center font-semibold text-slate-400 text-xs">—</td>

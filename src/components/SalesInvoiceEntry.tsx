@@ -42,6 +42,7 @@ import {
   Truck,
   Tags,
   Gift,
+  ArrowRightLeft,
 } from "lucide-react";
 import { findBestItemScheme, findBestBillScheme, getAllActiveSchemes, getSchemes } from "../services/schemeService";
 import { FetchVoucherModal } from "./vouchers/FetchVoucherModal";
@@ -246,6 +247,76 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
   const [orderDate, setOrderDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [deliveryNoteNo, setDeliveryNoteNo] = useState("");
   const [showFetchModal, setShowFetchModal] = useState(false);
+  const [invoiceMode, setInvoiceMode] = useState<'item' | 'accounting'>('item');
+
+  const salesIncomeLedgers = useMemo(() => {
+    const primaryGroups = ['Sales Accounts', 'Direct Incomes', 'Indirect Incomes', 'Income (Direct)', 'Income (Indirect)'];
+    return [...ledgers].sort((a, b) => {
+      const aIsPri = primaryGroups.includes(a.Group || '');
+      const bIsPri = primaryGroups.includes(b.Group || '');
+      if (aIsPri && !bIsPri) return -1;
+      if (!aIsPri && bIsPri) return 1;
+      return (a['Ledger Name'] || '').localeCompare(b['Ledger Name'] || '');
+    });
+  }, [ledgers]);
+
+  const selectAccountingLedger = (ledger: Ledger, targetIndex?: number) => {
+    const customerLedger = ledgers.find(l => l['Ledger Name'] === customerName);
+    const isCustomerGstExempted = Boolean(
+      customerLedger?.['GST Exempted'] === 'Y' ||
+      customerLedger?.['GST Type'] === 'Exempted'
+    );
+    const lineGstPct = Number(ledger['GST %'] || config.GSTRate || 0);
+    const isZero = isCustomerGstExempted || ledger['GST Type'] === 'Exempted';
+
+    if (targetIndex !== undefined && targetIndex >= 0 && targetIndex < cart.length) {
+      const updated = [...cart];
+      const cur = updated[targetIndex];
+      const qty = cur.qty || 1;
+      const rate = cur.rate || 0;
+      const computedGstAmt = isZero ? 0 : round2((qty * rate) * lineGstPct / 100);
+      updated[targetIndex] = {
+        ...cur,
+        itemCode: `ACC-${ledger.id || ledger['Ledger Name']}`,
+        itemName: ledger['Ledger Name'],
+        ledgerName: ledger['Ledger Name'],
+        isAccountingLine: true,
+        unit: 'Nos',
+        gstPct: lineGstPct,
+        gstAmt: computedGstAmt,
+        zeroRated: isZero ? 'Y' : 'N'
+      };
+      setCart(updated);
+    } else {
+      const newLine: CartLine = {
+        itemCode: `ACC-${ledger.id || ledger['Ledger Name']}`,
+        itemName: ledger['Ledger Name'],
+        ledgerName: ledger['Ledger Name'],
+        isAccountingLine: true,
+        unit: 'Nos',
+        qty: 1,
+        rate: 0,
+        discount: 0,
+        discountType: 'flat',
+        gstPct: lineGstPct,
+        gstAmt: 0,
+        zeroRated: isZero ? 'Y' : 'N',
+        purchaseRate: 0,
+        isSerialized: 'N',
+        serials: []
+      };
+      const updatedCart = [...cart, newLine];
+      setCart(updatedCart);
+      const nextIdx = updatedCart.length - 1;
+      setTimeout(() => {
+        const rateEl = document.getElementById(`sale-rate-${nextIdx}`) as HTMLInputElement | null;
+        if (rateEl) {
+          rateEl.focus();
+          rateEl.select();
+        }
+      }, 50);
+    }
+  };
 
   const handleFetchVoucher = (data: {
     type: 'sales_order' | 'delivery_note' | 'quotation' | 'purchase_order' | 'receipt_note';
@@ -482,10 +553,14 @@ export const SalesInvoiceEntry: React.FC<SalesInvoiceEntryProps> = ({
                 : (Array.isArray(it.serials) ? it.serials : []),
               selectedBatchNo: it['Batch No'] || it.selectedBatchNo || it.batchNo || '',
               selectedBatchExp: it['Expiry Date'] || it.selectedBatchExp || it.expiryDate || '',
-              selectedBatchId: it.batchId || it.selectedBatchId || ''
+              selectedBatchId: it.batchId || it.selectedBatchId || '',
+              isAccountingLine: Boolean(it.isAccountingLine || inv.invoiceMode === 'accounting'),
+              ledgerName: it.ledgerName || it['Item Name'] || it.itemName,
+              particulars: it.particulars || it.lineDescription || it.description || ''
             };
           });
           setCart(newCart);
+          setInvoiceMode(inv.invoiceMode === 'accounting' ? 'accounting' : 'item');
 
           const c = inv.customer || inv.supplier || inv.party || inv.partyLedger;
           if (c) {

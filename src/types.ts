@@ -441,6 +441,9 @@ export interface CartLine {
   inclusiveRate?: number;
   isFreeItem?: boolean;
   schemeDiscount?: number;
+  isAccountingLine?: boolean;
+  ledgerName?: string;
+  particulars?: string;
 }
 
 export type SchemeTargetType = 'all_items' | 'item' | 'item_group' | 'item_category' | 'brand';
@@ -569,6 +572,7 @@ export interface SalesInvoice {
   cashierName?: string;
   terminalId?: string;
   counterId?: string;
+  invoiceMode?: 'item' | 'accounting';
   items: Array<{
     'Invoice No'?: string;
     'Item Code': string;
@@ -585,6 +589,9 @@ export interface SalesInvoice {
     originalRate?: number;
     appliedSchemeId?: string;
     appliedSchemeName?: string;
+    isAccountingLine?: boolean;
+    ledgerName?: string;
+    particulars?: string;
     'Taxable Value': number;
     'GST %': number;
     'GST Amount': number;
@@ -602,6 +609,7 @@ export interface PurchaseInvoice {
   company_id?: string;
   billNo: string;
   invoiceNo?: string;
+  invoiceMode?: 'item' | 'accounting';
   supplierBillNo?: string;
   supplierBillDate?: string;
   receiptNoteNo?: string;
@@ -654,6 +662,9 @@ export interface PurchaseInvoice {
     'Zero Rated (Y/N)': 'Y' | 'N';
     'Line Total': number;
     'Serial Numbers': string;
+    isAccountingLine?: boolean;
+    ledgerName?: string;
+    particulars?: string;
     selectedSize?: string;
     selectedColor?: string;
     Size?: string;
